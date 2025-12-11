@@ -233,6 +233,27 @@ void afferent_renderer_draw_animated_circles(
     float time
 );
 
+// ============================================================================
+// Orbital rendering - Particles orbiting around a center point
+// Position computed on GPU from orbital parameters
+// ============================================================================
+
+// Upload static orbital instance data (called once at startup)
+// data: [phase, baseRadius, orbitSpeed, phaseX3, phase2, hueBase, halfSizePixels, padding] × count
+void afferent_renderer_upload_orbital_particles(
+    AfferentRendererRef renderer,
+    const float* data,
+    uint32_t count,
+    float centerX,
+    float centerY
+);
+
+// Draw orbital particles (called every frame - only sends time!)
+void afferent_renderer_draw_orbital_particles(
+    AfferentRendererRef renderer,
+    float time
+);
+
 #ifdef __cplusplus
 }
 #endif

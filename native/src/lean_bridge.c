@@ -732,3 +732,43 @@ LEAN_EXPORT lean_obj_res lean_afferent_renderer_draw_animated_circles(
     afferent_renderer_draw_animated_circles(renderer, (float)time);
     return lean_io_result_mk_ok(lean_box(0));
 }
+
+// ============================================================================
+// ORBITAL RENDERING FFI - Particles orbiting around a center point
+// ============================================================================
+
+// Upload static orbital instance data
+// data format: [phase, baseRadius, orbitSpeed, phaseX3, phase2, hueBase, halfSizePixels, padding] × count
+LEAN_EXPORT lean_obj_res lean_afferent_renderer_upload_orbital_particles(
+    lean_obj_arg renderer_obj,
+    lean_obj_arg data_arr,
+    uint32_t count,
+    double centerX,
+    double centerY,
+    lean_obj_arg world
+) {
+    AfferentRendererRef renderer = (AfferentRendererRef)lean_get_external_data(renderer_obj);
+
+    // Convert Lean Float array to C float array (one-time upload)
+    size_t arr_size = lean_array_size(data_arr);
+    float* data = malloc(arr_size * sizeof(float));
+    for (size_t i = 0; i < arr_size; i++) {
+        data[i] = (float)lean_unbox_float(lean_array_get_core(data_arr, i));
+    }
+
+    afferent_renderer_upload_orbital_particles(renderer, data, count, (float)centerX, (float)centerY);
+
+    free(data);
+    return lean_io_result_mk_ok(lean_box(0));
+}
+
+// Draw orbital particles (called every frame - only sends time!)
+LEAN_EXPORT lean_obj_res lean_afferent_renderer_draw_orbital_particles(
+    lean_obj_arg renderer_obj,
+    double time,
+    lean_obj_arg world
+) {
+    AfferentRendererRef renderer = (AfferentRendererRef)lean_get_external_data(renderer_obj);
+    afferent_renderer_draw_orbital_particles(renderer, (float)time);
+    return lean_io_result_mk_ok(lean_box(0));
+}

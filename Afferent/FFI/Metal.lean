@@ -222,4 +222,24 @@ opaque Renderer.drawAnimatedCircles
   (renderer : @& Renderer)
   (time : Float) : IO Unit
 
+-- ============================================================================
+-- ORBITAL RENDERING - Particles orbiting around a center point
+-- Position computed on GPU from orbital parameters
+-- Data format: [phase, baseRadius, orbitSpeed, phaseX3, phase2, hueBase, halfSizePixels, padding] × count
+-- ============================================================================
+
+-- Upload static orbital instance data (called once at startup)
+@[extern "lean_afferent_renderer_upload_orbital_particles"]
+opaque Renderer.uploadOrbitalParticles
+  (renderer : @& Renderer)
+  (data : @& Array Float)
+  (count : UInt32)
+  (centerX centerY : Float) : IO Unit
+
+-- Draw orbital particles (called every frame - only sends time!)
+@[extern "lean_afferent_renderer_draw_orbital_particles"]
+opaque Renderer.drawOrbitalParticles
+  (renderer : @& Renderer)
+  (time : Float) : IO Unit
+
 end Afferent.FFI

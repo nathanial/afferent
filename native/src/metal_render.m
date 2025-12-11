@@ -386,6 +386,107 @@ fragment float4 animated_circle_fragment(AnimatedCircleVertexOut in [[stage_in]]
 }
 )";
 
+// ============================================================================
+// ORBITAL SHADER - Particles orbiting around a center point
+// Position computed on GPU from orbital parameters
+// ============================================================================
+static NSString *orbitalShaderSource = @R"(
+#include <metal_stdlib>
+using namespace metal;
+
+// Per-particle static orbital data (uploaded once at startup)
+struct OrbitalInstanceData {
+    float phase;           // Initial angle offset (4 bytes)
+    float baseRadius;      // Base orbit radius in pixels (4 bytes)
+    float orbitSpeed;      // Orbit angular speed (4 bytes)
+    float phaseX3;         // Phase for radius wobble (4 bytes)
+    float phase2;          // Phase for spin rotation (4 bytes)
+    float hueBase;         // Base color hue 0-1 (4 bytes)
+    float halfSizePixels;  // Half size in pixels (4 bytes)
+    float padding;         // Align to 32 bytes (4 bytes)
+};  // Total: 32 bytes
+
+// Uniforms updated once per frame
+struct OrbitalUniforms {
+    float time;
+    float centerX;         // Orbit center in pixels
+    float centerY;
+    float canvasWidth;
+    float canvasHeight;
+    float radiusWobble;    // Amount of radius wobble (default 30.0)
+    float padding1;
+    float padding2;
+};
+
+struct OrbitalVertexOut {
+    float4 position [[position]];
+    float4 color;
+};
+
+// HSV to RGB conversion (same as animated shader)
+float3 orbital_hsv_to_rgb(float h) {
+    float3 rgb = clamp(abs(fmod(h * 6.0 + float3(0.0, 4.0, 2.0), 6.0) - 3.0) - 1.0, 0.0, 1.0);
+    return 1.0 - 0.9 * (1.0 - rgb);
+}
+
+vertex OrbitalVertexOut orbital_rect_vertex(
+    uint vid [[vertex_id]],
+    uint iid [[instance_id]],
+    constant OrbitalInstanceData* instances [[buffer(0)]],
+    constant OrbitalUniforms& uniforms [[buffer(1)]]
+) {
+    float2 unitQuad[4] = {
+        float2(-1, -1),
+        float2( 1, -1),
+        float2(-1,  1),
+        float2( 1,  1)
+    };
+
+    OrbitalInstanceData inst = instances[iid];
+    float2 v = unitQuad[vid];
+
+    // Compute orbital position (GPU-side!)
+    float orbitAngle = uniforms.time * inst.orbitSpeed + inst.phase;
+    float orbitRadius = inst.baseRadius + uniforms.radiusWobble * sin(uniforms.time * 0.5 + inst.phaseX3);
+    float pixelX = uniforms.centerX + orbitRadius * cos(orbitAngle);
+    float pixelY = uniforms.centerY + orbitRadius * sin(orbitAngle);
+
+    // Compute spin angle (GPU-side!)
+    float spinAngle = uniforms.time * 3.0 + inst.phase2;
+
+    // Compute HSV -> RGB (GPU-side!)
+    float hue = fract(uniforms.time * 0.3 + inst.hueBase);
+    float3 rgb = orbital_hsv_to_rgb(hue);
+
+    // Convert pixel -> NDC (GPU-side!)
+    float2 ndcPos = float2(
+        (pixelX / uniforms.canvasWidth) * 2.0 - 1.0,
+        1.0 - (pixelY / uniforms.canvasHeight) * 2.0
+    );
+    float ndcHalfSize = inst.halfSizePixels / uniforms.canvasWidth * 2.0;
+
+    // Rotate
+    float sinA = sin(spinAngle);
+    float cosA = cos(spinAngle);
+    float2 rotated = float2(
+        v.x * cosA - v.y * sinA,
+        v.x * sinA + v.y * cosA
+    );
+
+    // Scale and translate
+    float2 finalPos = ndcPos + rotated * ndcHalfSize;
+
+    OrbitalVertexOut out;
+    out.position = float4(finalPos, 0.0, 1.0);
+    out.color = float4(rgb, 1.0);
+    return out;
+}
+
+fragment float4 orbital_rect_fragment(OrbitalVertexOut in [[stage_in]]) {
+    return in.color;
+}
+)";
+
 // Text vertex structure (different layout than AfferentVertex)
 typedef struct {
     float position[2];
@@ -418,6 +519,30 @@ typedef struct {
     float padding;
 } AnimationUniforms;
 
+// Orbital instance data structure (matches shader) - 32 bytes
+typedef struct {
+    float phase;           // Initial angle offset (4 bytes)
+    float baseRadius;      // Base orbit radius in pixels (4 bytes)
+    float orbitSpeed;      // Orbit angular speed (4 bytes)
+    float phaseX3;         // Phase for radius wobble (4 bytes)
+    float phase2;          // Phase for spin rotation (4 bytes)
+    float hueBase;         // Base color hue 0-1 (4 bytes)
+    float halfSizePixels;  // Half size in pixels (4 bytes)
+    float padding;         // Align to 32 bytes (4 bytes)
+} OrbitalInstanceData;  // Total: 32 bytes
+
+// Orbital uniforms structure (matches shader)
+typedef struct {
+    float time;
+    float centerX;
+    float centerY;
+    float canvasWidth;
+    float canvasHeight;
+    float radiusWobble;
+    float padding1;
+    float padding2;
+} OrbitalUniforms;
+
 // Internal renderer structure
 struct AfferentRenderer {
     AfferentWindowRef window;
@@ -432,6 +557,7 @@ struct AfferentRenderer {
     id<MTLRenderPipelineState> animatedRectPipelineState;
     id<MTLRenderPipelineState> animatedTrianglePipelineState;
     id<MTLRenderPipelineState> animatedCirclePipelineState;
+    id<MTLRenderPipelineState> orbitalPipelineState;   // For orbital particle rendering
     id<MTLSamplerState> textSampler;                   // For text texture sampling
     id<MTLCommandBuffer> currentCommandBuffer;
     id<MTLRenderCommandEncoder> currentEncoder;
@@ -446,9 +572,14 @@ struct AfferentRenderer {
     id<MTLBuffer> animatedRectBuffer;
     id<MTLBuffer> animatedTriangleBuffer;
     id<MTLBuffer> animatedCircleBuffer;
+    id<MTLBuffer> orbitalBuffer;
     uint32_t animatedRectCount;
     uint32_t animatedTriangleCount;
     uint32_t animatedCircleCount;
+    uint32_t orbitalCount;
+    // Orbital center (stored at upload time)
+    float orbitalCenterX;
+    float orbitalCenterY;
 };
 
 // Internal buffer structure
@@ -897,13 +1028,56 @@ AfferentResult afferent_renderer_create(
             return AFFERENT_ERROR_PIPELINE_FAILED;
         }
 
+        // ====================================================================
+        // Create orbital pipeline (particles orbiting around a center point)
+        // ====================================================================
+        id<MTLLibrary> orbitalLibrary = [renderer->device newLibraryWithSource:orbitalShaderSource
+                                                                       options:nil
+                                                                         error:&error];
+        if (!orbitalLibrary) {
+            NSLog(@"Orbital shader compilation failed: %@", error);
+            free(renderer);
+            return AFFERENT_ERROR_PIPELINE_FAILED;
+        }
+
+        id<MTLFunction> orbitalVertexFunc = [orbitalLibrary newFunctionWithName:@"orbital_rect_vertex"];
+        id<MTLFunction> orbitalFragmentFunc = [orbitalLibrary newFunctionWithName:@"orbital_rect_fragment"];
+        if (!orbitalVertexFunc || !orbitalFragmentFunc) {
+            NSLog(@"Failed to find orbital shader functions");
+            free(renderer);
+            return AFFERENT_ERROR_PIPELINE_FAILED;
+        }
+
+        MTLRenderPipelineDescriptor *orbitalPipelineDesc = [[MTLRenderPipelineDescriptor alloc] init];
+        orbitalPipelineDesc.vertexFunction = orbitalVertexFunc;
+        orbitalPipelineDesc.fragmentFunction = orbitalFragmentFunc;
+        orbitalPipelineDesc.colorAttachments[0].pixelFormat = MTLPixelFormatBGRA8Unorm;
+        orbitalPipelineDesc.rasterSampleCount = 4;
+        orbitalPipelineDesc.colorAttachments[0].blendingEnabled = YES;
+        orbitalPipelineDesc.colorAttachments[0].sourceRGBBlendFactor = MTLBlendFactorSourceAlpha;
+        orbitalPipelineDesc.colorAttachments[0].destinationRGBBlendFactor = MTLBlendFactorOneMinusSourceAlpha;
+        orbitalPipelineDesc.colorAttachments[0].sourceAlphaBlendFactor = MTLBlendFactorOne;
+        orbitalPipelineDesc.colorAttachments[0].destinationAlphaBlendFactor = MTLBlendFactorOneMinusSourceAlpha;
+
+        renderer->orbitalPipelineState = [renderer->device newRenderPipelineStateWithDescriptor:orbitalPipelineDesc
+                                                                                          error:&error];
+        if (!renderer->orbitalPipelineState) {
+            NSLog(@"Orbital pipeline creation failed: %@", error);
+            free(renderer);
+            return AFFERENT_ERROR_PIPELINE_FAILED;
+        }
+
         // Initialize animated buffer pointers to nil
         renderer->animatedRectBuffer = nil;
         renderer->animatedTriangleBuffer = nil;
         renderer->animatedCircleBuffer = nil;
+        renderer->orbitalBuffer = nil;
         renderer->animatedRectCount = 0;
         renderer->animatedTriangleCount = 0;
         renderer->animatedCircleCount = 0;
+        renderer->orbitalCount = 0;
+        renderer->orbitalCenterX = 0;
+        renderer->orbitalCenterY = 0;
 
         *out_renderer = renderer;
         return AFFERENT_OK;
@@ -1601,6 +1775,65 @@ void afferent_renderer_draw_animated_circles(
                                      vertexStart:0
                                      vertexCount:4
                                    instanceCount:renderer->animatedCircleCount];
+        [renderer->currentEncoder setRenderPipelineState:renderer->pipelineState];
+    }
+}
+
+// ============================================================================
+// ORBITAL RENDERING - Particles orbiting around a center point
+// Position computed on GPU from orbital parameters
+// ============================================================================
+
+// Upload static orbital instance data (called once at startup)
+// data: [phase, baseRadius, orbitSpeed, phaseX3, phase2, hueBase, halfSizePixels, padding] × count
+void afferent_renderer_upload_orbital_particles(
+    AfferentRendererRef renderer,
+    const float* data,
+    uint32_t count,
+    float centerX,
+    float centerY
+) {
+    if (!renderer || !data || count == 0) return;
+
+    @autoreleasepool {
+        size_t size = count * sizeof(OrbitalInstanceData);
+        renderer->orbitalBuffer = [renderer->device newBufferWithBytes:data
+                                                                length:size
+                                                               options:MTLResourceStorageModeShared];
+        renderer->orbitalCount = count;
+        renderer->orbitalCenterX = centerX;
+        renderer->orbitalCenterY = centerY;
+    }
+}
+
+// Draw orbital particles (called every frame - only sends time and uniforms!)
+void afferent_renderer_draw_orbital_particles(
+    AfferentRendererRef renderer,
+    float time
+) {
+    if (!renderer || !renderer->currentEncoder || !renderer->orbitalBuffer || renderer->orbitalCount == 0) {
+        return;
+    }
+
+    @autoreleasepool {
+        OrbitalUniforms uniforms = {
+            .time = time,
+            .centerX = renderer->orbitalCenterX,
+            .centerY = renderer->orbitalCenterY,
+            .canvasWidth = renderer->screenWidth,
+            .canvasHeight = renderer->screenHeight,
+            .radiusWobble = 30.0f,
+            .padding1 = 0,
+            .padding2 = 0
+        };
+
+        [renderer->currentEncoder setRenderPipelineState:renderer->orbitalPipelineState];
+        [renderer->currentEncoder setVertexBuffer:renderer->orbitalBuffer offset:0 atIndex:0];
+        [renderer->currentEncoder setVertexBytes:&uniforms length:sizeof(uniforms) atIndex:1];
+        [renderer->currentEncoder drawPrimitives:MTLPrimitiveTypeTriangleStrip
+                                     vertexStart:0
+                                     vertexCount:4
+                                   instanceCount:renderer->orbitalCount];
         [renderer->currentEncoder setRenderPipelineState:renderer->pipelineState];
     }
 }

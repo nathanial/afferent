@@ -902,12 +902,13 @@ def renderAnimations (c : Canvas) (t : Float) : IO Canvas := do
 
 /-! ## Performance Test -/
 
-/-- Render orbital spinning squares - particles orbit around center.
-    Uses GPU instancing + zero-copy FloatBuffer for maximum performance! -/
+/-- Render orbital spinning squares - GPU-animated rendering!
+    Static data uploaded once, only time sent per frame.
+    GPU computes: orbital position, spin angle, HSV→RGB, pixel→NDC -/
 def renderOrbitalTest (c : Canvas) (t : Float) (font : Font) (particles : Canvas.ParticleData) : IO Canvas := do
   let c := c.setFillColor Color.white
-  let c ← c.fillTextXY s!"Orbital: {particles.count} spinning squares (Space to advance)" 20 30 font
-  c.batchInstancedParticlesFast particles t
+  let c ← c.fillTextXY s!"Orbital: {particles.count} GPU-animated squares (Space to advance)" 20 30 font
+  c.drawOrbitalParticles t
 
 /-- Render grid spinning squares - GPU-animated rendering!
     Static data uploaded once, only time sent per frame.
@@ -990,6 +991,7 @@ def unifiedDemo : IO Unit := do
   IO.println "Uploading particle data to GPU for GPU-animated rendering..."
   Canvas.uploadAnimatedGridRects gridParticles 3.0 canvas
   Canvas.uploadAnimatedGridTriangles gridParticles 2.0 canvas
+  Canvas.uploadOrbitalParticles orbitalParticles canvas
   IO.println "GPU particle data uploaded! Animation computed on GPU."
 
   -- Display modes: 0 = demo, 1 = orbital, 2 = grid squares, 3 = triangles, 4 = circles

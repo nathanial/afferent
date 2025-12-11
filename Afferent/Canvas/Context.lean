@@ -1064,6 +1064,46 @@ def drawAnimatedCircles (t : Float) (c : Canvas) : IO Canvas := do
   FFI.Renderer.drawAnimatedCircles c.ctx.renderer t
   pure c
 
+/-! ## GPU-Animated Orbital Particles
+    Particles orbit around a center point with position computed on GPU.
+    Static data uploaded once at startup, only time sent per frame. -/
+
+/-- Build static data array for GPU-animated orbital particles.
+    Format: [phase, baseRadius, orbitSpeed, phaseX3, phase2, hueBase, halfSizePixels, padding] × count
+    This data is uploaded once and the GPU computes position, rotation, and color each frame. -/
+def buildOrbitalData (particles : ParticleData) : Array Float := Id.run do
+  let mut data := Array.mkEmpty (particles.count * 8)
+  for i in [:particles.count] do
+    let sbase := i * 6
+    let phase := particles.staticData[sbase]!
+    let baseRadius := particles.staticData[sbase + 1]!
+    let orbitSpeed := particles.staticData[sbase + 2]!
+    let phaseX3 := particles.staticData[sbase + 3]!
+    let phase2 := particles.staticData[sbase + 4]!
+    let hueBase := particles.staticData[sbase + 5]!
+    data := data.push phase
+    data := data.push baseRadius
+    data := data.push orbitSpeed
+    data := data.push phaseX3
+    data := data.push phase2
+    data := data.push hueBase
+    data := data.push particles.halfSize
+    data := data.push 0.0  -- padding
+  data
+
+/-- Upload orbital particle data to GPU (call once at startup).
+    After this, use drawOrbitalParticles to render with just a time value.
+    GPU computes: orbital position, spin angle, HSV→RGB, pixel→NDC. -/
+def uploadOrbitalParticles (particles : ParticleData) (c : Canvas) : IO Unit := do
+  let data := buildOrbitalData particles
+  FFI.Renderer.uploadOrbitalParticles c.ctx.renderer data particles.count.toUInt32 particles.centerX particles.centerY
+
+/-- Draw orbital particles - GPU does all animation! Only sends time value.
+    Call uploadOrbitalParticles once first, then call this every frame. -/
+def drawOrbitalParticles (t : Float) (c : Canvas) : IO Canvas := do
+  FFI.Renderer.drawOrbitalParticles c.ctx.renderer t
+  pure c
+
 /-! ## Drawing operations -/
 
 /-- Fill a path using the current state. Batch-aware: adds to batch if active. -/
