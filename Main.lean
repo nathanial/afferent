@@ -1,11 +1,11 @@
 /-
   Afferent - A Lean 4 2D vector graphics library
-  Main executable - demonstrates collimator optics and Metal rendering
+  Main executable - demonstrates collimator optics and basic shape rendering
 -/
-import Afferent.FFI.Metal
+import Afferent
 import Collimator.Prelude
 
-open Afferent.FFI
+open Afferent
 open Collimator
 open scoped Collimator.Operators
 
@@ -42,66 +42,39 @@ def collimatorDemo : IO Unit := do
   IO.println ""
 
 def graphicsDemo : IO Unit := do
-  IO.println "Metal Graphics Demo"
-  IO.println "-------------------"
+  IO.println "Basic Shapes Demo"
+  IO.println "-----------------"
 
-  -- Initialize the native library
-  init
+  -- Create drawing context
+  let ctx ← DrawContext.create 800 600 "Afferent - Basic Shapes"
 
-  -- Create window
-  IO.println "Creating window..."
-  let window ← Window.create 800 600 "Afferent"
+  IO.println "Rendering shapes... (close window to exit)"
 
-  -- Create renderer
-  IO.println "Creating renderer..."
-  let renderer ← Renderer.create window
+  -- Run the render loop
+  ctx.runLoop Color.darkGray fun ctx => do
+    -- Draw a red rectangle
+    ctx.fillRectXYWH 50 50 200 150 Color.red
 
-  -- Define a triangle in NDC coordinates (-1 to 1)
-  -- Each vertex: x, y, r, g, b, a
-  let vertices : Array Float := #[
-    -- Top vertex (red)
-     0.0,  0.5,   1.0, 0.0, 0.0, 1.0,
-    -- Bottom left (green)
-    -0.5, -0.5,   0.0, 1.0, 0.0, 1.0,
-    -- Bottom right (blue)
-     0.5, -0.5,   0.0, 0.0, 1.0, 1.0
-  ]
+    -- Draw a green rectangle
+    ctx.fillRectXYWH 300 50 200 150 Color.green
 
-  let indices : Array UInt32 := #[0, 1, 2]
+    -- Draw a blue rectangle
+    ctx.fillRectXYWH 550 50 200 150 Color.blue
 
-  -- Create GPU buffers
-  IO.println "Creating buffers..."
-  let vertexBuffer ← Buffer.createVertex renderer vertices
-  let indexBuffer ← Buffer.createIndex renderer indices
+    -- Draw a yellow circle
+    ctx.fillCircle ⟨150, 350⟩ 80 Color.yellow
 
-  IO.println "Rendering... (close window to exit)"
+    -- Draw a cyan circle
+    ctx.fillCircle ⟨400, 350⟩ 80 Color.cyan
 
-  -- Main render loop
-  let mut frameCount : Nat := 0
-  while !(← window.shouldClose) do
-    -- Poll window events
-    window.pollEvents
+    -- Draw a magenta circle
+    ctx.fillCircle ⟨650, 350⟩ 80 Color.magenta
 
-    -- Begin frame with dark gray background
-    let frameOk ← renderer.beginFrame 0.1 0.1 0.1 1.0
+    -- Draw a white rounded rectangle
+    ctx.fillRoundedRect (Rect.mk' 275 450 250 100) 20 Color.white
 
-    if frameOk then
-      -- Draw the triangle
-      renderer.drawTriangles vertexBuffer indexBuffer 3
-
-      -- End frame (present)
-      renderer.endFrame
-
-    frameCount := frameCount + 1
-
-  IO.println s!"Rendered {frameCount} frames"
   IO.println "Cleaning up..."
-
-  -- Cleanup
-  Buffer.destroy indexBuffer
-  Buffer.destroy vertexBuffer
-  Renderer.destroy renderer
-  Window.destroy window
+  ctx.destroy
 
 def main : IO Unit := do
   IO.println "Afferent - 2D Vector Graphics Library"
