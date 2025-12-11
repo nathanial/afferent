@@ -82,6 +82,15 @@ void afferent_renderer_draw_triangles(
     uint32_t index_count
 );
 
+// Instanced rectangle drawing (GPU-accelerated transforms)
+// instance_data: array of 9 floats per instance:
+//   pos.x, pos.y (NDC), sin(angle), cos(angle), halfSize (NDC), r, g, b, a
+void afferent_renderer_draw_instanced_rects(
+    AfferentRendererRef renderer,
+    const float* instance_data,
+    uint32_t instance_count
+);
+
 // Scissor rect for clipping (in pixel coordinates)
 void afferent_renderer_set_scissor(
     AfferentRendererRef renderer,

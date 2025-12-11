@@ -397,6 +397,45 @@ def batched (capacityHint : Nat := 1000) (action : Canvas → IO Canvas) (c : Ca
   let c ← action c
   c.flushBatch
 
+/-- FASTEST PATH: Batch many rectangles with a pure function that computes geometry directly.
+    The generator function takes an index and returns (x, y, angle, halfSize, color).
+    This bypasses Canvas state entirely - no save/restore, no Transform allocations. -/
+def batchRectsBy (count : Nat)
+    (generator : Nat → Float × Float × Float × Float × Color)
+    (c : Canvas) : IO Canvas := do
+  let mut batch := Batch.withCapacity count
+  for i in [:count] do
+    let (x, y, angle, halfSize, color) := generator i
+    batch := batch.addRectDirect x y angle halfSize color c.ctx.baseWidth c.ctx.baseHeight
+  c.ctx.drawBatch batch
+  pure c
+
+/-- GPU INSTANCED: Render many rectangles with GPU-computed transforms.
+    The generator function takes an index and returns (x, y, angle, halfSize, color).
+    Transforms are computed on the GPU - maximum parallelism for large counts.
+    Use this for 1000+ rectangles for best performance. -/
+def batchInstancedRectsBy (count : Nat)
+    (generator : Nat → Float × Float × Float × Float × Color)
+    (c : Canvas) : IO Canvas := do
+  -- Build instance data: 8 floats per instance (angle instead of sin/cos - GPU computes trig)
+  let mut data := Array.mkEmpty (count * 8)
+  for i in [:count] do
+    let (x, y, angle, halfSize, color) := generator i
+    -- Convert position to NDC
+    let ndcX := (x / c.ctx.baseWidth) * 2.0 - 1.0
+    let ndcY := 1.0 - (y / c.ctx.baseHeight) * 2.0
+    -- Convert halfSize to NDC (use width for uniform scale)
+    let ndcHalfSize := halfSize / c.ctx.baseWidth * 2.0
+    -- Pack instance data - GPU will compute sin/cos
+    data := data
+      |>.push ndcX |>.push ndcY
+      |>.push angle
+      |>.push ndcHalfSize
+      |>.push color.r |>.push color.g |>.push color.b |>.push color.a
+  -- Single GPU draw call with instancing
+  FFI.Renderer.drawInstancedRects c.ctx.renderer data count.toUInt32
+  pure c
+
 /-! ## Drawing operations -/
 
 /-- Fill a path using the current state. Batch-aware: adds to batch if active. -/

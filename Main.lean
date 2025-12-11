@@ -904,7 +904,7 @@ def renderAnimations (c : Canvas) (t : Float) : IO Canvas := do
 
 /-- Render many spinning squares for performance testing.
     Press Space to toggle this mode.
-    Uses batched rendering for ~100x speedup. -/
+    Uses GPU instancing for maximum performance - transforms computed on GPU! -/
 def renderPerformanceTest (c : Canvas) (t : Float) (font : Font) (squareCount : Nat := 1000) : IO Canvas := do
   let pi := 3.14159265358979323846
   let centerX := 960.0
@@ -914,29 +914,25 @@ def renderPerformanceTest (c : Canvas) (t : Float) (font : Font) (squareCount : 
   let c := c.setFillColor Color.white
   let c ← c.fillTextXY s!"Performance Test: {squareCount} spinning squares (Space to toggle)" 20 30 font
 
-  -- Render all squares in a single batched draw call
-  let c ← c.batched squareCount fun c => do
-    let mut cv := c
-    for i in [:squareCount] do
-      let c' := cv.save
-      let phase := i.toFloat * (2.0 * pi / squareCount.toFloat)
-      -- Multiple rings with varying radii
-      let ring := i % 10
-      let baseRadius := 50.0 + ring.toFloat * 45.0
-      let orbitRadius := baseRadius + 30.0 * Float.sin (t * 0.5 + phase * 3.0)
-      let orbitSpeed := 1.0 + ring.toFloat * 0.2
-      let x := centerX + orbitRadius * Float.cos (t * orbitSpeed + phase)
-      let y := centerY + orbitRadius * Float.sin (t * orbitSpeed + phase)
-      let c' := c'.translate x y
-      let c' := c'.rotate (t * 3.0 + phase * 2.0)
-      -- Rainbow colors based on position and time
-      let hue := (t * 0.3 + i.toFloat / squareCount.toFloat) - (t * 0.3 + i.toFloat / squareCount.toFloat).floor
-      let c' := c'.setFillColor (hsvToRgb hue 0.9 1.0)
-      -- Smaller squares for larger counts
-      let size := if squareCount > 5000 then 8.0 else if squareCount > 500 then 15.0 else 20.0
-      let c' ← c'.fillRectXYWH (-size/2) (-size/2) size size
-      cv := c'.restore
-    pure cv
+  -- Smaller squares for larger counts
+  let halfSize := if squareCount > 5000 then 4.0 else if squareCount > 500 then 7.5 else 10.0
+
+  -- GPU INSTANCING: transforms computed on GPU, massively parallel!
+  -- Pass angle to GPU - it will compute sin/cos
+  let c ← c.batchInstancedRectsBy squareCount fun i =>
+    let phase := i.toFloat * (2.0 * pi / squareCount.toFloat)
+    -- Multiple rings with varying radii
+    let ring := i % 10
+    let baseRadius := 50.0 + ring.toFloat * 45.0
+    let orbitRadius := baseRadius + 30.0 * Float.sin (t * 0.5 + phase * 3.0)
+    let orbitSpeed := 1.0 + ring.toFloat * 0.2
+    let x := centerX + orbitRadius * Float.cos (t * orbitSpeed + phase)
+    let y := centerY + orbitRadius * Float.sin (t * orbitSpeed + phase)
+    let angle := t * 3.0 + phase * 2.0
+    -- Rainbow colors based on position and time
+    let hue := (t * 0.3 + i.toFloat / squareCount.toFloat) - (t * 0.3 + i.toFloat / squareCount.toFloat).floor
+    let color := hsvToRgb hue 0.9 1.0
+    (x, y, angle, halfSize, color)
 
   pure c
 

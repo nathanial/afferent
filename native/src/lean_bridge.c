@@ -260,6 +260,40 @@ LEAN_EXPORT lean_obj_res lean_afferent_renderer_draw_triangles(
     return lean_io_result_mk_ok(lean_box(0));
 }
 
+// Draw instanced rectangles - GPU-accelerated transforms
+// instance_data_arr: Array Float with 8 floats per instance
+//   (pos.x, pos.y, angle, halfSize, r, g, b, a)
+LEAN_EXPORT lean_obj_res lean_afferent_renderer_draw_instanced_rects(
+    lean_obj_arg renderer_obj,
+    lean_obj_arg instance_data_arr,
+    uint32_t instance_count,
+    lean_obj_arg world
+) {
+    AfferentRendererRef renderer = (AfferentRendererRef)lean_get_external_data(renderer_obj);
+
+    size_t arr_size = lean_array_size(instance_data_arr);
+    size_t expected_size = (size_t)instance_count * 8;
+
+    if (arr_size < expected_size || instance_count == 0) {
+        return lean_io_result_mk_ok(lean_box(0));  // Silent fail on invalid input
+    }
+
+    // Convert Lean array to float array
+    float* instance_data = malloc(arr_size * sizeof(float));
+    if (!instance_data) {
+        return lean_io_result_mk_ok(lean_box(0));
+    }
+
+    for (size_t i = 0; i < arr_size; i++) {
+        instance_data[i] = (float)lean_unbox_float(lean_array_get_core(instance_data_arr, i));
+    }
+
+    afferent_renderer_draw_instanced_rects(renderer, instance_data, instance_count);
+    free(instance_data);
+
+    return lean_io_result_mk_ok(lean_box(0));
+}
+
 // Set scissor rect for clipping
 LEAN_EXPORT lean_obj_res lean_afferent_renderer_set_scissor(
     lean_obj_arg renderer_obj,

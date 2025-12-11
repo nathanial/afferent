@@ -715,6 +715,58 @@ def addTransformedRect (batch : Batch) (rect : Rect) (transform : Transform)
 
   { vertices, indices, vertexCount := batch.vertexCount + 4 }
 
+/-- FASTEST PATH: Add a rectangle with pre-computed position, rotation, size, and color.
+    Computes transform inline - no Canvas state, no Transform struct allocation.
+    x, y: center position; angle: rotation in radians; halfSize: half the side length -/
+def addRectDirect (batch : Batch) (x y angle halfSize : Float) (color : Color)
+    (screenWidth screenHeight : Float) : Batch :=
+  -- Inline rotation matrix computation (avoid Transform allocation)
+  let cosA := Float.cos angle
+  let sinA := Float.sin angle
+
+  -- Compute 4 corners relative to center, then rotate and translate
+  -- Corner offsets: (-h,-h), (h,-h), (h,h), (-h,h) where h = halfSize
+  let h := halfSize
+
+  -- Top-left corner (relative: -h, -h)
+  let tlX := x + (-h) * cosA - (-h) * sinA
+  let tlY := y + (-h) * sinA + (-h) * cosA
+
+  -- Top-right corner (relative: h, -h)
+  let trX := x + h * cosA - (-h) * sinA
+  let trY := y + h * sinA + (-h) * cosA
+
+  -- Bottom-right corner (relative: h, h)
+  let brX := x + h * cosA - h * sinA
+  let brY := y + h * sinA + h * cosA
+
+  -- Bottom-left corner (relative: -h, h)
+  let blX := x + (-h) * cosA - h * sinA
+  let blY := y + (-h) * sinA + h * cosA
+
+  -- Convert to NDC inline
+  let toNdcX := fun px => (px / screenWidth) * 2.0 - 1.0
+  let toNdcY := fun py => 1.0 - (py / screenHeight) * 2.0
+
+  let tlNdcX := toNdcX tlX; let tlNdcY := toNdcY tlY
+  let trNdcX := toNdcX trX; let trNdcY := toNdcY trY
+  let brNdcX := toNdcX brX; let brNdcY := toNdcY brY
+  let blNdcX := toNdcX blX; let blNdcY := toNdcY blY
+
+  let baseIdx := batch.vertexCount.toUInt32
+
+  let vertices := batch.vertices
+    |>.push tlNdcX |>.push tlNdcY |>.push color.r |>.push color.g |>.push color.b |>.push color.a
+    |>.push trNdcX |>.push trNdcY |>.push color.r |>.push color.g |>.push color.b |>.push color.a
+    |>.push brNdcX |>.push brNdcY |>.push color.r |>.push color.g |>.push color.b |>.push color.a
+    |>.push blNdcX |>.push blNdcY |>.push color.r |>.push color.g |>.push color.b |>.push color.a
+
+  let indices := batch.indices
+    |>.push baseIdx |>.push (baseIdx + 1) |>.push (baseIdx + 2)
+    |>.push baseIdx |>.push (baseIdx + 2) |>.push (baseIdx + 3)
+
+  { vertices, indices, vertexCount := batch.vertexCount + 4 }
+
 /-- Check if the batch is empty. -/
 def isEmpty (batch : Batch) : Bool := batch.vertices.size == 0
 

@@ -81,6 +81,14 @@ opaque Renderer.drawTriangles
   (vertexBuffer indexBuffer : @& Buffer)
   (indexCount : UInt32) : IO Unit
 
+-- Instanced rectangle drawing (GPU-accelerated transforms)
+-- instanceData: Array of 9 floats per instance (pos.x, pos.y, sin, cos, halfSize, r, g, b, a)
+@[extern "lean_afferent_renderer_draw_instanced_rects"]
+opaque Renderer.drawInstancedRects
+  (renderer : @& Renderer)
+  (instanceData : @& Array Float)
+  (instanceCount : UInt32) : IO Unit
+
 -- Scissor rect for clipping
 @[extern "lean_afferent_renderer_set_scissor"]
 opaque Renderer.setScissor

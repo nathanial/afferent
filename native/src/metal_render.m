@@ -71,6 +71,66 @@ fragment float4 text_fragment_main(TextVertexOut in [[stage_in]],
 }
 )";
 
+// Instanced rectangle shader - GPU-side transforms for massive parallelism
+static NSString *instancedShaderSource = @R"(
+#include <metal_stdlib>
+using namespace metal;
+
+// Instance data: position(2) + angle(1) + halfSize(1) + color(4) = 8 floats
+// Use packed layout to match the flat array from Lean
+struct InstanceData {
+    packed_float2 pos;       // Center position in NDC (8 bytes)
+    float angle;             // Rotation angle in radians (4 bytes)
+    float halfSize;          // Half side length in NDC (4 bytes)
+    packed_float4 color;     // RGBA (16 bytes)
+};  // Total: 32 bytes, no padding
+
+struct InstancedVertexOut {
+    float4 position [[position]];
+    float4 color;
+};
+
+vertex InstancedVertexOut instanced_vertex_main(
+    uint vid [[vertex_id]],
+    uint iid [[instance_id]],
+    constant InstanceData* instances [[buffer(0)]]
+) {
+    // Unit quad vertices for triangle strip: forms a quad with vertices 0,1,2,3
+    // Order: bottom-left, bottom-right, top-left, top-right (Z pattern for strip)
+    float2 unitQuad[4] = {
+        float2(-1, -1),  // 0: bottom-left
+        float2( 1, -1),  // 1: bottom-right
+        float2(-1,  1),  // 2: top-left
+        float2( 1,  1)   // 3: top-right
+    };
+
+    InstanceData inst = instances[iid];
+    float2 v = unitQuad[vid];
+
+    // Compute sin/cos on GPU (massively parallel!)
+    float sinA = sin(inst.angle);
+    float cosA = cos(inst.angle);
+
+    // Rotate: v' = (v.x * cos - v.y * sin, v.x * sin + v.y * cos)
+    float2 rotated = float2(
+        v.x * cosA - v.y * sinA,
+        v.x * sinA + v.y * cosA
+    );
+
+    // Scale and translate
+    float2 finalPos = inst.pos + rotated * inst.halfSize;
+
+    InstancedVertexOut out;
+    out.position = float4(finalPos, 0.0, 1.0);
+    out.color = inst.color;
+    return out;
+}
+
+fragment float4 instanced_fragment_main(InstancedVertexOut in [[stage_in]]) {
+    return in.color;
+}
+)";
+
 // Text vertex structure (different layout than AfferentVertex)
 typedef struct {
     float position[2];
@@ -78,14 +138,23 @@ typedef struct {
     float color[4];
 } TextVertex;
 
+// Instance data structure (matches shader) - 32 bytes packed
+typedef struct __attribute__((packed)) {
+    float pos[2];       // Center position in NDC (8 bytes)
+    float angle;        // Rotation angle in radians (4 bytes)
+    float halfSize;     // Half side length in NDC (4 bytes)
+    float color[4];     // RGBA (16 bytes)
+} InstanceData;  // Total: 32 bytes
+
 // Internal renderer structure
 struct AfferentRenderer {
     AfferentWindowRef window;
     id<MTLDevice> device;
     id<MTLCommandQueue> commandQueue;
     id<MTLRenderPipelineState> pipelineState;
-    id<MTLRenderPipelineState> textPipelineState;  // For text rendering
-    id<MTLSamplerState> textSampler;               // For text texture sampling
+    id<MTLRenderPipelineState> textPipelineState;      // For text rendering
+    id<MTLRenderPipelineState> instancedPipelineState; // For instanced rect rendering
+    id<MTLSamplerState> textSampler;                   // For text texture sampling
     id<MTLCommandBuffer> currentCommandBuffer;
     id<MTLRenderCommandEncoder> currentEncoder;
     id<CAMetalDrawable> currentDrawable;
@@ -352,6 +421,47 @@ AfferentResult afferent_renderer_create(
         samplerDesc.tAddressMode = MTLSamplerAddressModeClampToEdge;
         renderer->textSampler = [renderer->device newSamplerStateWithDescriptor:samplerDesc];
 
+        // Create instanced rendering pipeline (for GPU-accelerated rectangle batches)
+        id<MTLLibrary> instancedLibrary = [renderer->device newLibraryWithSource:instancedShaderSource
+                                                                         options:nil
+                                                                           error:&error];
+        if (!instancedLibrary) {
+            NSLog(@"Instanced shader compilation failed: %@", error);
+            free(renderer);
+            return AFFERENT_ERROR_PIPELINE_FAILED;
+        }
+
+        id<MTLFunction> instancedVertexFunction = [instancedLibrary newFunctionWithName:@"instanced_vertex_main"];
+        id<MTLFunction> instancedFragmentFunction = [instancedLibrary newFunctionWithName:@"instanced_fragment_main"];
+
+        if (!instancedVertexFunction || !instancedFragmentFunction) {
+            NSLog(@"Failed to find instanced shader functions");
+            free(renderer);
+            return AFFERENT_ERROR_PIPELINE_FAILED;
+        }
+
+        // Instanced pipeline - no vertex descriptor needed (we use vertex_id and instance_id)
+        MTLRenderPipelineDescriptor *instancedPipelineDesc = [[MTLRenderPipelineDescriptor alloc] init];
+        instancedPipelineDesc.vertexFunction = instancedVertexFunction;
+        instancedPipelineDesc.fragmentFunction = instancedFragmentFunction;
+        instancedPipelineDesc.colorAttachments[0].pixelFormat = MTLPixelFormatBGRA8Unorm;
+        instancedPipelineDesc.rasterSampleCount = 4;  // Match MSAA
+
+        // Enable blending
+        instancedPipelineDesc.colorAttachments[0].blendingEnabled = YES;
+        instancedPipelineDesc.colorAttachments[0].sourceRGBBlendFactor = MTLBlendFactorSourceAlpha;
+        instancedPipelineDesc.colorAttachments[0].destinationRGBBlendFactor = MTLBlendFactorOneMinusSourceAlpha;
+        instancedPipelineDesc.colorAttachments[0].sourceAlphaBlendFactor = MTLBlendFactorOne;
+        instancedPipelineDesc.colorAttachments[0].destinationAlphaBlendFactor = MTLBlendFactorOneMinusSourceAlpha;
+
+        renderer->instancedPipelineState = [renderer->device newRenderPipelineStateWithDescriptor:instancedPipelineDesc
+                                                                                            error:&error];
+        if (!renderer->instancedPipelineState) {
+            NSLog(@"Instanced pipeline creation failed: %@", error);
+            free(renderer);
+            return AFFERENT_ERROR_PIPELINE_FAILED;
+        }
+
         *out_renderer = renderer;
         return AFFERENT_OK;
     }
@@ -548,6 +658,54 @@ void afferent_renderer_draw_triangles(
                                           indexType:MTLIndexTypeUInt32
                                         indexBuffer:index_buffer->mtlBuffer
                                   indexBufferOffset:0];
+}
+
+// Draw instanced rectangles - GPU computes transforms
+// instance_data: array of 9 floats per instance (pos.x, pos.y, sin, cos, halfSize, r, g, b, a)
+void afferent_renderer_draw_instanced_rects(
+    AfferentRendererRef renderer,
+    const float* instance_data,
+    uint32_t instance_count
+) {
+    if (!renderer || !renderer->currentEncoder || !instance_data || instance_count == 0) {
+        return;
+    }
+
+    @autoreleasepool {
+        // Create buffer for instance data
+        size_t data_size = instance_count * sizeof(InstanceData);
+        id<MTLBuffer> instanceBuffer = pool_acquire_buffer(
+            renderer->device,
+            g_buffer_pool.vertex_pool,
+            &g_buffer_pool.vertex_pool_count,
+            data_size,
+            true
+        );
+
+        if (!instanceBuffer) {
+            NSLog(@"Failed to create instance buffer");
+            return;
+        }
+
+        // Copy instance data
+        memcpy(instanceBuffer.contents, instance_data, data_size);
+
+        // Switch to instanced pipeline
+        [renderer->currentEncoder setRenderPipelineState:renderer->instancedPipelineState];
+
+        // Bind instance buffer
+        [renderer->currentEncoder setVertexBuffer:instanceBuffer offset:0 atIndex:0];
+
+        // Draw: 4 vertices per quad (triangle strip would be 4, but we use 2 triangles = 6 indices)
+        // Actually we use drawPrimitives with triangle strip for simplicity
+        [renderer->currentEncoder drawPrimitives:MTLPrimitiveTypeTriangleStrip
+                                     vertexStart:0
+                                     vertexCount:4
+                                   instanceCount:instance_count];
+
+        // Switch back to basic pipeline
+        [renderer->currentEncoder setRenderPipelineState:renderer->pipelineState];
+    }
 }
 
 void afferent_renderer_set_scissor(
