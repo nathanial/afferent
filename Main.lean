@@ -775,14 +775,135 @@ def renderText (c : Canvas) (fonts : Fonts) : IO Canvas := do
 
   pure c
 
+/-! ## Animation Helpers -/
+
+/-- HSV to RGB color conversion (h in [0,1], s,v in [0,1]) -/
+def hsvToRgb (h s v : Float) : Color :=
+  let h6 := h * 6.0
+  let i := h6.floor
+  let f := h6 - i
+  let p := v * (1.0 - s)
+  let q := v * (1.0 - s * f)
+  let t := v * (1.0 - s * (1.0 - f))
+  let mod := (i.toUInt32 % 6).toNat
+  match mod with
+  | 0 => Color.rgb v t p
+  | 1 => Color.rgb q v p
+  | 2 => Color.rgb p v t
+  | 3 => Color.rgb p q v
+  | 4 => Color.rgb t p v
+  | _ => Color.rgb v p q
+
+/-- Render psychedelic animation cell -/
+def renderAnimations (c : Canvas) (t : Float) : IO Canvas := do
+  let pi := 3.14159265358979323846
+
+  -- Spinning star cluster
+  let c := c.save
+  let c := c.translate 150 150
+  for i in [:7] do
+    let c := c.save
+    let angle := t * 2.0 + i.toFloat * (pi * 2.0 / 7.0)
+    let dist := 60 + 20 * Float.sin (t * 3.0 + i.toFloat)
+    let c := c.translate (dist * Float.cos angle) (dist * Float.sin angle)
+    let c := c.rotate (t * 4.0 + i.toFloat)
+    let hue := (t * 0.5 + i.toFloat / 7.0) - (t * 0.5 + i.toFloat / 7.0).floor
+    let c := c.setFillColor (hsvToRgb hue 1.0 1.0)
+    c.fillPath (Path.star ⟨0, 0⟩ (20 + 10 * Float.sin (t * 5.0)) 10 5)
+    pure ()
+  let c := c.restore
+
+  -- Pulsing rainbow circles
+  let c := c.save
+  let c := c.translate 400 150
+  for i in [:12] do
+    let angle := i.toFloat * (pi / 6.0)
+    let pulse := 0.5 + 0.5 * Float.sin (t * 4.0 + i.toFloat * 0.5)
+    let radius := 20 + 30 * pulse
+    let x := 80 * Float.cos (angle + t)
+    let y := 80 * Float.sin (angle + t)
+    let hue := (i.toFloat / 12.0 + t * 0.3) - (i.toFloat / 12.0 + t * 0.3).floor
+    let c := c.setFillColor (hsvToRgb hue 1.0 1.0)
+    c.fillCircle ⟨x, y⟩ radius
+    pure ()
+  let c := c.restore
+
+  -- Wiggling lines (sine wave with moving phase)
+  let c := c.save
+  let c := c.translate 650 100
+  for row in [:5] do
+    let rowOffset := row.toFloat * 0.5
+    let c := c.setLineWidth (2 + row.toFloat)
+    let hue := (row.toFloat / 5.0 + t * 0.2) - (row.toFloat / 5.0 + t * 0.2).floor
+    let c := c.setStrokeColor (hsvToRgb hue 1.0 1.0)
+    let mut path := Path.empty
+    path := path.moveTo ⟨0, row.toFloat * 50⟩
+    for i in [:20] do
+      let x := i.toFloat * 15
+      let y := row.toFloat * 50 + 20 * Float.sin (t * 6.0 + x * 0.05 + rowOffset)
+      path := path.lineTo ⟨x, y⟩
+    c.strokePath path
+    pure ()
+  let c := c.restore
+
+  -- Morphing polygon (changing number of sides smoothly via rotation)
+  let c := c.save
+  let c := c.translate 150 300
+  let c := c.rotate (t * 1.5)
+  let sides := 3 + ((t * 0.5).floor.toUInt32 % 6).toNat
+  let hue := (t * 0.4) - (t * 0.4).floor
+  let c := c.setFillColor (hsvToRgb hue 0.8 0.9)
+  c.fillPath (Path.polygon ⟨0, 0⟩ (40 + 20 * Float.sin t) sides)
+  let c := c.restore
+
+  -- Orbiting hearts with trail effect
+  let c := c.save
+  let c := c.translate 400 320
+  for i in [:8] do
+    let trailT := t - i.toFloat * 0.05
+    let angle := trailT * 2.0
+    let x := 60 * Float.cos angle
+    let y := 40 * Float.sin angle
+    let alpha := 1.0 - i.toFloat * 0.12
+    let hue := (trailT * 0.3) - (trailT * 0.3).floor
+    let color := hsvToRgb hue 1.0 1.0
+    let c := c.setFillColor (Color.rgba color.r color.g color.b alpha)
+    let c := c.save
+    let c := c.translate x y
+    let c := c.scale (0.3 + 0.1 * Float.sin (t * 3.0)) (0.3 + 0.1 * Float.sin (t * 3.0))
+    c.fillPath (Path.heart ⟨0, 0⟩ 80)
+    let c := c.restore
+    pure ()
+  let c := c.restore
+
+  -- Bouncing rectangles with color cycling
+  let c := c.save
+  let c := c.translate 650 280
+  for i in [:6] do
+    let phase := i.toFloat * 0.8
+    let bounce := Float.abs (Float.sin (t * 3.0 + phase)) * 60
+    let x := i.toFloat * 45
+    let rotation := t * 2.0 + phase
+    let c := c.save
+    let c := c.translate x (-bounce)
+    let c := c.rotate rotation
+    let hue := (t * 0.5 + i.toFloat / 6.0) - (t * 0.5 + i.toFloat / 6.0).floor
+    let c := c.setFillColor (hsvToRgb hue 0.9 1.0)
+    c.fillRectXYWH (-15) (-15) 30 30
+    let c := c.restore
+    pure ()
+  let c := c.restore
+
+  pure c
+
 /-! ## Unified Visual Demo -/
 
 def unifiedDemo : IO Unit := do
-  IO.println "Unified Visual Demo"
-  IO.println "-------------------"
+  IO.println "Unified Visual Demo (with Animations!)"
+  IO.println "--------------------------------------"
 
   -- Create a single large canvas: 1920x1080
-  let canvas ← Canvas.create 1920 1080 "Afferent - Visual Demos"
+  let canvas ← Canvas.create 1920 1080 "Afferent - Visual Demos (LSD Disco Party Edition)"
 
   IO.println "Loading fonts..."
   let fontSmall ← Font.load "/System/Library/Fonts/Monaco.ttf" 16
@@ -791,7 +912,7 @@ def unifiedDemo : IO Unit := do
   let fontHuge ← Font.load "/System/Library/Fonts/Monaco.ttf" 48
   let fonts : Fonts := { small := fontSmall, medium := fontMedium, large := fontLarge, huge := fontHuge }
 
-  IO.println "Rendering unified demo... (close window to exit)"
+  IO.println "Rendering animated demo... (close window to exit)"
 
   -- Grid layout: 2x3, cell size 960x360
   -- Scale factors (uniform, based on original demo sizes):
@@ -805,15 +926,14 @@ def unifiedDemo : IO Unit := do
   let cellWidth : Float := 960
   let cellHeight : Float := 360
 
-  -- Background colors for each cell
+  -- Background colors for each cell (animated versions will vary with time)
   let bg00 := Color.rgba 0.15 0.15 0.20 1.0  -- Dark blue-gray
   let bg10 := Color.rgba 0.20 0.15 0.15 1.0  -- Dark red-gray
   let bg01 := Color.rgba 0.15 0.20 0.15 1.0  -- Dark green-gray
   let bg11 := Color.rgba 0.20 0.18 0.12 1.0  -- Dark warm gray
   let bg02 := Color.rgba 0.18 0.15 0.20 1.0  -- Dark purple-gray
-  let bg12 := Color.rgba 0.12 0.18 0.20 1.0  -- Dark cyan-gray
 
-  canvas.runLoop Color.darkGray fun c => do
+  canvas.runLoopWithTime Color.darkGray fun c t => do
     let c := c.resetTransform
 
     -- Cell 0,0: Shapes demo (top-left)
@@ -885,13 +1005,20 @@ def unifiedDemo : IO Unit := do
     let c := c.restore
     c.unclip
 
-    -- Cell 1,2: Empty cell (bottom-right)
+    -- Cell 1,2: Animations demo (bottom-right) - THE DISCO PARTY!
     let cellRect12 := Rect.mk' cellWidth (cellHeight * 2) cellWidth cellHeight
     c.clip cellRect12
+    -- Animated background color
+    let bgHue := (t * 0.1) - (t * 0.1).floor
+    let bg12 := hsvToRgb bgHue 0.3 0.15
     let c := c.setFillColor bg12
     c.fillRect cellRect12
-    let c := c.setFillColor (Color.rgba 1.0 1.0 1.0 0.5)
-    c.fillTextXY "Cell: 1,2 - (Empty)" (cellWidth + 10) (cellHeight * 2 + 20) fontSmall
+    let c := c.setFillColor (Color.rgba 1.0 1.0 1.0 0.7)
+    c.fillTextXY "Cell: 1,2 - DISCO PARTY!" (cellWidth + 10) (cellHeight * 2 + 20) fontSmall
+    let c := c.save
+    let c := c.translate cellWidth (cellHeight * 2 + 30)
+    let c ← renderAnimations c t
+    let c := c.restore
     c.unclip
 
     pure c

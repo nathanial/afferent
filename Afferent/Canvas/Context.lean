@@ -481,6 +481,20 @@ def runLoop (c : Canvas) (clearColor : Color) (draw : Canvas → IO Canvas) : IO
       canvas ← draw canvas
       canvas.endFrame
 
+/-- Run a render loop with time parameter (in seconds since start).
+    The draw function receives canvas and elapsed time. -/
+def runLoopWithTime (c : Canvas) (clearColor : Color) (draw : Canvas → Float → IO Canvas) : IO Unit := do
+  let startTime ← IO.monoMsNow
+  let mut canvas := c
+  while !(← canvas.shouldClose) do
+    canvas.pollEvents
+    let ok ← canvas.beginFrame clearColor
+    if ok then
+      let now ← IO.monoMsNow
+      let elapsed := (now - startTime).toFloat / 1000.0  -- Convert ms to seconds
+      canvas ← draw canvas elapsed
+      canvas.endFrame
+
 end Canvas
 
 end Afferent
