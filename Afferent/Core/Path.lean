@@ -156,6 +156,186 @@ def roundedRect (r : Rect) (cornerRadius : Float) : Path :=
     |>.bezierCurveTo ⟨x, y + cr - k⟩ ⟨x + cr - k, y⟩ ⟨x + cr, y⟩
     |>.closePath
 
+/-- Convert an arc to cubic Bezier curves.
+    Returns an array of (cp1, cp2, endPoint) tuples for each Bezier segment.
+    Uses the standard approach of splitting arcs > 90° into multiple segments. -/
+def arcToBeziers (center : Point) (radius : Float) (startAngle endAngle : Float)
+    (counterclockwise : Bool := false) : Array (Point × Point × Point) := Id.run do
+  let pi := 3.14159265358979323846
+  let twoPi := 2.0 * pi
+
+  -- Normalize angles and compute sweep
+  let mut start := startAngle
+  let mut sweep := endAngle - startAngle
+
+  if counterclockwise then
+    if sweep > 0 then sweep := sweep - twoPi
+  else
+    if sweep < 0 then sweep := sweep + twoPi
+
+  -- Split into segments of at most 90 degrees (π/2)
+  let maxSweep := pi / 2.0
+  let numSegments := (Float.ceil (Float.abs sweep / maxSweep)).toUInt32.toNat
+  let numSegments := if numSegments == 0 then 1 else numSegments
+  let segmentSweep := sweep / numSegments.toFloat
+
+  let mut result : Array (Point × Point × Point) := #[]
+
+  for _ in [:numSegments] do
+    let endAng := start + segmentSweep
+
+    -- Compute control points for this arc segment
+    -- Using the formula for bezier approximation of circular arc
+    let halfSweep := segmentSweep / 2.0
+    let k := 4.0 / 3.0 * Float.tan halfSweep
+
+    let cosStart := Float.cos start
+    let sinStart := Float.sin start
+    let cosEnd := Float.cos endAng
+    let sinEnd := Float.sin endAng
+
+    let p0x := center.x + radius * cosStart
+    let p0y := center.y + radius * sinStart
+    let p3x := center.x + radius * cosEnd
+    let p3y := center.y + radius * sinEnd
+
+    -- Control points perpendicular to radius
+    let cp1 := Point.mk' (p0x - k * radius * sinStart) (p0y + k * radius * cosStart)
+    let cp2 := Point.mk' (p3x + k * radius * sinEnd) (p3y - k * radius * cosEnd)
+    let endPt := Point.mk' p3x p3y
+
+    result := result.push (cp1, cp2, endPt)
+    start := endAng
+
+  return result
+
+/-- Create a pie/wedge shape (like a pie chart slice). -/
+def pie (center : Point) (radius : Float) (startAngle endAngle : Float) : Path := Id.run do
+  let beziers := arcToBeziers center radius startAngle endAngle false
+
+  let startPt := Point.mk'
+    (center.x + radius * Float.cos startAngle)
+    (center.y + radius * Float.sin startAngle)
+
+  let mut path := empty
+    |>.moveTo center
+    |>.lineTo startPt
+
+  for (cp1, cp2, endPt) in beziers do
+    path := path.bezierCurveTo cp1 cp2 endPt
+
+  return path.closePath
+
+/-- Create an arc path (just the curved part, not closed). -/
+def arcPath (center : Point) (radius : Float) (startAngle endAngle : Float)
+    (counterclockwise : Bool := false) : Path := Id.run do
+  let beziers := arcToBeziers center radius startAngle endAngle counterclockwise
+
+  let startPt := Point.mk'
+    (center.x + radius * Float.cos startAngle)
+    (center.y + radius * Float.sin startAngle)
+
+  let mut path := empty |>.moveTo startPt
+
+  for (cp1, cp2, endPt) in beziers do
+    path := path.bezierCurveTo cp1 cp2 endPt
+
+  return path
+
+/-- Create a semicircle. -/
+def semicircle (center : Point) (radius : Float) (startAngle : Float := 0.0) : Path :=
+  let pi := 3.14159265358979323846
+  arcPath center radius startAngle (startAngle + pi) |>.closePath
+
+/-- Create a quadratic bezier curve path (for demo purposes). -/
+def quadraticCurve (start cp endPt : Point) : Path :=
+  empty
+    |>.moveTo start
+    |>.quadraticCurveTo cp endPt
+
+/-- Create a cubic bezier curve path (for demo purposes). -/
+def cubicCurve (start cp1 cp2 endPt : Point) : Path :=
+  empty
+    |>.moveTo start
+    |>.bezierCurveTo cp1 cp2 endPt
+
+/-- Create a heart shape. -/
+def heart (center : Point) (size : Float) : Path :=
+  let s := size
+  let cx := center.x
+  let cy := center.y
+  -- Heart shape using bezier curves
+  empty
+    |>.moveTo ⟨cx, cy + s * 0.3⟩  -- Bottom point
+    |>.bezierCurveTo ⟨cx - s * 0.5, cy - s * 0.2⟩ ⟨cx - s * 0.5, cy - s * 0.5⟩ ⟨cx, cy - s * 0.2⟩
+    |>.bezierCurveTo ⟨cx + s * 0.5, cy - s * 0.5⟩ ⟨cx + s * 0.5, cy - s * 0.2⟩ ⟨cx, cy + s * 0.3⟩
+    |>.closePath
+
+/-- Create a star shape. -/
+def star (center : Point) (outerRadius innerRadius : Float) (points : Nat := 5) : Path := Id.run do
+  let pi := 3.14159265358979323846
+  let numPoints := if points < 3 then 3 else points
+  let angleStep := pi / numPoints.toFloat
+  let startAngle := -pi / 2.0  -- Start at top
+
+  let mut path := empty
+  let mut first := true
+
+  for i in [:numPoints * 2] do
+    let angle := startAngle + i.toFloat * angleStep
+    let r := if i % 2 == 0 then outerRadius else innerRadius
+    let pt := Point.mk' (center.x + r * Float.cos angle) (center.y + r * Float.sin angle)
+
+    if first then
+      path := path.moveTo pt
+      first := false
+    else
+      path := path.lineTo pt
+
+  return path.closePath
+
+/-- Create a regular polygon. -/
+def polygon (center : Point) (radius : Float) (sides : Nat) : Path := Id.run do
+  let pi := 3.14159265358979323846
+  let numSides := if sides < 3 then 3 else sides
+  let angleStep := 2.0 * pi / numSides.toFloat
+  let startAngle := -pi / 2.0  -- Start at top
+
+  let mut path := empty
+  let mut first := true
+
+  for i in [:numSides] do
+    let angle := startAngle + i.toFloat * angleStep
+    let pt := Point.mk' (center.x + radius * Float.cos angle) (center.y + radius * Float.sin angle)
+
+    if first then
+      path := path.moveTo pt
+      first := false
+    else
+      path := path.lineTo pt
+
+  return path.closePath
+
+/-- Create a triangle. -/
+def triangle (p1 p2 p3 : Point) : Path :=
+  empty
+    |>.moveTo p1
+    |>.lineTo p2
+    |>.lineTo p3
+    |>.closePath
+
+/-- Create an equilateral triangle centered at a point. -/
+def equilateralTriangle (center : Point) (size : Float) : Path :=
+  polygon center size 3
+
+/-- Create a hexagon. -/
+def hexagon (center : Point) (radius : Float) : Path :=
+  polygon center radius 6
+
+/-- Create an octagon. -/
+def octagon (center : Point) (radius : Float) : Path :=
+  polygon center radius 8
+
 end Path
 
 end Afferent

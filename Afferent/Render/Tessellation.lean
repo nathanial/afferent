@@ -89,12 +89,20 @@ def pathToPolygon (path : Path) (tolerance : Float := 0.5) : Array Point := Id.r
       subpathStart := r.topLeft
     | .closePath =>
       current := subpathStart
-    | .arc _ _ _ _ _ =>
-      -- TODO: Convert arc to bezier segments
-      pure ()
-    | .arcTo _ _ _ =>
-      -- TODO: Implement arcTo
-      pure ()
+    | .arc center radius startAngle endAngle counterclockwise =>
+      -- Convert arc to bezier segments
+      let beziers := Path.arcToBeziers center radius startAngle endAngle counterclockwise
+      for (cp1, cp2, endPt) in beziers do
+        let flat := flattenCubicBezier current cp1 cp2 endPt tolerance
+        for pt in flat do
+          points := points.push pt
+        current := endPt
+    | .arcTo p1 p2 _radius =>
+      -- arcTo draws a line to p1, then an arc tangent to both lines
+      -- For now, approximate with line to p2 (full implementation is complex)
+      points := points.push p1
+      points := points.push p2
+      current := p2
 
   return points
 

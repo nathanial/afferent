@@ -129,6 +129,8 @@ def blue : Color := rgb 0.0 0.0 1.0
 def yellow : Color := rgb 1.0 1.0 0.0
 def cyan : Color := rgb 0.0 1.0 1.0
 def magenta : Color := rgb 1.0 0.0 1.0
+def orange : Color := rgb 1.0 0.65 0.0
+def purple : Color := rgb 0.5 0.0 0.5
 def transparent : Color := rgba 0.0 0.0 0.0 0.0
 
 -- Grays
