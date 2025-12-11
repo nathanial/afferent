@@ -44,6 +44,10 @@ bool afferent_window_should_close(AfferentWindowRef window);
 void afferent_window_poll_events(AfferentWindowRef window);
 void afferent_window_get_size(AfferentWindowRef window, uint32_t* width, uint32_t* height);
 
+// Keyboard input
+uint16_t afferent_window_get_key_code(AfferentWindowRef window);
+void afferent_window_clear_key(AfferentWindowRef window);
+
 // Renderer management
 AfferentResult afferent_renderer_create(
     AfferentWindowRef window,

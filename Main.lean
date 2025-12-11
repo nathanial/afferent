@@ -896,6 +896,43 @@ def renderAnimations (c : Canvas) (t : Float) : IO Canvas := do
 
   pure c
 
+/-! ## Performance Test -/
+
+/-- Render many spinning squares for performance testing.
+    Press Space to toggle this mode. -/
+def renderPerformanceTest (c : Canvas) (t : Float) (font : Font) (squareCount : Nat := 1000) : IO Canvas := do
+  let pi := 3.14159265358979323846
+  let centerX := 960.0
+  let centerY := 540.0
+
+  -- Title
+  let c := c.setFillColor Color.white
+  c.fillTextXY s!"Performance Test: {squareCount} spinning squares (Space to toggle)" 20 30 font
+
+  -- Render many spinning squares in concentric rings
+  for i in [:squareCount] do
+    let c := c.save
+    let phase := i.toFloat * (2.0 * pi / squareCount.toFloat)
+    -- Multiple rings with varying radii
+    let ring := i % 10
+    let baseRadius := 50.0 + ring.toFloat * 45.0
+    let orbitRadius := baseRadius + 30.0 * Float.sin (t * 0.5 + phase * 3.0)
+    let orbitSpeed := 1.0 + ring.toFloat * 0.2
+    let x := centerX + orbitRadius * Float.cos (t * orbitSpeed + phase)
+    let y := centerY + orbitRadius * Float.sin (t * orbitSpeed + phase)
+    let c := c.translate x y
+    let c := c.rotate (t * 3.0 + phase * 2.0)
+    -- Rainbow colors based on position and time
+    let hue := (t * 0.3 + i.toFloat / squareCount.toFloat) - (t * 0.3 + i.toFloat / squareCount.toFloat).floor
+    let c := c.setFillColor (hsvToRgb hue 0.9 1.0)
+    -- Smaller squares for larger counts
+    let size := if squareCount > 500 then 15.0 else 20.0
+    c.fillRectXYWH (-size/2) (-size/2) size size
+    let c := c.restore
+    pure ()
+
+  pure c
+
 /-! ## Unified Visual Demo -/
 
 def unifiedDemo : IO Unit := do
@@ -913,6 +950,7 @@ def unifiedDemo : IO Unit := do
   let fonts : Fonts := { small := fontSmall, medium := fontMedium, large := fontLarge, huge := fontHuge }
 
   IO.println "Rendering animated demo... (close window to exit)"
+  IO.println "Press SPACE to toggle performance test mode (1000 spinning squares)"
 
   -- Grid layout: 2x3, cell size 960x360
   -- Scale factors (uniform, based on original demo sizes):
@@ -933,95 +971,126 @@ def unifiedDemo : IO Unit := do
   let bg11 := Color.rgba 0.20 0.18 0.12 1.0  -- Dark warm gray
   let bg02 := Color.rgba 0.18 0.15 0.20 1.0  -- Dark purple-gray
 
-  canvas.runLoopWithTime Color.darkGray fun c t => do
-    let c := c.resetTransform
+  -- Custom render loop with keyboard handling for mode switching
+  let startTime ← IO.monoMsNow
+  let mut c := canvas
+  let mut perfTestMode := false
 
-    -- Cell 0,0: Shapes demo (top-left)
-    let cellRect00 := Rect.mk' 0 0 cellWidth cellHeight
-    c.clip cellRect00
-    let c := c.setFillColor bg00
-    c.fillRect cellRect00
-    let c := c.setFillColor (Color.rgba 1.0 1.0 1.0 0.5)
-    c.fillTextXY "Cell: 0,0 - Shapes" 10 20 fontSmall
-    let c := c.save
-    let c := c.scale 0.45 0.45
-    let c ← renderShapes c
-    let c := c.restore
-    c.unclip
+  while !(← c.shouldClose) do
+    c.pollEvents
 
-    -- Cell 1,0: Transforms demo (top-right)
-    let cellRect10 := Rect.mk' cellWidth 0 cellWidth cellHeight
-    c.clip cellRect10
-    let c := c.setFillColor bg10
-    c.fillRect cellRect10
-    let c := c.setFillColor (Color.rgba 1.0 1.0 1.0 0.5)
-    c.fillTextXY "Cell: 1,0 - Transforms" (cellWidth + 10) 20 fontSmall
-    let c := c.save
-    let c := c.translate 960 0
-    let c := c.scale 0.6 0.6
-    let c ← renderTransforms c
-    let c := c.restore
-    c.unclip
+    -- Check for Space key (key code 49) to toggle performance test mode
+    let keyCode ← c.getKeyCode
+    if keyCode == 49 then  -- Space bar
+      perfTestMode := !perfTestMode
+      c.clearKey
+      if perfTestMode then
+        IO.println "Switched to PERFORMANCE TEST mode"
+      else
+        IO.println "Switched to DEMO mode"
 
-    -- Cell 0,1: Strokes demo (middle-left)
-    let cellRect01 := Rect.mk' 0 cellHeight cellWidth cellHeight
-    c.clip cellRect01
-    let c := c.setFillColor bg01
-    c.fillRect cellRect01
-    let c := c.setFillColor (Color.rgba 1.0 1.0 1.0 0.5)
-    c.fillTextXY "Cell: 0,1 - Strokes" 10 (cellHeight + 20) fontSmall
-    let c := c.save
-    let c := c.translate 0 360
-    let c := c.scale 0.51 0.51
-    let c ← renderStrokes c
-    let c := c.restore
-    c.unclip
+    let ok ← c.beginFrame Color.darkGray
+    if ok then
+      let now ← IO.monoMsNow
+      let t := (now - startTime).toFloat / 1000.0  -- Elapsed seconds
 
-    -- Cell 1,1: Gradients demo (middle-right)
-    let cellRect11 := Rect.mk' cellWidth cellHeight cellWidth cellHeight
-    c.clip cellRect11
-    let c := c.setFillColor bg11
-    c.fillRect cellRect11
-    let c := c.setFillColor (Color.rgba 1.0 1.0 1.0 0.5)
-    c.fillTextXY "Cell: 1,1 - Gradients" (cellWidth + 10) (cellHeight + 20) fontSmall
-    let c := c.save
-    let c := c.translate 960 360
-    let c := c.scale 0.51 0.51
-    let c ← renderGradients c
-    let c := c.restore
-    c.unclip
+      let c' := c.resetTransform
 
-    -- Cell 0,2: Text demo (bottom-left)
-    let cellRect02 := Rect.mk' 0 (cellHeight * 2) cellWidth cellHeight
-    c.clip cellRect02
-    let c := c.setFillColor bg02
-    c.fillRect cellRect02
-    let c := c.setFillColor (Color.rgba 1.0 1.0 1.0 0.5)
-    c.fillTextXY "Cell: 0,2 - Text" 10 (cellHeight * 2 + 20) fontSmall
-    let c := c.save
-    let c := c.translate 0 720
-    let c := c.scale 0.51 0.51
-    let c ← renderText c fonts
-    let c := c.restore
-    c.unclip
+      if perfTestMode then
+        -- Performance test mode: 1000 spinning squares
+        c ← renderPerformanceTest c' t fontMedium 1000
+      else
+        -- Normal demo mode: grid of demos
+        let canvas := c'
 
-    -- Cell 1,2: Animations demo (bottom-right) - THE DISCO PARTY!
-    let cellRect12 := Rect.mk' cellWidth (cellHeight * 2) cellWidth cellHeight
-    c.clip cellRect12
-    -- Animated background color
-    let bgHue := (t * 0.1) - (t * 0.1).floor
-    let bg12 := hsvToRgb bgHue 0.3 0.15
-    let c := c.setFillColor bg12
-    c.fillRect cellRect12
-    let c := c.setFillColor (Color.rgba 1.0 1.0 1.0 0.7)
-    c.fillTextXY "Cell: 1,2 - DISCO PARTY!" (cellWidth + 10) (cellHeight * 2 + 20) fontSmall
-    let c := c.save
-    let c := c.translate cellWidth (cellHeight * 2 + 30)
-    let c ← renderAnimations c t
-    let c := c.restore
-    c.unclip
+        -- Cell 0,0: Shapes demo (top-left)
+        let cellRect00 := Rect.mk' 0 0 cellWidth cellHeight
+        canvas.clip cellRect00
+        let canvas := canvas.setFillColor bg00
+        canvas.fillRect cellRect00
+        let canvas := canvas.setFillColor (Color.rgba 1.0 1.0 1.0 0.5)
+        canvas.fillTextXY "Cell: 0,0 - Shapes" 10 20 fontSmall
+        let canvas := canvas.save
+        let canvas := canvas.scale 0.45 0.45
+        let canvas ← renderShapes canvas
+        let canvas := canvas.restore
+        canvas.unclip
 
-    pure c
+        -- Cell 1,0: Transforms demo (top-right)
+        let cellRect10 := Rect.mk' cellWidth 0 cellWidth cellHeight
+        canvas.clip cellRect10
+        let canvas := canvas.setFillColor bg10
+        canvas.fillRect cellRect10
+        let canvas := canvas.setFillColor (Color.rgba 1.0 1.0 1.0 0.5)
+        canvas.fillTextXY "Cell: 1,0 - Transforms" (cellWidth + 10) 20 fontSmall
+        let canvas := canvas.save
+        let canvas := canvas.translate 960 0
+        let canvas := canvas.scale 0.6 0.6
+        let canvas ← renderTransforms canvas
+        let canvas := canvas.restore
+        canvas.unclip
+
+        -- Cell 0,1: Strokes demo (middle-left)
+        let cellRect01 := Rect.mk' 0 cellHeight cellWidth cellHeight
+        canvas.clip cellRect01
+        let canvas := canvas.setFillColor bg01
+        canvas.fillRect cellRect01
+        let canvas := canvas.setFillColor (Color.rgba 1.0 1.0 1.0 0.5)
+        canvas.fillTextXY "Cell: 0,1 - Strokes" 10 (cellHeight + 20) fontSmall
+        let canvas := canvas.save
+        let canvas := canvas.translate 0 360
+        let canvas := canvas.scale 0.51 0.51
+        let canvas ← renderStrokes canvas
+        let canvas := canvas.restore
+        canvas.unclip
+
+        -- Cell 1,1: Gradients demo (middle-right)
+        let cellRect11 := Rect.mk' cellWidth cellHeight cellWidth cellHeight
+        canvas.clip cellRect11
+        let canvas := canvas.setFillColor bg11
+        canvas.fillRect cellRect11
+        let canvas := canvas.setFillColor (Color.rgba 1.0 1.0 1.0 0.5)
+        canvas.fillTextXY "Cell: 1,1 - Gradients" (cellWidth + 10) (cellHeight + 20) fontSmall
+        let canvas := canvas.save
+        let canvas := canvas.translate 960 360
+        let canvas := canvas.scale 0.51 0.51
+        let canvas ← renderGradients canvas
+        let canvas := canvas.restore
+        canvas.unclip
+
+        -- Cell 0,2: Text demo (bottom-left)
+        let cellRect02 := Rect.mk' 0 (cellHeight * 2) cellWidth cellHeight
+        canvas.clip cellRect02
+        let canvas := canvas.setFillColor bg02
+        canvas.fillRect cellRect02
+        let canvas := canvas.setFillColor (Color.rgba 1.0 1.0 1.0 0.5)
+        canvas.fillTextXY "Cell: 0,2 - Text" 10 (cellHeight * 2 + 20) fontSmall
+        let canvas := canvas.save
+        let canvas := canvas.translate 0 720
+        let canvas := canvas.scale 0.51 0.51
+        let canvas ← renderText canvas fonts
+        let canvas := canvas.restore
+        canvas.unclip
+
+        -- Cell 1,2: Animations demo (bottom-right) - THE DISCO PARTY!
+        let cellRect12 := Rect.mk' cellWidth (cellHeight * 2) cellWidth cellHeight
+        canvas.clip cellRect12
+        -- Animated background color
+        let bgHue := (t * 0.1) - (t * 0.1).floor
+        let bg12 := hsvToRgb bgHue 0.3 0.15
+        let canvas := canvas.setFillColor bg12
+        canvas.fillRect cellRect12
+        let canvas := canvas.setFillColor (Color.rgba 1.0 1.0 1.0 0.7)
+        canvas.fillTextXY "Cell: 1,2 - DISCO PARTY!" (cellWidth + 10) (cellHeight * 2 + 20) fontSmall
+        let canvas := canvas.save
+        let canvas := canvas.translate cellWidth (cellHeight * 2 + 30)
+        let canvas ← renderAnimations canvas t
+        let _canvas := canvas.restore
+        canvas.unclip
+
+        pure ()
+
+      c.endFrame
 
   IO.println "Cleaning up..."
   fontSmall.destroy

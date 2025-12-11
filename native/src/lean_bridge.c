@@ -94,6 +94,20 @@ LEAN_EXPORT lean_obj_res lean_afferent_window_get_size(lean_obj_arg window_obj, 
     return lean_io_result_mk_ok(tuple);
 }
 
+// Get keyboard key code (returns 0 if no key pressed)
+LEAN_EXPORT lean_obj_res lean_afferent_window_get_key_code(lean_obj_arg window_obj, lean_obj_arg world) {
+    AfferentWindowRef window = (AfferentWindowRef)lean_get_external_data(window_obj);
+    uint16_t key_code = afferent_window_get_key_code(window);
+    return lean_io_result_mk_ok(lean_box(key_code));
+}
+
+// Clear keyboard state
+LEAN_EXPORT lean_obj_res lean_afferent_window_clear_key(lean_obj_arg window_obj, lean_obj_arg world) {
+    AfferentWindowRef window = (AfferentWindowRef)lean_get_external_data(window_obj);
+    afferent_window_clear_key(window);
+    return lean_io_result_mk_ok(lean_box(0));
+}
+
 // Renderer creation
 LEAN_EXPORT lean_obj_res lean_afferent_renderer_create(lean_obj_arg window_obj, lean_obj_arg world) {
     AfferentWindowRef window = (AfferentWindowRef)lean_get_external_data(window_obj);

@@ -59,6 +59,14 @@ def shouldClose (ctx : DrawContext) : IO Bool :=
 def pollEvents (ctx : DrawContext) : IO Unit :=
   ctx.window.pollEvents
 
+/-- Get the last key code pressed (0 if none). -/
+def getKeyCode (ctx : DrawContext) : IO UInt16 :=
+  ctx.window.getKeyCode
+
+/-- Clear the key pressed state (call after handling). -/
+def clearKey (ctx : DrawContext) : IO Unit :=
+  ctx.window.clearKey
+
 /-- Begin a new frame with a clear color. -/
 def beginFrame (ctx : DrawContext) (clearColor : Color) : IO Bool :=
   ctx.renderer.beginFrame clearColor.r clearColor.g clearColor.b clearColor.a
@@ -430,6 +438,14 @@ def shouldClose (c : Canvas) : IO Bool :=
 
 def pollEvents (c : Canvas) : IO Unit :=
   c.ctx.pollEvents
+
+/-- Get the last key code pressed (0 if none). Common codes: Space=49, Escape=53, P=35 -/
+def getKeyCode (c : Canvas) : IO UInt16 :=
+  c.ctx.getKeyCode
+
+/-- Clear the key pressed state (call after handling the key). -/
+def clearKey (c : Canvas) : IO Unit :=
+  c.ctx.clearKey
 
 def beginFrame (clearColor : Color) (c : Canvas) : IO Bool :=
   c.ctx.beginFrame clearColor

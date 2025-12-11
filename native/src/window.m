@@ -7,10 +7,22 @@
 @class AfferentView;
 @class AfferentWindowDelegate;
 
+// Internal window structure (defined here so the view can access fields)
+struct AfferentWindow {
+    NSWindow *nsWindow;
+    AfferentView *view;
+    AfferentWindowDelegate *delegate;
+    id<MTLDevice> device;
+    // Keyboard state
+    uint16_t lastKeyCode;
+    bool keyPressed;
+};
+
 // Metal-backed view
 @interface AfferentView : NSView
 @property (nonatomic, strong) CAMetalLayer *metalLayer;
 @property (nonatomic, strong) id<MTLDevice> device;
+@property (nonatomic, assign) struct AfferentWindow *windowHandle;
 @end
 
 @implementation AfferentView
@@ -52,6 +64,18 @@
     return YES;
 }
 
+- (void)keyDown:(NSEvent *)event {
+    if (self.windowHandle) {
+        self.windowHandle->lastKeyCode = [event keyCode];
+        self.windowHandle->keyPressed = true;
+    }
+}
+
+- (void)keyUp:(NSEvent *)event {
+    // Don't clear on key up - let the app poll and clear explicitly
+    // This ensures key presses aren't missed between frames
+}
+
 @end
 
 // Window delegate to track close requests
@@ -75,14 +99,6 @@
 }
 
 @end
-
-// Internal window structure
-struct AfferentWindow {
-    NSWindow *nsWindow;
-    AfferentView *view;
-    AfferentWindowDelegate *delegate;
-    id<MTLDevice> device;
-};
 
 AfferentResult afferent_window_create(
     uint32_t width,
@@ -160,6 +176,11 @@ AfferentResult afferent_window_create(
         handle->view = view;
         handle->delegate = delegate;
         handle->device = device;
+        handle->lastKeyCode = 0;
+        handle->keyPressed = false;
+
+        // Set back-reference so view can store key events
+        view.windowHandle = handle;
 
         *out_window = handle;
         return AFFERENT_OK;
@@ -208,4 +229,20 @@ id<MTLDevice> afferent_window_get_device(AfferentWindowRef window) {
 // Expose the Metal layer from window (used by renderer)
 CAMetalLayer* afferent_window_get_metal_layer(AfferentWindowRef window) {
     return window ? window->view.metalLayer : nil;
+}
+
+// Get the last key code pressed (0 if none)
+uint16_t afferent_window_get_key_code(AfferentWindowRef window) {
+    if (window && window->keyPressed) {
+        return window->lastKeyCode;
+    }
+    return 0;
+}
+
+// Clear the key pressed state (call after handling the key)
+void afferent_window_clear_key(AfferentWindowRef window) {
+    if (window) {
+        window->keyPressed = false;
+        window->lastKeyCode = 0;
+    }
 }

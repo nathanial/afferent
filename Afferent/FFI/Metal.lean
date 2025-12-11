@@ -42,6 +42,13 @@ opaque Window.pollEvents (window : @& Window) : IO Unit
 @[extern "lean_afferent_window_get_size"]
 opaque Window.getSize (window : @& Window) : IO (UInt32 × UInt32)
 
+-- Keyboard input
+@[extern "lean_afferent_window_get_key_code"]
+opaque Window.getKeyCode (window : @& Window) : IO UInt16
+
+@[extern "lean_afferent_window_clear_key"]
+opaque Window.clearKey (window : @& Window) : IO Unit
+
 -- Renderer management
 @[extern "lean_afferent_renderer_create"]
 opaque Renderer.create (window : @& Window) : IO Renderer
