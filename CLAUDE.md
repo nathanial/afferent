@@ -4,9 +4,9 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-Afferent is a Lean 4 2D vector graphics library targeting macOS with Metal GPU rendering. It provides an HTML5 Canvas-style API for drawing shapes, paths, gradients, and text with GPU acceleration.
+Afferent is a Lean 4 2D vector graphics library and UI framework targeting macOS with Metal GPU rendering. It provides an HTML5 Canvas-style API for drawing shapes, paths, gradients, and text with GPU acceleration, plus an immediate-mode widget framework for building interactive applications.
 
-**Current Status:** All 6 milestones complete - full 2D graphics library with shapes, curves, transforms, strokes, gradients, and text rendering.
+**Current Status:** Graphics engine complete (M1-M6). UI framework in progress with core widgets implemented (M7-M8).
 
 ## Build Commands
 
@@ -60,7 +60,7 @@ afferent/
 ├── run.sh                 # Build and run script
 ├── lakefile.lean          # Lake build configuration
 ├── lean-toolchain         # Lean version (v4.25.2)
-├── Main.lean              # Demo application with all features
+├── Main.lean              # UI widget demo application
 │
 ├── Afferent.lean          # Library root (imports all modules)
 ├── Afferent/
@@ -76,17 +76,22 @@ afferent/
 │   │   └── Context.lean   # DrawContext and Canvas API
 │   ├── Text/
 │   │   └── Font.lean      # Font loading and text measurement
+│   ├── UI/                # Immediate-mode widget framework
+│   │   ├── Input.lean     # MouseButton, InputState, event queries
+│   │   ├── Context.lean   # UIContext, Style defaults, widget state
+│   │   └── Widgets.lean   # button, label, checkbox, textBox, slider
 │   └── FFI/
 │       └── Metal.lean     # FFI declarations (@[extern] bindings)
 │
 ├── Examples/
-│   └── HelloTriangle.lean # Minimal Metal triangle example
+│   ├── HelloTriangle.lean # Minimal Metal triangle example
+│   └── VisualDemo.lean    # Graphics demo (shapes, gradients, text)
 │
 └── native/                # C/Objective-C native code
     ├── include/
     │   └── afferent.h     # C API header
     └── src/
-        ├── window.m       # NSWindow + CAMetalLayer
+        ├── window.m       # NSWindow + CAMetalLayer + input handling
         ├── metal_render.m # Metal device, pipeline, shaders, 4x MSAA
         ├── text_render.c  # FreeType font loading and glyph rasterization
         └── lean_bridge.c  # Lean FFI entry points
@@ -110,6 +115,21 @@ afferent/
 
 - **Tessellation.lean** - Converts paths to triangles, samples gradients per-vertex
 - **Font.lean** - Wraps FreeType for font loading, metrics, and text measurement
+
+### UI Framework (`Afferent/UI/`)
+
+Immediate-mode widget system (Dear ImGui-style):
+
+- **Input.lean** - `MouseButton` enum, `InputState` struct, `InputState.query` for polling native events
+- **Context.lean** - `UIContext` with hot/active widget tracking, text edit buffer, style constants
+- **Widgets.lean** - Core widgets:
+  - `button` - Click detection with hover/active states
+  - `label`, `labelColored` - Text display
+  - `checkbox`, `checkboxLabeled` - Toggle with optional label
+  - `textBox` - Editable text input with cursor
+  - `slider` - Horizontal value slider with drag support
+
+Widget pattern: Each widget takes `UIContext` and returns `IO (Result × UIContext)` where Result is the interaction outcome (clicked, new value, etc.).
 
 ### FFI (`Afferent/FFI/Metal.lean`)
 
@@ -163,11 +183,38 @@ static lean_external_class* g_font_class = NULL;
 // Usage: lean_alloc_external(g_font_class, native_ptr);
 ```
 
-## Completed Milestones
+## Milestones
 
-1. ✅ **Hello Triangle** - Metal FFI working
-2. ✅ **Basic Shapes** - Rectangles, circles, polygons
-3. ✅ **Bezier Curves** - Arcs, stars, hearts, custom paths
-4. ✅ **Canvas State** - Save/restore, transforms with collimator lenses
-5. ✅ **Stroke Rendering** - Path outlines with lineWidth/lineCap/lineJoin
-6. ✅ **Anti-Aliasing & Polish** - 4x MSAA, linear/radial gradients, FreeType text
+### Graphics Engine (Complete)
+
+1. ✅ **M1: Hello Triangle** - Metal FFI working
+2. ✅ **M2: Basic Shapes** - Rectangles, circles, polygons
+3. ✅ **M3: Bezier Curves** - Arcs, stars, hearts, custom paths
+4. ✅ **M4: Canvas State** - Save/restore, transforms with collimator lenses
+5. ✅ **M5: Stroke Rendering** - Path outlines with lineWidth/lineCap/lineJoin
+6. ✅ **M6: Anti-Aliasing & Polish** - 4x MSAA, linear/radial gradients, FreeType text
+
+### UI Framework
+
+7. ✅ **M7: Input System** - Native event capture in window.m, FFI bridge, InputState queries
+8. ✅ **M8: Core Widgets** - button, label, checkbox, textBox, slider with immediate-mode pattern
+9. ⬜ **M9: Layout System** - Automatic widget positioning, horizontal/vertical containers
+10. ⬜ **M10: Advanced Widgets** - Dropdowns, tabs, radio buttons, scroll views
+11. ⬜ **M11: Theming** - Configurable styles, dark/light themes
+12. ⬜ **M12: Accessibility** - Keyboard navigation, focus management
+
+## Roadmap
+
+Current focus: Building a complete immediate-mode UI framework
+
+**Next up (M9: Layout System):**
+- `HStack` / `VStack` containers for automatic positioning
+- Spacing and padding configuration
+- Size constraints (min/max width/height)
+
+**Future work:**
+- More widgets: dropdowns, tabs, radio buttons, progress bars, tooltips
+- Scroll views with virtual rendering for large content
+- Theming system with customizable color schemes
+- Keyboard navigation and tab focus
+- Smooth animations for hover/active state transitions

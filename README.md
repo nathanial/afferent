@@ -1,8 +1,10 @@
 # Afferent
 
-A 2D vector graphics library for Lean 4, powered by Metal GPU rendering on macOS.
+A 2D vector graphics library and UI framework for Lean 4, powered by Metal GPU rendering on macOS.
 
 ## Features
+
+### Graphics Engine (Complete)
 
 - **Hardware-accelerated rendering** via Metal with 4x MSAA anti-aliasing
 - **Canvas API** with save/restore state management (HTML5 Canvas-style)
@@ -13,6 +15,13 @@ A 2D vector graphics library for Lean 4, powered by Metal GPU rendering on macOS
 - **Text rendering**: FreeType-based font loading with glyph caching and texture atlas
 - **Transforms**: translate, rotate, scale with matrix composition
 - **Collimator integration**: proof-carrying coordinates via [collimator](https://github.com/lean-machines/collimator)
+
+### UI Framework (In Progress)
+
+- **Immediate-mode widgets** (Dear ImGui-style): widgets are function calls made each frame
+- **Core widgets**: buttons, labels, checkboxes, text boxes, sliders
+- **Input handling**: mouse tracking, click detection, keyboard text input
+- **Hot/Active tracking**: proper hover and focus states for all widgets
 
 ## Requirements
 
@@ -160,6 +169,50 @@ Canvas.fillText font "Hello, Afferent!" 100 100
 let (width, height) ← font.measureText "Hello"
 ```
 
+### Immediate-Mode UI
+
+```lean
+import Afferent
+import Afferent.UI
+
+open Afferent
+open Afferent.UI
+
+def main : IO Unit := do
+  let ctx ← DrawContext.create 800 600 "UI Demo"
+  let font ← Font.load "/System/Library/Fonts/Helvetica.ttc" 16
+
+  -- Application state (mutable)
+  let mut counter : Nat := 0
+  let mut enabled := false
+
+  while !(← ctx.shouldClose) do
+    ctx.window.newFrame
+    ctx.pollEvents
+    let input ← InputState.query ctx.window
+
+    let ok ← ctx.beginFrame Color.darkGray
+    if ok then
+      let mut ui := UIContext.create ctx input font
+
+      -- Button returns (clicked, updatedContext)
+      let (clicked, ui') ← button ui "Click Me!" (Rect.mk' 50 50 120 35)
+      ui := ui'
+      if clicked then counter := counter + 1
+
+      -- Label just draws text
+      ui ← label ui s!"Count: {counter}" ⟨200, 75⟩
+
+      -- Checkbox returns (newState, updatedContext)
+      let (newEnabled, ui') ← checkboxLabeled ui "Enable" enabled ⟨50, 100⟩
+      ui := ui'
+      enabled := newEnabled
+
+      ctx.endFrame
+
+  ctx.destroy
+```
+
 ## Architecture
 
 ```
@@ -181,15 +234,21 @@ Lean 4 Application
 ```
 afferent/
 ├── Afferent/
-│   ├── Core/           # Point, Color, Vertex, Paint types
+│   ├── Core/           # Point, Color, Rect, Path, Transform, Paint
 │   ├── FFI/            # Lean FFI bindings to native code
-│   ├── Canvas/         # Canvas monad, state, context
-│   ├── Render/         # Tessellation, shapes
-│   └── Text/           # Font wrapper
+│   ├── Canvas/         # Canvas monad, state, DrawContext
+│   ├── Render/         # Tessellation (paths → triangles)
+│   ├── Text/           # Font loading and text measurement
+│   └── UI/             # Immediate-mode widget framework
+│       ├── Input.lean  # Mouse/keyboard input state
+│       ├── Context.lean# UIContext, widget styles
+│       └── Widgets.lean# Button, checkbox, textbox, slider
+├── Examples/
+│   └── VisualDemo.lean # Graphics demo (shapes, gradients, text)
 ├── native/
 │   ├── include/        # C headers (afferent.h)
 │   └── src/            # Metal renderer, FreeType text, FFI bridge
-├── Main.lean           # Demo application
+├── Main.lean           # UI widget demo
 ├── lakefile.lean       # Lake build configuration
 ├── build.sh            # Build script
 └── run.sh              # Run script
@@ -197,12 +256,34 @@ afferent/
 
 ## Milestones
 
+### Graphics Engine (Complete)
+
 - [x] **M1: Hello Triangle** - Metal FFI, basic rendering pipeline
 - [x] **M2: Basic Shapes** - Rectangles, circles, polygons, tessellation
 - [x] **M3: Bezier Curves** - Quadratic/cubic curves, arcs, complex paths
 - [x] **M4: Canvas State** - Save/restore, transforms, Canvas monad
 - [x] **M5: Stroke Rendering** - Path outlines, line width/cap/join
 - [x] **M6: Polish** - MSAA, gradients, text rendering
+
+### UI Framework
+
+- [x] **M7: Input System** - Native event capture, mouse/keyboard handling, FFI bridge
+- [x] **M8: Core Widgets** - Buttons, labels, checkboxes, text boxes, sliders
+- [ ] **M9: Layout System** - Automatic widget positioning, containers, flow layout
+- [ ] **M10: Advanced Widgets** - Dropdowns, tabs, radio buttons, scroll views
+- [ ] **M11: Theming** - Configurable styles, dark/light themes
+- [ ] **M12: Accessibility** - Keyboard navigation, focus management
+
+## Roadmap
+
+The current focus is building a complete immediate-mode UI framework:
+
+1. **Layout System** - Automatic positioning with horizontal/vertical containers
+2. **More Widgets** - Dropdowns, tabs, radio buttons, progress bars, tooltips
+3. **Scroll Views** - Scrollable content areas with virtual rendering
+4. **Theming** - Customizable color schemes and widget styling
+5. **Keyboard Navigation** - Tab focus, arrow key navigation
+6. **Animations** - Smooth transitions for hover/active states
 
 ## License
 
