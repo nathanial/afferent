@@ -49,65 +49,65 @@ def renderShapes (c : Canvas) : IO Canvas := do
 
   -- Row 1: Basic rectangles
   let c := c.setFillColor Color.red
-  c.fillRectXYWH 50 30 120 80
+  let c ← c.fillRectXYWH 50 30 120 80
   let c := c.setFillColor Color.green
-  c.fillRectXYWH 200 30 120 80
+  let c ← c.fillRectXYWH 200 30 120 80
   let c := c.setFillColor Color.blue
-  c.fillRectXYWH 350 30 120 80
+  let c ← c.fillRectXYWH 350 30 120 80
 
   -- Row 1: Circles
   let c := c.setFillColor Color.yellow
-  c.fillCircle ⟨550, 70⟩ 40
+  let c ← c.fillCircle ⟨550, 70⟩ 40
   let c := c.setFillColor Color.cyan
-  c.fillCircle ⟨650, 70⟩ 40
+  let c ← c.fillCircle ⟨650, 70⟩ 40
   let c := c.setFillColor Color.magenta
-  c.fillCircle ⟨750, 70⟩ 40
+  let c ← c.fillCircle ⟨750, 70⟩ 40
 
   -- Row 1: Rounded rectangle
   let c := c.setFillColor Color.white
-  c.fillRoundedRect (Rect.mk' 820 30 130 80) 15
+  let c ← c.fillRoundedRect (Rect.mk' 820 30 130 80) 15
 
   -- Row 2: Stars
   let c := c.setFillColor Color.yellow
-  c.fillPath (Path.star ⟨100, 200⟩ 50 25 5)
+  let c ← c.fillPath (Path.star ⟨100, 200⟩ 50 25 5)
   let c := c.setFillColor Color.orange
-  c.fillPath (Path.star ⟨220, 200⟩ 45 25 6)
+  let c ← c.fillPath (Path.star ⟨220, 200⟩ 45 25 6)
   let c := c.setFillColor Color.red
-  c.fillPath (Path.star ⟨340, 200⟩ 40 25 8)
+  let c ← c.fillPath (Path.star ⟨340, 200⟩ 40 25 8)
 
   -- Row 2: Regular polygons
   let c := c.setFillColor Color.green
-  c.fillPath (Path.polygon ⟨480, 200⟩ 45 3)
+  let c ← c.fillPath (Path.polygon ⟨480, 200⟩ 45 3)
   let c := c.setFillColor Color.cyan
-  c.fillPath (Path.polygon ⟨600, 200⟩ 45 5)
+  let c ← c.fillPath (Path.polygon ⟨600, 200⟩ 45 5)
   let c := c.setFillColor Color.blue
-  c.fillPath (Path.polygon ⟨720, 200⟩ 45 6)
+  let c ← c.fillPath (Path.polygon ⟨720, 200⟩ 45 6)
   let c := c.setFillColor Color.purple
-  c.fillPath (Path.polygon ⟨850, 200⟩ 45 8)
+  let c ← c.fillPath (Path.polygon ⟨850, 200⟩ 45 8)
 
   -- Row 3: Hearts and ellipses
   let c := c.setFillColor Color.red
-  c.fillPath (Path.heart ⟨100, 350⟩ 80)
+  let c ← c.fillPath (Path.heart ⟨100, 350⟩ 80)
   let c := c.setFillColor Color.magenta
-  c.fillPath (Path.heart ⟨230, 350⟩ 60)
+  let c ← c.fillPath (Path.heart ⟨230, 350⟩ 60)
   let c := c.setFillColor Color.orange
-  c.fillEllipse ⟨380, 350⟩ 70 40
+  let c ← c.fillEllipse ⟨380, 350⟩ 70 40
   let c := c.setFillColor Color.green
-  c.fillEllipse ⟨520, 350⟩ 40 60
+  let c ← c.fillEllipse ⟨520, 350⟩ 40 60
 
   -- Row 3: Pie slices
   let c := c.setFillColor Color.red
-  c.fillPath (Path.pie ⟨680, 350⟩ 60 0 (pi * 0.5))
+  let c ← c.fillPath (Path.pie ⟨680, 350⟩ 60 0 (pi * 0.5))
   let c := c.setFillColor Color.green
-  c.fillPath (Path.pie ⟨680, 350⟩ 60 (pi * 0.5) pi)
+  let c ← c.fillPath (Path.pie ⟨680, 350⟩ 60 (pi * 0.5) pi)
   let c := c.setFillColor Color.blue
-  c.fillPath (Path.pie ⟨680, 350⟩ 60 pi (pi * 1.5))
+  let c ← c.fillPath (Path.pie ⟨680, 350⟩ 60 pi (pi * 1.5))
   let c := c.setFillColor Color.yellow
-  c.fillPath (Path.pie ⟨680, 350⟩ 60 (pi * 1.5) (pi * 2))
+  let c ← c.fillPath (Path.pie ⟨680, 350⟩ 60 (pi * 1.5) (pi * 2))
 
   -- Row 3: Semicircle
   let c := c.setFillColor Color.purple
-  c.fillPath (Path.semicircle ⟨850, 350⟩ 50 0)
+  let c ← c.fillPath (Path.semicircle ⟨850, 350⟩ 50 0)
 
   -- Row 4: Bezier curves
   let banner := Path.empty
@@ -118,7 +118,7 @@ def renderShapes (c : Canvas) : IO Canvas := do
     |>.quadraticCurveTo ⟨0, 530⟩ ⟨50, 480⟩
     |>.closePath
   let c := c.setFillColor Color.cyan
-  c.fillPath banner
+  let c ← c.fillPath banner
 
   let teardrop := Path.empty
     |>.moveTo ⟨350, 480⟩
@@ -126,27 +126,27 @@ def renderShapes (c : Canvas) : IO Canvas := do
     |>.bezierCurveTo ⟨280, 600⟩ ⟨280, 450⟩ ⟨350, 480⟩
     |>.closePath
   let c := c.setFillColor Color.orange
-  c.fillPath teardrop
+  let c ← c.fillPath teardrop
 
   -- Row 4: Arc paths
   let c := c.setFillColor Color.green
-  c.fillPath (Path.arcPath ⟨550, 530⟩ 50 0 (pi * 1.5) |>.closePath)
+  let c ← c.fillPath (Path.arcPath ⟨550, 530⟩ 50 0 (pi * 1.5) |>.closePath)
 
   -- Row 4: More rounded rectangles
   let c := c.setFillColor Color.red
-  c.fillRoundedRect (Rect.mk' 650 470 100 80) 5
+  let c ← c.fillRoundedRect (Rect.mk' 650 470 100 80) 5
   let c := c.setFillColor Color.blue
-  c.fillRoundedRect (Rect.mk' 780 470 100 80) 30
+  let c ← c.fillRoundedRect (Rect.mk' 780 470 100 80) 30
 
   -- Row 5: Custom triangle
   let c := c.setFillColor Color.yellow
-  c.fillPath (Path.triangle ⟨100, 650⟩ ⟨180, 750⟩ ⟨20, 750⟩)
+  let c ← c.fillPath (Path.triangle ⟨100, 650⟩ ⟨180, 750⟩ ⟨20, 750⟩)
 
   -- Row 5: Equilateral triangles
   let c := c.setFillColor Color.green
-  c.fillPath (Path.equilateralTriangle ⟨280, 700⟩ 50)
+  let c ← c.fillPath (Path.equilateralTriangle ⟨280, 700⟩ 50)
   let c := c.setFillColor Color.cyan
-  c.fillPath (Path.equilateralTriangle ⟨380, 700⟩ 40)
+  let c ← c.fillPath (Path.equilateralTriangle ⟨380, 700⟩ 40)
 
   -- Row 5: Speech bubble
   let bubble := Path.empty
@@ -164,7 +164,7 @@ def renderShapes (c : Canvas) : IO Canvas := do
     |>.bezierCurveTo ⟨470, 670⟩ ⟨470, 650⟩ ⟨500, 650⟩
     |>.closePath
   let c := c.setFillColor Color.white
-  c.fillPath bubble
+  let c ← c.fillPath bubble
 
   -- Row 5: Diamond shape
   let diamond := Path.empty
@@ -174,7 +174,7 @@ def renderShapes (c : Canvas) : IO Canvas := do
     |>.lineTo ⟨800, 700⟩
     |>.closePath
   let c := c.setFillColor Color.cyan
-  c.fillPath diamond
+  let c ← c.fillPath diamond
 
   pure c
 
@@ -184,15 +184,15 @@ def renderTransforms (c : Canvas) : IO Canvas := do
 
   -- Row 1: Basic shapes without transform (reference)
   let c := c.setFillColor Color.white
-  c.fillRectXYWH 50 30 60 40
-  c.fillCircle ⟨180, 50⟩ 25
+  let c ← c.fillRectXYWH 50 30 60 40
+  let c ← c.fillCircle ⟨180, 50⟩ 25
 
   -- Row 1: Translated shapes
   let c := c.save
   let c := c.translate 250 0
   let c := c.setFillColor Color.red
-  c.fillRectXYWH 50 30 60 40
-  c.fillCircle ⟨180, 50⟩ 25
+  let c ← c.fillRectXYWH 50 30 60 40
+  let c ← c.fillCircle ⟨180, 50⟩ 25
   let c := c.restore
 
   -- Row 1: Scaled shapes (1.5x)
@@ -200,38 +200,40 @@ def renderTransforms (c : Canvas) : IO Canvas := do
   let c := c.translate 500 50
   let c := c.scale 1.5 1.5
   let c := c.setFillColor Color.green
-  c.fillRectXYWH (-30) (-20) 60 40
-  c.fillCircle ⟨50, 0⟩ 25
+  let c ← c.fillRectXYWH (-30) (-20) 60 40
+  let c ← c.fillCircle ⟨50, 0⟩ 25
   let c := c.restore
 
   -- Row 2: Rotated rectangles (rotation fan)
   let c := c.save
   let c := c.translate 150 200
+  let mut canvas := c
   for i in [:8] do
-    let c := c.save
+    let c' := canvas.save
     let angle := i.toFloat * (pi / 4.0)
-    let c := c.rotate angle
-    let c := c.setFillColor (Color.rgba
+    let c' := c'.rotate angle
+    let c' := c'.setFillColor (Color.rgba
       (0.5 + 0.5 * Float.cos angle)
       (0.5 + 0.5 * Float.sin angle)
       0.5
       0.8)
-    c.fillRectXYWH 30 (-10) 50 20
-    pure ()
-  let c := c.restore
+    let c' ← c'.fillRectXYWH 30 (-10) 50 20
+    canvas := c'.restore
+  let c := canvas.restore
 
   -- Row 2: Scaled circles
   let c := c.save
   let c := c.translate 400 200
+  let mut cv := c
   for i in [:5] do
-    let c := c.save
+    let c' := cv.save
     let s := 0.5 + i.toFloat * 0.3
-    let c := c.translate (i.toFloat * 50) 0
-    let c := c.scale s s
-    let c := c.setFillColor (Color.rgba (1.0 - i.toFloat * 0.15) (i.toFloat * 0.2) (0.5 + i.toFloat * 0.1) 1.0)
-    c.fillCircle ⟨0, 0⟩ 30
-    pure ()
-  let c := c.restore
+    let c' := c'.translate (i.toFloat * 50) 0
+    let c' := c'.scale s s
+    let c' := c'.setFillColor (Color.rgba (1.0 - i.toFloat * 0.15) (i.toFloat * 0.2) (0.5 + i.toFloat * 0.1) 1.0)
+    let c' ← c'.fillCircle ⟨0, 0⟩ 30
+    cv := c'.restore
+  let c := cv.restore
 
   -- Row 3: Combined transforms - rotating star
   let c := c.save
@@ -239,25 +241,25 @@ def renderTransforms (c : Canvas) : IO Canvas := do
   let c := c.rotate (pi / 6.0)
   let c := c.scale 1.2 0.8
   let c := c.setFillColor Color.yellow
-  c.fillPath (Path.star ⟨0, 0⟩ 60 30 5)
+  let c ← c.fillPath (Path.star ⟨0, 0⟩ 60 30 5)
   let c := c.restore
 
   -- Row 3: Nested transforms
   let c := c.save
   let c := c.translate 350 380
   let c := c.setFillColor Color.blue
-  c.fillCircle ⟨0, 0⟩ 50
+  let c ← c.fillCircle ⟨0, 0⟩ 50
 
   let c := c.save
   let c := c.translate 0 0
   let c := c.scale 0.6 0.6
   let c := c.setFillColor Color.cyan
-  c.fillCircle ⟨0, 0⟩ 50
+  let c ← c.fillCircle ⟨0, 0⟩ 50
 
   let c := c.save
   let c := c.scale 0.5 0.5
   let c := c.setFillColor Color.white
-  c.fillCircle ⟨0, 0⟩ 50
+  let c ← c.fillCircle ⟨0, 0⟩ 50
   let c := c.restore
   let c := c.restore
   let c := c.restore
@@ -266,34 +268,35 @@ def renderTransforms (c : Canvas) : IO Canvas := do
   let c := c.save
   let c := c.translate 550 380
   let c := c.setFillColor Color.red
-  c.fillRectXYWH (-40) (-30) 80 60
+  let c ← c.fillRectXYWH (-40) (-30) 80 60
 
   let c := c.setGlobalAlpha 0.5
   let c := c.setFillColor Color.blue
-  c.fillRectXYWH (-20) (-10) 80 60
+  let c ← c.fillRectXYWH (-20) (-10) 80 60
 
   let c := c.setGlobalAlpha 0.3
   let c := c.setFillColor Color.green
-  c.fillRectXYWH 0 10 80 60
+  let c ← c.fillRectXYWH 0 10 80 60
   let c := c.restore
 
   -- Row 4: Orbiting shapes
   let c := c.save
   let c := c.translate 200 520
+  let mut cv2 := c
   for i in [:6] do
-    let c := c.save
+    let c' := cv2.save
     let angle := i.toFloat * (pi / 3.0)
-    let c := c.rotate angle
-    let c := c.translate 60 0
-    let c := c.rotate (-angle)
-    let c := c.setFillColor (Color.rgba
+    let c' := c'.rotate angle
+    let c' := c'.translate 60 0
+    let c' := c'.rotate (-angle)
+    let c' := c'.setFillColor (Color.rgba
       (if i % 2 == 0 then 1.0 else 0.5)
       (if i % 3 == 0 then 1.0 else 0.3)
       (if i % 2 == 1 then 1.0 else 0.2)
       1.0)
-    c.fillRectXYWH (-15) (-15) 30 30
-    pure ()
-  let c := c.restore
+    let c' ← c'.fillRectXYWH (-15) (-15) 30 30
+    cv2 := c'.restore
+  let c := cv2.restore
 
   -- Row 4: Skewed/sheared effect
   let c := c.save
@@ -301,20 +304,20 @@ def renderTransforms (c : Canvas) : IO Canvas := do
   let c := c.rotate (pi / 12.0)
   let c := c.scale 1.5 0.7
   let c := c.setFillColor Color.magenta
-  c.fillRectXYWH (-40) (-25) 80 50
+  let c ← c.fillRectXYWH (-40) (-25) 80 50
   let c := c.restore
 
   -- Row 4: Hearts with different transforms
   let c := c.save
   let c := c.translate 620 520
   let c := c.setFillColor Color.red
-  c.fillPath (Path.heart ⟨0, 0⟩ 50)
+  let c ← c.fillPath (Path.heart ⟨0, 0⟩ 50)
 
   let c := c.translate 100 0
   let c := c.rotate (pi / 8.0)
   let c := c.scale 0.7 0.7
   let c := c.setFillColor Color.magenta
-  c.fillPath (Path.heart ⟨0, 0⟩ 50)
+  let c ← c.fillPath (Path.heart ⟨0, 0⟩ 50)
   let c := c.restore
 
   pure c
@@ -326,113 +329,113 @@ def renderStrokes (c : Canvas) : IO Canvas := do
   -- Row 1: Stroked rectangles with different line widths
   let c := c.setStrokeColor Color.white
   let c := c.setLineWidth 1.0
-  c.strokeRectXYWH 50 30 100 70
+  let c ← c.strokeRectXYWH 50 30 100 70
   let c := c.setStrokeColor Color.yellow
   let c := c.setLineWidth 2.0
-  c.strokeRectXYWH 180 30 100 70
+  let c ← c.strokeRectXYWH 180 30 100 70
   let c := c.setStrokeColor Color.cyan
   let c := c.setLineWidth 4.0
-  c.strokeRectXYWH 310 30 100 70
+  let c ← c.strokeRectXYWH 310 30 100 70
   let c := c.setStrokeColor Color.magenta
   let c := c.setLineWidth 8.0
-  c.strokeRectXYWH 440 30 100 70
+  let c ← c.strokeRectXYWH 440 30 100 70
 
   -- Stroked circles
   let c := c.setStrokeColor Color.red
   let c := c.setLineWidth 2.0
-  c.strokeCircle ⟨620, 65⟩ 35
+  let c ← c.strokeCircle ⟨620, 65⟩ 35
   let c := c.setStrokeColor Color.green
   let c := c.setLineWidth 4.0
-  c.strokeCircle ⟨720, 65⟩ 35
+  let c ← c.strokeCircle ⟨720, 65⟩ 35
   let c := c.setStrokeColor Color.blue
   let c := c.setLineWidth 6.0
-  c.strokeCircle ⟨820, 65⟩ 35
+  let c ← c.strokeCircle ⟨820, 65⟩ 35
 
   -- Row 2: Lines with different widths
   let c := c.setStrokeColor Color.white
   let c := c.setLineWidth 1.0
-  c.drawLine ⟨50, 140⟩ ⟨200, 140⟩
+  let c ← c.drawLine ⟨50, 140⟩ ⟨200, 140⟩
   let c := c.setLineWidth 2.0
-  c.drawLine ⟨50, 160⟩ ⟨200, 160⟩
+  let c ← c.drawLine ⟨50, 160⟩ ⟨200, 160⟩
   let c := c.setLineWidth 4.0
-  c.drawLine ⟨50, 185⟩ ⟨200, 185⟩
+  let c ← c.drawLine ⟨50, 185⟩ ⟨200, 185⟩
   let c := c.setLineWidth 8.0
-  c.drawLine ⟨50, 215⟩ ⟨200, 215⟩
+  let c ← c.drawLine ⟨50, 215⟩ ⟨200, 215⟩
 
   -- Diagonal lines
   let c := c.setStrokeColor Color.yellow
   let c := c.setLineWidth 2.0
-  c.drawLine ⟨250, 130⟩ ⟨350, 220⟩
+  let c ← c.drawLine ⟨250, 130⟩ ⟨350, 220⟩
   let c := c.setStrokeColor Color.cyan
   let c := c.setLineWidth 3.0
-  c.drawLine ⟨280, 130⟩ ⟨380, 220⟩
+  let c ← c.drawLine ⟨280, 130⟩ ⟨380, 220⟩
   let c := c.setStrokeColor Color.magenta
   let c := c.setLineWidth 4.0
-  c.drawLine ⟨310, 130⟩ ⟨410, 220⟩
+  let c ← c.drawLine ⟨310, 130⟩ ⟨410, 220⟩
 
   -- Stroked rounded rectangles
   let c := c.setStrokeColor Color.orange
   let c := c.setLineWidth 3.0
-  c.strokeRoundedRect (Rect.mk' 450 130 120 80) 10
+  let c ← c.strokeRoundedRect (Rect.mk' 450 130 120 80) 10
   let c := c.setStrokeColor Color.green
   let c := c.setLineWidth 4.0
-  c.strokeRoundedRect (Rect.mk' 600 130 120 80) 20
+  let c ← c.strokeRoundedRect (Rect.mk' 600 130 120 80) 20
   let c := c.setStrokeColor Color.purple
   let c := c.setLineWidth 5.0
-  c.strokeRoundedRect (Rect.mk' 750 130 120 80) 30
+  let c ← c.strokeRoundedRect (Rect.mk' 750 130 120 80) 30
 
   -- Row 3: Stroked ellipses
   let c := c.setStrokeColor Color.red
   let c := c.setLineWidth 2.0
-  c.strokeEllipse ⟨100, 300⟩ 60 30
+  let c ← c.strokeEllipse ⟨100, 300⟩ 60 30
   let c := c.setStrokeColor Color.green
   let c := c.setLineWidth 3.0
-  c.strokeEllipse ⟨250, 300⟩ 30 50
+  let c ← c.strokeEllipse ⟨250, 300⟩ 30 50
   let c := c.setStrokeColor Color.blue
   let c := c.setLineWidth 4.0
-  c.strokeEllipse ⟨400, 300⟩ 50 50
+  let c ← c.strokeEllipse ⟨400, 300⟩ 50 50
 
   -- Stroked stars
   let c := c.setStrokeColor Color.yellow
   let c := c.setLineWidth 2.0
-  c.strokePath (Path.star ⟨550, 300⟩ 50 25 5)
+  let c ← c.strokePath (Path.star ⟨550, 300⟩ 50 25 5)
   let c := c.setStrokeColor Color.cyan
   let c := c.setLineWidth 3.0
-  c.strokePath (Path.star ⟨680, 300⟩ 45 20 6)
+  let c ← c.strokePath (Path.star ⟨680, 300⟩ 45 20 6)
   let c := c.setStrokeColor Color.magenta
   let c := c.setLineWidth 4.0
-  c.strokePath (Path.star ⟨810, 300⟩ 40 18 8)
+  let c ← c.strokePath (Path.star ⟨810, 300⟩ 40 18 8)
 
   -- Row 4: Stroked polygons
   let c := c.setStrokeColor Color.red
   let c := c.setLineWidth 2.0
-  c.strokePath (Path.polygon ⟨80, 420⟩ 40 3)
+  let c ← c.strokePath (Path.polygon ⟨80, 420⟩ 40 3)
   let c := c.setStrokeColor Color.orange
-  c.strokePath (Path.polygon ⟨170, 420⟩ 40 4)
+  let c ← c.strokePath (Path.polygon ⟨170, 420⟩ 40 4)
   let c := c.setStrokeColor Color.yellow
-  c.strokePath (Path.polygon ⟨260, 420⟩ 40 5)
+  let c ← c.strokePath (Path.polygon ⟨260, 420⟩ 40 5)
   let c := c.setStrokeColor Color.green
-  c.strokePath (Path.polygon ⟨350, 420⟩ 40 6)
+  let c ← c.strokePath (Path.polygon ⟨350, 420⟩ 40 6)
   let c := c.setStrokeColor Color.cyan
-  c.strokePath (Path.polygon ⟨440, 420⟩ 40 8)
+  let c ← c.strokePath (Path.polygon ⟨440, 420⟩ 40 8)
 
   -- Stroked heart
   let c := c.setStrokeColor Color.red
   let c := c.setLineWidth 3.0
-  c.strokePath (Path.heart ⟨560, 420⟩ 60)
+  let c ← c.strokePath (Path.heart ⟨560, 420⟩ 60)
 
   -- Row 4: Combined fill and stroke
   let c := c.setFillColor (Color.rgba 0.2 0.2 0.8 1.0)
-  c.fillCircle ⟨700, 420⟩ 40
+  let c ← c.fillCircle ⟨700, 420⟩ 40
   let c := c.setStrokeColor Color.white
   let c := c.setLineWidth 3.0
-  c.strokeCircle ⟨700, 420⟩ 40
+  let c ← c.strokeCircle ⟨700, 420⟩ 40
 
   let c := c.setFillColor (Color.rgba 0.8 0.2 0.2 1.0)
-  c.fillRoundedRect (Rect.mk' 770 380 100 80) 15
+  let c ← c.fillRoundedRect (Rect.mk' 770 380 100 80) 15
   let c := c.setStrokeColor Color.white
   let c := c.setLineWidth 2.0
-  c.strokeRoundedRect (Rect.mk' 770 380 100 80) 15
+  let c ← c.strokeRoundedRect (Rect.mk' 770 380 100 80) 15
 
   -- Row 5: Custom stroked paths
   let zigzag := Path.empty
@@ -445,7 +448,7 @@ def renderStrokes (c : Canvas) : IO Canvas := do
     |>.lineTo ⟨230, 520⟩
   let c := c.setStrokeColor Color.yellow
   let c := c.setLineWidth 3.0
-  c.strokePath zigzag
+  let c ← c.strokePath zigzag
 
   -- Wave using bezier curves
   let wave := Path.empty
@@ -454,7 +457,7 @@ def renderStrokes (c : Canvas) : IO Canvas := do
     |>.bezierCurveTo ⟨440, 460⟩ ⟨480, 540⟩ ⟨520, 500⟩
   let c := c.setStrokeColor Color.cyan
   let c := c.setLineWidth 4.0
-  c.strokePath wave
+  let c ← c.strokePath wave
 
   -- Spiral-like path
   let spiral := Path.empty
@@ -464,24 +467,24 @@ def renderStrokes (c : Canvas) : IO Canvas := do
     |>.quadraticCurveTo ⟨840, 460⟩ ⟨860, 520⟩
   let c := c.setStrokeColor Color.magenta
   let c := c.setLineWidth 3.0
-  c.strokePath spiral
+  let c ← c.strokePath spiral
 
   -- Row 6: Arc strokes
   let c := c.setStrokeColor Color.red
   let c := c.setLineWidth 3.0
-  c.strokePath (Path.arcPath ⟨100, 620⟩ 50 0 pi)
+  let c ← c.strokePath (Path.arcPath ⟨100, 620⟩ 50 0 pi)
   let c := c.setStrokeColor Color.green
-  c.strokePath (Path.arcPath ⟨230, 620⟩ 50 0 (pi * 1.5))
+  let c ← c.strokePath (Path.arcPath ⟨230, 620⟩ 50 0 (pi * 1.5))
   let c := c.setStrokeColor Color.blue
   let c := c.setLineWidth 4.0
-  c.strokePath (Path.semicircle ⟨360, 620⟩ 50 0)
+  let c ← c.strokePath (Path.semicircle ⟨360, 620⟩ 50 0)
 
   -- Pie slice outlines
   let c := c.setStrokeColor Color.yellow
   let c := c.setLineWidth 2.0
-  c.strokePath (Path.pie ⟨500, 620⟩ 50 0 (pi * 0.5))
+  let c ← c.strokePath (Path.pie ⟨500, 620⟩ 50 0 (pi * 0.5))
   let c := c.setStrokeColor Color.cyan
-  c.strokePath (Path.pie ⟨620, 620⟩ 50 (pi * 0.25) (pi * 1.25))
+  let c ← c.strokePath (Path.pie ⟨620, 620⟩ 50 (pi * 0.25) (pi * 1.25))
 
   -- Custom arrow shape
   let arrow := Path.empty
@@ -492,7 +495,7 @@ def renderStrokes (c : Canvas) : IO Canvas := do
     |>.lineTo ⟨780, 620⟩
   let c := c.setStrokeColor Color.white
   let c := c.setLineWidth 3.0
-  c.strokePath arrow
+  let c ← c.strokePath arrow
 
   -- Cross/plus shape
   let cross := Path.empty
@@ -502,7 +505,7 @@ def renderStrokes (c : Canvas) : IO Canvas := do
     |>.lineTo ⟨860, 620⟩
   let c := c.setStrokeColor Color.red
   let c := c.setLineWidth 4.0
-  c.strokePath cross
+  let c ← c.strokePath cross
 
   pure c
 
@@ -514,21 +517,21 @@ def renderGradients (c : Canvas) : IO Canvas := do
     { position := 1.0, color := Color.yellow }
   ]
   let c := c.setFillLinearGradient ⟨50, 70⟩ ⟨200, 70⟩ redYellow
-  c.fillRect (Rect.mk' 50 30 150 80)
+  let c ← c.fillRect (Rect.mk' 50 30 150 80)
 
   let blueCyan : Array GradientStop := #[
     { position := 0.0, color := Color.blue },
     { position := 1.0, color := Color.cyan }
   ]
   let c := c.setFillLinearGradient ⟨230, 70⟩ ⟨380, 70⟩ blueCyan
-  c.fillRect (Rect.mk' 230 30 150 80)
+  let c ← c.fillRect (Rect.mk' 230 30 150 80)
 
   let greenWhite : Array GradientStop := #[
     { position := 0.0, color := Color.green },
     { position := 1.0, color := Color.white }
   ]
   let c := c.setFillLinearGradient ⟨410, 70⟩ ⟨560, 70⟩ greenWhite
-  c.fillRect (Rect.mk' 410 30 150 80)
+  let c ← c.fillRect (Rect.mk' 410 30 150 80)
 
   -- Row 1: Vertical gradient
   let purpleOrange : Array GradientStop := #[
@@ -536,7 +539,7 @@ def renderGradients (c : Canvas) : IO Canvas := do
     { position := 1.0, color := Color.orange }
   ]
   let c := c.setFillLinearGradient ⟨640, 30⟩ ⟨640, 110⟩ purpleOrange
-  c.fillRect (Rect.mk' 590 30 100 80)
+  let c ← c.fillRect (Rect.mk' 590 30 100 80)
 
   -- Diagonal gradient
   let magentaCyan : Array GradientStop := #[
@@ -544,7 +547,7 @@ def renderGradients (c : Canvas) : IO Canvas := do
     { position := 1.0, color := Color.cyan }
   ]
   let c := c.setFillLinearGradient ⟨720, 30⟩ ⟨870, 110⟩ magentaCyan
-  c.fillRect (Rect.mk' 720 30 150 80)
+  let c ← c.fillRect (Rect.mk' 720 30 150 80)
 
   -- Row 2: Multi-stop gradients (rainbow)
   let rainbow : Array GradientStop := #[
@@ -557,7 +560,7 @@ def renderGradients (c : Canvas) : IO Canvas := do
     { position := 1.0, color := Color.magenta }
   ]
   let c := c.setFillLinearGradient ⟨50, 180⟩ ⟨450, 180⟩ rainbow
-  c.fillRect (Rect.mk' 50 140 400 80)
+  let c ← c.fillRect (Rect.mk' 50 140 400 80)
 
   -- Sunset gradient
   let sunset : Array GradientStop := #[
@@ -568,7 +571,7 @@ def renderGradients (c : Canvas) : IO Canvas := do
     { position := 1.0, color := Color.rgba 1.0 0.9 0.4 1.0 }
   ]
   let c := c.setFillLinearGradient ⟨570, 140⟩ ⟨570, 220⟩ sunset
-  c.fillRect (Rect.mk' 480 140 180 80)
+  let c ← c.fillRect (Rect.mk' 480 140 180 80)
 
   -- Grayscale
   let grayscale : Array GradientStop := #[
@@ -576,7 +579,7 @@ def renderGradients (c : Canvas) : IO Canvas := do
     { position := 1.0, color := Color.white }
   ]
   let c := c.setFillLinearGradient ⟨690, 180⟩ ⟨870, 180⟩ grayscale
-  c.fillRect (Rect.mk' 690 140 180 80)
+  let c ← c.fillRect (Rect.mk' 690 140 180 80)
 
   -- Row 3: Radial gradients
   let whiteBlue : Array GradientStop := #[
@@ -584,7 +587,7 @@ def renderGradients (c : Canvas) : IO Canvas := do
     { position := 1.0, color := Color.blue }
   ]
   let c := c.setFillRadialGradient ⟨120, 320⟩ 70 whiteBlue
-  c.fillCircle ⟨120, 320⟩ 70
+  let c ← c.fillCircle ⟨120, 320⟩ 70
 
   let sunGlow : Array GradientStop := #[
     { position := 0.0, color := Color.yellow },
@@ -592,7 +595,7 @@ def renderGradients (c : Canvas) : IO Canvas := do
     { position := 1.0, color := Color.red }
   ]
   let c := c.setFillRadialGradient ⟨280, 320⟩ 70 sunGlow
-  c.fillCircle ⟨280, 320⟩ 70
+  let c ← c.fillCircle ⟨280, 320⟩ 70
 
   let spotlight : Array GradientStop := #[
     { position := 0.0, color := Color.white },
@@ -600,7 +603,7 @@ def renderGradients (c : Canvas) : IO Canvas := do
     { position := 1.0, color := Color.rgba 1.0 1.0 1.0 0.0 }
   ]
   let c := c.setFillRadialGradient ⟨440, 320⟩ 70 spotlight
-  c.fillCircle ⟨440, 320⟩ 70
+  let c ← c.fillCircle ⟨440, 320⟩ 70
 
   let greenGlow : Array GradientStop := #[
     { position := 0.0, color := Color.rgba 0.5 1.0 0.5 1.0 },
@@ -608,41 +611,41 @@ def renderGradients (c : Canvas) : IO Canvas := do
     { position := 1.0, color := Color.rgba 0.0 0.3 0.0 1.0 }
   ]
   let c := c.setFillRadialGradient ⟨600, 320⟩ 70 greenGlow
-  c.fillCircle ⟨600, 320⟩ 70
+  let c ← c.fillCircle ⟨600, 320⟩ 70
 
   let cyanMagenta : Array GradientStop := #[
     { position := 0.0, color := Color.cyan },
     { position := 1.0, color := Color.magenta }
   ]
   let c := c.setFillRadialGradient ⟨760, 320⟩ 70 cyanMagenta
-  c.fillCircle ⟨760, 320⟩ 70
+  let c ← c.fillCircle ⟨760, 320⟩ 70
 
   -- Row 4: Gradients on different shapes
   let c := c.setFillLinearGradient ⟨50, 420⟩ ⟨200, 520⟩ #[
     { position := 0.0, color := Color.red },
     { position := 1.0, color := Color.blue }
   ]
-  c.fillRoundedRect (Rect.mk' 50 420 150 100) 20
+  let c ← c.fillRoundedRect (Rect.mk' 50 420 150 100) 20
 
   let c := c.setFillRadialGradient ⟨330, 470⟩ 80 #[
     { position := 0.0, color := Color.yellow },
     { position := 1.0, color := Color.purple }
   ]
-  c.fillEllipse ⟨330, 470⟩ 80 50
+  let c ← c.fillEllipse ⟨330, 470⟩ 80 50
 
   let c := c.setFillLinearGradient ⟨460, 410⟩ ⟨580, 530⟩ #[
     { position := 0.0, color := Color.yellow },
     { position := 0.5, color := Color.orange },
     { position := 1.0, color := Color.red }
   ]
-  c.fillPath (Path.star ⟨520, 470⟩ 60 30 5)
+  let c ← c.fillPath (Path.star ⟨520, 470⟩ 60 30 5)
 
   let c := c.setFillRadialGradient ⟨700, 450⟩ 80 #[
     { position := 0.0, color := Color.rgba 1.0 0.5 0.5 1.0 },
     { position := 0.5, color := Color.red },
     { position := 1.0, color := Color.rgba 0.5 0.0 0.0 1.0 }
   ]
-  c.fillPath (Path.heart ⟨700, 470⟩ 70)
+  let c ← c.fillPath (Path.heart ⟨700, 470⟩ 70)
 
   -- Row 5: More gradient variations
   let stripes : Array GradientStop := #[
@@ -654,7 +657,7 @@ def renderGradients (c : Canvas) : IO Canvas := do
     { position := 1.0, color := Color.blue }
   ]
   let c := c.setFillLinearGradient ⟨50, 610⟩ ⟨200, 610⟩ stripes
-  c.fillRect (Rect.mk' 50 560 150 100)
+  let c ← c.fillRect (Rect.mk' 50 560 150 100)
 
   let chrome : Array GradientStop := #[
     { position := 0.0, color := Color.rgba 0.3 0.3 0.3 1.0 },
@@ -665,7 +668,7 @@ def renderGradients (c : Canvas) : IO Canvas := do
     { position := 1.0, color := Color.rgba 0.6 0.6 0.6 1.0 }
   ]
   let c := c.setFillLinearGradient ⟨230, 560⟩ ⟨230, 660⟩ chrome
-  c.fillRect (Rect.mk' 230 560 150 100)
+  let c ← c.fillRect (Rect.mk' 230 560 150 100)
 
   let gold : Array GradientStop := #[
     { position := 0.0, color := Color.rgba 0.6 0.4 0.1 1.0 },
@@ -675,21 +678,21 @@ def renderGradients (c : Canvas) : IO Canvas := do
     { position := 1.0, color := Color.rgba 0.5 0.35 0.1 1.0 }
   ]
   let c := c.setFillLinearGradient ⟨410, 560⟩ ⟨410, 660⟩ gold
-  c.fillRect (Rect.mk' 410 560 150 100)
+  let c ← c.fillRect (Rect.mk' 410 560 150 100)
 
   let c := c.setFillRadialGradient ⟨655, 610⟩ 100 #[
     { position := 0.0, color := Color.rgba 0.0 1.0 1.0 1.0 },
     { position := 0.4, color := Color.rgba 0.0 0.5 1.0 0.8 },
     { position := 1.0, color := Color.rgba 0.0 0.0 0.3 1.0 }
   ]
-  c.fillRect (Rect.mk' 590 560 130 100)
+  let c ← c.fillRect (Rect.mk' 590 560 130 100)
 
   let purplePink : Array GradientStop := #[
     { position := 0.0, color := Color.rgba 0.4 0.0 0.6 1.0 },
     { position := 1.0, color := Color.rgba 1.0 0.4 0.6 1.0 }
   ]
   let c := c.setFillLinearGradient ⟨750, 660⟩ ⟨870, 560⟩ purplePink
-  c.fillRect (Rect.mk' 750 560 120 100)
+  let c ← c.fillRect (Rect.mk' 750 560 120 100)
 
   pure c
 
@@ -704,74 +707,74 @@ structure Fonts where
 def renderText (c : Canvas) (fonts : Fonts) : IO Canvas := do
   -- Row 1: Basic text in different sizes
   let c := c.setFillColor Color.white
-  c.fillTextXY "Small (16pt)" 50 50 fonts.small
-  c.fillTextXY "Medium (24pt)" 50 90 fonts.medium
-  c.fillTextXY "Large (36pt)" 50 140 fonts.large
-  c.fillTextXY "Huge (48pt)" 50 200 fonts.huge
+  let c ← c.fillTextXY "Small (16pt)" 50 50 fonts.small
+  let c ← c.fillTextXY "Medium (24pt)" 50 90 fonts.medium
+  let c ← c.fillTextXY "Large (36pt)" 50 140 fonts.large
+  let c ← c.fillTextXY "Huge (48pt)" 50 200 fonts.huge
 
   -- Row 2: Text in different colors
   let c := c.setFillColor Color.red
-  c.fillTextXY "Red Text" 500 50 fonts.medium
+  let c ← c.fillTextXY "Red Text" 500 50 fonts.medium
   let c := c.setFillColor Color.green
-  c.fillTextXY "Green Text" 500 90 fonts.medium
+  let c ← c.fillTextXY "Green Text" 500 90 fonts.medium
   let c := c.setFillColor Color.blue
-  c.fillTextXY "Blue Text" 500 130 fonts.medium
+  let c ← c.fillTextXY "Blue Text" 500 130 fonts.medium
   let c := c.setFillColor Color.yellow
-  c.fillTextXY "Yellow Text" 500 170 fonts.medium
+  let c ← c.fillTextXY "Yellow Text" 500 170 fonts.medium
   let c := c.setFillColor Color.cyan
-  c.fillTextXY "Cyan Text" 500 210 fonts.medium
+  let c ← c.fillTextXY "Cyan Text" 500 210 fonts.medium
   let c := c.setFillColor Color.magenta
-  c.fillTextXY "Magenta Text" 500 250 fonts.medium
+  let c ← c.fillTextXY "Magenta Text" 500 250 fonts.medium
 
   -- Row 3: Showcase text content
   let c := c.setFillColor Color.white
-  c.fillTextXY "Afferent - A Lean 4 2D Graphics Library" 50 300 fonts.large
+  let c ← c.fillTextXY "Afferent - A Lean 4 2D Graphics Library" 50 300 fonts.large
 
   -- Row 4: Mixed content - text with shapes
   let c := c.setFillColor Color.blue
-  c.fillRect (Rect.mk' 50 350 150 40)
+  let c ← c.fillRect (Rect.mk' 50 350 150 40)
   let c := c.setFillColor Color.white
-  c.fillTextXY "Text on Shape" 60 380 fonts.small
+  let c ← c.fillTextXY "Text on Shape" 60 380 fonts.small
 
   let c := c.setFillColor Color.red
-  c.fillCircle ⟨350, 370⟩ 30
+  let c ← c.fillCircle ⟨350, 370⟩ 30
   let c := c.setFillColor Color.white
-  c.fillTextXY "Labels" 320 420 fonts.small
+  let c ← c.fillTextXY "Labels" 320 420 fonts.small
 
   let c := c.setFillColor Color.green
-  c.fillRoundedRect (Rect.mk' 450 350 180 40) 10
+  let c ← c.fillRoundedRect (Rect.mk' 450 350 180 40) 10
   let c := c.setFillColor Color.black
-  c.fillTextXY "Rounded Button" 460 380 fonts.small
+  let c ← c.fillTextXY "Rounded Button" 460 380 fonts.small
 
   -- Row 5: Character set sample
   let c := c.setFillColor Color.white
-  c.fillTextXY "ABCDEFGHIJKLMNOPQRSTUVWXYZ" 50 470 fonts.medium
-  c.fillTextXY "abcdefghijklmnopqrstuvwxyz" 50 510 fonts.medium
-  c.fillTextXY "0123456789 !@#$%^&*()_+-=" 50 550 fonts.medium
+  let c ← c.fillTextXY "ABCDEFGHIJKLMNOPQRSTUVWXYZ" 50 470 fonts.medium
+  let c ← c.fillTextXY "abcdefghijklmnopqrstuvwxyz" 50 510 fonts.medium
+  let c ← c.fillTextXY "0123456789 !@#$%^&*()_+-=" 50 550 fonts.medium
 
   -- Row 6: Semi-transparent text
   let c := c.setFillColor (Color.rgba 1.0 1.0 1.0 0.7)
-  c.fillTextXY "Semi-transparent" 50 600 fonts.medium
+  let c ← c.fillTextXY "Semi-transparent" 50 600 fonts.medium
   let c := c.setFillColor (Color.rgba 1.0 1.0 1.0 0.4)
-  c.fillTextXY "More transparent" 300 600 fonts.medium
+  let c ← c.fillTextXY "More transparent" 300 600 fonts.medium
   let c := c.setFillColor (Color.rgba 1.0 1.0 1.0 0.2)
-  c.fillTextXY "Very faint" 550 600 fonts.medium
+  let c ← c.fillTextXY "Very faint" 550 600 fonts.medium
 
   -- Row 7: Colored backgrounds with text
   let c := c.setFillColor (Color.rgba 0.8 0.2 0.2 1.0)
-  c.fillRect (Rect.mk' 50 640 200 40)
+  let c ← c.fillRect (Rect.mk' 50 640 200 40)
   let c := c.setFillColor Color.white
-  c.fillTextXY "Error Message" 60 670 fonts.small
+  let c ← c.fillTextXY "Error Message" 60 670 fonts.small
 
   let c := c.setFillColor (Color.rgba 0.2 0.6 0.2 1.0)
-  c.fillRect (Rect.mk' 280 640 200 40)
+  let c ← c.fillRect (Rect.mk' 280 640 200 40)
   let c := c.setFillColor Color.white
-  c.fillTextXY "Success!" 330 670 fonts.small
+  let c ← c.fillTextXY "Success!" 330 670 fonts.small
 
   let c := c.setFillColor (Color.rgba 0.8 0.6 0.1 1.0)
-  c.fillRect (Rect.mk' 510 640 200 40)
+  let c ← c.fillRect (Rect.mk' 510 640 200 40)
   let c := c.setFillColor Color.black
-  c.fillTextXY "Warning" 570 670 fonts.small
+  let c ← c.fillTextXY "Warning" 570 670 fonts.small
 
   pure c
 
@@ -801,21 +804,23 @@ def renderAnimations (c : Canvas) (t : Float) : IO Canvas := do
   -- Spinning star cluster
   let c := c.save
   let c := c.translate 150 150
+  let mut cv := c
   for i in [:7] do
-    let c := c.save
+    let c' := cv.save
     let angle := t * 2.0 + i.toFloat * (pi * 2.0 / 7.0)
     let dist := 60 + 20 * Float.sin (t * 3.0 + i.toFloat)
-    let c := c.translate (dist * Float.cos angle) (dist * Float.sin angle)
-    let c := c.rotate (t * 4.0 + i.toFloat)
+    let c' := c'.translate (dist * Float.cos angle) (dist * Float.sin angle)
+    let c' := c'.rotate (t * 4.0 + i.toFloat)
     let hue := (t * 0.5 + i.toFloat / 7.0) - (t * 0.5 + i.toFloat / 7.0).floor
-    let c := c.setFillColor (hsvToRgb hue 1.0 1.0)
-    c.fillPath (Path.star ⟨0, 0⟩ (20 + 10 * Float.sin (t * 5.0)) 10 5)
-    pure ()
-  let c := c.restore
+    let c' := c'.setFillColor (hsvToRgb hue 1.0 1.0)
+    let c' ← c'.fillPath (Path.star ⟨0, 0⟩ (20 + 10 * Float.sin (t * 5.0)) 10 5)
+    cv := c'.restore
+  let c := cv.restore
 
   -- Pulsing rainbow circles
   let c := c.save
   let c := c.translate 400 150
+  let mut cv2 := c
   for i in [:12] do
     let angle := i.toFloat * (pi / 6.0)
     let pulse := 0.5 + 0.5 * Float.sin (t * 4.0 + i.toFloat * 0.5)
@@ -823,28 +828,27 @@ def renderAnimations (c : Canvas) (t : Float) : IO Canvas := do
     let x := 80 * Float.cos (angle + t)
     let y := 80 * Float.sin (angle + t)
     let hue := (i.toFloat / 12.0 + t * 0.3) - (i.toFloat / 12.0 + t * 0.3).floor
-    let c := c.setFillColor (hsvToRgb hue 1.0 1.0)
-    c.fillCircle ⟨x, y⟩ radius
-    pure ()
-  let c := c.restore
+    let c' := cv2.setFillColor (hsvToRgb hue 1.0 1.0)
+    cv2 ← c'.fillCircle ⟨x, y⟩ radius
+  let c := cv2.restore
 
   -- Wiggling lines (sine wave with moving phase)
   let c := c.save
   let c := c.translate 650 100
+  let mut cv3 := c
   for row in [:5] do
     let rowOffset := row.toFloat * 0.5
-    let c := c.setLineWidth (2 + row.toFloat)
+    let c' := cv3.setLineWidth (2 + row.toFloat)
     let hue := (row.toFloat / 5.0 + t * 0.2) - (row.toFloat / 5.0 + t * 0.2).floor
-    let c := c.setStrokeColor (hsvToRgb hue 1.0 1.0)
+    let c' := c'.setStrokeColor (hsvToRgb hue 1.0 1.0)
     let mut path := Path.empty
     path := path.moveTo ⟨0, row.toFloat * 50⟩
     for i in [:20] do
       let x := i.toFloat * 15
       let y := row.toFloat * 50 + 20 * Float.sin (t * 6.0 + x * 0.05 + rowOffset)
       path := path.lineTo ⟨x, y⟩
-    c.strokePath path
-    pure ()
-  let c := c.restore
+    cv3 ← c'.strokePath path
+  let c := cv3.restore
 
   -- Morphing polygon (changing number of sides smoothly via rotation)
   let c := c.save
@@ -853,12 +857,13 @@ def renderAnimations (c : Canvas) (t : Float) : IO Canvas := do
   let sides := 3 + ((t * 0.5).floor.toUInt32 % 6).toNat
   let hue := (t * 0.4) - (t * 0.4).floor
   let c := c.setFillColor (hsvToRgb hue 0.8 0.9)
-  c.fillPath (Path.polygon ⟨0, 0⟩ (40 + 20 * Float.sin t) sides)
+  let c ← c.fillPath (Path.polygon ⟨0, 0⟩ (40 + 20 * Float.sin t) sides)
   let c := c.restore
 
   -- Orbiting hearts with trail effect
   let c := c.save
   let c := c.translate 400 320
+  let mut cv4 := c
   for i in [:8] do
     let trailT := t - i.toFloat * 0.05
     let angle := trailT * 2.0
@@ -867,69 +872,71 @@ def renderAnimations (c : Canvas) (t : Float) : IO Canvas := do
     let alpha := 1.0 - i.toFloat * 0.12
     let hue := (trailT * 0.3) - (trailT * 0.3).floor
     let color := hsvToRgb hue 1.0 1.0
-    let c := c.setFillColor (Color.rgba color.r color.g color.b alpha)
-    let c := c.save
-    let c := c.translate x y
-    let c := c.scale (0.3 + 0.1 * Float.sin (t * 3.0)) (0.3 + 0.1 * Float.sin (t * 3.0))
-    c.fillPath (Path.heart ⟨0, 0⟩ 80)
-    let c := c.restore
-    pure ()
-  let c := c.restore
+    let c' := cv4.setFillColor (Color.rgba color.r color.g color.b alpha)
+    let c' := c'.save
+    let c' := c'.translate x y
+    let c' := c'.scale (0.3 + 0.1 * Float.sin (t * 3.0)) (0.3 + 0.1 * Float.sin (t * 3.0))
+    let c' ← c'.fillPath (Path.heart ⟨0, 0⟩ 80)
+    cv4 := c'.restore
+  let c := cv4.restore
 
   -- Bouncing rectangles with color cycling
   let c := c.save
   let c := c.translate 650 280
+  let mut cv5 := c
   for i in [:6] do
     let phase := i.toFloat * 0.8
     let bounce := Float.abs (Float.sin (t * 3.0 + phase)) * 60
     let x := i.toFloat * 45
     let rotation := t * 2.0 + phase
-    let c := c.save
-    let c := c.translate x (-bounce)
-    let c := c.rotate rotation
+    let c' := cv5.save
+    let c' := c'.translate x (-bounce)
+    let c' := c'.rotate rotation
     let hue := (t * 0.5 + i.toFloat / 6.0) - (t * 0.5 + i.toFloat / 6.0).floor
-    let c := c.setFillColor (hsvToRgb hue 0.9 1.0)
-    c.fillRectXYWH (-15) (-15) 30 30
-    let c := c.restore
-    pure ()
-  let c := c.restore
+    let c' := c'.setFillColor (hsvToRgb hue 0.9 1.0)
+    let c' ← c'.fillRectXYWH (-15) (-15) 30 30
+    cv5 := c'.restore
+  let c := cv5.restore
 
   pure c
 
 /-! ## Performance Test -/
 
 /-- Render many spinning squares for performance testing.
-    Press Space to toggle this mode. -/
+    Press Space to toggle this mode.
+    Uses batched rendering for ~100x speedup. -/
 def renderPerformanceTest (c : Canvas) (t : Float) (font : Font) (squareCount : Nat := 1000) : IO Canvas := do
   let pi := 3.14159265358979323846
   let centerX := 960.0
   let centerY := 540.0
 
-  -- Title
+  -- Title (rendered outside batch since text uses different pipeline)
   let c := c.setFillColor Color.white
-  c.fillTextXY s!"Performance Test: {squareCount} spinning squares (Space to toggle)" 20 30 font
+  let c ← c.fillTextXY s!"Performance Test: {squareCount} spinning squares (Space to toggle)" 20 30 font
 
-  -- Render many spinning squares in concentric rings
-  for i in [:squareCount] do
-    let c := c.save
-    let phase := i.toFloat * (2.0 * pi / squareCount.toFloat)
-    -- Multiple rings with varying radii
-    let ring := i % 10
-    let baseRadius := 50.0 + ring.toFloat * 45.0
-    let orbitRadius := baseRadius + 30.0 * Float.sin (t * 0.5 + phase * 3.0)
-    let orbitSpeed := 1.0 + ring.toFloat * 0.2
-    let x := centerX + orbitRadius * Float.cos (t * orbitSpeed + phase)
-    let y := centerY + orbitRadius * Float.sin (t * orbitSpeed + phase)
-    let c := c.translate x y
-    let c := c.rotate (t * 3.0 + phase * 2.0)
-    -- Rainbow colors based on position and time
-    let hue := (t * 0.3 + i.toFloat / squareCount.toFloat) - (t * 0.3 + i.toFloat / squareCount.toFloat).floor
-    let c := c.setFillColor (hsvToRgb hue 0.9 1.0)
-    -- Smaller squares for larger counts
-    let size := if squareCount > 500 then 15.0 else 20.0
-    c.fillRectXYWH (-size/2) (-size/2) size size
-    let c := c.restore
-    pure ()
+  -- Render all squares in a single batched draw call
+  let c ← c.batched squareCount fun c => do
+    let mut cv := c
+    for i in [:squareCount] do
+      let c' := cv.save
+      let phase := i.toFloat * (2.0 * pi / squareCount.toFloat)
+      -- Multiple rings with varying radii
+      let ring := i % 10
+      let baseRadius := 50.0 + ring.toFloat * 45.0
+      let orbitRadius := baseRadius + 30.0 * Float.sin (t * 0.5 + phase * 3.0)
+      let orbitSpeed := 1.0 + ring.toFloat * 0.2
+      let x := centerX + orbitRadius * Float.cos (t * orbitSpeed + phase)
+      let y := centerY + orbitRadius * Float.sin (t * orbitSpeed + phase)
+      let c' := c'.translate x y
+      let c' := c'.rotate (t * 3.0 + phase * 2.0)
+      -- Rainbow colors based on position and time
+      let hue := (t * 0.3 + i.toFloat / squareCount.toFloat) - (t * 0.3 + i.toFloat / squareCount.toFloat).floor
+      let c' := c'.setFillColor (hsvToRgb hue 0.9 1.0)
+      -- Smaller squares for larger counts
+      let size := if squareCount > 5000 then 8.0 else if squareCount > 500 then 15.0 else 20.0
+      let c' ← c'.fillRectXYWH (-size/2) (-size/2) size size
+      cv := c'.restore
+    pure cv
 
   pure c
 
@@ -950,7 +957,7 @@ def unifiedDemo : IO Unit := do
   let fonts : Fonts := { small := fontSmall, medium := fontMedium, large := fontLarge, huge := fontHuge }
 
   IO.println "Rendering animated demo... (close window to exit)"
-  IO.println "Press SPACE to toggle performance test mode (1000 spinning squares)"
+  IO.println "Press SPACE to toggle performance test mode (10000 spinning squares)"
 
   -- Grid layout: 2x3, cell size 960x360
   -- Scale factors (uniform, based on original demo sizes):
@@ -997,8 +1004,8 @@ def unifiedDemo : IO Unit := do
       let c' := c.resetTransform
 
       if perfTestMode then
-        -- Performance test mode: 1000 spinning squares
-        c ← renderPerformanceTest c' t fontMedium 1000
+        -- Performance test mode: 10000 spinning squares
+        c ← renderPerformanceTest c' t fontMedium 10000
       else
         -- Normal demo mode: grid of demos
         let canvas := c'
@@ -1007,9 +1014,9 @@ def unifiedDemo : IO Unit := do
         let cellRect00 := Rect.mk' 0 0 cellWidth cellHeight
         canvas.clip cellRect00
         let canvas := canvas.setFillColor bg00
-        canvas.fillRect cellRect00
+        let canvas ← canvas.fillRect cellRect00
         let canvas := canvas.setFillColor (Color.rgba 1.0 1.0 1.0 0.5)
-        canvas.fillTextXY "Cell: 0,0 - Shapes" 10 20 fontSmall
+        let canvas ← canvas.fillTextXY "Cell: 0,0 - Shapes" 10 20 fontSmall
         let canvas := canvas.save
         let canvas := canvas.scale 0.45 0.45
         let canvas ← renderShapes canvas
@@ -1020,9 +1027,9 @@ def unifiedDemo : IO Unit := do
         let cellRect10 := Rect.mk' cellWidth 0 cellWidth cellHeight
         canvas.clip cellRect10
         let canvas := canvas.setFillColor bg10
-        canvas.fillRect cellRect10
+        let canvas ← canvas.fillRect cellRect10
         let canvas := canvas.setFillColor (Color.rgba 1.0 1.0 1.0 0.5)
-        canvas.fillTextXY "Cell: 1,0 - Transforms" (cellWidth + 10) 20 fontSmall
+        let canvas ← canvas.fillTextXY "Cell: 1,0 - Transforms" (cellWidth + 10) 20 fontSmall
         let canvas := canvas.save
         let canvas := canvas.translate 960 0
         let canvas := canvas.scale 0.6 0.6
@@ -1034,9 +1041,9 @@ def unifiedDemo : IO Unit := do
         let cellRect01 := Rect.mk' 0 cellHeight cellWidth cellHeight
         canvas.clip cellRect01
         let canvas := canvas.setFillColor bg01
-        canvas.fillRect cellRect01
+        let canvas ← canvas.fillRect cellRect01
         let canvas := canvas.setFillColor (Color.rgba 1.0 1.0 1.0 0.5)
-        canvas.fillTextXY "Cell: 0,1 - Strokes" 10 (cellHeight + 20) fontSmall
+        let canvas ← canvas.fillTextXY "Cell: 0,1 - Strokes" 10 (cellHeight + 20) fontSmall
         let canvas := canvas.save
         let canvas := canvas.translate 0 360
         let canvas := canvas.scale 0.51 0.51
@@ -1048,9 +1055,9 @@ def unifiedDemo : IO Unit := do
         let cellRect11 := Rect.mk' cellWidth cellHeight cellWidth cellHeight
         canvas.clip cellRect11
         let canvas := canvas.setFillColor bg11
-        canvas.fillRect cellRect11
+        let canvas ← canvas.fillRect cellRect11
         let canvas := canvas.setFillColor (Color.rgba 1.0 1.0 1.0 0.5)
-        canvas.fillTextXY "Cell: 1,1 - Gradients" (cellWidth + 10) (cellHeight + 20) fontSmall
+        let canvas ← canvas.fillTextXY "Cell: 1,1 - Gradients" (cellWidth + 10) (cellHeight + 20) fontSmall
         let canvas := canvas.save
         let canvas := canvas.translate 960 360
         let canvas := canvas.scale 0.51 0.51
@@ -1062,9 +1069,9 @@ def unifiedDemo : IO Unit := do
         let cellRect02 := Rect.mk' 0 (cellHeight * 2) cellWidth cellHeight
         canvas.clip cellRect02
         let canvas := canvas.setFillColor bg02
-        canvas.fillRect cellRect02
+        let canvas ← canvas.fillRect cellRect02
         let canvas := canvas.setFillColor (Color.rgba 1.0 1.0 1.0 0.5)
-        canvas.fillTextXY "Cell: 0,2 - Text" 10 (cellHeight * 2 + 20) fontSmall
+        let canvas ← canvas.fillTextXY "Cell: 0,2 - Text" 10 (cellHeight * 2 + 20) fontSmall
         let canvas := canvas.save
         let canvas := canvas.translate 0 720
         let canvas := canvas.scale 0.51 0.51
@@ -1079,9 +1086,9 @@ def unifiedDemo : IO Unit := do
         let bgHue := (t * 0.1) - (t * 0.1).floor
         let bg12 := hsvToRgb bgHue 0.3 0.15
         let canvas := canvas.setFillColor bg12
-        canvas.fillRect cellRect12
+        let canvas ← canvas.fillRect cellRect12
         let canvas := canvas.setFillColor (Color.rgba 1.0 1.0 1.0 0.7)
-        canvas.fillTextXY "Cell: 1,2 - DISCO PARTY!" (cellWidth + 10) (cellHeight * 2 + 20) fontSmall
+        let canvas ← canvas.fillTextXY "Cell: 1,2 - DISCO PARTY!" (cellWidth + 10) (cellHeight * 2 + 20) fontSmall
         let canvas := canvas.save
         let canvas := canvas.translate cellWidth (cellHeight * 2 + 30)
         let canvas ← renderAnimations canvas t

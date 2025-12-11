@@ -216,6 +216,18 @@ def strokeRoundedRect (ctx : DrawContext) (rect : Rect) (cornerRadius : Float) (
 def drawLine (ctx : DrawContext) (p1 p2 : Point) (color : Color) (lineWidth : Float := 1.0) : IO Unit :=
   ctx.strokePathSimple (Path.empty |>.moveTo p1 |>.lineTo p2) color lineWidth
 
+/-! ## Batch Drawing -/
+
+/-- Draw all geometry accumulated in a batch with a single draw call.
+    This is much faster than issuing separate draw calls for each shape. -/
+def drawBatch (ctx : DrawContext) (batch : Batch) : IO Unit := do
+  if batch.isEmpty then return
+  let vertexBuffer ← FFI.Buffer.createVertex ctx.renderer batch.vertices
+  let indexBuffer ← FFI.Buffer.createIndex ctx.renderer batch.indices
+  ctx.renderer.drawTriangles vertexBuffer indexBuffer batch.indexCount.toUInt32
+  FFI.Buffer.destroy indexBuffer
+  FFI.Buffer.destroy vertexBuffer
+
 /-! ## Text Rendering -/
 
 /-- Draw text at a position with a font, color, and transform.
@@ -278,10 +290,12 @@ end DrawContext
 
 /-! ## Stateful Canvas - Higher-level API with automatic state management -/
 
-/-- A canvas with built-in state management. -/
+/-- A canvas with built-in state management and optional batching. -/
 structure Canvas where
   ctx : DrawContext
   stateStack : StateStack
+  /-- Active batch accumulator. When Some, drawing ops add to batch instead of drawing immediately. -/
+  batch : Option Batch := none
 
 namespace Canvas
 
@@ -346,31 +360,74 @@ def setFillLinearGradient (start finish : Point) (stops : Array GradientStop) (c
 def setFillRadialGradient (center : Point) (radius : Float) (stops : Array GradientStop) (c : Canvas) : Canvas :=
   { c with stateStack := c.stateStack.setFillRadialGradient center radius stops }
 
+/-! ## Batching API -/
+
+/-- Start accumulating shapes into a batch instead of drawing them immediately.
+    Use `flushBatch` to draw all accumulated shapes with a single draw call. -/
+def beginBatch (c : Canvas) (capacityHint : Nat := 1000) : Canvas :=
+  { c with batch := some (Batch.withCapacity capacityHint) }
+
+/-- Flush the current batch, drawing all accumulated shapes with a single draw call.
+    Returns the canvas with no active batch. -/
+def flushBatch (c : Canvas) : IO Canvas := do
+  match c.batch with
+  | none => pure c
+  | some batch =>
+    c.ctx.drawBatch batch
+    pure { c with batch := none }
+
+/-- Check if batching is currently active. -/
+def isBatching (c : Canvas) : Bool :=
+  c.batch.isSome
+
+/-- Execute an action with batching enabled.
+    All shapes drawn within the action are batched and drawn with a single draw call at the end. -/
+def batched (capacityHint : Nat := 1000) (action : Canvas → IO Canvas) (c : Canvas) : IO Canvas := do
+  let c := c.beginBatch capacityHint
+  let c ← action c
+  c.flushBatch
+
 /-! ## Drawing operations -/
 
-/-- Fill a path using the current state. -/
-def fillPath (path : Path) (c : Canvas) : IO Unit :=
-  c.ctx.fillPathWithState path c.state
+/-- Fill a path using the current state. Batch-aware: adds to batch if active. -/
+def fillPath (path : Path) (c : Canvas) : IO Canvas := do
+  let transformedPath := c.state.transformPath path
+  let style := c.state.effectiveFillStyle
+  let result := Tessellation.tessellateConvexPathFillNDC transformedPath style c.ctx.baseWidth c.ctx.baseHeight
+  match c.batch with
+  | some batch =>
+    pure { c with batch := some (batch.add result) }
+  | none =>
+    c.ctx.fillPathWithStyle transformedPath style
+    pure c
 
-/-- Fill a rectangle using the current state. -/
-def fillRect (rect : Rect) (c : Canvas) : IO Unit :=
-  c.ctx.fillRectWithState rect c.state
+/-- Fill a rectangle using the current state. Batch-aware: adds to batch if active. -/
+def fillRect (rect : Rect) (c : Canvas) : IO Canvas := do
+  let transformedPath := c.state.transformPath (Path.rectangle rect)
+  let style := c.state.effectiveFillStyle
+  let result := Tessellation.tessellateConvexPathFillNDC transformedPath style c.ctx.baseWidth c.ctx.baseHeight
+  match c.batch with
+  | some batch =>
+    pure { c with batch := some (batch.add result) }
+  | none =>
+    c.ctx.fillPathWithStyle transformedPath style
+    pure c
 
 /-- Fill a rectangle specified by x, y, width, height using current state. -/
-def fillRectXYWH (x y width height : Float) (c : Canvas) : IO Unit :=
+def fillRectXYWH (x y width height : Float) (c : Canvas) : IO Canvas :=
   c.fillRect (Rect.mk' x y width height)
 
-/-- Fill a circle using the current state. -/
-def fillCircle (center : Point) (radius : Float) (c : Canvas) : IO Unit :=
-  c.ctx.fillCircleWithState center radius c.state
+/-- Fill a circle using the current state. Batch-aware: adds to batch if active. -/
+def fillCircle (center : Point) (radius : Float) (c : Canvas) : IO Canvas :=
+  c.fillPath (Path.circle center radius)
 
-/-- Fill an ellipse using the current state. -/
-def fillEllipse (center : Point) (radiusX radiusY : Float) (c : Canvas) : IO Unit :=
-  c.ctx.fillPathWithState (Path.ellipse center radiusX radiusY) c.state
+/-- Fill an ellipse using the current state. Batch-aware: adds to batch if active. -/
+def fillEllipse (center : Point) (radiusX radiusY : Float) (c : Canvas) : IO Canvas :=
+  c.fillPath (Path.ellipse center radiusX radiusY)
 
-/-- Fill a rounded rectangle using the current state. -/
-def fillRoundedRect (rect : Rect) (cornerRadius : Float) (c : Canvas) : IO Unit :=
-  c.ctx.fillPathWithState (Path.roundedRect rect cornerRadius) c.state
+/-- Fill a rounded rectangle using the current state. Batch-aware: adds to batch if active. -/
+def fillRoundedRect (rect : Rect) (cornerRadius : Float) (c : Canvas) : IO Canvas :=
+  c.fillPath (Path.roundedRect rect cornerRadius)
 
 /-! ## Stroke operations -/
 
@@ -380,52 +437,66 @@ private def effectiveStrokeStyle (c : Canvas) : StrokeStyle :=
   { state.strokeStyle with
     color := state.effectiveStrokeColor }
 
-/-- Stroke a path using the current state (applies transform and uses state's stroke style). -/
-def strokePath (path : Path) (c : Canvas) : IO Unit := do
+/-- Stroke a path using the current state. Batch-aware: adds to batch if active. -/
+def strokePath (path : Path) (c : Canvas) : IO Canvas := do
   let transformedPath := c.state.transformPath path
   let style := c.effectiveStrokeStyle
-  c.ctx.strokePath transformedPath style
+  let result := Tessellation.tessellateStrokeNDC transformedPath style c.ctx.baseWidth c.ctx.baseHeight
+  match c.batch with
+  | some batch =>
+    pure { c with batch := some (batch.add result) }
+  | none =>
+    c.ctx.strokePath transformedPath style
+    pure c
 
 /-- Stroke a rectangle using the current state. -/
-def strokeRect (rect : Rect) (c : Canvas) : IO Unit :=
+def strokeRect (rect : Rect) (c : Canvas) : IO Canvas :=
   c.strokePath (Path.rectangle rect)
 
 /-- Stroke a rectangle specified by x, y, width, height using current state. -/
-def strokeRectXYWH (x y width height : Float) (c : Canvas) : IO Unit :=
+def strokeRectXYWH (x y width height : Float) (c : Canvas) : IO Canvas :=
   c.strokeRect (Rect.mk' x y width height)
 
 /-- Stroke a circle using the current state. -/
-def strokeCircle (center : Point) (radius : Float) (c : Canvas) : IO Unit :=
+def strokeCircle (center : Point) (radius : Float) (c : Canvas) : IO Canvas :=
   c.strokePath (Path.circle center radius)
 
 /-- Stroke an ellipse using the current state. -/
-def strokeEllipse (center : Point) (radiusX radiusY : Float) (c : Canvas) : IO Unit :=
+def strokeEllipse (center : Point) (radiusX radiusY : Float) (c : Canvas) : IO Canvas :=
   c.strokePath (Path.ellipse center radiusX radiusY)
 
 /-- Stroke a rounded rectangle using the current state. -/
-def strokeRoundedRect (rect : Rect) (cornerRadius : Float) (c : Canvas) : IO Unit :=
+def strokeRoundedRect (rect : Rect) (cornerRadius : Float) (c : Canvas) : IO Canvas :=
   c.strokePath (Path.roundedRect rect cornerRadius)
 
 /-- Draw a line from p1 to p2 using the current state. -/
-def drawLine (p1 p2 : Point) (c : Canvas) : IO Unit :=
+def drawLine (p1 p2 : Point) (c : Canvas) : IO Canvas :=
   c.strokePath (Path.empty |>.moveTo p1 |>.lineTo p2)
 
 /-! ## Text operations -/
 
-/-- Draw text at a position with a font using the current fill color and transform. -/
-def fillText (text : String) (pos : Point) (font : Font) (c : Canvas) : IO Unit :=
+/-- Draw text at a position with a font using the current fill color and transform.
+    Note: Text uses a different shader and cannot be batched with shapes.
+    If batching is active, the batch is flushed before drawing text. -/
+def fillText (text : String) (pos : Point) (font : Font) (c : Canvas) : IO Canvas := do
+  -- Flush any pending batch since text uses different pipeline
+  let c ← c.flushBatch
   let color := c.state.effectiveFillColor
   let transform := c.state.transform
   c.ctx.fillTextTransformed text pos font color transform
+  pure c
 
 /-- Draw text at x, y coordinates with a font using the current fill color and transform. -/
-def fillTextXY (text : String) (x y : Float) (font : Font) (c : Canvas) : IO Unit :=
+def fillTextXY (text : String) (x y : Float) (font : Font) (c : Canvas) : IO Canvas :=
   c.fillText text ⟨x, y⟩ font
 
 /-- Draw text with an explicit color (still uses current transform). -/
-def fillTextColor (text : String) (pos : Point) (font : Font) (color : Color) (c : Canvas) : IO Unit :=
+def fillTextColor (text : String) (pos : Point) (font : Font) (color : Color) (c : Canvas) : IO Canvas := do
+  -- Flush any pending batch since text uses different pipeline
+  let c ← c.flushBatch
   let transform := c.state.transform
   c.ctx.fillTextTransformed text pos font color transform
+  pure c
 
 /-- Measure text dimensions. Returns (width, height). -/
 def measureText (text : String) (font : Font) (c : Canvas) : IO (Float × Float) :=

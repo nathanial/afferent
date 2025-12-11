@@ -592,4 +592,62 @@ def tessellateStrokeRectNDC (r : Rect) (style : StrokeStyle)
 
 end Tessellation
 
+/-! ## Batch Accumulation -/
+
+/-- Accumulates tessellated geometry for a single draw call.
+    Use this to batch many shapes into one draw call for better performance. -/
+structure Batch where
+  /-- Accumulated vertex data (6 floats per vertex: x, y, r, g, b, a). -/
+  vertices : Array Float
+  /-- Accumulated triangle indices. -/
+  indices : Array UInt32
+  /-- Current vertex count (vertices.size / 6), used for index remapping. -/
+  vertexCount : Nat
+deriving Inhabited
+
+namespace Batch
+
+/-- Create an empty batch. -/
+def empty : Batch := { vertices := #[], indices := #[], vertexCount := 0 }
+
+/-- Create a batch with pre-allocated capacity for estimated shape count.
+    Assumes ~30 floats and ~10 indices per shape on average. -/
+def withCapacity (shapeCount : Nat) : Batch :=
+  { vertices := Array.mkEmpty (shapeCount * 30)
+    indices := Array.mkEmpty (shapeCount * 10)
+    vertexCount := 0 }
+
+/-- Add a tessellation result to the batch.
+    Indices are automatically remapped to account for existing vertices. -/
+def add (batch : Batch) (result : TessellationResult) : Batch :=
+  if result.vertices.size == 0 then batch
+  else
+    let offset := batch.vertexCount.toUInt32
+    let remappedIndices := result.indices.map (· + offset)
+    { vertices := batch.vertices ++ result.vertices
+      indices := batch.indices ++ remappedIndices
+      vertexCount := batch.vertexCount + result.vertices.size / 6 }
+
+/-- Combine two batches. -/
+def append (b1 b2 : Batch) : Batch :=
+  if b2.vertices.size == 0 then b1
+  else if b1.vertices.size == 0 then b2
+  else
+    let offset := b1.vertexCount.toUInt32
+    let remappedIndices := b2.indices.map (· + offset)
+    { vertices := b1.vertices ++ b2.vertices
+      indices := b1.indices ++ remappedIndices
+      vertexCount := b1.vertexCount + b2.vertexCount }
+
+/-- Check if the batch is empty. -/
+def isEmpty (batch : Batch) : Bool := batch.vertices.size == 0
+
+/-- Get the number of indices (for draw call). -/
+def indexCount (batch : Batch) : Nat := batch.indices.size
+
+/-- Get the number of vertices. -/
+def vertexCount' (batch : Batch) : Nat := batch.vertexCount
+
+end Batch
+
 end Afferent
