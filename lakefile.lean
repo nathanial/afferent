@@ -15,8 +15,10 @@ lean_lib Afferent where
 lean_exe afferent where
   root := `Main
   -- Link against Metal and Cocoa frameworks on macOS
+  -- NOTE: Build with LEAN_CC=/usr/bin/clang to use system linker
   moreLinkArgs := #[
-    "-Wl,-F/Library/Developer/CommandLineTools/SDKs/MacOSX.sdk/System/Library/Frameworks",
+    "-L/Users/nathanialhartman/.elan/toolchains/leanprover--lean4---v4.25.2/lib",
+    "-L/Users/nathanialhartman/.elan/toolchains/leanprover--lean4---v4.25.2/lib/libc",
     "-framework", "Metal",
     "-framework", "Cocoa",
     "-framework", "QuartzCore",
