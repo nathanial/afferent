@@ -14,5 +14,8 @@ import Afferent.Render.Tessellation
 import Afferent.Canvas.State
 import Afferent.Canvas.Context
 
+-- Text
+import Afferent.Text.Font
+
 -- FFI
 import Afferent.FFI.Metal

@@ -18,6 +18,10 @@ opaque BufferPointed : NonemptyType
 def Buffer : Type := BufferPointed.type
 instance : Nonempty Buffer := BufferPointed.property
 
+opaque FontPointed : NonemptyType
+def Font : Type := FontPointed.type
+instance : Nonempty Font := FontPointed.property
+
 -- Module initialization (registers external classes)
 @[extern "afferent_initialize"]
 opaque init : IO Unit
@@ -66,5 +70,27 @@ opaque Renderer.drawTriangles
   (renderer : @& Renderer)
   (vertexBuffer indexBuffer : @& Buffer)
   (indexCount : UInt32) : IO Unit
+
+-- Font management
+@[extern "lean_afferent_font_load"]
+opaque Font.load (path : @& String) (size : UInt32) : IO Font
+
+@[extern "lean_afferent_font_destroy"]
+opaque Font.destroy (font : @& Font) : IO Unit
+
+@[extern "lean_afferent_font_get_metrics"]
+opaque Font.getMetrics (font : @& Font) : IO (Float × Float × Float)
+
+-- Text rendering
+@[extern "lean_afferent_text_measure"]
+opaque Text.measure (font : @& Font) (text : @& String) : IO (Float × Float)
+
+@[extern "lean_afferent_text_render"]
+opaque Text.render
+  (renderer : @& Renderer)
+  (font : @& Font)
+  (text : @& String)
+  (x y : Float)
+  (r g b a : Float) : IO Unit
 
 end Afferent.FFI

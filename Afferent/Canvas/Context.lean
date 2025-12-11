@@ -8,6 +8,7 @@ import Afferent.Core.Transform
 import Afferent.Core.Paint
 import Afferent.Canvas.State
 import Afferent.Render.Tessellation
+import Afferent.Text.Font
 import Afferent.FFI.Metal
 
 namespace Afferent
@@ -176,6 +177,20 @@ def strokeRoundedRect (ctx : DrawContext) (rect : Rect) (cornerRadius : Float) (
 /-- Draw a line from p1 to p2. -/
 def drawLine (ctx : DrawContext) (p1 p2 : Point) (color : Color) (lineWidth : Float := 1.0) : IO Unit :=
   ctx.strokePathSimple (Path.empty |>.moveTo p1 |>.lineTo p2) color lineWidth
+
+/-! ## Text Rendering -/
+
+/-- Draw text at a position with a font and color. -/
+def fillText (ctx : DrawContext) (text : String) (pos : Point) (font : Font) (color : Color) : IO Unit :=
+  FFI.Text.render ctx.renderer font.handle text pos.x pos.y color.r color.g color.b color.a
+
+/-- Draw text at x, y coordinates with a font and color. -/
+def fillTextXY (ctx : DrawContext) (text : String) (x y : Float) (font : Font) (color : Color) : IO Unit :=
+  FFI.Text.render ctx.renderer font.handle text x y color.r color.g color.b color.a
+
+/-- Measure the dimensions of text. Returns (width, height). -/
+def measureText (_ : DrawContext) (text : String) (font : Font) : IO (Float × Float) :=
+  Font.measureText font text
 
 /-- Run a render loop until the window is closed. -/
 def runLoop (ctx : DrawContext) (clearColor : Color) (draw : DrawContext → IO Unit) : IO Unit := do
@@ -351,6 +366,25 @@ def strokeRoundedRect (rect : Rect) (cornerRadius : Float) (c : Canvas) : IO Uni
 /-- Draw a line from p1 to p2 using the current state. -/
 def drawLine (p1 p2 : Point) (c : Canvas) : IO Unit :=
   c.strokePath (Path.empty |>.moveTo p1 |>.lineTo p2)
+
+/-! ## Text operations -/
+
+/-- Draw text at a position with a font using the current fill color. -/
+def fillText (text : String) (pos : Point) (font : Font) (c : Canvas) : IO Unit :=
+  let color := c.state.effectiveFillColor
+  c.ctx.fillText text pos font color
+
+/-- Draw text at x, y coordinates with a font using the current fill color. -/
+def fillTextXY (text : String) (x y : Float) (font : Font) (c : Canvas) : IO Unit :=
+  c.fillText text ⟨x, y⟩ font
+
+/-- Draw text with an explicit color. -/
+def fillTextColor (text : String) (pos : Point) (font : Font) (color : Color) (c : Canvas) : IO Unit :=
+  c.ctx.fillText text pos font color
+
+/-- Measure text dimensions. Returns (width, height). -/
+def measureText (text : String) (font : Font) (c : Canvas) : IO (Float × Float) :=
+  c.ctx.measureText text font
 
 /-! ## Window operations -/
 

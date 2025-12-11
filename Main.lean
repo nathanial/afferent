@@ -643,6 +643,78 @@ def gradientDemo : IO Unit := do
   IO.println "Cleaning up..."
   ctx.destroy
 
+def textDemo : IO Unit := do
+  IO.println "Text Rendering Demo"
+  IO.println "-------------------"
+
+  -- Create drawing context
+  let ctx ← DrawContext.create 900 700 "Afferent - Text Rendering"
+
+  -- Load fonts at different sizes
+  IO.println "Loading fonts..."
+  let fontSmall ← Font.load "/System/Library/Fonts/Monaco.ttf" 16
+  let fontMedium ← Font.load "/System/Library/Fonts/Monaco.ttf" 24
+  let fontLarge ← Font.load "/System/Library/Fonts/Monaco.ttf" 36
+  let fontHuge ← Font.load "/System/Library/Fonts/Monaco.ttf" 48
+
+  IO.println "Rendering text... (close window to exit)"
+
+  -- Run the render loop
+  ctx.runLoop Color.darkGray fun ctx => do
+    -- Row 1: Basic text in different sizes
+    ctx.fillTextXY "Small (16pt)" 50 50 fontSmall Color.white
+    ctx.fillTextXY "Medium (24pt)" 50 90 fontMedium Color.white
+    ctx.fillTextXY "Large (36pt)" 50 140 fontLarge Color.white
+    ctx.fillTextXY "Huge (48pt)" 50 200 fontHuge Color.white
+
+    -- Row 2: Text in different colors
+    ctx.fillTextXY "Red Text" 500 50 fontMedium Color.red
+    ctx.fillTextXY "Green Text" 500 90 fontMedium Color.green
+    ctx.fillTextXY "Blue Text" 500 130 fontMedium Color.blue
+    ctx.fillTextXY "Yellow Text" 500 170 fontMedium Color.yellow
+    ctx.fillTextXY "Cyan Text" 500 210 fontMedium Color.cyan
+    ctx.fillTextXY "Magenta Text" 500 250 fontMedium Color.magenta
+
+    -- Row 3: Showcase text content
+    ctx.fillTextXY "Afferent - A Lean 4 2D Graphics Library" 50 300 fontLarge Color.white
+
+    -- Row 4: Mixed content - text with shapes
+    ctx.fillRect (Rect.mk' 50 350 150 40) Color.blue
+    ctx.fillTextXY "Text on Shape" 60 380 fontSmall Color.white
+
+    ctx.fillCircle ⟨350, 370⟩ 30 Color.red
+    ctx.fillTextXY "Labels" 320 420 fontSmall Color.white
+
+    ctx.fillRoundedRect (Rect.mk' 450 350 180 40) 10 Color.green
+    ctx.fillTextXY "Rounded Button" 460 380 fontSmall Color.black
+
+    -- Row 5: Character set sample
+    ctx.fillTextXY "ABCDEFGHIJKLMNOPQRSTUVWXYZ" 50 470 fontMedium Color.white
+    ctx.fillTextXY "abcdefghijklmnopqrstuvwxyz" 50 510 fontMedium Color.white
+    ctx.fillTextXY "0123456789 !@#$%^&*()_+-=" 50 550 fontMedium Color.white
+
+    -- Row 6: Semi-transparent text
+    ctx.fillTextXY "Semi-transparent" 50 600 fontMedium (Color.rgba 1.0 1.0 1.0 0.7)
+    ctx.fillTextXY "More transparent" 300 600 fontMedium (Color.rgba 1.0 1.0 1.0 0.4)
+    ctx.fillTextXY "Very faint" 550 600 fontMedium (Color.rgba 1.0 1.0 1.0 0.2)
+
+    -- Row 7: Colored backgrounds with text
+    ctx.fillRect (Rect.mk' 50 640 200 40) (Color.rgba 0.8 0.2 0.2 1.0)
+    ctx.fillTextXY "Error Message" 60 670 fontSmall Color.white
+
+    ctx.fillRect (Rect.mk' 280 640 200 40) (Color.rgba 0.2 0.6 0.2 1.0)
+    ctx.fillTextXY "Success!" 330 670 fontSmall Color.white
+
+    ctx.fillRect (Rect.mk' 510 640 200 40) (Color.rgba 0.8 0.6 0.1 1.0)
+    ctx.fillTextXY "Warning" 570 670 fontSmall Color.black
+
+  IO.println "Cleaning up..."
+  fontSmall.destroy
+  fontMedium.destroy
+  fontLarge.destroy
+  fontHuge.destroy
+  ctx.destroy
+
 def main : IO Unit := do
   IO.println "Afferent - 2D Vector Graphics Library"
   IO.println "======================================"
@@ -662,6 +734,9 @@ def main : IO Unit := do
 
   -- Run gradient demo
   gradientDemo
+
+  -- Run text demo
+  textDemo
 
   IO.println ""
   IO.println "Done!"

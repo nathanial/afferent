@@ -6,7 +6,7 @@
 extern id<MTLDevice> afferent_window_get_device(AfferentWindowRef window);
 extern CAMetalLayer* afferent_window_get_metal_layer(AfferentWindowRef window);
 
-// Shader source embedded in code
+// Shader source embedded in code - basic colored vertices
 static NSString *shaderSource = @R"(
 #include <metal_stdlib>
 using namespace metal;
@@ -34,12 +34,54 @@ fragment float4 fragment_main(VertexOut in [[stage_in]]) {
 }
 )";
 
+// Text shader source - textured quads with alpha from texture
+static NSString *textShaderSource = @R"(
+#include <metal_stdlib>
+using namespace metal;
+
+struct TextVertexIn {
+    float2 position [[attribute(0)]];
+    float2 texCoord [[attribute(1)]];
+    float4 color [[attribute(2)]];
+};
+
+struct TextVertexOut {
+    float4 position [[position]];
+    float2 texCoord;
+    float4 color;
+};
+
+vertex TextVertexOut text_vertex_main(TextVertexIn in [[stage_in]]) {
+    TextVertexOut out;
+    out.position = float4(in.position, 0.0, 1.0);
+    out.texCoord = in.texCoord;
+    out.color = in.color;
+    return out;
+}
+
+fragment float4 text_fragment_main(TextVertexOut in [[stage_in]],
+                                   texture2d<float> tex [[texture(0)]],
+                                   sampler smp [[sampler(0)]]) {
+    float alpha = tex.sample(smp, in.texCoord).r;  // Single channel (grayscale) atlas
+    return float4(in.color.rgb, in.color.a * alpha);
+}
+)";
+
+// Text vertex structure (different layout than AfferentVertex)
+typedef struct {
+    float position[2];
+    float texCoord[2];
+    float color[4];
+} TextVertex;
+
 // Internal renderer structure
 struct AfferentRenderer {
     AfferentWindowRef window;
     id<MTLDevice> device;
     id<MTLCommandQueue> commandQueue;
     id<MTLRenderPipelineState> pipelineState;
+    id<MTLRenderPipelineState> textPipelineState;  // For text rendering
+    id<MTLSamplerState> textSampler;               // For text texture sampling
     id<MTLCommandBuffer> currentCommandBuffer;
     id<MTLRenderCommandEncoder> currentEncoder;
     id<CAMetalDrawable> currentDrawable;
@@ -47,6 +89,8 @@ struct AfferentRenderer {
     NSUInteger msaaWidth;        // Track size for recreation
     NSUInteger msaaHeight;
     MTLClearColor clearColor;
+    float screenWidth;   // Current screen dimensions for text rendering
+    float screenHeight;
 };
 
 // Internal buffer structure
@@ -141,6 +185,78 @@ AfferentResult afferent_renderer_create(
             return AFFERENT_ERROR_PIPELINE_FAILED;
         }
 
+        // Create text rendering pipeline
+        id<MTLLibrary> textLibrary = [renderer->device newLibraryWithSource:textShaderSource
+                                                                    options:nil
+                                                                      error:&error];
+        if (!textLibrary) {
+            NSLog(@"Text shader compilation failed: %@", error);
+            free(renderer);
+            return AFFERENT_ERROR_PIPELINE_FAILED;
+        }
+
+        id<MTLFunction> textVertexFunction = [textLibrary newFunctionWithName:@"text_vertex_main"];
+        id<MTLFunction> textFragmentFunction = [textLibrary newFunctionWithName:@"text_fragment_main"];
+
+        if (!textVertexFunction || !textFragmentFunction) {
+            NSLog(@"Failed to find text shader functions");
+            free(renderer);
+            return AFFERENT_ERROR_PIPELINE_FAILED;
+        }
+
+        // Create text vertex descriptor
+        MTLVertexDescriptor *textVertexDescriptor = [[MTLVertexDescriptor alloc] init];
+
+        // Position: 2 floats at offset 0
+        textVertexDescriptor.attributes[0].format = MTLVertexFormatFloat2;
+        textVertexDescriptor.attributes[0].offset = offsetof(TextVertex, position);
+        textVertexDescriptor.attributes[0].bufferIndex = 0;
+
+        // TexCoord: 2 floats at offset 8
+        textVertexDescriptor.attributes[1].format = MTLVertexFormatFloat2;
+        textVertexDescriptor.attributes[1].offset = offsetof(TextVertex, texCoord);
+        textVertexDescriptor.attributes[1].bufferIndex = 0;
+
+        // Color: 4 floats at offset 16
+        textVertexDescriptor.attributes[2].format = MTLVertexFormatFloat4;
+        textVertexDescriptor.attributes[2].offset = offsetof(TextVertex, color);
+        textVertexDescriptor.attributes[2].bufferIndex = 0;
+
+        // Layout
+        textVertexDescriptor.layouts[0].stride = sizeof(TextVertex);
+        textVertexDescriptor.layouts[0].stepFunction = MTLVertexStepFunctionPerVertex;
+
+        // Create text pipeline state
+        MTLRenderPipelineDescriptor *textPipelineDesc = [[MTLRenderPipelineDescriptor alloc] init];
+        textPipelineDesc.vertexFunction = textVertexFunction;
+        textPipelineDesc.fragmentFunction = textFragmentFunction;
+        textPipelineDesc.vertexDescriptor = textVertexDescriptor;
+        textPipelineDesc.colorAttachments[0].pixelFormat = MTLPixelFormatBGRA8Unorm;
+        textPipelineDesc.rasterSampleCount = 4;  // Match MSAA
+
+        // Enable blending for text
+        textPipelineDesc.colorAttachments[0].blendingEnabled = YES;
+        textPipelineDesc.colorAttachments[0].sourceRGBBlendFactor = MTLBlendFactorSourceAlpha;
+        textPipelineDesc.colorAttachments[0].destinationRGBBlendFactor = MTLBlendFactorOneMinusSourceAlpha;
+        textPipelineDesc.colorAttachments[0].sourceAlphaBlendFactor = MTLBlendFactorOne;
+        textPipelineDesc.colorAttachments[0].destinationAlphaBlendFactor = MTLBlendFactorOneMinusSourceAlpha;
+
+        renderer->textPipelineState = [renderer->device newRenderPipelineStateWithDescriptor:textPipelineDesc
+                                                                                       error:&error];
+        if (!renderer->textPipelineState) {
+            NSLog(@"Text pipeline creation failed: %@", error);
+            free(renderer);
+            return AFFERENT_ERROR_PIPELINE_FAILED;
+        }
+
+        // Create text sampler
+        MTLSamplerDescriptor *samplerDesc = [[MTLSamplerDescriptor alloc] init];
+        samplerDesc.minFilter = MTLSamplerMinMagFilterLinear;
+        samplerDesc.magFilter = MTLSamplerMinMagFilterLinear;
+        samplerDesc.sAddressMode = MTLSamplerAddressModeClampToEdge;
+        samplerDesc.tAddressMode = MTLSamplerAddressModeClampToEdge;
+        renderer->textSampler = [renderer->device newSamplerStateWithDescriptor:samplerDesc];
+
         *out_renderer = renderer;
         return AFFERENT_OK;
     }
@@ -195,6 +311,10 @@ AfferentResult afferent_renderer_begin_frame(AfferentRendererRef renderer, float
         // Ensure MSAA texture matches drawable size
         id<MTLTexture> drawableTexture = renderer->currentDrawable.texture;
         ensureMSAATexture(renderer, drawableTexture.width, drawableTexture.height);
+
+        // Store screen dimensions for text rendering
+        renderer->screenWidth = drawableTexture.width;
+        renderer->screenHeight = drawableTexture.height;
 
         // Set up render pass with MSAA
         MTLRenderPassDescriptor *passDesc = [MTLRenderPassDescriptor renderPassDescriptor];
@@ -292,6 +412,9 @@ void afferent_renderer_draw_triangles(
         return;
     }
 
+    // Ensure we're using the basic pipeline (not text pipeline)
+    [renderer->currentEncoder setRenderPipelineState:renderer->pipelineState];
+
     [renderer->currentEncoder setVertexBuffer:vertex_buffer->mtlBuffer offset:0 atIndex:0];
 
     [renderer->currentEncoder drawIndexedPrimitives:MTLPrimitiveTypeTriangle
@@ -299,4 +422,174 @@ void afferent_renderer_draw_triangles(
                                           indexType:MTLIndexTypeUInt32
                                         indexBuffer:index_buffer->mtlBuffer
                                   indexBufferOffset:0];
+}
+
+// External functions from text_render.c
+extern uint8_t* afferent_font_get_atlas_data(AfferentFontRef font);
+extern uint32_t afferent_font_get_atlas_width(AfferentFontRef font);
+extern uint32_t afferent_font_get_atlas_height(AfferentFontRef font);
+extern void* afferent_font_get_metal_texture(AfferentFontRef font);
+extern void afferent_font_set_metal_texture(AfferentFontRef font, void* texture);
+extern int afferent_text_generate_vertices(
+    AfferentFontRef font,
+    const char* text,
+    float x, float y,
+    float r, float g, float b, float a,
+    float screen_width, float screen_height,
+    float** out_vertices,
+    uint32_t** out_indices,
+    uint32_t* out_vertex_count,
+    uint32_t* out_index_count
+);
+
+// Create or update font atlas texture
+static id<MTLTexture> ensureFontTexture(AfferentRendererRef renderer, AfferentFontRef font) {
+    void* stored_texture = afferent_font_get_metal_texture(font);
+    id<MTLTexture> texture = (__bridge id<MTLTexture>)stored_texture;
+
+    if (!texture) {
+        // Create texture from atlas data
+        uint8_t* atlas_data = afferent_font_get_atlas_data(font);
+        uint32_t atlas_width = afferent_font_get_atlas_width(font);
+        uint32_t atlas_height = afferent_font_get_atlas_height(font);
+
+        MTLTextureDescriptor *desc = [MTLTextureDescriptor texture2DDescriptorWithPixelFormat:MTLPixelFormatR8Unorm
+                                                                                        width:atlas_width
+                                                                                       height:atlas_height
+                                                                                    mipmapped:NO];
+        desc.usage = MTLTextureUsageShaderRead;
+
+        texture = [renderer->device newTextureWithDescriptor:desc];
+
+        MTLRegion region = MTLRegionMake2D(0, 0, atlas_width, atlas_height);
+        [texture replaceRegion:region mipmapLevel:0 withBytes:atlas_data bytesPerRow:atlas_width];
+
+        // Use __bridge_retained to transfer ownership to the C struct
+        // This prevents ARC from releasing the texture when the function returns
+        afferent_font_set_metal_texture(font, (__bridge_retained void*)texture);
+    }
+
+    return texture;
+}
+
+// Update the font texture with new glyph data
+static void updateFontTexture(AfferentRendererRef renderer, AfferentFontRef font) {
+    id<MTLTexture> texture = (__bridge id<MTLTexture>)afferent_font_get_metal_texture(font);
+    if (texture) {
+        uint8_t* atlas_data = afferent_font_get_atlas_data(font);
+        uint32_t atlas_width = afferent_font_get_atlas_width(font);
+        uint32_t atlas_height = afferent_font_get_atlas_height(font);
+
+        MTLRegion region = MTLRegionMake2D(0, 0, atlas_width, atlas_height);
+        [texture replaceRegion:region mipmapLevel:0 withBytes:atlas_data bytesPerRow:atlas_width];
+    }
+}
+
+// Render text using the text pipeline
+AfferentResult afferent_text_render(
+    AfferentRendererRef renderer,
+    AfferentFontRef font,
+    const char* text,
+    float x,
+    float y,
+    float r,
+    float g,
+    float b,
+    float a
+) {
+    @autoreleasepool {
+        if (!renderer || !renderer->currentEncoder || !font || !text || text[0] == '\0') {
+            return AFFERENT_OK;  // Nothing to render
+        }
+
+        // Generate vertex data
+        float* vertices = NULL;
+        uint32_t* indices = NULL;
+        uint32_t vertex_count = 0;
+        uint32_t index_count = 0;
+
+        int success = afferent_text_generate_vertices(
+            font, text, x, y, r, g, b, a,
+            renderer->screenWidth, renderer->screenHeight,
+            &vertices, &indices, &vertex_count, &index_count
+        );
+
+        if (!success || vertex_count == 0) {
+            free(vertices);
+            free(indices);
+            return AFFERENT_OK;
+        }
+
+        // Ensure font texture is created and up to date
+        id<MTLTexture> fontTexture = ensureFontTexture(renderer, font);
+        updateFontTexture(renderer, font);
+
+        // Convert float vertex data to TextVertex format
+        TextVertex* textVertices = malloc(vertex_count * sizeof(TextVertex));
+        for (uint32_t i = 0; i < vertex_count; i++) {
+            size_t base = i * 8;  // 8 floats per vertex
+            textVertices[i].position[0] = vertices[base + 0];
+            textVertices[i].position[1] = vertices[base + 1];
+            textVertices[i].texCoord[0] = vertices[base + 2];
+            textVertices[i].texCoord[1] = vertices[base + 3];
+            textVertices[i].color[0] = vertices[base + 4];
+            textVertices[i].color[1] = vertices[base + 5];
+            textVertices[i].color[2] = vertices[base + 6];
+            textVertices[i].color[3] = vertices[base + 7];
+        }
+
+        // Create Metal buffers
+        id<MTLBuffer> vertexBuffer = [renderer->device newBufferWithBytes:textVertices
+                                                                   length:vertex_count * sizeof(TextVertex)
+                                                                  options:MTLResourceStorageModeShared];
+        id<MTLBuffer> indexBuffer = [renderer->device newBufferWithBytes:indices
+                                                                  length:index_count * sizeof(uint32_t)
+                                                                 options:MTLResourceStorageModeShared];
+
+        free(textVertices);
+        free(vertices);
+        free(indices);
+
+        if (!vertexBuffer || !indexBuffer) {
+            return AFFERENT_ERROR_TEXT_FAILED;
+        }
+
+        // Switch to text pipeline
+        [renderer->currentEncoder setRenderPipelineState:renderer->textPipelineState];
+
+        // Set texture and sampler
+        [renderer->currentEncoder setFragmentTexture:fontTexture atIndex:0];
+        [renderer->currentEncoder setFragmentSamplerState:renderer->textSampler atIndex:0];
+
+        // Draw text quads
+        [renderer->currentEncoder setVertexBuffer:vertexBuffer offset:0 atIndex:0];
+        [renderer->currentEncoder drawIndexedPrimitives:MTLPrimitiveTypeTriangle
+                                             indexCount:index_count
+                                              indexType:MTLIndexTypeUInt32
+                                            indexBuffer:indexBuffer
+                                      indexBufferOffset:0];
+
+        // Switch back to basic pipeline for subsequent drawing
+        [renderer->currentEncoder setRenderPipelineState:renderer->pipelineState];
+
+        return AFFERENT_OK;
+    }
+}
+
+// Helper to get renderer screen dimensions (for Lean FFI)
+float afferent_renderer_get_screen_width(AfferentRendererRef renderer) {
+    return renderer ? renderer->screenWidth : 0;
+}
+
+float afferent_renderer_get_screen_height(AfferentRendererRef renderer) {
+    return renderer ? renderer->screenHeight : 0;
+}
+
+// Release a retained Metal texture (called from text_render.c when font is destroyed)
+void afferent_release_metal_texture(void* texture_ptr) {
+    if (texture_ptr) {
+        // Transfer ownership back to ARC so it can release the texture
+        id<MTLTexture> texture = (__bridge_transfer id<MTLTexture>)texture_ptr;
+        (void)texture;  // Let ARC release it
+    }
 }
