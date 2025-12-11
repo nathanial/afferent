@@ -1104,6 +1104,33 @@ def drawOrbitalParticles (t : Float) (c : Canvas) : IO Canvas := do
   FFI.Renderer.drawOrbitalParticles c.ctx.renderer t
   pure c
 
+/-! ## Dynamic Circle Rendering
+    CPU updates positions each frame, GPU does HSV->RGB and pixel->NDC.
+    Cuts per-frame data transfer in half (4 floats vs 8 floats per circle). -/
+
+/-- Build dynamic circle data from bouncing particles.
+    Format: [pixelX, pixelY, hueBase, radiusPixels] × count (4 floats per circle) -/
+def buildDynamicCircleData (particles : BouncingParticleData) : Array Float := Id.run do
+  let mut data := Array.mkEmpty (particles.count * 4)
+  for i in [:particles.count] do
+    let pbase := i * 5
+    let x := particles.particleState[pbase]!
+    let y := particles.particleState[pbase + 1]!
+    let hueBase := particles.particleState[pbase + 4]!
+    data := data.push x
+    data := data.push y
+    data := data.push hueBase
+    data := data.push particles.radius
+  data
+
+/-- Draw dynamic circles - GPU does color + NDC conversion!
+    Positions updated each frame from CPU, but HSV->RGB and pixel->NDC done on GPU.
+    Half the data transfer compared to full instance data. -/
+def drawDynamicCircles (particles : BouncingParticleData) (t : Float) (c : Canvas) : IO Canvas := do
+  let data := buildDynamicCircleData particles
+  FFI.Renderer.drawDynamicCircles c.ctx.renderer data particles.count.toUInt32 t
+  pure c
+
 /-! ## Drawing operations -/
 
 /-- Fill a path using the current state. Batch-aware: adds to batch if active. -/

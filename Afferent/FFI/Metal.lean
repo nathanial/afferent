@@ -242,4 +242,18 @@ opaque Renderer.drawOrbitalParticles
   (renderer : @& Renderer)
   (time : Float) : IO Unit
 
+-- ============================================================================
+-- DYNAMIC CIRCLE RENDERING - CPU positions, GPU color/NDC
+-- Positions updated each frame, HSV->RGB and pixel->NDC done on GPU
+-- Data format: [pixelX, pixelY, hueBase, radiusPixels] × count (4 floats per circle)
+-- ============================================================================
+
+-- Draw dynamic circles (called every frame with position data)
+@[extern "lean_afferent_renderer_draw_dynamic_circles"]
+opaque Renderer.drawDynamicCircles
+  (renderer : @& Renderer)
+  (data : @& Array Float)
+  (count : UInt32)
+  (time : Float) : IO Unit
+
 end Afferent.FFI

@@ -924,11 +924,13 @@ def renderTriangleTest (c : Canvas) (t : Float) (font : Font) (particles : Canva
   let c ← c.fillTextXY s!"Triangles: {particles.count} GPU-animated triangles (Space to advance)" 20 30 font
   c.drawAnimatedTriangles t
 
-/-- Render bouncing circles. -/
+/-- Render bouncing circles - Dynamic GPU rendering!
+    CPU updates positions (physics), GPU does HSV->RGB and pixel->NDC.
+    Half the data transfer compared to old approach. -/
 def renderCircleTest (c : Canvas) (t : Float) (font : Font) (particles : Canvas.BouncingParticleData) : IO Canvas := do
   let c := c.setFillColor Color.white
-  let c ← c.fillTextXY s!"Circles: {particles.count} bouncing circles (Space to advance)" 20 30 font
-  c.batchInstancedBouncingCirclesFast particles t
+  let c ← c.fillTextXY s!"Circles: {particles.count} dynamic GPU circles (Space to advance)" 20 30 font
+  c.drawDynamicCircles particles t
 
 /-! ## Unified Visual Demo -/
 

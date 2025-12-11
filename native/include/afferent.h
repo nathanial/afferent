@@ -254,6 +254,20 @@ void afferent_renderer_draw_orbital_particles(
     float time
 );
 
+// ============================================================================
+// Dynamic circle rendering - CPU positions, GPU color/NDC conversion
+// Positions updated each frame, HSV->RGB and pixel->NDC done on GPU
+// ============================================================================
+
+// Draw dynamic circles (called every frame with position data)
+// data: [pixelX, pixelY, hueBase, radiusPixels] × count (4 floats per circle)
+void afferent_renderer_draw_dynamic_circles(
+    AfferentRendererRef renderer,
+    const float* data,
+    uint32_t count,
+    float time
+);
+
 #ifdef __cplusplus
 }
 #endif
