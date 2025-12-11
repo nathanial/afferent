@@ -303,8 +303,17 @@ int afferent_font_atlas_dirty(AfferentFontRef font) {
     return 1;
 }
 
-// Generate vertex data for rendering text
+// Helper to apply 2D affine transform to a point
+// Transform is [a, b, c, d, tx, ty] where: x' = a*x + c*y + tx, y' = b*x + d*y + ty
+static inline void apply_transform(float px, float py, const float* t,
+                                   float* out_x, float* out_y) {
+    *out_x = t[0] * px + t[2] * py + t[4];
+    *out_y = t[1] * px + t[3] * py + t[5];
+}
+
+// Generate vertex data for rendering text with transform support
 // Vertex format: pos.x, pos.y, uv.x, uv.y, r, g, b, a (8 floats per vertex)
+// Transform is [a, b, c, d, tx, ty] (6 floats), or NULL for identity
 // Returns number of vertices generated
 int afferent_text_generate_vertices(
     AfferentFontRef font,
@@ -314,6 +323,7 @@ int afferent_text_generate_vertices(
     float r, float g, float b, float a,
     float screen_width,
     float screen_height,
+    const float* transform,
     float** out_vertices,
     uint32_t** out_indices,
     uint32_t* out_vertex_count,
@@ -321,6 +331,12 @@ int afferent_text_generate_vertices(
 ) {
     if (!font || !text || !out_vertices || !out_indices) {
         return 0;
+    }
+
+    // Default to identity transform if none provided
+    float identity[6] = {1.0f, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f};
+    if (!transform) {
+        transform = identity;
     }
 
     size_t text_len = strlen(text);
@@ -353,19 +369,36 @@ int afferent_text_generate_vertices(
         GlyphInfo* glyph = cache_glyph(font, codepoint);
 
         if (glyph && glyph->width > 0 && glyph->height > 0) {
-            // Calculate quad corners in pixel coordinates
+            // Calculate quad corners in pixel coordinates (pre-transform)
             float gx = cursor_x + glyph->bearing_x;
             float gy = cursor_y - glyph->bearing_y;  // FreeType Y is up, screen Y is down
             float gw = glyph->width;
             float gh = glyph->height;
 
-            // Convert to NDC
-            float x0 = (gx / screen_width) * 2.0f - 1.0f;
-            float y0 = 1.0f - (gy / screen_height) * 2.0f;
-            float x1 = ((gx + gw) / screen_width) * 2.0f - 1.0f;
-            float y1 = 1.0f - ((gy + gh) / screen_height) * 2.0f;
+            // The 4 corners in pixel space (before transform)
+            float px0 = gx, py0 = gy;           // Top-left
+            float px1 = gx + gw, py1 = gy;      // Top-right
+            float px2 = gx + gw, py2 = gy + gh; // Bottom-right
+            float px3 = gx, py3 = gy + gh;      // Bottom-left
 
-            // UV coordinates in atlas
+            // Apply transform to get final pixel positions
+            float tx0, ty0, tx1, ty1, tx2, ty2, tx3, ty3;
+            apply_transform(px0, py0, transform, &tx0, &ty0);
+            apply_transform(px1, py1, transform, &tx1, &ty1);
+            apply_transform(px2, py2, transform, &tx2, &ty2);
+            apply_transform(px3, py3, transform, &tx3, &ty3);
+
+            // Convert transformed positions to NDC
+            float x0 = (tx0 / screen_width) * 2.0f - 1.0f;
+            float y0 = 1.0f - (ty0 / screen_height) * 2.0f;
+            float x1 = (tx1 / screen_width) * 2.0f - 1.0f;
+            float y1_ndc = 1.0f - (ty1 / screen_height) * 2.0f;
+            float x2 = (tx2 / screen_width) * 2.0f - 1.0f;
+            float y2 = 1.0f - (ty2 / screen_height) * 2.0f;
+            float x3 = (tx3 / screen_width) * 2.0f - 1.0f;
+            float y3 = 1.0f - (ty3 / screen_height) * 2.0f;
+
+            // UV coordinates in atlas (unchanged by transform)
             float u0 = (float)glyph->atlas_x / font->atlas_width;
             float v0 = (float)glyph->atlas_y / font->atlas_height;
             float u1 = (float)(glyph->atlas_x + glyph->width) / font->atlas_width;
@@ -381,17 +414,17 @@ int afferent_text_generate_vertices(
             vertices[vi++] = r; vertices[vi++] = g; vertices[vi++] = b; vertices[vi++] = a;
 
             // Top-right
-            vertices[vi++] = x1; vertices[vi++] = y0;
+            vertices[vi++] = x1; vertices[vi++] = y1_ndc;
             vertices[vi++] = u1; vertices[vi++] = v0;
             vertices[vi++] = r; vertices[vi++] = g; vertices[vi++] = b; vertices[vi++] = a;
 
             // Bottom-right
-            vertices[vi++] = x1; vertices[vi++] = y1;
+            vertices[vi++] = x2; vertices[vi++] = y2;
             vertices[vi++] = u1; vertices[vi++] = v1;
             vertices[vi++] = r; vertices[vi++] = g; vertices[vi++] = b; vertices[vi++] = a;
 
             // Bottom-left
-            vertices[vi++] = x0; vertices[vi++] = y1;
+            vertices[vi++] = x3; vertices[vi++] = y3;
             vertices[vi++] = u0; vertices[vi++] = v1;
             vertices[vi++] = r; vertices[vi++] = g; vertices[vi++] = b; vertices[vi++] = a;
 

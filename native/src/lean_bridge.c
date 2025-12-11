@@ -313,16 +313,27 @@ LEAN_EXPORT lean_obj_res lean_afferent_text_render(
     double g,
     double b,
     double a,
+    lean_obj_arg transform_arr,
     lean_obj_arg world
 ) {
     AfferentRendererRef renderer = (AfferentRendererRef)lean_get_external_data(renderer_obj);
     AfferentFontRef font = (AfferentFontRef)lean_get_external_data(font_obj);
     const char* text = lean_string_cstr(text_obj);
 
+    // Extract transform array (6 floats: a, b, c, d, tx, ty)
+    float transform[6] = {1.0f, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f};  // Identity default
+    size_t arr_size = lean_array_size(transform_arr);
+    if (arr_size >= 6) {
+        for (size_t i = 0; i < 6; i++) {
+            transform[i] = (float)lean_unbox_float(lean_array_get_core(transform_arr, i));
+        }
+    }
+
     AfferentResult result = afferent_text_render(
         renderer, font, text,
         (float)x, (float)y,
-        (float)r, (float)g, (float)b, (float)a
+        (float)r, (float)g, (float)b, (float)a,
+        transform
     );
 
     if (result != AFFERENT_OK) {

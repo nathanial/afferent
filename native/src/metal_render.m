@@ -436,6 +436,7 @@ extern int afferent_text_generate_vertices(
     float x, float y,
     float r, float g, float b, float a,
     float screen_width, float screen_height,
+    const float* transform,
     float** out_vertices,
     uint32_t** out_indices,
     uint32_t* out_vertex_count,
@@ -495,7 +496,8 @@ AfferentResult afferent_text_render(
     float r,
     float g,
     float b,
-    float a
+    float a,
+    const float* transform
 ) {
     @autoreleasepool {
         if (!renderer || !renderer->currentEncoder || !font || !text || text[0] == '\0') {
@@ -511,6 +513,7 @@ AfferentResult afferent_text_render(
         int success = afferent_text_generate_vertices(
             font, text, x, y, r, g, b, a,
             renderer->screenWidth, renderer->screenHeight,
+            transform,
             &vertices, &indices, &vertex_count, &index_count
         );
 

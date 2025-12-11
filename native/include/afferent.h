@@ -114,6 +114,8 @@ void afferent_text_measure(
 // Render text - generates vertices for textured quads
 // Returns vertex data (pos.x, pos.y, uv.x, uv.y, color.r, color.g, color.b, color.a)
 // and index data for rendering. Caller must free the returned arrays.
+// Transform is a 6-component affine matrix: [a, b, c, d, tx, ty]
+// where: x' = a*x + c*y + tx, y' = b*x + d*y + ty
 AfferentResult afferent_text_render(
     AfferentRendererRef renderer,
     AfferentFontRef font,
@@ -123,7 +125,8 @@ AfferentResult afferent_text_render(
     float r,
     float g,
     float b,
-    float a
+    float a,
+    const float* transform
 );
 
 #ifdef __cplusplus

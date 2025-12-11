@@ -180,13 +180,17 @@ def drawLine (ctx : DrawContext) (p1 p2 : Point) (color : Color) (lineWidth : Fl
 
 /-! ## Text Rendering -/
 
-/-- Draw text at a position with a font and color. -/
-def fillText (ctx : DrawContext) (text : String) (pos : Point) (font : Font) (color : Color) : IO Unit :=
-  FFI.Text.render ctx.renderer font.handle text pos.x pos.y color.r color.g color.b color.a
+/-- Draw text at a position with a font, color, and transform. -/
+def fillTextTransformed (ctx : DrawContext) (text : String) (pos : Point) (font : Font) (color : Color) (transform : Transform) : IO Unit :=
+  FFI.Text.render ctx.renderer font.handle text pos.x pos.y color.r color.g color.b color.a transform.toArray
 
-/-- Draw text at x, y coordinates with a font and color. -/
+/-- Draw text at a position with a font and color (identity transform). -/
+def fillText (ctx : DrawContext) (text : String) (pos : Point) (font : Font) (color : Color) : IO Unit :=
+  ctx.fillTextTransformed text pos font color Transform.identity
+
+/-- Draw text at x, y coordinates with a font and color (identity transform). -/
 def fillTextXY (ctx : DrawContext) (text : String) (x y : Float) (font : Font) (color : Color) : IO Unit :=
-  FFI.Text.render ctx.renderer font.handle text x y color.r color.g color.b color.a
+  ctx.fillText text ⟨x, y⟩ font color
 
 /-- Measure the dimensions of text. Returns (width, height). -/
 def measureText (_ : DrawContext) (text : String) (font : Font) : IO (Float × Float) :=
@@ -369,18 +373,20 @@ def drawLine (p1 p2 : Point) (c : Canvas) : IO Unit :=
 
 /-! ## Text operations -/
 
-/-- Draw text at a position with a font using the current fill color. -/
+/-- Draw text at a position with a font using the current fill color and transform. -/
 def fillText (text : String) (pos : Point) (font : Font) (c : Canvas) : IO Unit :=
   let color := c.state.effectiveFillColor
-  c.ctx.fillText text pos font color
+  let transform := c.state.transform
+  c.ctx.fillTextTransformed text pos font color transform
 
-/-- Draw text at x, y coordinates with a font using the current fill color. -/
+/-- Draw text at x, y coordinates with a font using the current fill color and transform. -/
 def fillTextXY (text : String) (x y : Float) (font : Font) (c : Canvas) : IO Unit :=
   c.fillText text ⟨x, y⟩ font
 
-/-- Draw text with an explicit color. -/
+/-- Draw text with an explicit color (still uses current transform). -/
 def fillTextColor (text : String) (pos : Point) (font : Font) (color : Color) (c : Canvas) : IO Unit :=
-  c.ctx.fillText text pos font color
+  let transform := c.state.transform
+  c.ctx.fillTextTransformed text pos font color transform
 
 /-- Measure text dimensions. Returns (width, height). -/
 def measureText (text : String) (font : Font) (c : Canvas) : IO (Float × Float) :=

@@ -91,6 +91,7 @@ opaque Text.render
   (font : @& Font)
   (text : @& String)
   (x y : Float)
-  (r g b a : Float) : IO Unit
+  (r g b a : Float)
+  (transform : @& Array Float) : IO Unit
 
 end Afferent.FFI
