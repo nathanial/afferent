@@ -902,39 +902,15 @@ def renderAnimations (c : Canvas) (t : Float) : IO Canvas := do
 
 /-! ## Performance Test -/
 
-/-- Render many spinning squares for performance testing.
+/-- Render many spinning squares for performance testing using pre-computed particle data.
     Press Space to toggle this mode.
-    Uses GPU instancing for maximum performance - transforms computed on GPU! -/
-def renderPerformanceTest (c : Canvas) (t : Float) (font : Font) (squareCount : Nat := 1000) : IO Canvas := do
-  let pi := 3.14159265358979323846
-  let centerX := 960.0
-  let centerY := 540.0
-
+    Uses GPU instancing + pre-computed static data for maximum performance! -/
+def renderPerformanceTestFast (c : Canvas) (t : Float) (font : Font) (particles : Canvas.ParticleData) : IO Canvas := do
   -- Title (rendered outside batch since text uses different pipeline)
   let c := c.setFillColor Color.white
-  let c ← c.fillTextXY s!"Performance Test: {squareCount} spinning squares (Space to toggle)" 20 30 font
-
-  -- Smaller squares for larger counts
-  let halfSize := if squareCount > 5000 then 4.0 else if squareCount > 500 then 7.5 else 10.0
-
-  -- GPU INSTANCING: transforms computed on GPU, massively parallel!
-  -- Pass angle to GPU - it will compute sin/cos
-  let c ← c.batchInstancedRectsBy squareCount fun i =>
-    let phase := i.toFloat * (2.0 * pi / squareCount.toFloat)
-    -- Multiple rings with varying radii
-    let ring := i % 10
-    let baseRadius := 50.0 + ring.toFloat * 45.0
-    let orbitRadius := baseRadius + 30.0 * Float.sin (t * 0.5 + phase * 3.0)
-    let orbitSpeed := 1.0 + ring.toFloat * 0.2
-    let x := centerX + orbitRadius * Float.cos (t * orbitSpeed + phase)
-    let y := centerY + orbitRadius * Float.sin (t * orbitSpeed + phase)
-    let angle := t * 3.0 + phase * 2.0
-    -- Rainbow colors based on position and time
-    let hue := (t * 0.3 + i.toFloat / squareCount.toFloat) - (t * 0.3 + i.toFloat / squareCount.toFloat).floor
-    let color := hsvToRgb hue 0.9 1.0
-    (x, y, angle, halfSize, color)
-
-  pure c
+  let c ← c.fillTextXY s!"Performance Test: {particles.count} spinning squares (Space to toggle)" 20 30 font
+  -- ULTRA-FAST: use pre-computed particle data
+  c.batchInstancedParticles particles t
 
 /-! ## Unified Visual Demo -/
 
@@ -974,6 +950,12 @@ def unifiedDemo : IO Unit := do
   let bg11 := Color.rgba 0.20 0.18 0.12 1.0  -- Dark warm gray
   let bg02 := Color.rgba 0.18 0.15 0.20 1.0  -- Dark purple-gray
 
+  -- Pre-compute particle data ONCE at startup (not every frame!)
+  let squareCount := 10000
+  let halfSize := 4.0  -- Small squares for 10k
+  let particles := Canvas.ParticleData.create squareCount 960.0 540.0 halfSize
+  IO.println s!"Pre-computed {squareCount} particle trajectories"
+
   -- Custom render loop with keyboard handling for mode switching
   let startTime ← IO.monoMsNow
   let mut c := canvas
@@ -1000,8 +982,8 @@ def unifiedDemo : IO Unit := do
       let c' := c.resetTransform
 
       if perfTestMode then
-        -- Performance test mode: 10000 spinning squares
-        c ← renderPerformanceTest c' t fontMedium 10000
+        -- Performance test mode: 10000 spinning squares with pre-computed data
+        c ← renderPerformanceTestFast c' t fontMedium particles
       else
         -- Normal demo mode: grid of demos
         let canvas := c'

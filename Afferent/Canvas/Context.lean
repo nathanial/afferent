@@ -453,6 +453,105 @@ def batchInstancedRectsBy (count : Nat)
   -- Return canvas with buffer for reuse next frame
   pure { c with instanceBuffer := data, instanceBufferCapacity := count }
 
+/-- Pre-computed particle data for ultra-fast instanced rendering.
+    Store static per-particle values that don't change each frame. -/
+structure ParticleData where
+  /-- Pre-computed: phase, baseRadius, orbitSpeed, phaseX3, phase2, hueBase (6 floats per particle) -/
+  staticData : Array Float
+  /-- Number of particles -/
+  count : Nat
+  /-- Half size of each particle (uniform) -/
+  halfSize : Float
+  /-- Center X coordinate -/
+  centerX : Float
+  /-- Center Y coordinate -/
+  centerY : Float
+
+/-- Create pre-computed particle data for orbital animation.
+    Call once at startup, then use renderParticles each frame. -/
+def ParticleData.create (count : Nat) (centerX centerY halfSize : Float) : ParticleData :=
+  let pi := 3.14159265358979323846
+  let countF := count.toFloat
+  -- 6 floats per particle: phase, baseRadius, orbitSpeed, phaseX3, phase2, hueBase
+  let data := Id.run do
+    let mut data := Array.replicate (count * 6) 0.0
+    for i in [:count] do
+      let phase := i.toFloat * (2.0 * pi / countF)
+      let ring := i % 10
+      let baseRadius := 50.0 + ring.toFloat * 45.0
+      let orbitSpeed := 1.0 + ring.toFloat * 0.2
+      let base := i * 6
+      data := data.set! base phase
+      data := data.set! (base + 1) baseRadius
+      data := data.set! (base + 2) orbitSpeed
+      data := data.set! (base + 3) (phase * 3.0)      -- pre-multiply for orbit pulsing
+      data := data.set! (base + 4) (phase * 2.0)      -- pre-multiply for rotation
+      data := data.set! (base + 5) (i.toFloat / countF)  -- hue base (0 to 1)
+    pure data
+  { staticData := data, count, halfSize, centerX, centerY }
+
+/-- ULTRA-FAST: Render particles using pre-computed static data.
+    Only computes time-varying values each frame. Minimal trig calls. -/
+def batchInstancedParticles (particles : ParticleData) (t : Float)
+    (c : Canvas) : IO Canvas := do
+  let count := particles.count
+  let floatCount := count * 8
+  -- Reuse existing buffer if large enough
+  let data := if c.instanceBufferCapacity >= count then
+      c.instanceBuffer
+    else
+      Array.replicate floatCount 0.0
+  -- Pre-compute time-based values (computed once, not per-particle)
+  let tHalf := t * 0.5
+  let tTriple := t * 3.0
+  let tHue := t * 0.3
+  -- Fill instance data
+  let mut data := data
+  for i in [:count] do
+    let sbase := i * 6
+    let phase := particles.staticData[sbase]!
+    let baseRadius := particles.staticData[sbase + 1]!
+    let orbitSpeed := particles.staticData[sbase + 2]!
+    let phaseX3 := particles.staticData[sbase + 3]!
+    let phase2 := particles.staticData[sbase + 4]!
+    let hueBase := particles.staticData[sbase + 5]!
+    -- Time-varying computations (3 trig calls per particle instead of 5)
+    let orbitAngle := t * orbitSpeed + phase
+    let orbitRadius := baseRadius + 30.0 * Float.sin (tHalf + phaseX3)
+    let x := particles.centerX + orbitRadius * Float.cos orbitAngle
+    let y := particles.centerY + orbitRadius * Float.sin orbitAngle
+    let angle := tTriple + phase2
+    -- Rainbow color (no trig - just hue cycling)
+    let hue := (tHue + hueBase) - (tHue + hueBase).floor
+    -- Inline HSV to RGB (avoid function call overhead)
+    let h6 := hue * 6.0
+    let sector := h6.floor
+    let f := h6 - sector
+    let q := 1.0 - 0.9 * f
+    let t' := 1.0 - 0.9 * (1.0 - f)
+    let (r, g, b) := match sector.toUInt8 % 6 with
+      | 0 => (1.0, t', 0.1)
+      | 1 => (q, 1.0, 0.1)
+      | 2 => (0.1, 1.0, t')
+      | 3 => (0.1, q, 1.0)
+      | 4 => (t', 0.1, 1.0)
+      | _ => (1.0, 0.1, q)
+    -- Convert to NDC and pack
+    let ndcX := (x / c.ctx.baseWidth) * 2.0 - 1.0
+    let ndcY := 1.0 - (y / c.ctx.baseHeight) * 2.0
+    let ndcHalfSize := particles.halfSize / c.ctx.baseWidth * 2.0
+    let base := i * 8
+    data := data.set! base ndcX
+    data := data.set! (base + 1) ndcY
+    data := data.set! (base + 2) angle
+    data := data.set! (base + 3) ndcHalfSize
+    data := data.set! (base + 4) r
+    data := data.set! (base + 5) g
+    data := data.set! (base + 6) b
+    data := data.set! (base + 7) 1.0
+  FFI.Renderer.drawInstancedRects c.ctx.renderer data count.toUInt32
+  pure { c with instanceBuffer := data, instanceBufferCapacity := count }
+
 /-! ## Drawing operations -/
 
 /-- Fill a path using the current state. Batch-aware: adds to batch if active. -/
