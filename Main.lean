@@ -1,0 +1,30 @@
+import Collimator.Prelude
+
+open Collimator
+open scoped Collimator.Operators
+
+structure Person where
+  name : String
+  age : Nat
+deriving Repr
+
+def nameLens : Lens' Person String :=
+  lens' (fun p => p.name) (fun p n => { p with name := n })
+
+def ageLens : Lens' Person Nat :=
+  lens' (fun p => p.age) (fun p a => { p with age := a })
+
+def main : IO Unit := do
+  let alice : Person := { name := "Alice", age := 30 }
+
+  -- View through a lens
+  IO.println s!"Name: {alice ^. nameLens}"
+  IO.println s!"Age: {alice ^. ageLens}"
+
+  -- Modify through a lens
+  let older := over' ageLens (· + 1) alice
+  IO.println s!"After birthday: {older ^. ageLens}"
+
+  -- Set through a lens
+  let renamed := set' nameLens "Alicia" alice
+  IO.println s!"Renamed: {renamed ^. nameLens}"
