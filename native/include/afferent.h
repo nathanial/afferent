@@ -116,6 +116,7 @@ void afferent_text_measure(
 // and index data for rendering. Caller must free the returned arrays.
 // Transform is a 6-component affine matrix: [a, b, c, d, tx, ty]
 // where: x' = a*x + c*y + tx, y' = b*x + d*y + ty
+// canvas_width/height are the logical canvas dimensions used for NDC conversion
 AfferentResult afferent_text_render(
     AfferentRendererRef renderer,
     AfferentFontRef font,
@@ -126,7 +127,9 @@ AfferentResult afferent_text_render(
     float g,
     float b,
     float a,
-    const float* transform
+    const float* transform,
+    float canvas_width,
+    float canvas_height
 );
 
 #ifdef __cplusplus

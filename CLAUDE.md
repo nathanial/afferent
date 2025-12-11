@@ -171,3 +171,4 @@ static lean_external_class* g_font_class = NULL;
 4. ✅ **Canvas State** - Save/restore, transforms with collimator lenses
 5. ✅ **Stroke Rendering** - Path outlines with lineWidth/lineCap/lineJoin
 6. ✅ **Anti-Aliasing & Polish** - 4x MSAA, linear/radial gradients, FreeType text
+- Use run.sh if you want me to test the app.

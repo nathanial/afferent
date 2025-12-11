@@ -81,6 +81,19 @@ LEAN_EXPORT lean_obj_res lean_afferent_window_poll_events(lean_obj_arg window_ob
     return lean_io_result_mk_ok(lean_box(0));
 }
 
+// Window get size - returns (width, height) as UInt32 × UInt32
+LEAN_EXPORT lean_obj_res lean_afferent_window_get_size(lean_obj_arg window_obj, lean_obj_arg world) {
+    AfferentWindowRef window = (AfferentWindowRef)lean_get_external_data(window_obj);
+    uint32_t width = 0, height = 0;
+    afferent_window_get_size(window, &width, &height);
+
+    // Return as Prod UInt32 UInt32 with 2 boxed fields
+    lean_object* tuple = lean_alloc_ctor(0, 2, 0);
+    lean_ctor_set(tuple, 0, lean_box_uint32(width));
+    lean_ctor_set(tuple, 1, lean_box_uint32(height));
+    return lean_io_result_mk_ok(tuple);
+}
+
 // Renderer creation
 LEAN_EXPORT lean_obj_res lean_afferent_renderer_create(lean_obj_arg window_obj, lean_obj_arg world) {
     AfferentWindowRef window = (AfferentWindowRef)lean_get_external_data(window_obj);
@@ -314,6 +327,8 @@ LEAN_EXPORT lean_obj_res lean_afferent_text_render(
     double b,
     double a,
     lean_obj_arg transform_arr,
+    double canvas_width,
+    double canvas_height,
     lean_obj_arg world
 ) {
     AfferentRendererRef renderer = (AfferentRendererRef)lean_get_external_data(renderer_obj);
@@ -333,7 +348,8 @@ LEAN_EXPORT lean_obj_res lean_afferent_text_render(
         renderer, font, text,
         (float)x, (float)y,
         (float)r, (float)g, (float)b, (float)a,
-        transform
+        transform,
+        (float)canvas_width, (float)canvas_height
     );
 
     if (result != AFFERENT_OK) {

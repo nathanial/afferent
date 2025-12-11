@@ -17,8 +17,10 @@ namespace Afferent
 structure DrawContext where
   window : FFI.Window
   renderer : FFI.Renderer
-  width : Float
-  height : Float
+  /-- Initial/logical canvas width (used as reference for coordinate system) -/
+  baseWidth : Float
+  /-- Initial/logical canvas height (used as reference for coordinate system) -/
+  baseHeight : Float
 
 namespace DrawContext
 
@@ -30,9 +32,24 @@ def create (width height : UInt32) (title : String) : IO DrawContext := do
   pure {
     window
     renderer
-    width := width.toFloat
-    height := height.toFloat
+    baseWidth := width.toFloat
+    baseHeight := height.toFloat
   }
+
+/-- Get the current drawable size (may differ from base size due to window resize or Retina scaling). -/
+def getCurrentSize (ctx : DrawContext) : IO (Float × Float) := do
+  let (w, h) ← ctx.window.getSize
+  pure (w.toFloat, h.toFloat)
+
+/-- Get width for coordinate calculations (uses current drawable size). -/
+def width (ctx : DrawContext) : IO Float := do
+  let (w, _) ← ctx.getCurrentSize
+  pure w
+
+/-- Get height for coordinate calculations (uses current drawable size). -/
+def height (ctx : DrawContext) : IO Float := do
+  let (_, h) ← ctx.getCurrentSize
+  pure h
 
 /-- Check if the window should close. -/
 def shouldClose (ctx : DrawContext) : IO Bool :=
@@ -57,7 +74,8 @@ def destroy (ctx : DrawContext) : IO Unit := do
 
 /-- Fill a rectangle with a solid color (pixel coordinates). -/
 def fillRect (ctx : DrawContext) (rect : Rect) (color : Color) : IO Unit := do
-  let result := Tessellation.tessellateRectNDC rect color ctx.width ctx.height
+  let (w, h) ← ctx.getCurrentSize
+  let result := Tessellation.tessellateRectNDC rect color w h
   if result.vertices.size > 0 && result.indices.size > 0 then
     let vertexBuffer ← FFI.Buffer.createVertex ctx.renderer result.vertices
     let indexBuffer ← FFI.Buffer.createIndex ctx.renderer result.indices
@@ -66,12 +84,13 @@ def fillRect (ctx : DrawContext) (rect : Rect) (color : Color) : IO Unit := do
     FFI.Buffer.destroy vertexBuffer
 
 /-- Fill a rectangle specified by x, y, width, height. -/
-def fillRectXYWH (ctx : DrawContext) (x y width height : Float) (color : Color) : IO Unit :=
-  ctx.fillRect (Rect.mk' x y width height) color
+def fillRectXYWH (ctx : DrawContext) (x y w h : Float) (color : Color) : IO Unit :=
+  ctx.fillRect (Rect.mk' x y w h) color
 
 /-- Fill a convex path with a solid color (pixel coordinates). -/
 def fillPath (ctx : DrawContext) (path : Path) (color : Color) : IO Unit := do
-  let result := Tessellation.tessellateConvexPathNDC path color ctx.width ctx.height
+  let (w, h) ← ctx.getCurrentSize
+  let result := Tessellation.tessellateConvexPathNDC path color w h
   if result.vertices.size > 0 && result.indices.size > 0 then
     let vertexBuffer ← FFI.Buffer.createVertex ctx.renderer result.vertices
     let indexBuffer ← FFI.Buffer.createIndex ctx.renderer result.indices
@@ -95,7 +114,8 @@ def fillRoundedRect (ctx : DrawContext) (rect : Rect) (cornerRadius : Float) (co
 
 /-- Fill a rectangle with a fill style (solid color or gradient). -/
 def fillRectWithStyle (ctx : DrawContext) (rect : Rect) (style : FillStyle) : IO Unit := do
-  let result := Tessellation.tessellateRectFillNDC rect style ctx.width ctx.height
+  let (w, h) ← ctx.getCurrentSize
+  let result := Tessellation.tessellateRectFillNDC rect style w h
   if result.vertices.size > 0 && result.indices.size > 0 then
     let vertexBuffer ← FFI.Buffer.createVertex ctx.renderer result.vertices
     let indexBuffer ← FFI.Buffer.createIndex ctx.renderer result.indices
@@ -105,7 +125,8 @@ def fillRectWithStyle (ctx : DrawContext) (rect : Rect) (style : FillStyle) : IO
 
 /-- Fill a convex path with a fill style (solid color or gradient). -/
 def fillPathWithStyle (ctx : DrawContext) (path : Path) (style : FillStyle) : IO Unit := do
-  let result := Tessellation.tessellateConvexPathFillNDC path style ctx.width ctx.height
+  let (w, h) ← ctx.getCurrentSize
+  let result := Tessellation.tessellateConvexPathFillNDC path style w h
   if result.vertices.size > 0 && result.indices.size > 0 then
     let vertexBuffer ← FFI.Buffer.createVertex ctx.renderer result.vertices
     let indexBuffer ← FFI.Buffer.createIndex ctx.renderer result.indices
@@ -142,7 +163,8 @@ def fillRoundedRectWithStyle (ctx : DrawContext) (rect : Rect) (cornerRadius : F
 
 /-- Stroke a path with a given style (pixel coordinates). -/
 def strokePath (ctx : DrawContext) (path : Path) (style : StrokeStyle) : IO Unit := do
-  let result := Tessellation.tessellateStrokeNDC path style ctx.width ctx.height
+  let (w, h) ← ctx.getCurrentSize
+  let result := Tessellation.tessellateStrokeNDC path style w h
   if result.vertices.size > 0 && result.indices.size > 0 then
     let vertexBuffer ← FFI.Buffer.createVertex ctx.renderer result.vertices
     let indexBuffer ← FFI.Buffer.createIndex ctx.renderer result.indices
@@ -180,9 +202,11 @@ def drawLine (ctx : DrawContext) (p1 p2 : Point) (color : Color) (lineWidth : Fl
 
 /-! ## Text Rendering -/
 
-/-- Draw text at a position with a font, color, and transform. -/
-def fillTextTransformed (ctx : DrawContext) (text : String) (pos : Point) (font : Font) (color : Color) (transform : Transform) : IO Unit :=
-  FFI.Text.render ctx.renderer font.handle text pos.x pos.y color.r color.g color.b color.a transform.toArray
+/-- Draw text at a position with a font, color, and transform.
+    Uses the context's current size for NDC conversion so text scales with shapes. -/
+def fillTextTransformed (ctx : DrawContext) (text : String) (pos : Point) (font : Font) (color : Color) (transform : Transform) : IO Unit := do
+  let (w, h) ← ctx.getCurrentSize
+  FFI.Text.render ctx.renderer font.handle text pos.x pos.y color.r color.g color.b color.a transform.toArray w h
 
 /-- Draw text at a position with a font and color (identity transform). -/
 def fillText (ctx : DrawContext) (text : String) (pos : Point) (font : Font) (color : Color) : IO Unit :=
@@ -409,8 +433,10 @@ def endFrame (c : Canvas) : IO Unit :=
 def destroy (c : Canvas) : IO Unit :=
   c.ctx.destroy
 
-def width (c : Canvas) : Float := c.ctx.width
-def height (c : Canvas) : Float := c.ctx.height
+def width (c : Canvas) : IO Float := c.ctx.width
+def height (c : Canvas) : IO Float := c.ctx.height
+def baseWidth (c : Canvas) : Float := c.ctx.baseWidth
+def baseHeight (c : Canvas) : Float := c.ctx.baseHeight
 
 /-- Run a render loop with a Canvas that maintains state across frames.
     The draw function can return a modified Canvas with updated state. -/

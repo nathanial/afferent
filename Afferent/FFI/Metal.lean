@@ -39,6 +39,9 @@ opaque Window.shouldClose (window : @& Window) : IO Bool
 @[extern "lean_afferent_window_poll_events"]
 opaque Window.pollEvents (window : @& Window) : IO Unit
 
+@[extern "lean_afferent_window_get_size"]
+opaque Window.getSize (window : @& Window) : IO (UInt32 × UInt32)
+
 -- Renderer management
 @[extern "lean_afferent_renderer_create"]
 opaque Renderer.create (window : @& Window) : IO Renderer
@@ -92,6 +95,7 @@ opaque Text.render
   (text : @& String)
   (x y : Float)
   (r g b a : Float)
-  (transform : @& Array Float) : IO Unit
+  (transform : @& Array Float)
+  (canvasWidth canvasHeight : Float) : IO Unit
 
 end Afferent.FFI

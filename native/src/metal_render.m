@@ -497,7 +497,9 @@ AfferentResult afferent_text_render(
     float g,
     float b,
     float a,
-    const float* transform
+    const float* transform,
+    float canvas_width,
+    float canvas_height
 ) {
     @autoreleasepool {
         if (!renderer || !renderer->currentEncoder || !font || !text || text[0] == '\0') {
@@ -510,9 +512,11 @@ AfferentResult afferent_text_render(
         uint32_t vertex_count = 0;
         uint32_t index_count = 0;
 
+        // Use the canvas dimensions (not current drawable size) for NDC conversion
+        // This ensures text scales consistently with shapes when the window is resized
         int success = afferent_text_generate_vertices(
             font, text, x, y, r, g, b, a,
-            renderer->screenWidth, renderer->screenHeight,
+            canvas_width, canvas_height,
             transform,
             &vertices, &indices, &vertex_count, &index_count
         );
