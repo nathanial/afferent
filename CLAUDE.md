@@ -4,9 +4,9 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-Afferent is a Lean 4 2D vector graphics library targeting macOS with Metal GPU rendering. The goal is to provide an HTML5 Canvas-style API that looks as good as Skia and performs as well, without dependencies on external graphics libraries.
+Afferent is a Lean 4 2D vector graphics library targeting macOS with Metal GPU rendering. It provides an HTML5 Canvas-style API for drawing shapes, paths, gradients, and text with GPU acceleration.
 
-**Current Status:** Milestone 1 complete - Hello Triangle renders via Metal.
+**Current Status:** All 6 milestones complete - full 2D graphics library with shapes, curves, transforms, strokes, gradients, and text rendering.
 
 ## Build Commands
 
@@ -23,29 +23,32 @@ Afferent is a Lean 4 2D vector graphics library targeting macOS with Metal GPU r
 # Build and run
 ./run.sh                  # Runs afferent (default)
 ./run.sh hello_triangle   # Runs the example
-
-# Run tests (not yet implemented)
-./test.sh
 ```
 
 ## Architecture
 
 ```
 ┌─────────────────────────────────────┐
-│   High-Level API (Canvas-like)      │  Pure Lean (TODO)
-│   fillRect, stroke, bezierCurveTo   │
+│   Canvas API                        │  Afferent/Canvas/Context.lean
+│   fillRect, fillText, stroke, etc.  │
 ├─────────────────────────────────────┤
-│   State Management (collimator)     │  Pure Lean (TODO)
-│   save/restore, transforms          │
+│   State Management (collimator)     │  Afferent/Canvas/State.lean
+│   save/restore, transforms, styles  │
 ├─────────────────────────────────────┤
-│   Path & Tessellation               │  Pure Lean (TODO)
+│   Core Types                        │  Afferent/Core/*.lean
+│   Point, Color, Rect, Path, Paint   │
+├─────────────────────────────────────┤
+│   Tessellation                      │  Afferent/Render/Tessellation.lean
 │   Bezier flattening, triangulation  │
 ├─────────────────────────────────────┤
-│   FFI Layer                         │  Lean - DONE
+│   Text Rendering                    │  Afferent/Text/Font.lean
+│   Font loading, text measurement    │
+├─────────────────────────────────────┤
+│   FFI Layer                         │  Afferent/FFI/Metal.lean
 │   @[extern] bindings                │
 ├─────────────────────────────────────┤
-│   Native Code                       │  Obj-C / C - DONE
-│   Metal rendering, window mgmt      │
+│   Native Code                       │  native/src/*.m, *.c
+│   Metal rendering, FreeType, window │
 └─────────────────────────────────────┘
 ```
 
@@ -55,13 +58,24 @@ Afferent is a Lean 4 2D vector graphics library targeting macOS with Metal GPU r
 afferent/
 ├── build.sh               # Build script (use instead of lake build)
 ├── run.sh                 # Build and run script
-├── test.sh                # Test script
 ├── lakefile.lean          # Lake build configuration
 ├── lean-toolchain         # Lean version (v4.25.2)
-├── Main.lean              # Main executable (collimator + graphics demo)
+├── Main.lean              # Demo application with all features
 │
+├── Afferent.lean          # Library root (imports all modules)
 ├── Afferent/
-│   ├── Basic.lean         # Basic definitions
+│   ├── Core/
+│   │   ├── Types.lean     # Point, Color, Rect
+│   │   ├── Path.lean      # PathCommand, Path builder
+│   │   ├── Transform.lean # 2D transformation matrix
+│   │   └── Paint.lean     # FillStyle, Gradient, StrokeStyle
+│   ├── Render/
+│   │   └── Tessellation.lean  # Path to triangles conversion
+│   ├── Canvas/
+│   │   ├── State.lean     # CanvasState with collimator lenses
+│   │   └── Context.lean   # DrawContext and Canvas API
+│   ├── Text/
+│   │   └── Font.lean      # Font loading and text measurement
 │   └── FFI/
 │       └── Metal.lean     # FFI declarations (@[extern] bindings)
 │
@@ -73,60 +87,87 @@ afferent/
     │   └── afferent.h     # C API header
     └── src/
         ├── window.m       # NSWindow + CAMetalLayer
-        ├── metal_render.m # Metal device, pipeline, shaders
+        ├── metal_render.m # Metal device, pipeline, shaders, 4x MSAA
+        ├── text_render.c  # FreeType font loading and glyph rasterization
         └── lean_bridge.c  # Lean FFI entry points
 ```
 
-## Key Files
+## Key Modules
 
-### FFI Boundary
+### Core Types (`Afferent/Core/`)
 
-- **`Afferent/FFI/Metal.lean`** - Lean FFI declarations using `@[extern]` attribute
-- **`native/src/lean_bridge.c`** - C functions that bridge Lean to native code
-- **`native/include/afferent.h`** - C API header defining types and functions
+- **Types.lean** - `Point`, `Color` (with named colors), `Rect`
+- **Path.lean** - `PathCommand` (moveTo, lineTo, bezierTo, arc, close), `Path` builder
+- **Transform.lean** - 2D affine transformation matrix with translate/rotate/scale
+- **Paint.lean** - `FillStyle` (solid/gradient), `Gradient` (linear/radial), `StrokeStyle`
 
-### Native Rendering
+### Canvas API (`Afferent/Canvas/`)
 
-- **`native/src/window.m`** - macOS window creation with NSWindow + CAMetalLayer
-- **`native/src/metal_render.m`** - Metal device setup, shader compilation, rendering
+- **State.lean** - `CanvasState` with collimator lenses for functional state management
+- **Context.lean** - `DrawContext` (low-level) and `Canvas` monad (high-level API)
 
-### Build System
+### Rendering
 
-- **`lakefile.lean`** - Defines extern_lib for native code, framework linking
+- **Tessellation.lean** - Converts paths to triangles, samples gradients per-vertex
+- **Font.lean** - Wraps FreeType for font loading, metrics, and text measurement
 
-## Dependencies
+### FFI (`Afferent/FFI/Metal.lean`)
 
-- **collimator** - Profunctor optics library for Lean 4 (used for state management)
-- **mathlib** - Transitive dependency from collimator
-
-## FFI Pattern
-
-Opaque handles are exposed to Lean using the NonemptyType pattern:
+Opaque handles using the NonemptyType pattern:
 
 ```lean
 opaque WindowPointed : NonemptyType
 def Window : Type := WindowPointed.type
-instance : Nonempty Window := WindowPointed.property
 
 @[extern "lean_afferent_window_create"]
 opaque Window.create (width height : UInt32) (title : @& String) : IO Window
 ```
 
-Corresponding C code registers external classes and manages memory:
+### Native Code (`native/src/`)
+
+- **window.m** - macOS window with NSWindow + CAMetalLayer
+- **metal_render.m** - Metal pipeline with 4x MSAA, text shader, alpha blending
+- **text_render.c** - FreeType integration with glyph caching and texture atlas
+- **lean_bridge.c** - FFI entry points bridging Lean to native code
+
+## Dependencies
+
+- **collimator** - Profunctor optics library for Lean 4 (state management)
+- **FreeType** - Font rendering library (installed via Homebrew: `brew install freetype`)
+- **Metal/Cocoa** - macOS frameworks for GPU rendering and windowing
+
+## FFI Notes
+
+### Returning Float Tuples
+
+When returning `Float × Float × Float` from C to Lean, use nested `Prod` structures with boxed floats:
 
 ```c
-static lean_external_class* g_window_class = NULL;
+// Float × Float × Float = Prod Float (Prod Float Float)
+lean_object* inner = lean_alloc_ctor(0, 2, 0);
+lean_ctor_set(inner, 0, lean_box_float(val2));
+lean_ctor_set(inner, 1, lean_box_float(val3));
 
-LEAN_EXPORT lean_obj_res lean_afferent_window_create(...) {
-    // Create native object, wrap in lean_alloc_external
-}
+lean_object* outer = lean_alloc_ctor(0, 2, 0);
+lean_ctor_set(outer, 0, lean_box_float(val1));
+lean_ctor_set(outer, 1, inner);
 ```
 
-## Planned Milestones
+### External Classes
 
-1. ✅ **Hello Triangle** - Prove FFI + Metal works
-2. 🔲 **Basic Shapes** - Core types (Point, Color, Rect), rectangle rendering
-3. 🔲 **Bezier Curves** - Path commands, curve flattening
-4. 🔲 **Canvas State** - save/restore with collimator lenses
-5. 🔲 **Stroke Rendering** - Stroked paths with line styles
-6. 🔲 **Anti-Aliasing & Polish** - MSAA, gradients, text
+Native handles use `lean_alloc_external` with registered classes:
+
+```c
+static lean_external_class* g_font_class = NULL;
+// In init: g_font_class = lean_register_external_class(finalizer, NULL);
+// Usage: lean_alloc_external(g_font_class, native_ptr);
+```
+
+## Completed Milestones
+
+1. ✅ **Hello Triangle** - Metal FFI working
+2. ✅ **Basic Shapes** - Rectangles, circles, polygons
+3. ✅ **Bezier Curves** - Arcs, stars, hearts, custom paths
+4. ✅ **Canvas State** - Save/restore, transforms with collimator lenses
+5. ✅ **Stroke Rendering** - Path outlines with lineWidth/lineCap/lineJoin
+6. ✅ **Anti-Aliasing & Polish** - 4x MSAA, linear/radial gradients, FreeType text
