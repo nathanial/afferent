@@ -971,21 +971,21 @@ def unifiedDemo : IO Unit := do
   let bg02 := Color.rgba 0.18 0.15 0.20 1.0  -- Dark purple-gray
 
   -- Pre-compute particle data ONCE at startup (not every frame!)
-  let squareCount := 10000
-  let halfSize := 4.0  -- Small squares for 10k
+  let squareCount := 100000
+  let halfSize := 1.5  -- Smaller for 100k
   -- Orbital particles (orbiting around center)
   let orbitalParticles := Canvas.ParticleData.create squareCount 960.0 540.0 halfSize
   IO.println s!"Pre-computed {squareCount} orbital particle trajectories"
-  -- Grid particles (100x100 grid of spinning squares/triangles)
-  let gridCols := 100
-  let gridRows := 100
-  let gridSpacing := 18.0
+  -- Grid particles (316x316 ≈ 100k grid of spinning squares/triangles)
+  let gridCols := 316
+  let gridRows := 316
+  let gridSpacing := 6.0
   let gridStartX := (1920.0 - (gridCols.toFloat - 1) * gridSpacing) / 2.0
   let gridStartY := (1080.0 - (gridRows.toFloat - 1) * gridSpacing) / 2.0
-  let gridParticles := Canvas.GridParticleData.create gridCols gridRows gridStartX gridStartY gridSpacing 6.0
+  let gridParticles := Canvas.GridParticleData.create gridCols gridRows gridStartX gridStartY gridSpacing 2.0
   IO.println s!"Pre-computed {gridParticles.count} grid particle positions"
   -- Bouncing circles
-  let bouncingParticles := Canvas.BouncingParticleData.create 10000 1920.0 1080.0 5.0 42
+  let bouncingParticles := Canvas.BouncingParticleData.create 100000 1920.0 1080.0 2.0 42
   IO.println s!"Created {bouncingParticles.count} bouncing circles"
 
   -- Upload static particle data to GPU ONCE for GPU-animated rendering
