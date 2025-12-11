@@ -10,8 +10,4 @@ export LEAN_CC=/usr/bin/clang
 
 echo "Building and running tests..."
 
-# TODO: Add test target once tests are implemented
-# lake build afferent_tests && .lake/build/bin/afferent_tests
-
-echo "No tests implemented yet."
-echo "Tests will be added in Afferent/Tests/"
+lake build afferent_tests && .lake/build/bin/afferent_tests

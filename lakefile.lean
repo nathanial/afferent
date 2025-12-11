@@ -43,6 +43,11 @@ lean_exe hello_triangle where
     "-lfreetype"
   ]
 
+-- Test executable
+lean_exe afferent_tests where
+  root := `AfferentTests
+  moreLinkArgs := #["-L/opt/homebrew/lib"]
+
 -- Native code targets
 target window_o pkg : FilePath := do
   let oFile := pkg.buildDir / "native" / "window.o"
