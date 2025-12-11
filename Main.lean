@@ -434,6 +434,215 @@ def strokeDemo : IO Unit := do
   IO.println "Cleaning up..."
   ctx.destroy
 
+def gradientDemo : IO Unit := do
+  IO.println "Gradient Fill Demo"
+  IO.println "------------------"
+
+  -- Create drawing context
+  let ctx ← DrawContext.create 900 700 "Afferent - Gradients"
+
+  IO.println "Rendering gradient shapes... (close window to exit)"
+
+  -- Run the render loop
+  ctx.runLoop Color.darkGray fun ctx => do
+    -- Row 1: Linear gradients - horizontal
+    -- Red to Yellow gradient
+    let redYellow : Array GradientStop := #[
+      { position := 0.0, color := Color.red },
+      { position := 1.0, color := Color.yellow }
+    ]
+    ctx.fillRectLinearGradient (Rect.mk' 50 30 150 80)
+      ⟨50, 70⟩ ⟨200, 70⟩ redYellow
+
+    -- Blue to Cyan gradient
+    let blueCyan : Array GradientStop := #[
+      { position := 0.0, color := Color.blue },
+      { position := 1.0, color := Color.cyan }
+    ]
+    ctx.fillRectLinearGradient (Rect.mk' 230 30 150 80)
+      ⟨230, 70⟩ ⟨380, 70⟩ blueCyan
+
+    -- Green to White gradient
+    let greenWhite : Array GradientStop := #[
+      { position := 0.0, color := Color.green },
+      { position := 1.0, color := Color.white }
+    ]
+    ctx.fillRectLinearGradient (Rect.mk' 410 30 150 80)
+      ⟨410, 70⟩ ⟨560, 70⟩ greenWhite
+
+    -- Row 1: Linear gradients - vertical
+    let purpleOrange : Array GradientStop := #[
+      { position := 0.0, color := Color.purple },
+      { position := 1.0, color := Color.orange }
+    ]
+    ctx.fillRectLinearGradient (Rect.mk' 590 30 100 80)
+      ⟨640, 30⟩ ⟨640, 110⟩ purpleOrange
+
+    -- Diagonal gradient
+    let magentaCyan : Array GradientStop := #[
+      { position := 0.0, color := Color.magenta },
+      { position := 1.0, color := Color.cyan }
+    ]
+    ctx.fillRectLinearGradient (Rect.mk' 720 30 150 80)
+      ⟨720, 30⟩ ⟨870, 110⟩ magentaCyan
+
+    -- Row 2: Multi-stop gradients (rainbow-like)
+    let rainbow : Array GradientStop := #[
+      { position := 0.0, color := Color.red },
+      { position := 0.17, color := Color.orange },
+      { position := 0.33, color := Color.yellow },
+      { position := 0.5, color := Color.green },
+      { position := 0.67, color := Color.blue },
+      { position := 0.83, color := Color.purple },
+      { position := 1.0, color := Color.magenta }
+    ]
+    ctx.fillRectLinearGradient (Rect.mk' 50 140 400 80)
+      ⟨50, 180⟩ ⟨450, 180⟩ rainbow
+
+    -- Sunset gradient (multi-stop vertical)
+    let sunset : Array GradientStop := #[
+      { position := 0.0, color := Color.rgba 0.1 0.1 0.3 1.0 },  -- Dark blue (top)
+      { position := 0.3, color := Color.rgba 0.5 0.2 0.5 1.0 },  -- Purple
+      { position := 0.5, color := Color.rgba 0.9 0.3 0.2 1.0 },  -- Red-orange
+      { position := 0.7, color := Color.rgba 1.0 0.6 0.2 1.0 },  -- Orange
+      { position := 1.0, color := Color.rgba 1.0 0.9 0.4 1.0 }   -- Yellow (bottom)
+    ]
+    ctx.fillRectLinearGradient (Rect.mk' 480 140 180 80)
+      ⟨570, 140⟩ ⟨570, 220⟩ sunset
+
+    -- Black to white (grayscale)
+    let grayscale : Array GradientStop := #[
+      { position := 0.0, color := Color.black },
+      { position := 1.0, color := Color.white }
+    ]
+    ctx.fillRectLinearGradient (Rect.mk' 690 140 180 80)
+      ⟨690, 180⟩ ⟨870, 180⟩ grayscale
+
+    -- Row 3: Radial gradients
+    -- Simple radial: white center to blue edge
+    let whiteBlue : Array GradientStop := #[
+      { position := 0.0, color := Color.white },
+      { position := 1.0, color := Color.blue }
+    ]
+    ctx.fillCircleRadialGradient ⟨120, 320⟩ 70 whiteBlue
+
+    -- Yellow to red (sun effect)
+    let sunGlow : Array GradientStop := #[
+      { position := 0.0, color := Color.yellow },
+      { position := 0.5, color := Color.orange },
+      { position := 1.0, color := Color.red }
+    ]
+    ctx.fillCircleRadialGradient ⟨280, 320⟩ 70 sunGlow
+
+    -- Spotlight effect: white center, transparent edge
+    let spotlight : Array GradientStop := #[
+      { position := 0.0, color := Color.white },
+      { position := 0.7, color := Color.rgba 1.0 1.0 1.0 0.3 },
+      { position := 1.0, color := Color.rgba 1.0 1.0 1.0 0.0 }
+    ]
+    ctx.fillCircleRadialGradient ⟨440, 320⟩ 70 spotlight
+
+    -- Green glow
+    let greenGlow : Array GradientStop := #[
+      { position := 0.0, color := Color.rgba 0.5 1.0 0.5 1.0 },
+      { position := 0.5, color := Color.green },
+      { position := 1.0, color := Color.rgba 0.0 0.3 0.0 1.0 }
+    ]
+    ctx.fillCircleRadialGradient ⟨600, 320⟩ 70 greenGlow
+
+    -- Cyan to magenta
+    let cyanMagenta : Array GradientStop := #[
+      { position := 0.0, color := Color.cyan },
+      { position := 1.0, color := Color.magenta }
+    ]
+    ctx.fillCircleRadialGradient ⟨760, 320⟩ 70 cyanMagenta
+
+    -- Row 4: Gradients on different shapes
+    -- Rounded rectangle with gradient
+    ctx.fillRoundedRectWithStyle (Rect.mk' 50 420 150 100) 20
+      (.gradient (.linear ⟨50, 420⟩ ⟨200, 520⟩ #[
+        { position := 0.0, color := Color.red },
+        { position := 1.0, color := Color.blue }
+      ]))
+
+    -- Ellipse with radial gradient
+    ctx.fillEllipseWithStyle ⟨330, 470⟩ 80 50
+      (.gradient (.radial ⟨330, 470⟩ 80 #[
+        { position := 0.0, color := Color.yellow },
+        { position := 1.0, color := Color.purple }
+      ]))
+
+    -- Star with gradient
+    ctx.fillPathWithStyle (Path.star ⟨520, 470⟩ 60 30 5)
+      (.gradient (.linear ⟨460, 410⟩ ⟨580, 530⟩ #[
+        { position := 0.0, color := Color.yellow },
+        { position := 0.5, color := Color.orange },
+        { position := 1.0, color := Color.red }
+      ]))
+
+    -- Heart with gradient
+    ctx.fillPathWithStyle (Path.heart ⟨700, 470⟩ 70)
+      (.gradient (.radial ⟨700, 450⟩ 80 #[
+        { position := 0.0, color := Color.rgba 1.0 0.5 0.5 1.0 },
+        { position := 0.5, color := Color.red },
+        { position := 1.0, color := Color.rgba 0.5 0.0 0.0 1.0 }
+      ]))
+
+    -- Row 5: More gradient variations
+    -- Gradient with sharp color boundary (mimics flag stripes)
+    let stripes : Array GradientStop := #[
+      { position := 0.0, color := Color.red },
+      { position := 0.33, color := Color.red },
+      { position := 0.34, color := Color.white },
+      { position := 0.66, color := Color.white },
+      { position := 0.67, color := Color.blue },
+      { position := 1.0, color := Color.blue }
+    ]
+    ctx.fillRectLinearGradient (Rect.mk' 50 560 150 100)
+      ⟨50, 610⟩ ⟨200, 610⟩ stripes
+
+    -- Metal/chrome effect
+    let chrome : Array GradientStop := #[
+      { position := 0.0, color := Color.rgba 0.3 0.3 0.3 1.0 },
+      { position := 0.2, color := Color.rgba 0.9 0.9 0.9 1.0 },
+      { position := 0.4, color := Color.rgba 0.5 0.5 0.5 1.0 },
+      { position := 0.6, color := Color.rgba 0.8 0.8 0.8 1.0 },
+      { position := 0.8, color := Color.rgba 0.4 0.4 0.4 1.0 },
+      { position := 1.0, color := Color.rgba 0.6 0.6 0.6 1.0 }
+    ]
+    ctx.fillRectLinearGradient (Rect.mk' 230 560 150 100)
+      ⟨230, 560⟩ ⟨230, 660⟩ chrome
+
+    -- Gold effect
+    let gold : Array GradientStop := #[
+      { position := 0.0, color := Color.rgba 0.6 0.4 0.1 1.0 },
+      { position := 0.3, color := Color.rgba 1.0 0.85 0.4 1.0 },
+      { position := 0.5, color := Color.rgba 0.8 0.6 0.2 1.0 },
+      { position := 0.7, color := Color.rgba 1.0 0.9 0.5 1.0 },
+      { position := 1.0, color := Color.rgba 0.5 0.35 0.1 1.0 }
+    ]
+    ctx.fillRectLinearGradient (Rect.mk' 410 560 150 100)
+      ⟨410, 560⟩ ⟨410, 660⟩ gold
+
+    -- Neon glow effect (radial on rectangle)
+    ctx.fillRectWithStyle (Rect.mk' 590 560 130 100)
+      (.gradient (.radial ⟨655, 610⟩ 100 #[
+        { position := 0.0, color := Color.rgba 0.0 1.0 1.0 1.0 },
+        { position := 0.4, color := Color.rgba 0.0 0.5 1.0 0.8 },
+        { position := 1.0, color := Color.rgba 0.0 0.0 0.3 1.0 }
+      ]))
+
+    -- Purple to pink gradient at an angle
+    let purplePink : Array GradientStop := #[
+      { position := 0.0, color := Color.rgba 0.4 0.0 0.6 1.0 },
+      { position := 1.0, color := Color.rgba 1.0 0.4 0.6 1.0 }
+    ]
+    ctx.fillRectLinearGradient (Rect.mk' 750 560 120 100)
+      ⟨750, 660⟩ ⟨870, 560⟩ purplePink
+
+  IO.println "Cleaning up..."
+  ctx.destroy
+
 def main : IO Unit := do
   IO.println "Afferent - 2D Vector Graphics Library"
   IO.println "======================================"
@@ -450,6 +659,9 @@ def main : IO Unit := do
 
   -- Run stroke demo
   strokeDemo
+
+  -- Run gradient demo
+  gradientDemo
 
   IO.println ""
   IO.println "Done!"

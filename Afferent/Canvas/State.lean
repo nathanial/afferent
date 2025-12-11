@@ -87,6 +87,18 @@ def resetTransform (state : CanvasState) : CanvasState :=
 def setFillColor (c : Color) (state : CanvasState) : CanvasState :=
   { state with fillStyle := .solid c }
 
+/-- Set the fill style (solid color or gradient). -/
+def setFillStyle (style : FillStyle) (state : CanvasState) : CanvasState :=
+  { state with fillStyle := style }
+
+/-- Set the fill to a linear gradient. -/
+def setFillLinearGradient (start finish : Point) (stops : Array GradientStop) (state : CanvasState) : CanvasState :=
+  { state with fillStyle := .gradient (.linear start finish stops) }
+
+/-- Set the fill to a radial gradient. -/
+def setFillRadialGradient (center : Point) (radius : Float) (stops : Array GradientStop) (state : CanvasState) : CanvasState :=
+  { state with fillStyle := .gradient (.radial center radius stops) }
+
 /-- Set the stroke color. -/
 def setStrokeColor (c : Color) (state : CanvasState) : CanvasState :=
   { state with strokeStyle := { state.strokeStyle with color := c } }
@@ -131,6 +143,18 @@ def transformPath (state : CanvasState) (path : Path) : Path :=
 def effectiveFillColor (state : CanvasState) : Color :=
   let baseColor := state.fillStyle.toColor
   { baseColor with a := baseColor.a * state.globalAlpha }
+
+/-- Get the effective fill style with global alpha applied. -/
+def effectiveFillStyle (state : CanvasState) : FillStyle :=
+  match state.fillStyle with
+  | .solid c => .solid { c with a := c.a * state.globalAlpha }
+  | .gradient g =>
+    -- Apply globalAlpha to all gradient stops
+    let applyAlpha : GradientStop → GradientStop := fun stop =>
+      { stop with color := { stop.color with a := stop.color.a * state.globalAlpha } }
+    match g with
+    | .linear start finish stops => .gradient (.linear start finish (stops.map applyAlpha))
+    | .radial center radius stops => .gradient (.radial center radius (stops.map applyAlpha))
 
 /-- Get the effective stroke color with global alpha applied. -/
 def effectiveStrokeColor (state : CanvasState) : Color :=
@@ -192,6 +216,15 @@ def scaleUniform (s : Float) : StateStack → StateStack :=
 
 def setFillColor (c : Color) : StateStack → StateStack :=
   modify (CanvasState.setFillColor c)
+
+def setFillStyle (style : FillStyle) : StateStack → StateStack :=
+  modify (CanvasState.setFillStyle style)
+
+def setFillLinearGradient (start finish : Point) (stops : Array GradientStop) : StateStack → StateStack :=
+  modify (CanvasState.setFillLinearGradient start finish stops)
+
+def setFillRadialGradient (center : Point) (radius : Float) (stops : Array GradientStop) : StateStack → StateStack :=
+  modify (CanvasState.setFillRadialGradient center radius stops)
 
 def setStrokeColor (c : Color) : StateStack → StateStack :=
   modify (CanvasState.setStrokeColor c)

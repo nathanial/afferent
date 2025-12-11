@@ -90,6 +90,53 @@ def fillEllipse (ctx : DrawContext) (center : Point) (radiusX radiusY : Float) (
 def fillRoundedRect (ctx : DrawContext) (rect : Rect) (cornerRadius : Float) (color : Color) : IO Unit :=
   ctx.fillPath (Path.roundedRect rect cornerRadius) color
 
+/-! ## Gradient Fill API -/
+
+/-- Fill a rectangle with a fill style (solid color or gradient). -/
+def fillRectWithStyle (ctx : DrawContext) (rect : Rect) (style : FillStyle) : IO Unit := do
+  let result := Tessellation.tessellateRectFillNDC rect style ctx.width ctx.height
+  if result.vertices.size > 0 && result.indices.size > 0 then
+    let vertexBuffer ← FFI.Buffer.createVertex ctx.renderer result.vertices
+    let indexBuffer ← FFI.Buffer.createIndex ctx.renderer result.indices
+    ctx.renderer.drawTriangles vertexBuffer indexBuffer result.indices.size.toUInt32
+    FFI.Buffer.destroy indexBuffer
+    FFI.Buffer.destroy vertexBuffer
+
+/-- Fill a convex path with a fill style (solid color or gradient). -/
+def fillPathWithStyle (ctx : DrawContext) (path : Path) (style : FillStyle) : IO Unit := do
+  let result := Tessellation.tessellateConvexPathFillNDC path style ctx.width ctx.height
+  if result.vertices.size > 0 && result.indices.size > 0 then
+    let vertexBuffer ← FFI.Buffer.createVertex ctx.renderer result.vertices
+    let indexBuffer ← FFI.Buffer.createIndex ctx.renderer result.indices
+    ctx.renderer.drawTriangles vertexBuffer indexBuffer result.indices.size.toUInt32
+    FFI.Buffer.destroy indexBuffer
+    FFI.Buffer.destroy vertexBuffer
+
+/-- Fill a rectangle with a linear gradient. -/
+def fillRectLinearGradient (ctx : DrawContext) (rect : Rect)
+    (start finish : Point) (stops : Array GradientStop) : IO Unit :=
+  ctx.fillRectWithStyle rect (.gradient (.linear start finish stops))
+
+/-- Fill a rectangle with a radial gradient. -/
+def fillRectRadialGradient (ctx : DrawContext) (rect : Rect)
+    (center : Point) (radius : Float) (stops : Array GradientStop) : IO Unit :=
+  ctx.fillRectWithStyle rect (.gradient (.radial center radius stops))
+
+/-- Fill a circle with a radial gradient. -/
+def fillCircleRadialGradient (ctx : DrawContext) (center : Point) (radius : Float)
+    (stops : Array GradientStop) : IO Unit :=
+  ctx.fillPathWithStyle (Path.circle center radius) (.gradient (.radial center radius stops))
+
+/-- Fill an ellipse with a fill style. -/
+def fillEllipseWithStyle (ctx : DrawContext) (center : Point) (radiusX radiusY : Float)
+    (style : FillStyle) : IO Unit :=
+  ctx.fillPathWithStyle (Path.ellipse center radiusX radiusY) style
+
+/-- Fill a rounded rectangle with a fill style. -/
+def fillRoundedRectWithStyle (ctx : DrawContext) (rect : Rect) (cornerRadius : Float)
+    (style : FillStyle) : IO Unit :=
+  ctx.fillPathWithStyle (Path.roundedRect rect cornerRadius) style
+
 /-! ## Stroke Drawing (Simple API) -/
 
 /-- Stroke a path with a given style (pixel coordinates). -/
@@ -141,16 +188,17 @@ def runLoop (ctx : DrawContext) (clearColor : Color) (draw : DrawContext → IO 
 
 /-! ## Stateful Drawing API -/
 
-/-- Fill a path using the current state (applies transform and uses state's fill color). -/
+/-- Fill a path using the current state (applies transform and uses state's fill style). -/
 def fillPathWithState (ctx : DrawContext) (path : Path) (state : CanvasState) : IO Unit := do
   let transformedPath := state.transformPath path
-  let color := state.effectiveFillColor
-  ctx.fillPath transformedPath color
+  let style := state.effectiveFillStyle
+  ctx.fillPathWithStyle transformedPath style
 
 /-- Fill a rectangle using the current state. -/
 def fillRectWithState (ctx : DrawContext) (rect : Rect) (state : CanvasState) : IO Unit := do
-  let path := Path.rectangle rect
-  ctx.fillPathWithState path state
+  let transformedPath := state.transformPath (Path.rectangle rect)
+  let style := state.effectiveFillStyle
+  ctx.fillPathWithStyle transformedPath style
 
 /-- Fill a circle using the current state. -/
 def fillCircleWithState (ctx : DrawContext) (center : Point) (radius : Float) (state : CanvasState) : IO Unit := do
@@ -230,6 +278,15 @@ def setLineWidth (w : Float) (c : Canvas) : Canvas :=
 
 def setGlobalAlpha (a : Float) (c : Canvas) : Canvas :=
   { c with stateStack := c.stateStack.setGlobalAlpha a }
+
+def setFillStyle (style : FillStyle) (c : Canvas) : Canvas :=
+  { c with stateStack := c.stateStack.setFillStyle style }
+
+def setFillLinearGradient (start finish : Point) (stops : Array GradientStop) (c : Canvas) : Canvas :=
+  { c with stateStack := c.stateStack.setFillLinearGradient start finish stops }
+
+def setFillRadialGradient (center : Point) (radius : Float) (stops : Array GradientStop) (c : Canvas) : Canvas :=
+  { c with stateStack := c.stateStack.setFillRadialGradient center radius stops }
 
 /-! ## Drawing operations -/
 

@@ -58,13 +58,13 @@ end StrokeStyle
 structure GradientStop where
   position : Float
   color : Color
-deriving Repr, BEq
+deriving Repr, BEq, Inhabited
 
 /-- Gradient definition. -/
 inductive Gradient where
   | linear (start finish : Point) (stops : Array GradientStop)
   | radial (center : Point) (radius : Float) (stops : Array GradientStop)
-deriving Repr, BEq
+deriving Repr, BEq, Inhabited
 
 /-- Fill style for path interiors. -/
 inductive FillStyle where

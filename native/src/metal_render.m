@@ -43,6 +43,9 @@ struct AfferentRenderer {
     id<MTLCommandBuffer> currentCommandBuffer;
     id<MTLRenderCommandEncoder> currentEncoder;
     id<CAMetalDrawable> currentDrawable;
+    id<MTLTexture> msaaTexture;  // 4x MSAA render target
+    NSUInteger msaaWidth;        // Track size for recreation
+    NSUInteger msaaHeight;
     MTLClearColor clearColor;
 };
 
@@ -121,6 +124,7 @@ AfferentResult afferent_renderer_create(
         pipelineDesc.fragmentFunction = fragmentFunction;
         pipelineDesc.vertexDescriptor = vertexDescriptor;
         pipelineDesc.colorAttachments[0].pixelFormat = MTLPixelFormatBGRA8Unorm;
+        pipelineDesc.rasterSampleCount = 4;  // Enable 4x MSAA
 
         // Enable blending for transparency
         pipelineDesc.colorAttachments[0].blendingEnabled = YES;
@@ -148,6 +152,29 @@ void afferent_renderer_destroy(AfferentRendererRef renderer) {
     }
 }
 
+// Helper function to create or recreate MSAA texture if needed
+static void ensureMSAATexture(AfferentRendererRef renderer, NSUInteger width, NSUInteger height) {
+    if (renderer->msaaTexture &&
+        renderer->msaaWidth == width &&
+        renderer->msaaHeight == height) {
+        return;  // Already have correct size
+    }
+
+    // Create new MSAA texture
+    MTLTextureDescriptor *msaaDesc = [MTLTextureDescriptor texture2DDescriptorWithPixelFormat:MTLPixelFormatBGRA8Unorm
+                                                                                        width:width
+                                                                                       height:height
+                                                                                    mipmapped:NO];
+    msaaDesc.textureType = MTLTextureType2DMultisample;
+    msaaDesc.sampleCount = 4;
+    msaaDesc.usage = MTLTextureUsageRenderTarget;
+    msaaDesc.storageMode = MTLStorageModePrivate;  // GPU-only, no CPU access needed
+
+    renderer->msaaTexture = [renderer->device newTextureWithDescriptor:msaaDesc];
+    renderer->msaaWidth = width;
+    renderer->msaaHeight = height;
+}
+
 AfferentResult afferent_renderer_begin_frame(AfferentRendererRef renderer, float r, float g, float b, float a) {
     @autoreleasepool {
         CAMetalLayer *metalLayer = afferent_window_get_metal_layer(renderer->window);
@@ -165,10 +192,16 @@ AfferentResult afferent_renderer_begin_frame(AfferentRendererRef renderer, float
             return AFFERENT_ERROR_INIT_FAILED;
         }
 
+        // Ensure MSAA texture matches drawable size
+        id<MTLTexture> drawableTexture = renderer->currentDrawable.texture;
+        ensureMSAATexture(renderer, drawableTexture.width, drawableTexture.height);
+
+        // Set up render pass with MSAA
         MTLRenderPassDescriptor *passDesc = [MTLRenderPassDescriptor renderPassDescriptor];
-        passDesc.colorAttachments[0].texture = renderer->currentDrawable.texture;
+        passDesc.colorAttachments[0].texture = renderer->msaaTexture;        // Render to MSAA texture
+        passDesc.colorAttachments[0].resolveTexture = drawableTexture;       // Resolve to drawable
         passDesc.colorAttachments[0].loadAction = MTLLoadActionClear;
-        passDesc.colorAttachments[0].storeAction = MTLStoreActionStore;
+        passDesc.colorAttachments[0].storeAction = MTLStoreActionMultisampleResolve;  // Resolve on store
         passDesc.colorAttachments[0].clearColor = MTLClearColorMake(r, g, b, a);
 
         renderer->currentEncoder = [renderer->currentCommandBuffer renderCommandEncoderWithDescriptor:passDesc];
