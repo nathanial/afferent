@@ -26,6 +26,10 @@
         self.metalLayer.pixelFormat = MTLPixelFormatBGRA8Unorm;
         self.metalLayer.framebufferOnly = YES;
         self.metalLayer.frame = self.bounds;
+        // Enable vsync for smooth animation
+        self.metalLayer.displaySyncEnabled = YES;
+        // Triple buffering for smoother frame pacing
+        self.metalLayer.maximumDrawableCount = 3;
         self.layer = self.metalLayer;
     }
     return self;
