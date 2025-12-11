@@ -490,6 +490,83 @@ def ParticleData.create (count : Nat) (centerX centerY halfSize : Float) : Parti
     pure data
   { staticData := data, count, halfSize, centerX, centerY }
 
+/-- Pre-computed grid particle data - even simpler, just positions. -/
+structure GridParticleData where
+  /-- Pre-computed: x, y, hueBase (3 floats per particle) -/
+  staticData : Array Float
+  /-- Number of particles -/
+  count : Nat
+  /-- Half size of each particle -/
+  halfSize : Float
+
+/-- Create pre-computed grid particle data.
+    Particles arranged in a grid, each spinning in place. -/
+def GridParticleData.create (cols rows : Nat) (startX startY spacing halfSize : Float) : GridParticleData :=
+  let count := cols * rows
+  let countF := count.toFloat
+  let data := Id.run do
+    let mut data := Array.replicate (count * 3) 0.0
+    for row in [:rows] do
+      for col in [:cols] do
+        let i := row * cols + col
+        let x := startX + col.toFloat * spacing
+        let y := startY + row.toFloat * spacing
+        let base := i * 3
+        data := data.set! base x
+        data := data.set! (base + 1) y
+        data := data.set! (base + 2) (i.toFloat / countF)  -- hue base
+    pure data
+  { staticData := data, count, halfSize }
+
+/-- ULTRA-FAST: Render grid particles - just spinning in place, no orbital motion.
+    Only 1 angle computation per particle (no trig in inner loop - GPU does it). -/
+def batchInstancedGridParticles (particles : GridParticleData) (t : Float)
+    (c : Canvas) : IO Canvas := do
+  let count := particles.count
+  let floatCount := count * 8
+  let data := if c.instanceBufferCapacity >= count then
+      c.instanceBuffer
+    else
+      Array.replicate floatCount 0.0
+  let tHue := t * 0.3
+  let tSpin := t * 3.0
+  let mut data := data
+  for i in [:count] do
+    let sbase := i * 3
+    let x := particles.staticData[sbase]!
+    let y := particles.staticData[sbase + 1]!
+    let hueBase := particles.staticData[sbase + 2]!
+    -- Simple spin - angle varies by position for wave effect
+    let angle := tSpin + hueBase * 6.28318  -- Each particle has different phase
+    -- Rainbow color
+    let hue := (tHue + hueBase) - (tHue + hueBase).floor
+    let h6 := hue * 6.0
+    let sector := h6.floor
+    let f := h6 - sector
+    let q := 1.0 - 0.9 * f
+    let t' := 1.0 - 0.9 * (1.0 - f)
+    let (r, g, b) := match sector.toUInt8 % 6 with
+      | 0 => (1.0, t', 0.1)
+      | 1 => (q, 1.0, 0.1)
+      | 2 => (0.1, 1.0, t')
+      | 3 => (0.1, q, 1.0)
+      | 4 => (t', 0.1, 1.0)
+      | _ => (1.0, 0.1, q)
+    let ndcX := (x / c.ctx.baseWidth) * 2.0 - 1.0
+    let ndcY := 1.0 - (y / c.ctx.baseHeight) * 2.0
+    let ndcHalfSize := particles.halfSize / c.ctx.baseWidth * 2.0
+    let base := i * 8
+    data := data.set! base ndcX
+    data := data.set! (base + 1) ndcY
+    data := data.set! (base + 2) angle
+    data := data.set! (base + 3) ndcHalfSize
+    data := data.set! (base + 4) r
+    data := data.set! (base + 5) g
+    data := data.set! (base + 6) b
+    data := data.set! (base + 7) 1.0
+  FFI.Renderer.drawInstancedRects c.ctx.renderer data count.toUInt32
+  pure { c with instanceBuffer := data, instanceBufferCapacity := count }
+
 /-- ULTRA-FAST: Render particles using pre-computed static data.
     Only computes time-varying values each frame. Minimal trig calls. -/
 def batchInstancedParticles (particles : ParticleData) (t : Float)
@@ -550,6 +627,170 @@ def batchInstancedParticles (particles : ParticleData) (t : Float)
     data := data.set! (base + 6) b
     data := data.set! (base + 7) 1.0
   FFI.Renderer.drawInstancedRects c.ctx.renderer data count.toUInt32
+  pure { c with instanceBuffer := data, instanceBufferCapacity := count }
+
+/-- ULTRA-FAST: Render grid of spinning triangles.
+    Same as grid particles but renders triangles instead of squares. -/
+def batchInstancedGridTriangles (particles : GridParticleData) (t : Float)
+    (c : Canvas) : IO Canvas := do
+  let count := particles.count
+  let floatCount := count * 8
+  let data := if c.instanceBufferCapacity >= count then
+      c.instanceBuffer
+    else
+      Array.replicate floatCount 0.0
+  let tHue := t * 0.3
+  let tSpin := t * 2.0  -- Slower spin for triangles
+  let mut data := data
+  for i in [:count] do
+    let sbase := i * 3
+    let x := particles.staticData[sbase]!
+    let y := particles.staticData[sbase + 1]!
+    let hueBase := particles.staticData[sbase + 2]!
+    let angle := tSpin + hueBase * 6.28318
+    let hue := (tHue + hueBase) - (tHue + hueBase).floor
+    let h6 := hue * 6.0
+    let sector := h6.floor
+    let f := h6 - sector
+    let q := 1.0 - 0.9 * f
+    let t' := 1.0 - 0.9 * (1.0 - f)
+    let (r, g, b) := match sector.toUInt8 % 6 with
+      | 0 => (1.0, t', 0.1)
+      | 1 => (q, 1.0, 0.1)
+      | 2 => (0.1, 1.0, t')
+      | 3 => (0.1, q, 1.0)
+      | 4 => (t', 0.1, 1.0)
+      | _ => (1.0, 0.1, q)
+    let ndcX := (x / c.ctx.baseWidth) * 2.0 - 1.0
+    let ndcY := 1.0 - (y / c.ctx.baseHeight) * 2.0
+    let ndcHalfSize := particles.halfSize / c.ctx.baseWidth * 2.0
+    let base := i * 8
+    data := data.set! base ndcX
+    data := data.set! (base + 1) ndcY
+    data := data.set! (base + 2) angle
+    data := data.set! (base + 3) ndcHalfSize
+    data := data.set! (base + 4) r
+    data := data.set! (base + 5) g
+    data := data.set! (base + 6) b
+    data := data.set! (base + 7) 1.0
+  FFI.Renderer.drawInstancedTriangles c.ctx.renderer data count.toUInt32
+  pure { c with instanceBuffer := data, instanceBufferCapacity := count }
+
+/-- Bouncing particle data - stores position, velocity, and color info. -/
+structure BouncingParticleData where
+  /-- Per-particle: x, y, vx, vy, hueBase (5 floats) -/
+  particleState : Array Float
+  /-- Number of particles -/
+  count : Nat
+  /-- Radius of each circle -/
+  radius : Float
+  /-- Screen bounds -/
+  screenWidth : Float
+  screenHeight : Float
+
+/-- Create bouncing particles with random initial positions and velocities. -/
+def BouncingParticleData.create (count : Nat) (screenWidth screenHeight radius : Float) (seed : Nat) : BouncingParticleData :=
+  let data := Id.run do
+    let mut data := Array.replicate (count * 5) 0.0
+    let mut rng := seed
+    for i in [:count] do
+      -- Simple LCG random number generator
+      rng := (rng * 1103515245 + 12345) % (2^31)
+      let rx := (rng % 1000).toFloat / 1000.0
+      rng := (rng * 1103515245 + 12345) % (2^31)
+      let ry := (rng % 1000).toFloat / 1000.0
+      rng := (rng * 1103515245 + 12345) % (2^31)
+      let rvx := ((rng % 1000).toFloat / 1000.0 - 0.5) * 2.0
+      rng := (rng * 1103515245 + 12345) % (2^31)
+      let rvy := ((rng % 1000).toFloat / 1000.0 - 0.5) * 2.0
+      let base := i * 5
+      -- Position (with margin from edges)
+      data := data.set! base (radius + rx * (screenWidth - 2.0 * radius))
+      data := data.set! (base + 1) (radius + ry * (screenHeight - 2.0 * radius))
+      -- Velocity (pixels per second)
+      data := data.set! (base + 2) (rvx * 300.0)
+      data := data.set! (base + 3) (rvy * 300.0)
+      -- Hue
+      data := data.set! (base + 4) (i.toFloat / count.toFloat)
+    pure data
+  { particleState := data, count, radius, screenWidth, screenHeight }
+
+/-- Update bouncing particles (call each frame with delta time).
+    Returns updated particle data with new positions. -/
+def BouncingParticleData.update (p : BouncingParticleData) (dt : Float) : BouncingParticleData :=
+  let data := Id.run do
+    let mut data := p.particleState
+    for i in [:p.count] do
+      let base := i * 5
+      let mut x := data[base]!
+      let mut y := data[base + 1]!
+      let mut vx := data[base + 2]!
+      let mut vy := data[base + 3]!
+      -- Update position
+      x := x + vx * dt
+      y := y + vy * dt
+      -- Bounce off walls
+      if x < p.radius then
+        x := p.radius
+        vx := -vx
+      if x > p.screenWidth - p.radius then
+        x := p.screenWidth - p.radius
+        vx := -vx
+      if y < p.radius then
+        y := p.radius
+        vy := -vy
+      if y > p.screenHeight - p.radius then
+        y := p.screenHeight - p.radius
+        vy := -vy
+      data := data.set! base x
+      data := data.set! (base + 1) y
+      data := data.set! (base + 2) vx
+      data := data.set! (base + 3) vy
+    pure data
+  { p with particleState := data }
+
+/-- Render bouncing circles. -/
+def batchInstancedBouncingCircles (particles : BouncingParticleData) (t : Float)
+    (c : Canvas) : IO Canvas := do
+  let count := particles.count
+  let floatCount := count * 8
+  let data := if c.instanceBufferCapacity >= count then
+      c.instanceBuffer
+    else
+      Array.replicate floatCount 0.0
+  let tHue := t * 0.2
+  let mut data := data
+  for i in [:count] do
+    let pbase := i * 5
+    let x := particles.particleState[pbase]!
+    let y := particles.particleState[pbase + 1]!
+    let hueBase := particles.particleState[pbase + 4]!
+    let hue := (tHue + hueBase) - (tHue + hueBase).floor
+    let h6 := hue * 6.0
+    let sector := h6.floor
+    let f := h6 - sector
+    let q := 1.0 - 0.9 * f
+    let t' := 1.0 - 0.9 * (1.0 - f)
+    let (r, g, b) := match sector.toUInt8 % 6 with
+      | 0 => (1.0, t', 0.1)
+      | 1 => (q, 1.0, 0.1)
+      | 2 => (0.1, 1.0, t')
+      | 3 => (0.1, q, 1.0)
+      | 4 => (t', 0.1, 1.0)
+      | _ => (1.0, 0.1, q)
+    let ndcX := (x / c.ctx.baseWidth) * 2.0 - 1.0
+    let ndcY := 1.0 - (y / c.ctx.baseHeight) * 2.0
+    let ndcRadius := particles.radius / c.ctx.baseWidth * 2.0
+    let base := i * 8
+    data := data.set! base ndcX
+    data := data.set! (base + 1) ndcY
+    data := data.set! (base + 2) 0.0  -- angle (unused for circles)
+    data := data.set! (base + 3) ndcRadius
+    data := data.set! (base + 4) r
+    data := data.set! (base + 5) g
+    data := data.set! (base + 6) b
+    data := data.set! (base + 7) 1.0
+  FFI.Renderer.drawInstancedCircles c.ctx.renderer data count.toUInt32
   pure { c with instanceBuffer := data, instanceBufferCapacity := count }
 
 /-! ## Drawing operations -/

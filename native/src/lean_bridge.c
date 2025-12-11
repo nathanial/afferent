@@ -304,6 +304,76 @@ LEAN_EXPORT lean_obj_res lean_afferent_renderer_draw_instanced_rects(
     return lean_io_result_mk_ok(lean_box(0));
 }
 
+// Draw instanced triangles - GPU-accelerated transforms
+LEAN_EXPORT lean_obj_res lean_afferent_renderer_draw_instanced_triangles(
+    lean_obj_arg renderer_obj,
+    lean_obj_arg instance_data_arr,
+    uint32_t instance_count,
+    lean_obj_arg world
+) {
+    AfferentRendererRef renderer = (AfferentRendererRef)lean_get_external_data(renderer_obj);
+
+    size_t arr_size = lean_array_size(instance_data_arr);
+    size_t expected_size = (size_t)instance_count * 8;
+
+    if (arr_size < expected_size || instance_count == 0) {
+        return lean_io_result_mk_ok(lean_box(0));
+    }
+
+    if (arr_size > g_instance_buffer_capacity) {
+        free(g_instance_buffer);
+        g_instance_buffer = malloc(arr_size * sizeof(float));
+        g_instance_buffer_capacity = g_instance_buffer ? arr_size : 0;
+    }
+
+    if (!g_instance_buffer) {
+        return lean_io_result_mk_ok(lean_box(0));
+    }
+
+    for (size_t i = 0; i < arr_size; i++) {
+        g_instance_buffer[i] = (float)lean_unbox_float(lean_array_get_core(instance_data_arr, i));
+    }
+
+    afferent_renderer_draw_instanced_triangles(renderer, g_instance_buffer, instance_count);
+
+    return lean_io_result_mk_ok(lean_box(0));
+}
+
+// Draw instanced circles - smooth circles via fragment shader
+LEAN_EXPORT lean_obj_res lean_afferent_renderer_draw_instanced_circles(
+    lean_obj_arg renderer_obj,
+    lean_obj_arg instance_data_arr,
+    uint32_t instance_count,
+    lean_obj_arg world
+) {
+    AfferentRendererRef renderer = (AfferentRendererRef)lean_get_external_data(renderer_obj);
+
+    size_t arr_size = lean_array_size(instance_data_arr);
+    size_t expected_size = (size_t)instance_count * 8;
+
+    if (arr_size < expected_size || instance_count == 0) {
+        return lean_io_result_mk_ok(lean_box(0));
+    }
+
+    if (arr_size > g_instance_buffer_capacity) {
+        free(g_instance_buffer);
+        g_instance_buffer = malloc(arr_size * sizeof(float));
+        g_instance_buffer_capacity = g_instance_buffer ? arr_size : 0;
+    }
+
+    if (!g_instance_buffer) {
+        return lean_io_result_mk_ok(lean_box(0));
+    }
+
+    for (size_t i = 0; i < arr_size; i++) {
+        g_instance_buffer[i] = (float)lean_unbox_float(lean_array_get_core(instance_data_arr, i));
+    }
+
+    afferent_renderer_draw_instanced_circles(renderer, g_instance_buffer, instance_count);
+
+    return lean_io_result_mk_ok(lean_box(0));
+}
+
 // Set scissor rect for clipping
 LEAN_EXPORT lean_obj_res lean_afferent_renderer_set_scissor(
     lean_obj_arg renderer_obj,

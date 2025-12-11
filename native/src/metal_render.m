@@ -129,6 +129,84 @@ vertex InstancedVertexOut instanced_vertex_main(
 fragment float4 instanced_fragment_main(InstancedVertexOut in [[stage_in]]) {
     return in.color;
 }
+
+// === TRIANGLE SHADER ===
+// Draws spinning triangles using 3 vertices per instance
+
+vertex InstancedVertexOut instanced_triangle_vertex(
+    uint vid [[vertex_id]],
+    uint iid [[instance_id]],
+    constant InstanceData* instances [[buffer(0)]]
+) {
+    // Equilateral triangle vertices (pointing up)
+    float2 unitTriangle[3] = {
+        float2( 0.0,  1.15),   // top
+        float2(-1.0, -0.58),   // bottom-left
+        float2( 1.0, -0.58)    // bottom-right
+    };
+
+    InstanceData inst = instances[iid];
+    float2 v = unitTriangle[vid];
+
+    float sinA = sin(inst.angle);
+    float cosA = cos(inst.angle);
+
+    float2 rotated = float2(
+        v.x * cosA - v.y * sinA,
+        v.x * sinA + v.y * cosA
+    );
+
+    float2 finalPos = inst.pos + rotated * inst.halfSize;
+
+    InstancedVertexOut out;
+    out.position = float4(finalPos, 0.0, 1.0);
+    out.color = inst.color;
+    return out;
+}
+
+// === CIRCLE SHADER ===
+// Draws filled circles using fragment shader distance check
+
+struct CircleVertexOut {
+    float4 position [[position]];
+    float4 color;
+    float2 uv;  // -1 to 1, for distance calculation
+};
+
+vertex CircleVertexOut instanced_circle_vertex(
+    uint vid [[vertex_id]],
+    uint iid [[instance_id]],
+    constant InstanceData* instances [[buffer(0)]]
+) {
+    // Quad vertices (no rotation needed for circles)
+    float2 unitQuad[4] = {
+        float2(-1, -1),
+        float2( 1, -1),
+        float2(-1,  1),
+        float2( 1,  1)
+    };
+
+    InstanceData inst = instances[iid];
+    float2 v = unitQuad[vid];
+
+    // Circles don't rotate, but we can use angle for something else (like pulsing)
+    float2 finalPos = inst.pos + v * inst.halfSize;
+
+    CircleVertexOut out;
+    out.position = float4(finalPos, 0.0, 1.0);
+    out.color = inst.color;
+    out.uv = v;  // Pass UV for fragment shader
+    return out;
+}
+
+fragment float4 instanced_circle_fragment(CircleVertexOut in [[stage_in]]) {
+    // Distance from center (0,0) in UV space
+    float dist = length(in.uv);
+    // Smooth edge with anti-aliasing
+    float alpha = 1.0 - smoothstep(0.9, 1.0, dist);
+    if (alpha < 0.01) discard_fragment();
+    return float4(in.color.rgb, in.color.a * alpha);
+}
 )";
 
 // Text vertex structure (different layout than AfferentVertex)
@@ -154,6 +232,8 @@ struct AfferentRenderer {
     id<MTLRenderPipelineState> pipelineState;
     id<MTLRenderPipelineState> textPipelineState;      // For text rendering
     id<MTLRenderPipelineState> instancedPipelineState; // For instanced rect rendering
+    id<MTLRenderPipelineState> trianglePipelineState;  // For instanced triangle rendering
+    id<MTLRenderPipelineState> circlePipelineState;    // For instanced circle rendering
     id<MTLSamplerState> textSampler;                   // For text texture sampling
     id<MTLCommandBuffer> currentCommandBuffer;
     id<MTLRenderCommandEncoder> currentEncoder;
@@ -462,6 +542,61 @@ AfferentResult afferent_renderer_create(
             return AFFERENT_ERROR_PIPELINE_FAILED;
         }
 
+        // Create triangle pipeline (same library, different vertex function)
+        id<MTLFunction> triangleVertexFunction = [instancedLibrary newFunctionWithName:@"instanced_triangle_vertex"];
+        if (!triangleVertexFunction) {
+            NSLog(@"Failed to find triangle vertex function");
+            free(renderer);
+            return AFFERENT_ERROR_PIPELINE_FAILED;
+        }
+
+        MTLRenderPipelineDescriptor *trianglePipelineDesc = [[MTLRenderPipelineDescriptor alloc] init];
+        trianglePipelineDesc.vertexFunction = triangleVertexFunction;
+        trianglePipelineDesc.fragmentFunction = instancedFragmentFunction;  // Same fragment shader
+        trianglePipelineDesc.colorAttachments[0].pixelFormat = MTLPixelFormatBGRA8Unorm;
+        trianglePipelineDesc.rasterSampleCount = 4;
+        trianglePipelineDesc.colorAttachments[0].blendingEnabled = YES;
+        trianglePipelineDesc.colorAttachments[0].sourceRGBBlendFactor = MTLBlendFactorSourceAlpha;
+        trianglePipelineDesc.colorAttachments[0].destinationRGBBlendFactor = MTLBlendFactorOneMinusSourceAlpha;
+        trianglePipelineDesc.colorAttachments[0].sourceAlphaBlendFactor = MTLBlendFactorOne;
+        trianglePipelineDesc.colorAttachments[0].destinationAlphaBlendFactor = MTLBlendFactorOneMinusSourceAlpha;
+
+        renderer->trianglePipelineState = [renderer->device newRenderPipelineStateWithDescriptor:trianglePipelineDesc
+                                                                                           error:&error];
+        if (!renderer->trianglePipelineState) {
+            NSLog(@"Triangle pipeline creation failed: %@", error);
+            free(renderer);
+            return AFFERENT_ERROR_PIPELINE_FAILED;
+        }
+
+        // Create circle pipeline (different vertex and fragment functions)
+        id<MTLFunction> circleVertexFunction = [instancedLibrary newFunctionWithName:@"instanced_circle_vertex"];
+        id<MTLFunction> circleFragmentFunction = [instancedLibrary newFunctionWithName:@"instanced_circle_fragment"];
+        if (!circleVertexFunction || !circleFragmentFunction) {
+            NSLog(@"Failed to find circle shader functions");
+            free(renderer);
+            return AFFERENT_ERROR_PIPELINE_FAILED;
+        }
+
+        MTLRenderPipelineDescriptor *circlePipelineDesc = [[MTLRenderPipelineDescriptor alloc] init];
+        circlePipelineDesc.vertexFunction = circleVertexFunction;
+        circlePipelineDesc.fragmentFunction = circleFragmentFunction;
+        circlePipelineDesc.colorAttachments[0].pixelFormat = MTLPixelFormatBGRA8Unorm;
+        circlePipelineDesc.rasterSampleCount = 4;
+        circlePipelineDesc.colorAttachments[0].blendingEnabled = YES;
+        circlePipelineDesc.colorAttachments[0].sourceRGBBlendFactor = MTLBlendFactorSourceAlpha;
+        circlePipelineDesc.colorAttachments[0].destinationRGBBlendFactor = MTLBlendFactorOneMinusSourceAlpha;
+        circlePipelineDesc.colorAttachments[0].sourceAlphaBlendFactor = MTLBlendFactorOne;
+        circlePipelineDesc.colorAttachments[0].destinationAlphaBlendFactor = MTLBlendFactorOneMinusSourceAlpha;
+
+        renderer->circlePipelineState = [renderer->device newRenderPipelineStateWithDescriptor:circlePipelineDesc
+                                                                                         error:&error];
+        if (!renderer->circlePipelineState) {
+            NSLog(@"Circle pipeline creation failed: %@", error);
+            free(renderer);
+            return AFFERENT_ERROR_PIPELINE_FAILED;
+        }
+
         *out_renderer = renderer;
         return AFFERENT_OK;
     }
@@ -704,6 +839,86 @@ void afferent_renderer_draw_instanced_rects(
                                    instanceCount:instance_count];
 
         // Switch back to basic pipeline
+        [renderer->currentEncoder setRenderPipelineState:renderer->pipelineState];
+    }
+}
+
+// Draw instanced triangles - GPU computes transforms
+void afferent_renderer_draw_instanced_triangles(
+    AfferentRendererRef renderer,
+    const float* instance_data,
+    uint32_t instance_count
+) {
+    if (!renderer || !renderer->currentEncoder || !instance_data || instance_count == 0) {
+        return;
+    }
+
+    @autoreleasepool {
+        size_t data_size = instance_count * sizeof(InstanceData);
+        id<MTLBuffer> instanceBuffer = pool_acquire_buffer(
+            renderer->device,
+            g_buffer_pool.vertex_pool,
+            &g_buffer_pool.vertex_pool_count,
+            data_size,
+            true
+        );
+
+        if (!instanceBuffer) {
+            NSLog(@"Failed to create triangle instance buffer");
+            return;
+        }
+
+        memcpy(instanceBuffer.contents, instance_data, data_size);
+
+        [renderer->currentEncoder setRenderPipelineState:renderer->trianglePipelineState];
+        [renderer->currentEncoder setVertexBuffer:instanceBuffer offset:0 atIndex:0];
+
+        // Draw: 3 vertices per triangle
+        [renderer->currentEncoder drawPrimitives:MTLPrimitiveTypeTriangle
+                                     vertexStart:0
+                                     vertexCount:3
+                                   instanceCount:instance_count];
+
+        [renderer->currentEncoder setRenderPipelineState:renderer->pipelineState];
+    }
+}
+
+// Draw instanced circles - smooth circles via fragment shader
+void afferent_renderer_draw_instanced_circles(
+    AfferentRendererRef renderer,
+    const float* instance_data,
+    uint32_t instance_count
+) {
+    if (!renderer || !renderer->currentEncoder || !instance_data || instance_count == 0) {
+        return;
+    }
+
+    @autoreleasepool {
+        size_t data_size = instance_count * sizeof(InstanceData);
+        id<MTLBuffer> instanceBuffer = pool_acquire_buffer(
+            renderer->device,
+            g_buffer_pool.vertex_pool,
+            &g_buffer_pool.vertex_pool_count,
+            data_size,
+            true
+        );
+
+        if (!instanceBuffer) {
+            NSLog(@"Failed to create circle instance buffer");
+            return;
+        }
+
+        memcpy(instanceBuffer.contents, instance_data, data_size);
+
+        [renderer->currentEncoder setRenderPipelineState:renderer->circlePipelineState];
+        [renderer->currentEncoder setVertexBuffer:instanceBuffer offset:0 atIndex:0];
+
+        // Draw: 4 vertices per quad (triangle strip)
+        [renderer->currentEncoder drawPrimitives:MTLPrimitiveTypeTriangleStrip
+                                     vertexStart:0
+                                     vertexCount:4
+                                   instanceCount:instance_count];
+
         [renderer->currentEncoder setRenderPipelineState:renderer->pipelineState];
     }
 }

@@ -83,9 +83,25 @@ void afferent_renderer_draw_triangles(
 );
 
 // Instanced rectangle drawing (GPU-accelerated transforms)
-// instance_data: array of 9 floats per instance:
-//   pos.x, pos.y (NDC), sin(angle), cos(angle), halfSize (NDC), r, g, b, a
+// instance_data: array of 8 floats per instance:
+//   pos.x, pos.y (NDC), angle, halfSize (NDC), r, g, b, a
 void afferent_renderer_draw_instanced_rects(
+    AfferentRendererRef renderer,
+    const float* instance_data,
+    uint32_t instance_count
+);
+
+// Instanced triangle drawing (GPU-accelerated transforms)
+// instance_data: same format as rects (8 floats per instance)
+void afferent_renderer_draw_instanced_triangles(
+    AfferentRendererRef renderer,
+    const float* instance_data,
+    uint32_t instance_count
+);
+
+// Instanced circle drawing (smooth circles via fragment shader)
+// instance_data: same format as rects (8 floats per instance)
+void afferent_renderer_draw_instanced_circles(
     AfferentRendererRef renderer,
     const float* instance_data,
     uint32_t instance_count

@@ -902,15 +902,31 @@ def renderAnimations (c : Canvas) (t : Float) : IO Canvas := do
 
 /-! ## Performance Test -/
 
-/-- Render many spinning squares for performance testing using pre-computed particle data.
-    Press Space to toggle this mode.
+/-- Render orbital spinning squares - particles orbit around center.
     Uses GPU instancing + pre-computed static data for maximum performance! -/
-def renderPerformanceTestFast (c : Canvas) (t : Float) (font : Font) (particles : Canvas.ParticleData) : IO Canvas := do
-  -- Title (rendered outside batch since text uses different pipeline)
+def renderOrbitalTest (c : Canvas) (t : Float) (font : Font) (particles : Canvas.ParticleData) : IO Canvas := do
   let c := c.setFillColor Color.white
-  let c ← c.fillTextXY s!"Performance Test: {particles.count} spinning squares (Space to toggle)" 20 30 font
-  -- ULTRA-FAST: use pre-computed particle data
+  let c ← c.fillTextXY s!"Orbital: {particles.count} spinning squares (Space to advance)" 20 30 font
   c.batchInstancedParticles particles t
+
+/-- Render grid spinning squares - particles in a grid, spinning in place.
+    Zero trig calls on CPU - GPU does all rotation! -/
+def renderGridTest (c : Canvas) (t : Float) (font : Font) (particles : Canvas.GridParticleData) : IO Canvas := do
+  let c := c.setFillColor Color.white
+  let c ← c.fillTextXY s!"Grid: {particles.count} spinning squares (Space to advance)" 20 30 font
+  c.batchInstancedGridParticles particles t
+
+/-- Render grid of spinning triangles. -/
+def renderTriangleTest (c : Canvas) (t : Float) (font : Font) (particles : Canvas.GridParticleData) : IO Canvas := do
+  let c := c.setFillColor Color.white
+  let c ← c.fillTextXY s!"Triangles: {particles.count} spinning triangles (Space to advance)" 20 30 font
+  c.batchInstancedGridTriangles particles t
+
+/-- Render bouncing circles. -/
+def renderCircleTest (c : Canvas) (t : Float) (font : Font) (particles : Canvas.BouncingParticleData) : IO Canvas := do
+  let c := c.setFillColor Color.white
+  let c ← c.fillTextXY s!"Circles: {particles.count} bouncing circles (Space to advance)" 20 30 font
+  c.batchInstancedBouncingCircles particles t
 
 /-! ## Unified Visual Demo -/
 
@@ -953,37 +969,80 @@ def unifiedDemo : IO Unit := do
   -- Pre-compute particle data ONCE at startup (not every frame!)
   let squareCount := 10000
   let halfSize := 4.0  -- Small squares for 10k
-  let particles := Canvas.ParticleData.create squareCount 960.0 540.0 halfSize
-  IO.println s!"Pre-computed {squareCount} particle trajectories"
+  -- Orbital particles (orbiting around center)
+  let orbitalParticles := Canvas.ParticleData.create squareCount 960.0 540.0 halfSize
+  IO.println s!"Pre-computed {squareCount} orbital particle trajectories"
+  -- Grid particles (100x100 grid of spinning squares/triangles)
+  let gridCols := 100
+  let gridRows := 100
+  let gridSpacing := 18.0
+  let gridStartX := (1920.0 - (gridCols.toFloat - 1) * gridSpacing) / 2.0
+  let gridStartY := (1080.0 - (gridRows.toFloat - 1) * gridSpacing) / 2.0
+  let gridParticles := Canvas.GridParticleData.create gridCols gridRows gridStartX gridStartY gridSpacing 6.0
+  IO.println s!"Pre-computed {gridParticles.count} grid particle positions"
+  -- Bouncing circles
+  let bouncingParticles := Canvas.BouncingParticleData.create 10000 1920.0 1080.0 5.0 42
+  IO.println s!"Created {bouncingParticles.count} bouncing circles"
 
-  -- Custom render loop with keyboard handling for mode switching
+  -- Display modes: 0 = demo, 1 = orbital, 2 = grid squares, 3 = triangles, 4 = circles
   let startTime ← IO.monoMsNow
   let mut c := canvas
-  let mut perfTestMode := false
+  let mut displayMode : Nat := 0
+  let mut lastTime := startTime
+  let mut bouncingState := bouncingParticles
+  -- FPS counter (smoothed over multiple frames)
+  let mut frameCount : Nat := 0
+  let mut fpsAccumulator : Float := 0.0
+  let mut displayFps : Float := 0.0
 
   while !(← c.shouldClose) do
     c.pollEvents
 
-    -- Check for Space key (key code 49) to toggle performance test mode
+    -- Check for Space key (key code 49) to cycle through modes
     let keyCode ← c.getKeyCode
     if keyCode == 49 then  -- Space bar
-      perfTestMode := !perfTestMode
+      displayMode := (displayMode + 1) % 5
       c.clearKey
-      if perfTestMode then
-        IO.println "Switched to PERFORMANCE TEST mode"
-      else
-        IO.println "Switched to DEMO mode"
+      match displayMode with
+      | 0 => IO.println "Switched to DEMO mode"
+      | 1 => IO.println "Switched to ORBITAL performance test"
+      | 2 => IO.println "Switched to GRID (squares) performance test"
+      | 3 => IO.println "Switched to TRIANGLES performance test"
+      | _ => IO.println "Switched to CIRCLES (bouncing) performance test"
 
     let ok ← c.beginFrame Color.darkGray
     if ok then
       let now ← IO.monoMsNow
       let t := (now - startTime).toFloat / 1000.0  -- Elapsed seconds
+      let dt := (now - lastTime).toFloat / 1000.0  -- Delta time
+      lastTime := now
+
+      -- Update FPS counter (update display every 10 frames for stability)
+      frameCount := frameCount + 1
+      if dt > 0.0 then
+        fpsAccumulator := fpsAccumulator + (1.0 / dt)
+      if frameCount >= 10 then
+        displayFps := fpsAccumulator / frameCount.toFloat
+        fpsAccumulator := 0.0
+        frameCount := 0
+
+      -- Update bouncing particles (even when not displaying, to keep physics consistent)
+      bouncingState := bouncingState.update dt
 
       let c' := c.resetTransform
 
-      if perfTestMode then
-        -- Performance test mode: 10000 spinning squares with pre-computed data
-        c ← renderPerformanceTestFast c' t fontMedium particles
+      if displayMode == 1 then
+        -- Orbital performance test: particles orbiting around center
+        c ← renderOrbitalTest c' t fontMedium orbitalParticles
+      else if displayMode == 2 then
+        -- Grid performance test: squares spinning in a grid
+        c ← renderGridTest c' t fontMedium gridParticles
+      else if displayMode == 3 then
+        -- Triangle performance test: triangles spinning in a grid
+        c ← renderTriangleTest c' t fontMedium gridParticles
+      else if displayMode == 4 then
+        -- Circle performance test: bouncing circles
+        c ← renderCircleTest c' t fontMedium bouncingState
       else
         -- Normal demo mode: grid of demos
         let canvas := c'
@@ -1074,6 +1133,15 @@ def unifiedDemo : IO Unit := do
         canvas.unclip
 
         pure ()
+
+      -- Render FPS counter in top-right corner (after all other rendering)
+      let fpsText := s!"{displayFps.toUInt32} FPS"
+      let (textWidth, _) ← fontSmall.measureText fpsText
+      let c' := c.resetTransform
+      let c' := c'.setFillColor (Color.rgba 0.0 0.0 0.0 0.6)
+      let c' ← c'.fillRectXYWH (1920.0 - textWidth - 20.0) 5.0 (textWidth + 15.0) 25.0
+      let c' := c'.setFillColor Color.white
+      let _c' ← c'.fillTextXY fpsText (1920.0 - textWidth - 12.0) 22.0 fontSmall
 
       c.endFrame
 

@@ -82,9 +82,25 @@ opaque Renderer.drawTriangles
   (indexCount : UInt32) : IO Unit
 
 -- Instanced rectangle drawing (GPU-accelerated transforms)
--- instanceData: Array of 9 floats per instance (pos.x, pos.y, sin, cos, halfSize, r, g, b, a)
+-- instanceData: Array of 8 floats per instance (pos.x, pos.y, angle, halfSize, r, g, b, a)
 @[extern "lean_afferent_renderer_draw_instanced_rects"]
 opaque Renderer.drawInstancedRects
+  (renderer : @& Renderer)
+  (instanceData : @& Array Float)
+  (instanceCount : UInt32) : IO Unit
+
+-- Instanced triangle drawing (GPU-accelerated transforms)
+-- instanceData: Array of 8 floats per instance (pos.x, pos.y, angle, halfSize, r, g, b, a)
+@[extern "lean_afferent_renderer_draw_instanced_triangles"]
+opaque Renderer.drawInstancedTriangles
+  (renderer : @& Renderer)
+  (instanceData : @& Array Float)
+  (instanceCount : UInt32) : IO Unit
+
+-- Instanced circle drawing (smooth circles via fragment shader)
+-- instanceData: Array of 8 floats per instance (pos.x, pos.y, angle, halfSize, r, g, b, a)
+@[extern "lean_afferent_renderer_draw_instanced_circles"]
+opaque Renderer.drawInstancedCircles
   (renderer : @& Renderer)
   (instanceData : @& Array Float)
   (instanceCount : UInt32) : IO Unit
