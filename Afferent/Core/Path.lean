@@ -276,14 +276,14 @@ def star (center : Point) (outerRadius innerRadius : Float) (points : Nat := 5) 
   let pi := 3.14159265358979323846
   let numPoints := if points < 3 then 3 else points
   let angleStep := pi / numPoints.toFloat
-  let startAngle := -pi / 2.0  -- Start at top
+  let startAngle := -pi / 2.0 - angleStep  -- Offset so first outer point is at top
 
   let mut path := empty
   let mut first := true
 
   for i in [:numPoints * 2] do
     let angle := startAngle + i.toFloat * angleStep
-    let r := if i % 2 == 0 then outerRadius else innerRadius
+    let r := if i % 2 == 0 then innerRadius else outerRadius
     let pt := Point.mk' (center.x + r * Float.cos angle) (center.y + r * Float.sin angle)
 
     if first then
