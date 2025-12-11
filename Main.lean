@@ -903,30 +903,30 @@ def renderAnimations (c : Canvas) (t : Float) : IO Canvas := do
 /-! ## Performance Test -/
 
 /-- Render orbital spinning squares - particles orbit around center.
-    Uses GPU instancing + pre-computed static data for maximum performance! -/
+    Uses GPU instancing + zero-copy FloatBuffer for maximum performance! -/
 def renderOrbitalTest (c : Canvas) (t : Float) (font : Font) (particles : Canvas.ParticleData) : IO Canvas := do
   let c := c.setFillColor Color.white
   let c ← c.fillTextXY s!"Orbital: {particles.count} spinning squares (Space to advance)" 20 30 font
-  c.batchInstancedParticles particles t
+  c.batchInstancedParticlesFast particles t
 
 /-- Render grid spinning squares - particles in a grid, spinning in place.
-    Zero trig calls on CPU - GPU does all rotation! -/
+    Zero-copy FloatBuffer + GPU rotation = maximum performance! -/
 def renderGridTest (c : Canvas) (t : Float) (font : Font) (particles : Canvas.GridParticleData) : IO Canvas := do
   let c := c.setFillColor Color.white
   let c ← c.fillTextXY s!"Grid: {particles.count} spinning squares (Space to advance)" 20 30 font
-  c.batchInstancedGridParticles particles t
+  c.batchInstancedGridParticlesFast particles t
 
 /-- Render grid of spinning triangles. -/
 def renderTriangleTest (c : Canvas) (t : Float) (font : Font) (particles : Canvas.GridParticleData) : IO Canvas := do
   let c := c.setFillColor Color.white
   let c ← c.fillTextXY s!"Triangles: {particles.count} spinning triangles (Space to advance)" 20 30 font
-  c.batchInstancedGridTriangles particles t
+  c.batchInstancedGridTrianglesFast particles t
 
 /-- Render bouncing circles. -/
 def renderCircleTest (c : Canvas) (t : Float) (font : Font) (particles : Canvas.BouncingParticleData) : IO Canvas := do
   let c := c.setFillColor Color.white
   let c ← c.fillTextXY s!"Circles: {particles.count} bouncing circles (Space to advance)" 20 30 font
-  c.batchInstancedBouncingCircles particles t
+  c.batchInstancedBouncingCirclesFast particles t
 
 /-! ## Unified Visual Demo -/
 

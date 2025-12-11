@@ -94,10 +94,21 @@ target lean_bridge_o pkg : FilePath := do
     "-O2"
   ] #[] "cc"
 
+target float_buffer_o pkg : FilePath := do
+  let oFile := pkg.buildDir / "native" / "float_buffer.o"
+  let srcFile := pkg.dir / "native" / "src" / "float_buffer.c"
+  let includeDir := pkg.dir / "native" / "include"
+  buildO oFile (← inputTextFile srcFile) #[
+    "-I", includeDir.toString,
+    "-fPIC",
+    "-O2"
+  ] #[] "cc"
+
 extern_lib libafferent_native pkg := do
   let name := nameToStaticLib "afferent_native"
   let windowO ← window_o.fetch
   let metalO ← metal_render_o.fetch
   let textO ← text_render_o.fetch
   let bridgeO ← lean_bridge_o.fetch
-  buildStaticLib (pkg.staticLibDir / name) #[windowO, metalO, textO, bridgeO]
+  let floatBufferO ← float_buffer_o.fetch
+  buildStaticLib (pkg.staticLibDir / name) #[windowO, metalO, textO, bridgeO, floatBufferO]

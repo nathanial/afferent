@@ -8,6 +8,7 @@ static lean_external_class* g_window_class = NULL;
 static lean_external_class* g_renderer_class = NULL;
 static lean_external_class* g_buffer_class = NULL;
 static lean_external_class* g_font_class = NULL;
+static lean_external_class* g_float_buffer_class = NULL;
 
 // Weak reference so we don't double-free if Lean GC happens after explicit destroy
 static void window_finalizer(void* ptr) {
@@ -27,12 +28,17 @@ static void font_finalizer(void* ptr) {
     // Same as above
 }
 
+static void float_buffer_finalizer(void* ptr) {
+    // Same as above
+}
+
 // Module initialization
 LEAN_EXPORT lean_obj_res afferent_initialize(uint8_t builtin, lean_obj_arg world) {
     g_window_class = lean_register_external_class(window_finalizer, NULL);
     g_renderer_class = lean_register_external_class(renderer_finalizer, NULL);
     g_buffer_class = lean_register_external_class(buffer_finalizer, NULL);
     g_font_class = lean_register_external_class(font_finalizer, NULL);
+    g_float_buffer_class = lean_register_external_class(float_buffer_finalizer, NULL);
 
     // Initialize text subsystem
     afferent_text_init();
@@ -509,5 +515,102 @@ LEAN_EXPORT lean_obj_res lean_afferent_text_render(
             lean_mk_string("Failed to render text")));
     }
 
+    return lean_io_result_mk_ok(lean_box(0));
+}
+
+// ============== FloatBuffer FFI ==============
+// High-performance mutable float buffer for instance data
+// Avoids Lean's copy-on-write array semantics
+
+LEAN_EXPORT lean_obj_res lean_afferent_float_buffer_create(size_t capacity, lean_obj_arg world) {
+    AfferentFloatBufferRef buffer = NULL;
+    AfferentResult result = afferent_float_buffer_create(capacity, &buffer);
+
+    if (result != AFFERENT_OK) {
+        return lean_io_result_mk_error(lean_mk_io_user_error(
+            lean_mk_string("Failed to create float buffer")));
+    }
+
+    lean_object* obj = lean_alloc_external(g_float_buffer_class, buffer);
+    return lean_io_result_mk_ok(obj);
+}
+
+LEAN_EXPORT lean_obj_res lean_afferent_float_buffer_destroy(lean_obj_arg buffer_obj, lean_obj_arg world) {
+    AfferentFloatBufferRef buffer = (AfferentFloatBufferRef)lean_get_external_data(buffer_obj);
+    afferent_float_buffer_destroy(buffer);
+    return lean_io_result_mk_ok(lean_box(0));
+}
+
+LEAN_EXPORT lean_obj_res lean_afferent_float_buffer_set(
+    lean_obj_arg buffer_obj,
+    size_t index,
+    double value,
+    lean_obj_arg world
+) {
+    AfferentFloatBufferRef buffer = (AfferentFloatBufferRef)lean_get_external_data(buffer_obj);
+    afferent_float_buffer_set(buffer, index, (float)value);
+    return lean_io_result_mk_ok(lean_box(0));
+}
+
+LEAN_EXPORT lean_obj_res lean_afferent_float_buffer_get(
+    lean_obj_arg buffer_obj,
+    size_t index,
+    lean_obj_arg world
+) {
+    AfferentFloatBufferRef buffer = (AfferentFloatBufferRef)lean_get_external_data(buffer_obj);
+    float value = afferent_float_buffer_get(buffer, index);
+    return lean_io_result_mk_ok(lean_box_float((double)value));
+}
+
+// Draw instanced shapes directly from FloatBuffer (zero-copy path)
+LEAN_EXPORT lean_obj_res lean_afferent_renderer_draw_instanced_rects_buffer(
+    lean_obj_arg renderer_obj,
+    lean_obj_arg buffer_obj,
+    uint32_t instance_count,
+    lean_obj_arg world
+) {
+    AfferentRendererRef renderer = (AfferentRendererRef)lean_get_external_data(renderer_obj);
+    AfferentFloatBufferRef buffer = (AfferentFloatBufferRef)lean_get_external_data(buffer_obj);
+
+    // Direct pointer pass - no conversion needed!
+    afferent_renderer_draw_instanced_rects(
+        renderer,
+        afferent_float_buffer_data(buffer),
+        instance_count
+    );
+    return lean_io_result_mk_ok(lean_box(0));
+}
+
+LEAN_EXPORT lean_obj_res lean_afferent_renderer_draw_instanced_triangles_buffer(
+    lean_obj_arg renderer_obj,
+    lean_obj_arg buffer_obj,
+    uint32_t instance_count,
+    lean_obj_arg world
+) {
+    AfferentRendererRef renderer = (AfferentRendererRef)lean_get_external_data(renderer_obj);
+    AfferentFloatBufferRef buffer = (AfferentFloatBufferRef)lean_get_external_data(buffer_obj);
+
+    afferent_renderer_draw_instanced_triangles(
+        renderer,
+        afferent_float_buffer_data(buffer),
+        instance_count
+    );
+    return lean_io_result_mk_ok(lean_box(0));
+}
+
+LEAN_EXPORT lean_obj_res lean_afferent_renderer_draw_instanced_circles_buffer(
+    lean_obj_arg renderer_obj,
+    lean_obj_arg buffer_obj,
+    uint32_t instance_count,
+    lean_obj_arg world
+) {
+    AfferentRendererRef renderer = (AfferentRendererRef)lean_get_external_data(renderer_obj);
+    AfferentFloatBufferRef buffer = (AfferentFloatBufferRef)lean_get_external_data(buffer_obj);
+
+    afferent_renderer_draw_instanced_circles(
+        renderer,
+        afferent_float_buffer_data(buffer),
+        instance_count
+    );
     return lean_io_result_mk_ok(lean_box(0));
 }

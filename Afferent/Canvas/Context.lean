@@ -310,6 +310,10 @@ structure Canvas where
   instanceBuffer : Array Float := #[]
   /-- Capacity of instance buffer (in number of instances, not floats). -/
   instanceBufferCapacity : Nat := 0
+  /-- High-performance mutable FloatBuffer for zero-copy instanced rendering. -/
+  floatBuffer : Option FFI.FloatBuffer := none
+  /-- Capacity of FloatBuffer (in floats). -/
+  floatBufferCapacity : Nat := 0
 
 namespace Canvas
 
@@ -792,6 +796,207 @@ def batchInstancedBouncingCircles (particles : BouncingParticleData) (t : Float)
     data := data.set! (base + 7) 1.0
   FFI.Renderer.drawInstancedCircles c.ctx.renderer data count.toUInt32
   pure { c with instanceBuffer := data, instanceBufferCapacity := count }
+
+/-! ## Zero-Copy FloatBuffer API (Maximum Performance) -/
+
+/-- Ensure the FloatBuffer exists with sufficient capacity.
+    Creates or grows the buffer as needed. -/
+def ensureFloatBuffer (neededFloats : Nat) (c : Canvas) : IO Canvas := do
+  if c.floatBufferCapacity >= neededFloats then
+    pure c
+  else
+    -- Destroy old buffer if exists
+    if let some buf := c.floatBuffer then
+      FFI.FloatBuffer.destroy buf
+    -- Create new larger buffer (with some headroom)
+    let capacity := neededFloats + neededFloats / 4  -- 25% headroom
+    let buf ← FFI.FloatBuffer.create capacity.toUSize
+    pure { c with floatBuffer := some buf, floatBufferCapacity := capacity }
+
+/-- MAXIMUM PERFORMANCE: Render grid particles using zero-copy FloatBuffer.
+    Eliminates 80,000 array allocations per frame for 10k particles. -/
+def batchInstancedGridParticlesFast (particles : GridParticleData) (t : Float)
+    (c : Canvas) : IO Canvas := do
+  let count := particles.count
+  let floatCount := count * 8
+  let c ← c.ensureFloatBuffer floatCount
+  let some buf := c.floatBuffer | pure c  -- Should never fail after ensureFloatBuffer
+  let tHue := t * 0.3
+  let tSpin := t * 3.0
+  for i in [:count] do
+    let sbase := i * 3
+    let x := particles.staticData[sbase]!
+    let y := particles.staticData[sbase + 1]!
+    let hueBase := particles.staticData[sbase + 2]!
+    let angle := tSpin + hueBase * 6.28318
+    let hue := (tHue + hueBase) - (tHue + hueBase).floor
+    let h6 := hue * 6.0
+    let sector := h6.floor
+    let f := h6 - sector
+    let q := 1.0 - 0.9 * f
+    let t' := 1.0 - 0.9 * (1.0 - f)
+    let (r, g, b) := match sector.toUInt8 % 6 with
+      | 0 => (1.0, t', 0.1)
+      | 1 => (q, 1.0, 0.1)
+      | 2 => (0.1, 1.0, t')
+      | 3 => (0.1, q, 1.0)
+      | 4 => (t', 0.1, 1.0)
+      | _ => (1.0, 0.1, q)
+    let ndcX := (x / c.ctx.baseWidth) * 2.0 - 1.0
+    let ndcY := 1.0 - (y / c.ctx.baseHeight) * 2.0
+    let ndcHalfSize := particles.halfSize / c.ctx.baseWidth * 2.0
+    let base := (i * 8).toUSize
+    -- Direct memory writes - no array copies!
+    FFI.FloatBuffer.set buf base ndcX
+    FFI.FloatBuffer.set buf (base + 1) ndcY
+    FFI.FloatBuffer.set buf (base + 2) angle
+    FFI.FloatBuffer.set buf (base + 3) ndcHalfSize
+    FFI.FloatBuffer.set buf (base + 4) r
+    FFI.FloatBuffer.set buf (base + 5) g
+    FFI.FloatBuffer.set buf (base + 6) b
+    FFI.FloatBuffer.set buf (base + 7) 1.0
+  FFI.Renderer.drawInstancedRectsBuffer c.ctx.renderer buf count.toUInt32
+  pure c
+
+/-- MAXIMUM PERFORMANCE: Render orbital particles using zero-copy FloatBuffer. -/
+def batchInstancedParticlesFast (particles : ParticleData) (t : Float)
+    (c : Canvas) : IO Canvas := do
+  let count := particles.count
+  let floatCount := count * 8
+  let c ← c.ensureFloatBuffer floatCount
+  let some buf := c.floatBuffer | pure c
+  let tHalf := t * 0.5
+  let tTriple := t * 3.0
+  let tHue := t * 0.3
+  for i in [:count] do
+    let sbase := i * 6
+    let phase := particles.staticData[sbase]!
+    let baseRadius := particles.staticData[sbase + 1]!
+    let orbitSpeed := particles.staticData[sbase + 2]!
+    let phaseX3 := particles.staticData[sbase + 3]!
+    let phase2 := particles.staticData[sbase + 4]!
+    let hueBase := particles.staticData[sbase + 5]!
+    let orbitAngle := t * orbitSpeed + phase
+    let orbitRadius := baseRadius + 30.0 * Float.sin (tHalf + phaseX3)
+    let x := particles.centerX + orbitRadius * Float.cos orbitAngle
+    let y := particles.centerY + orbitRadius * Float.sin orbitAngle
+    let angle := tTriple + phase2
+    let hue := (tHue + hueBase) - (tHue + hueBase).floor
+    let h6 := hue * 6.0
+    let sector := h6.floor
+    let f := h6 - sector
+    let q := 1.0 - 0.9 * f
+    let t' := 1.0 - 0.9 * (1.0 - f)
+    let (r, g, b) := match sector.toUInt8 % 6 with
+      | 0 => (1.0, t', 0.1)
+      | 1 => (q, 1.0, 0.1)
+      | 2 => (0.1, 1.0, t')
+      | 3 => (0.1, q, 1.0)
+      | 4 => (t', 0.1, 1.0)
+      | _ => (1.0, 0.1, q)
+    let ndcX := (x / c.ctx.baseWidth) * 2.0 - 1.0
+    let ndcY := 1.0 - (y / c.ctx.baseHeight) * 2.0
+    let ndcHalfSize := particles.halfSize / c.ctx.baseWidth * 2.0
+    let base := (i * 8).toUSize
+    FFI.FloatBuffer.set buf base ndcX
+    FFI.FloatBuffer.set buf (base + 1) ndcY
+    FFI.FloatBuffer.set buf (base + 2) angle
+    FFI.FloatBuffer.set buf (base + 3) ndcHalfSize
+    FFI.FloatBuffer.set buf (base + 4) r
+    FFI.FloatBuffer.set buf (base + 5) g
+    FFI.FloatBuffer.set buf (base + 6) b
+    FFI.FloatBuffer.set buf (base + 7) 1.0
+  FFI.Renderer.drawInstancedRectsBuffer c.ctx.renderer buf count.toUInt32
+  pure c
+
+/-- MAXIMUM PERFORMANCE: Render grid triangles using zero-copy FloatBuffer. -/
+def batchInstancedGridTrianglesFast (particles : GridParticleData) (t : Float)
+    (c : Canvas) : IO Canvas := do
+  let count := particles.count
+  let floatCount := count * 8
+  let c ← c.ensureFloatBuffer floatCount
+  let some buf := c.floatBuffer | pure c
+  let tHue := t * 0.3
+  let tSpin := t * 2.0
+  for i in [:count] do
+    let sbase := i * 3
+    let x := particles.staticData[sbase]!
+    let y := particles.staticData[sbase + 1]!
+    let hueBase := particles.staticData[sbase + 2]!
+    let angle := tSpin + hueBase * 6.28318
+    let hue := (tHue + hueBase) - (tHue + hueBase).floor
+    let h6 := hue * 6.0
+    let sector := h6.floor
+    let f := h6 - sector
+    let q := 1.0 - 0.9 * f
+    let t' := 1.0 - 0.9 * (1.0 - f)
+    let (r, g, b) := match sector.toUInt8 % 6 with
+      | 0 => (1.0, t', 0.1)
+      | 1 => (q, 1.0, 0.1)
+      | 2 => (0.1, 1.0, t')
+      | 3 => (0.1, q, 1.0)
+      | 4 => (t', 0.1, 1.0)
+      | _ => (1.0, 0.1, q)
+    let ndcX := (x / c.ctx.baseWidth) * 2.0 - 1.0
+    let ndcY := 1.0 - (y / c.ctx.baseHeight) * 2.0
+    let ndcHalfSize := particles.halfSize / c.ctx.baseWidth * 2.0
+    let base := (i * 8).toUSize
+    FFI.FloatBuffer.set buf base ndcX
+    FFI.FloatBuffer.set buf (base + 1) ndcY
+    FFI.FloatBuffer.set buf (base + 2) angle
+    FFI.FloatBuffer.set buf (base + 3) ndcHalfSize
+    FFI.FloatBuffer.set buf (base + 4) r
+    FFI.FloatBuffer.set buf (base + 5) g
+    FFI.FloatBuffer.set buf (base + 6) b
+    FFI.FloatBuffer.set buf (base + 7) 1.0
+  FFI.Renderer.drawInstancedTrianglesBuffer c.ctx.renderer buf count.toUInt32
+  pure c
+
+/-- MAXIMUM PERFORMANCE: Render bouncing circles using zero-copy FloatBuffer. -/
+def batchInstancedBouncingCirclesFast (particles : BouncingParticleData) (t : Float)
+    (c : Canvas) : IO Canvas := do
+  let count := particles.count
+  let floatCount := count * 8
+  let c ← c.ensureFloatBuffer floatCount
+  let some buf := c.floatBuffer | pure c
+  let tHue := t * 0.2
+  for i in [:count] do
+    let pbase := i * 5
+    let x := particles.particleState[pbase]!
+    let y := particles.particleState[pbase + 1]!
+    let hueBase := particles.particleState[pbase + 4]!
+    let hue := (tHue + hueBase) - (tHue + hueBase).floor
+    let h6 := hue * 6.0
+    let sector := h6.floor
+    let f := h6 - sector
+    let q := 1.0 - 0.9 * f
+    let t' := 1.0 - 0.9 * (1.0 - f)
+    let (r, g, b) := match sector.toUInt8 % 6 with
+      | 0 => (1.0, t', 0.1)
+      | 1 => (q, 1.0, 0.1)
+      | 2 => (0.1, 1.0, t')
+      | 3 => (0.1, q, 1.0)
+      | 4 => (t', 0.1, 1.0)
+      | _ => (1.0, 0.1, q)
+    let ndcX := (x / c.ctx.baseWidth) * 2.0 - 1.0
+    let ndcY := 1.0 - (y / c.ctx.baseHeight) * 2.0
+    let ndcRadius := particles.radius / c.ctx.baseWidth * 2.0
+    let base := (i * 8).toUSize
+    FFI.FloatBuffer.set buf base ndcX
+    FFI.FloatBuffer.set buf (base + 1) ndcY
+    FFI.FloatBuffer.set buf (base + 2) 0.0
+    FFI.FloatBuffer.set buf (base + 3) ndcRadius
+    FFI.FloatBuffer.set buf (base + 4) r
+    FFI.FloatBuffer.set buf (base + 5) g
+    FFI.FloatBuffer.set buf (base + 6) b
+    FFI.FloatBuffer.set buf (base + 7) 1.0
+  FFI.Renderer.drawInstancedCirclesBuffer c.ctx.renderer buf count.toUInt32
+  pure c
+
+/-- Clean up FloatBuffer when destroying canvas. -/
+def destroyFloatBuffer (c : Canvas) : IO Unit := do
+  if let some buf := c.floatBuffer then
+    FFI.FloatBuffer.destroy buf
 
 /-! ## Drawing operations -/
 

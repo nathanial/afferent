@@ -3,6 +3,7 @@
 
 #include <stdint.h>
 #include <stdbool.h>
+#include <stddef.h>
 
 #ifdef __cplusplus
 extern "C" {
@@ -13,6 +14,7 @@ typedef struct AfferentWindow* AfferentWindowRef;
 typedef struct AfferentRenderer* AfferentRendererRef;
 typedef struct AfferentBuffer* AfferentBufferRef;
 typedef struct AfferentFont* AfferentFontRef;
+typedef struct AfferentFloatBuffer* AfferentFloatBufferRef;
 
 // Result codes
 typedef enum {
@@ -172,6 +174,15 @@ AfferentResult afferent_text_render(
     float canvas_width,
     float canvas_height
 );
+
+// FloatBuffer - mutable float array for high-performance instance data
+// Lives in C memory, avoids Lean's copy-on-write array semantics
+AfferentResult afferent_float_buffer_create(size_t capacity, AfferentFloatBufferRef* out);
+void afferent_float_buffer_destroy(AfferentFloatBufferRef buf);
+void afferent_float_buffer_set(AfferentFloatBufferRef buf, size_t index, float value);
+float afferent_float_buffer_get(AfferentFloatBufferRef buf, size_t index);
+size_t afferent_float_buffer_capacity(AfferentFloatBufferRef buf);
+const float* afferent_float_buffer_data(AfferentFloatBufferRef buf);
 
 #ifdef __cplusplus
 }

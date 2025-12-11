@@ -22,6 +22,12 @@ opaque FontPointed : NonemptyType
 def Font : Type := FontPointed.type
 instance : Nonempty Font := FontPointed.property
 
+-- FloatBuffer: High-performance mutable float array for instance data
+-- Lives in C memory, avoids Lean's copy-on-write array semantics
+opaque FloatBufferPointed : NonemptyType
+def FloatBuffer : Type := FloatBufferPointed.type
+instance : Nonempty FloatBuffer := FloatBufferPointed.property
+
 -- Module initialization (registers external classes)
 @[extern "afferent_initialize"]
 opaque init : IO Unit
@@ -137,5 +143,37 @@ opaque Text.render
   (r g b a : Float)
   (transform : @& Array Float)
   (canvasWidth canvasHeight : Float) : IO Unit
+
+-- FloatBuffer management
+@[extern "lean_afferent_float_buffer_create"]
+opaque FloatBuffer.create (capacity : USize) : IO FloatBuffer
+
+@[extern "lean_afferent_float_buffer_destroy"]
+opaque FloatBuffer.destroy (buf : @& FloatBuffer) : IO Unit
+
+@[extern "lean_afferent_float_buffer_set"]
+opaque FloatBuffer.set (buf : @& FloatBuffer) (index : USize) (value : Float) : IO Unit
+
+@[extern "lean_afferent_float_buffer_get"]
+opaque FloatBuffer.get (buf : @& FloatBuffer) (index : USize) : IO Float
+
+-- Draw instanced shapes directly from FloatBuffer (zero-copy path)
+@[extern "lean_afferent_renderer_draw_instanced_rects_buffer"]
+opaque Renderer.drawInstancedRectsBuffer
+  (renderer : @& Renderer)
+  (buffer : @& FloatBuffer)
+  (instanceCount : UInt32) : IO Unit
+
+@[extern "lean_afferent_renderer_draw_instanced_triangles_buffer"]
+opaque Renderer.drawInstancedTrianglesBuffer
+  (renderer : @& Renderer)
+  (buffer : @& FloatBuffer)
+  (instanceCount : UInt32) : IO Unit
+
+@[extern "lean_afferent_renderer_draw_instanced_circles_buffer"]
+opaque Renderer.drawInstancedCirclesBuffer
+  (renderer : @& Renderer)
+  (buffer : @& FloatBuffer)
+  (instanceCount : UInt32) : IO Unit
 
 end Afferent.FFI
