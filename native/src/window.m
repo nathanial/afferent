@@ -1,16 +1,37 @@
 #import <Cocoa/Cocoa.h>
 #import <Metal/Metal.h>
 #import <QuartzCore/CAMetalLayer.h>
+#include <string.h>
 #include "afferent.h"
 
 // Forward declarations
 @class AfferentView;
 @class AfferentWindowDelegate;
 
-// Metal-backed view
+// Internal window structure - defined early so view can access it
+struct AfferentWindow {
+    NSWindow *nsWindow;
+    AfferentView *view;
+    AfferentWindowDelegate *delegate;
+    id<MTLDevice> device;
+
+    // Input state
+    float mouseX;
+    float mouseY;
+    bool mouseDown[3];      // left, right, middle
+    bool mousePressed[3];   // pressed this frame (single-frame signal)
+    bool mouseReleased[3];  // released this frame (single-frame signal)
+    float scrollX;
+    float scrollY;
+    char textInput[32];     // text input buffer for this frame
+    int textInputLen;
+};
+
+// Metal-backed view with input handling
 @interface AfferentView : NSView
 @property (nonatomic, strong) CAMetalLayer *metalLayer;
 @property (nonatomic, strong) id<MTLDevice> device;
+@property (nonatomic, assign) struct AfferentWindow *windowRef;
 @end
 
 @implementation AfferentView
@@ -48,6 +69,109 @@
     return YES;
 }
 
+// Enable mouse tracking for mouseMoved events
+- (void)updateTrackingAreas {
+    [super updateTrackingAreas];
+    for (NSTrackingArea *area in self.trackingAreas) {
+        [self removeTrackingArea:area];
+    }
+    NSTrackingArea *trackingArea = [[NSTrackingArea alloc]
+        initWithRect:self.bounds
+             options:(NSTrackingMouseMoved | NSTrackingActiveInKeyWindow | NSTrackingInVisibleRect)
+               owner:self
+            userInfo:nil];
+    [self addTrackingArea:trackingArea];
+}
+
+// Helper to convert mouse coordinates (flip Y to top-left origin)
+- (void)updateMousePosition:(NSEvent *)event {
+    if (!self.windowRef) return;
+    NSPoint loc = [self convertPoint:event.locationInWindow fromView:nil];
+    self.windowRef->mouseX = (float)loc.x;
+    self.windowRef->mouseY = (float)(self.bounds.size.height - loc.y);
+}
+
+// Mouse button events
+- (void)mouseDown:(NSEvent *)event {
+    [self updateMousePosition:event];
+    if (!self.windowRef) return;
+    self.windowRef->mouseDown[0] = true;
+    self.windowRef->mousePressed[0] = true;
+}
+
+- (void)mouseUp:(NSEvent *)event {
+    [self updateMousePosition:event];
+    if (!self.windowRef) return;
+    self.windowRef->mouseDown[0] = false;
+    self.windowRef->mouseReleased[0] = true;
+}
+
+- (void)mouseMoved:(NSEvent *)event {
+    [self updateMousePosition:event];
+}
+
+- (void)mouseDragged:(NSEvent *)event {
+    [self updateMousePosition:event];
+}
+
+- (void)rightMouseDown:(NSEvent *)event {
+    [self updateMousePosition:event];
+    if (!self.windowRef) return;
+    self.windowRef->mouseDown[1] = true;
+    self.windowRef->mousePressed[1] = true;
+}
+
+- (void)rightMouseUp:(NSEvent *)event {
+    [self updateMousePosition:event];
+    if (!self.windowRef) return;
+    self.windowRef->mouseDown[1] = false;
+    self.windowRef->mouseReleased[1] = true;
+}
+
+- (void)rightMouseDragged:(NSEvent *)event {
+    [self updateMousePosition:event];
+}
+
+- (void)otherMouseDown:(NSEvent *)event {
+    [self updateMousePosition:event];
+    if (!self.windowRef) return;
+    self.windowRef->mouseDown[2] = true;
+    self.windowRef->mousePressed[2] = true;
+}
+
+- (void)otherMouseUp:(NSEvent *)event {
+    [self updateMousePosition:event];
+    if (!self.windowRef) return;
+    self.windowRef->mouseDown[2] = false;
+    self.windowRef->mouseReleased[2] = true;
+}
+
+- (void)otherMouseDragged:(NSEvent *)event {
+    [self updateMousePosition:event];
+}
+
+// Scroll wheel
+- (void)scrollWheel:(NSEvent *)event {
+    if (!self.windowRef) return;
+    self.windowRef->scrollX += (float)event.scrollingDeltaX;
+    self.windowRef->scrollY += (float)event.scrollingDeltaY;
+}
+
+// Keyboard - capture typed characters for text input
+- (void)keyDown:(NSEvent *)event {
+    if (!self.windowRef) return;
+    NSString *chars = event.characters;
+    if (chars.length > 0 && self.windowRef->textInputLen < 31) {
+        for (NSUInteger i = 0; i < chars.length && self.windowRef->textInputLen < 31; i++) {
+            unichar c = [chars characterAtIndex:i];
+            if (c < 128) {  // ASCII only for now
+                self.windowRef->textInput[self.windowRef->textInputLen++] = (char)c;
+            }
+        }
+        self.windowRef->textInput[self.windowRef->textInputLen] = '\0';
+    }
+}
+
 @end
 
 // Window delegate to track close requests
@@ -71,14 +195,6 @@
 }
 
 @end
-
-// Internal window structure
-struct AfferentWindow {
-    NSWindow *nsWindow;
-    AfferentView *view;
-    AfferentWindowDelegate *delegate;
-    id<MTLDevice> device;
-};
 
 AfferentResult afferent_window_create(
     uint32_t width,
@@ -150,12 +266,15 @@ AfferentResult afferent_window_create(
             [NSApp finishLaunching];
         }
 
-        // Create handle
-        struct AfferentWindow *handle = malloc(sizeof(struct AfferentWindow));
+        // Create handle and initialize input state
+        struct AfferentWindow *handle = calloc(1, sizeof(struct AfferentWindow));
         handle->nsWindow = window;
         handle->view = view;
         handle->delegate = delegate;
         handle->device = device;
+
+        // Wire up view's reference back to window for input handling
+        view.windowRef = handle;
 
         *out_window = handle;
         return AFFERENT_OK;
@@ -204,4 +323,72 @@ id<MTLDevice> afferent_window_get_device(AfferentWindowRef window) {
 // Expose the Metal layer from window (used by renderer)
 CAMetalLayer* afferent_window_get_metal_layer(AfferentWindowRef window) {
     return window ? window->view.metalLayer : nil;
+}
+
+// ============================================================================
+// Input API
+// ============================================================================
+
+// Reset per-frame input state (call at start of each frame)
+void afferent_window_new_frame(AfferentWindowRef window) {
+    if (!window) return;
+    // Clear single-frame signals
+    for (int i = 0; i < 3; i++) {
+        window->mousePressed[i] = false;
+        window->mouseReleased[i] = false;
+    }
+    window->scrollX = 0.0f;
+    window->scrollY = 0.0f;
+    window->textInputLen = 0;
+    window->textInput[0] = '\0';
+}
+
+// Get mouse position
+void afferent_window_get_mouse_pos(AfferentWindowRef window, float* x, float* y) {
+    if (!window) {
+        *x = 0.0f;
+        *y = 0.0f;
+        return;
+    }
+    *x = window->mouseX;
+    *y = window->mouseY;
+}
+
+// Check if mouse button is currently held down
+bool afferent_window_mouse_down(AfferentWindowRef window, int button) {
+    if (!window || button < 0 || button > 2) return false;
+    return window->mouseDown[button];
+}
+
+// Check if mouse button was pressed this frame
+bool afferent_window_mouse_pressed(AfferentWindowRef window, int button) {
+    if (!window || button < 0 || button > 2) return false;
+    return window->mousePressed[button];
+}
+
+// Check if mouse button was released this frame
+bool afferent_window_mouse_released(AfferentWindowRef window, int button) {
+    if (!window || button < 0 || button > 2) return false;
+    return window->mouseReleased[button];
+}
+
+// Get scroll wheel delta
+void afferent_window_get_scroll(AfferentWindowRef window, float* x, float* y) {
+    if (!window) {
+        *x = 0.0f;
+        *y = 0.0f;
+        return;
+    }
+    *x = window->scrollX;
+    *y = window->scrollY;
+}
+
+// Get text input for this frame (returns number of characters)
+int afferent_window_get_text_input(AfferentWindowRef window, char* buf, int bufSize) {
+    if (!window || !buf || bufSize <= 0) return 0;
+    int len = window->textInputLen;
+    if (len >= bufSize) len = bufSize - 1;
+    memcpy(buf, window->textInput, len);
+    buf[len] = '\0';
+    return len;
 }

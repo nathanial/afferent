@@ -12,36 +12,33 @@ require collimator from git "https://github.com/nathanial/collimator" @ "master"
 lean_lib Afferent where
   roots := #[`Afferent]
 
+-- Common link args for macOS Metal apps
+-- NOTE: Build with LEAN_CC=/usr/bin/clang to use system linker
+def metalLinkArgs : Array String := #[
+  "-L/Users/nathanialhartman/.elan/toolchains/leanprover--lean4---v4.25.2/lib",
+  "-L/Users/nathanialhartman/.elan/toolchains/leanprover--lean4---v4.25.2/lib/libc",
+  "-framework", "Metal",
+  "-framework", "Cocoa",
+  "-framework", "QuartzCore",
+  "-framework", "Foundation",
+  "-lobjc",
+  "-L/opt/homebrew/lib",
+  "-lfreetype"
+]
+
 lean_exe afferent where
   root := `Main
-  -- Link against Metal and Cocoa frameworks on macOS
-  -- NOTE: Build with LEAN_CC=/usr/bin/clang to use system linker
-  moreLinkArgs := #[
-    "-L/Users/nathanialhartman/.elan/toolchains/leanprover--lean4---v4.25.2/lib",
-    "-L/Users/nathanialhartman/.elan/toolchains/leanprover--lean4---v4.25.2/lib/libc",
-    "-framework", "Metal",
-    "-framework", "Cocoa",
-    "-framework", "QuartzCore",
-    "-framework", "Foundation",
-    "-lobjc",
-    "-L/opt/homebrew/lib",
-    "-lfreetype"
-  ]
+  moreLinkArgs := metalLinkArgs
+
+-- Visual demo (former Main.lean)
+lean_exe visualdemo where
+  root := `Examples.VisualDemo
+  moreLinkArgs := metalLinkArgs
 
 -- Example executable
 lean_exe hello_triangle where
   root := `Examples.HelloTriangle
-  moreLinkArgs := #[
-    "-L/Users/nathanialhartman/.elan/toolchains/leanprover--lean4---v4.25.2/lib",
-    "-L/Users/nathanialhartman/.elan/toolchains/leanprover--lean4---v4.25.2/lib/libc",
-    "-framework", "Metal",
-    "-framework", "Cocoa",
-    "-framework", "QuartzCore",
-    "-framework", "Foundation",
-    "-lobjc",
-    "-L/opt/homebrew/lib",
-    "-lfreetype"
-  ]
+  moreLinkArgs := metalLinkArgs
 
 -- Native code targets
 target window_o pkg : FilePath := do

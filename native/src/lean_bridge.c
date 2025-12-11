@@ -332,3 +332,65 @@ LEAN_EXPORT lean_obj_res lean_afferent_text_render(
 
     return lean_io_result_mk_ok(lean_box(0));
 }
+
+// ============== Input FFI ==============
+
+// Reset per-frame input state
+LEAN_EXPORT lean_obj_res lean_afferent_window_new_frame(lean_obj_arg window_obj, lean_obj_arg world) {
+    AfferentWindowRef window = (AfferentWindowRef)lean_get_external_data(window_obj);
+    afferent_window_new_frame(window);
+    return lean_io_result_mk_ok(lean_box(0));
+}
+
+// Get mouse position (returns Float x Float tuple)
+LEAN_EXPORT lean_obj_res lean_afferent_window_get_mouse_pos(lean_obj_arg window_obj, lean_obj_arg world) {
+    AfferentWindowRef window = (AfferentWindowRef)lean_get_external_data(window_obj);
+    float x, y;
+    afferent_window_get_mouse_pos(window, &x, &y);
+
+    lean_object* tuple = lean_alloc_ctor(0, 2, 0);
+    lean_ctor_set(tuple, 0, lean_box_float((double)x));
+    lean_ctor_set(tuple, 1, lean_box_float((double)y));
+    return lean_io_result_mk_ok(tuple);
+}
+
+// Check if mouse button is held down
+LEAN_EXPORT lean_obj_res lean_afferent_window_mouse_down(lean_obj_arg window_obj, uint8_t button, lean_obj_arg world) {
+    AfferentWindowRef window = (AfferentWindowRef)lean_get_external_data(window_obj);
+    bool down = afferent_window_mouse_down(window, (int)button);
+    return lean_io_result_mk_ok(lean_box(down ? 1 : 0));
+}
+
+// Check if mouse button was pressed this frame
+LEAN_EXPORT lean_obj_res lean_afferent_window_mouse_pressed(lean_obj_arg window_obj, uint8_t button, lean_obj_arg world) {
+    AfferentWindowRef window = (AfferentWindowRef)lean_get_external_data(window_obj);
+    bool pressed = afferent_window_mouse_pressed(window, (int)button);
+    return lean_io_result_mk_ok(lean_box(pressed ? 1 : 0));
+}
+
+// Check if mouse button was released this frame
+LEAN_EXPORT lean_obj_res lean_afferent_window_mouse_released(lean_obj_arg window_obj, uint8_t button, lean_obj_arg world) {
+    AfferentWindowRef window = (AfferentWindowRef)lean_get_external_data(window_obj);
+    bool released = afferent_window_mouse_released(window, (int)button);
+    return lean_io_result_mk_ok(lean_box(released ? 1 : 0));
+}
+
+// Get scroll wheel delta (returns Float x Float tuple)
+LEAN_EXPORT lean_obj_res lean_afferent_window_get_scroll(lean_obj_arg window_obj, lean_obj_arg world) {
+    AfferentWindowRef window = (AfferentWindowRef)lean_get_external_data(window_obj);
+    float x, y;
+    afferent_window_get_scroll(window, &x, &y);
+
+    lean_object* tuple = lean_alloc_ctor(0, 2, 0);
+    lean_ctor_set(tuple, 0, lean_box_float((double)x));
+    lean_ctor_set(tuple, 1, lean_box_float((double)y));
+    return lean_io_result_mk_ok(tuple);
+}
+
+// Get text input for this frame (returns String)
+LEAN_EXPORT lean_obj_res lean_afferent_window_get_text_input(lean_obj_arg window_obj, lean_obj_arg world) {
+    AfferentWindowRef window = (AfferentWindowRef)lean_get_external_data(window_obj);
+    char buf[32];
+    int len = afferent_window_get_text_input(window, buf, sizeof(buf));
+    return lean_io_result_mk_ok(lean_mk_string_from_bytes(buf, len));
+}

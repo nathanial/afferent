@@ -44,6 +44,15 @@ bool afferent_window_should_close(AfferentWindowRef window);
 void afferent_window_poll_events(AfferentWindowRef window);
 void afferent_window_get_size(AfferentWindowRef window, uint32_t* width, uint32_t* height);
 
+// Input handling
+void afferent_window_new_frame(AfferentWindowRef window);
+void afferent_window_get_mouse_pos(AfferentWindowRef window, float* x, float* y);
+bool afferent_window_mouse_down(AfferentWindowRef window, int button);
+bool afferent_window_mouse_pressed(AfferentWindowRef window, int button);
+bool afferent_window_mouse_released(AfferentWindowRef window, int button);
+void afferent_window_get_scroll(AfferentWindowRef window, float* x, float* y);
+int afferent_window_get_text_input(AfferentWindowRef window, char* buf, int bufSize);
+
 // Renderer management
 AfferentResult afferent_renderer_create(
     AfferentWindowRef window,

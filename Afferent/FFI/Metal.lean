@@ -39,6 +39,28 @@ opaque Window.shouldClose (window : @& Window) : IO Bool
 @[extern "lean_afferent_window_poll_events"]
 opaque Window.pollEvents (window : @& Window) : IO Unit
 
+-- Input handling
+@[extern "lean_afferent_window_new_frame"]
+opaque Window.newFrame (window : @& Window) : IO Unit
+
+@[extern "lean_afferent_window_get_mouse_pos"]
+opaque Window.getMousePos (window : @& Window) : IO (Float × Float)
+
+@[extern "lean_afferent_window_mouse_down"]
+opaque Window.mouseDown (window : @& Window) (button : UInt8) : IO Bool
+
+@[extern "lean_afferent_window_mouse_pressed"]
+opaque Window.mousePressed (window : @& Window) (button : UInt8) : IO Bool
+
+@[extern "lean_afferent_window_mouse_released"]
+opaque Window.mouseReleased (window : @& Window) (button : UInt8) : IO Bool
+
+@[extern "lean_afferent_window_get_scroll"]
+opaque Window.getScroll (window : @& Window) : IO (Float × Float)
+
+@[extern "lean_afferent_window_get_text_input"]
+opaque Window.getTextInput (window : @& Window) : IO String
+
 -- Renderer management
 @[extern "lean_afferent_renderer_create"]
 opaque Renderer.create (window : @& Window) : IO Renderer
