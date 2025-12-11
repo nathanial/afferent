@@ -4,6 +4,7 @@
 -/
 import Afferent.Core.Types
 import Afferent.Core.Path
+import Afferent.Core.Paint
 
 namespace Afferent
 
@@ -202,6 +203,238 @@ def tessellateConvexPathNDC (path : Path) (color : Color)
 
   let indices := triangulateConvexFan points.size
   return { vertices, indices }
+
+/-! ## Stroke Tessellation -/
+
+/-- Normalize a 2D vector. Returns zero vector if input is zero length. -/
+private def normalize (dx dy : Float) : Point :=
+  let len := Float.sqrt (dx * dx + dy * dy)
+  if len < 0.0001 then ⟨0, 0⟩
+  else ⟨dx / len, dy / len⟩
+
+/-- Get perpendicular vector (rotated 90 degrees counterclockwise). -/
+private def perpendicular (dx dy : Float) : Point :=
+  ⟨-dy, dx⟩
+
+/-- Compute the normal (perpendicular) at a point given the direction. -/
+private def computeNormal (dir : Point) : Point :=
+  ⟨-dir.y, dir.x⟩
+
+/-- Expand a polyline into stroke geometry.
+    Returns left and right edge points for the stroke. -/
+def expandPolylineToStroke (points : Array Point) (halfWidth : Float)
+    (lineCap : LineCap) (lineJoin : LineJoin) (miterLimit : Float := 10.0)
+    : Array Point × Array Point := Id.run do
+  if points.size < 2 then
+    return (#[], #[])
+
+  let mut leftPoints : Array Point := #[]
+  let mut rightPoints : Array Point := #[]
+
+  -- Process each segment
+  for i in [:points.size] do
+    if h : i < points.size then
+      let p := points[i]
+
+      if i == 0 then
+        -- First point: use direction to next point
+        if h2 : i + 1 < points.size then
+          let next := points[i + 1]
+          let dx := next.x - p.x
+          let dy := next.y - p.y
+          let dir := normalize dx dy
+          let normal := computeNormal dir
+
+          -- Apply line cap at start
+          let (capLeft, capRight) := match lineCap with
+            | .butt =>
+              (⟨p.x + normal.x * halfWidth, p.y + normal.y * halfWidth⟩,
+               ⟨p.x - normal.x * halfWidth, p.y - normal.y * halfWidth⟩)
+            | .square =>
+              -- Extend backwards by halfWidth
+              let backX := p.x - dir.x * halfWidth
+              let backY := p.y - dir.y * halfWidth
+              (⟨backX + normal.x * halfWidth, backY + normal.y * halfWidth⟩,
+               ⟨backX - normal.x * halfWidth, backY - normal.y * halfWidth⟩)
+            | .round =>
+              -- For round caps, we'd add arc points; simplified to butt for now
+              (⟨p.x + normal.x * halfWidth, p.y + normal.y * halfWidth⟩,
+               ⟨p.x - normal.x * halfWidth, p.y - normal.y * halfWidth⟩)
+
+          leftPoints := leftPoints.push capLeft
+          rightPoints := rightPoints.push capRight
+
+      else if i == points.size - 1 then
+        -- Last point: use direction from previous point
+        if h2 : i > 0 then
+          let prev := points[i - 1]
+          let dx := p.x - prev.x
+          let dy := p.y - prev.y
+          let dir := normalize dx dy
+          let normal := computeNormal dir
+
+          -- Apply line cap at end
+          let (capLeft, capRight) := match lineCap with
+            | .butt =>
+              (⟨p.x + normal.x * halfWidth, p.y + normal.y * halfWidth⟩,
+               ⟨p.x - normal.x * halfWidth, p.y - normal.y * halfWidth⟩)
+            | .square =>
+              -- Extend forwards by halfWidth
+              let fwdX := p.x + dir.x * halfWidth
+              let fwdY := p.y + dir.y * halfWidth
+              (⟨fwdX + normal.x * halfWidth, fwdY + normal.y * halfWidth⟩,
+               ⟨fwdX - normal.x * halfWidth, fwdY - normal.y * halfWidth⟩)
+            | .round =>
+              -- Simplified to butt
+              (⟨p.x + normal.x * halfWidth, p.y + normal.y * halfWidth⟩,
+               ⟨p.x - normal.x * halfWidth, p.y - normal.y * halfWidth⟩)
+
+          leftPoints := leftPoints.push capLeft
+          rightPoints := rightPoints.push capRight
+
+      else
+        -- Middle point: compute join between two segments
+        if h2 : i > 0 ∧ i + 1 < points.size then
+          let prev := points[i - 1]
+          let next := points[i + 1]
+
+          -- Direction vectors
+          let dx1 := p.x - prev.x
+          let dy1 := p.y - prev.y
+          let dx2 := next.x - p.x
+          let dy2 := next.y - p.y
+
+          let dir1 := normalize dx1 dy1
+          let dir2 := normalize dx2 dy2
+
+          let normal1 := computeNormal dir1
+          let normal2 := computeNormal dir2
+
+          -- Average normal for the join
+          let avgNx := (normal1.x + normal2.x) / 2.0
+          let avgNy := (normal1.y + normal2.y) / 2.0
+          let avgNormal := normalize avgNx avgNy
+
+          -- Compute miter length (how much to extend at sharp corners)
+          let dot := dir1.x * dir2.x + dir1.y * dir2.y
+          let miterScale := if dot > -0.999 then 1.0 / Float.sqrt ((1.0 + dot) / 2.0) else miterLimit
+
+          -- Apply line join
+          match lineJoin with
+          | .miter =>
+            let scale := min miterScale miterLimit
+            leftPoints := leftPoints.push ⟨p.x + avgNormal.x * halfWidth * scale,
+                                           p.y + avgNormal.y * halfWidth * scale⟩
+            rightPoints := rightPoints.push ⟨p.x - avgNormal.x * halfWidth * scale,
+                                             p.y - avgNormal.y * halfWidth * scale⟩
+          | .bevel =>
+            -- Add two points for bevel (simplified)
+            leftPoints := leftPoints.push ⟨p.x + normal1.x * halfWidth, p.y + normal1.y * halfWidth⟩
+            leftPoints := leftPoints.push ⟨p.x + normal2.x * halfWidth, p.y + normal2.y * halfWidth⟩
+            rightPoints := rightPoints.push ⟨p.x - normal1.x * halfWidth, p.y - normal1.y * halfWidth⟩
+            rightPoints := rightPoints.push ⟨p.x - normal2.x * halfWidth, p.y - normal2.y * halfWidth⟩
+          | .round =>
+            -- Simplified to miter for now
+            let scale := min miterScale miterLimit
+            leftPoints := leftPoints.push ⟨p.x + avgNormal.x * halfWidth * scale,
+                                           p.y + avgNormal.y * halfWidth * scale⟩
+            rightPoints := rightPoints.push ⟨p.x - avgNormal.x * halfWidth * scale,
+                                             p.y - avgNormal.y * halfWidth * scale⟩
+
+  return (leftPoints, rightPoints)
+
+/-- Convert stroke edges to triangles.
+    Takes left and right edge point arrays and creates a triangle strip. -/
+def strokeEdgesToTriangles (leftPoints rightPoints : Array Point) (color : Color)
+    : TessellationResult := Id.run do
+  if leftPoints.size < 2 || rightPoints.size < 2 then
+    return { vertices := #[], indices := #[] }
+
+  let mut vertices : Array Float := #[]
+  let mut indices : Array UInt32 := #[]
+
+  -- Build vertices: interleave left and right points
+  let numPairs := min leftPoints.size rightPoints.size
+  for i in [:numPairs] do
+    if h : i < leftPoints.size ∧ i < rightPoints.size then
+      let lp := leftPoints[i]
+      let rp := rightPoints[i]
+      -- Left point
+      vertices := vertices.push lp.x
+      vertices := vertices.push lp.y
+      vertices := vertices.push color.r
+      vertices := vertices.push color.g
+      vertices := vertices.push color.b
+      vertices := vertices.push color.a
+      -- Right point
+      vertices := vertices.push rp.x
+      vertices := vertices.push rp.y
+      vertices := vertices.push color.r
+      vertices := vertices.push color.g
+      vertices := vertices.push color.b
+      vertices := vertices.push color.a
+
+  -- Build triangle strip indices
+  -- Vertices are: L0, R0, L1, R1, L2, R2, ...
+  -- Triangles: (L0, R0, L1), (R0, L1, R1), (L1, R1, L2), (R1, L2, R2), ...
+  for i in [:(numPairs - 1)] do
+    let baseIdx := (i * 2).toUInt32
+    -- First triangle: Li, Ri, Li+1
+    indices := indices.push baseIdx        -- Li
+    indices := indices.push (baseIdx + 1)  -- Ri
+    indices := indices.push (baseIdx + 2)  -- Li+1
+    -- Second triangle: Ri, Li+1, Ri+1
+    indices := indices.push (baseIdx + 1)  -- Ri
+    indices := indices.push (baseIdx + 3)  -- Ri+1
+    indices := indices.push (baseIdx + 2)  -- Li+1
+
+  return { vertices, indices }
+
+/-- Tessellate a path as a stroke (outline). -/
+def tessellateStroke (path : Path) (style : StrokeStyle) (tolerance : Float := 0.5)
+    : TessellationResult := Id.run do
+  let points := pathToPolygon path tolerance
+
+  if points.size < 2 then
+    return { vertices := #[], indices := #[] }
+
+  let halfWidth := style.lineWidth / 2.0
+  let (leftPoints, rightPoints) := expandPolylineToStroke points halfWidth
+    style.lineCap style.lineJoin style.miterLimit
+
+  return strokeEdgesToTriangles leftPoints rightPoints style.color
+
+/-- Tessellate a path as a stroke with NDC conversion. -/
+def tessellateStrokeNDC (path : Path) (style : StrokeStyle)
+    (screenWidth screenHeight : Float) (tolerance : Float := 0.5)
+    : TessellationResult := Id.run do
+  let points := pathToPolygon path tolerance
+
+  if points.size < 2 then
+    return { vertices := #[], indices := #[] }
+
+  let halfWidth := style.lineWidth / 2.0
+  let (leftPoints, rightPoints) := expandPolylineToStroke points halfWidth
+    style.lineCap style.lineJoin style.miterLimit
+
+  -- Convert to NDC
+  let toNDC := fun (p : Point) => pixelToNDC p.x p.y screenWidth screenHeight
+  let leftNDC := leftPoints.map toNDC
+  let rightNDC := rightPoints.map toNDC
+
+  return strokeEdgesToTriangles leftNDC rightNDC style.color
+
+/-- Create a simple line segment as a stroked path. -/
+def tessellateLineNDC (p1 p2 : Point) (style : StrokeStyle)
+    (screenWidth screenHeight : Float) : TessellationResult :=
+  let path := Path.empty |>.moveTo p1 |>.lineTo p2
+  tessellateStrokeNDC path style screenWidth screenHeight
+
+/-- Tessellate a stroked rectangle (just the outline). -/
+def tessellateStrokeRectNDC (r : Rect) (style : StrokeStyle)
+    (screenWidth screenHeight : Float) : TessellationResult :=
+  let path := Path.rectangle r
+  tessellateStrokeNDC path style screenWidth screenHeight
 
 end Tessellation
 

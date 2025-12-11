@@ -310,6 +310,130 @@ def transformDemo : IO Unit := do
   IO.println "Cleaning up..."
   canvas.destroy
 
+def strokeDemo : IO Unit := do
+  IO.println "Stroke Rendering Demo"
+  IO.println "---------------------"
+
+  -- Create drawing context
+  let ctx ← DrawContext.create 900 700 "Afferent - Stroke Rendering"
+
+  IO.println "Rendering stroked shapes... (close window to exit)"
+
+  -- Run the render loop
+  ctx.runLoop Color.darkGray fun ctx => do
+    -- Row 1: Basic stroked shapes
+    -- Stroked rectangles with different line widths
+    ctx.strokeRectXYWH 50 30 100 70 Color.white 1.0
+    ctx.strokeRectXYWH 180 30 100 70 Color.yellow 2.0
+    ctx.strokeRectXYWH 310 30 100 70 Color.cyan 4.0
+    ctx.strokeRectXYWH 440 30 100 70 Color.magenta 8.0
+
+    -- Stroked circles
+    ctx.strokeCircle ⟨620, 65⟩ 35 Color.red 2.0
+    ctx.strokeCircle ⟨720, 65⟩ 35 Color.green 4.0
+    ctx.strokeCircle ⟨820, 65⟩ 35 Color.blue 6.0
+
+    -- Row 2: Lines with different widths
+    ctx.drawLine ⟨50, 140⟩ ⟨200, 140⟩ Color.white 1.0
+    ctx.drawLine ⟨50, 160⟩ ⟨200, 160⟩ Color.white 2.0
+    ctx.drawLine ⟨50, 185⟩ ⟨200, 185⟩ Color.white 4.0
+    ctx.drawLine ⟨50, 215⟩ ⟨200, 215⟩ Color.white 8.0
+
+    -- Diagonal lines
+    ctx.drawLine ⟨250, 130⟩ ⟨350, 220⟩ Color.yellow 2.0
+    ctx.drawLine ⟨280, 130⟩ ⟨380, 220⟩ Color.cyan 3.0
+    ctx.drawLine ⟨310, 130⟩ ⟨410, 220⟩ Color.magenta 4.0
+
+    -- Stroked rounded rectangles
+    ctx.strokeRoundedRect (Rect.mk' 450 130 120 80) 10 Color.orange 3.0
+    ctx.strokeRoundedRect (Rect.mk' 600 130 120 80) 20 Color.green 4.0
+    ctx.strokeRoundedRect (Rect.mk' 750 130 120 80) 30 Color.purple 5.0
+
+    -- Row 3: Stroked ellipses
+    ctx.strokeEllipse ⟨100, 300⟩ 60 30 Color.red 2.0
+    ctx.strokeEllipse ⟨250, 300⟩ 30 50 Color.green 3.0
+    ctx.strokeEllipse ⟨400, 300⟩ 50 50 Color.blue 4.0
+
+    -- Stroked stars
+    ctx.strokePathSimple (Path.star ⟨550, 300⟩ 50 25 5) Color.yellow 2.0
+    ctx.strokePathSimple (Path.star ⟨680, 300⟩ 45 20 6) Color.cyan 3.0
+    ctx.strokePathSimple (Path.star ⟨810, 300⟩ 40 18 8) Color.magenta 4.0
+
+    -- Row 4: Stroked polygons
+    ctx.strokePathSimple (Path.polygon ⟨80, 420⟩ 40 3) Color.red 2.0     -- Triangle
+    ctx.strokePathSimple (Path.polygon ⟨170, 420⟩ 40 4) Color.orange 2.0  -- Square
+    ctx.strokePathSimple (Path.polygon ⟨260, 420⟩ 40 5) Color.yellow 2.0  -- Pentagon
+    ctx.strokePathSimple (Path.polygon ⟨350, 420⟩ 40 6) Color.green 2.0   -- Hexagon
+    ctx.strokePathSimple (Path.polygon ⟨440, 420⟩ 40 8) Color.cyan 2.0    -- Octagon
+
+    -- Stroked heart
+    ctx.strokePathSimple (Path.heart ⟨560, 420⟩ 60) Color.red 3.0
+
+    -- Row 4: Combined fill and stroke
+    -- Fill then stroke to show both
+    ctx.fillCircle ⟨700, 420⟩ 40 (Color.rgba 0.2 0.2 0.8 1.0)
+    ctx.strokeCircle ⟨700, 420⟩ 40 Color.white 3.0
+
+    ctx.fillRoundedRect (Rect.mk' 770 380 100 80) 15 (Color.rgba 0.8 0.2 0.2 1.0)
+    ctx.strokeRoundedRect (Rect.mk' 770 380 100 80) 15 Color.white 2.0
+
+    -- Row 5: Custom stroked paths
+    -- Zigzag line
+    let zigzag := Path.empty
+      |>.moveTo ⟨50, 520⟩
+      |>.lineTo ⟨80, 480⟩
+      |>.lineTo ⟨110, 520⟩
+      |>.lineTo ⟨140, 480⟩
+      |>.lineTo ⟨170, 520⟩
+      |>.lineTo ⟨200, 480⟩
+      |>.lineTo ⟨230, 520⟩
+    ctx.strokePathSimple zigzag Color.yellow 3.0
+
+    -- Wave using bezier curves
+    let wave := Path.empty
+      |>.moveTo ⟨280, 500⟩
+      |>.bezierCurveTo ⟨320, 460⟩ ⟨360, 540⟩ ⟨400, 500⟩
+      |>.bezierCurveTo ⟨440, 460⟩ ⟨480, 540⟩ ⟨520, 500⟩
+    ctx.strokePathSimple wave Color.cyan 4.0
+
+    -- Spiral-like path
+    let spiral := Path.empty
+      |>.moveTo ⟨620, 500⟩
+      |>.quadraticCurveTo ⟨680, 460⟩ ⟨720, 500⟩
+      |>.quadraticCurveTo ⟨760, 540⟩ ⟨800, 500⟩
+      |>.quadraticCurveTo ⟨840, 460⟩ ⟨860, 520⟩
+    ctx.strokePathSimple spiral Color.magenta 3.0
+
+    -- Row 6: Arc strokes
+    let pi := 3.14159265358979323846
+    ctx.strokePathSimple (Path.arcPath ⟨100, 620⟩ 50 0 pi) Color.red 3.0
+    ctx.strokePathSimple (Path.arcPath ⟨230, 620⟩ 50 0 (pi * 1.5)) Color.green 3.0
+    ctx.strokePathSimple (Path.semicircle ⟨360, 620⟩ 50 0) Color.blue 4.0
+
+    -- Pie slice outlines (not filled)
+    ctx.strokePathSimple (Path.pie ⟨500, 620⟩ 50 0 (pi * 0.5)) Color.yellow 2.0
+    ctx.strokePathSimple (Path.pie ⟨620, 620⟩ 50 (pi * 0.25) (pi * 1.25)) Color.cyan 2.0
+
+    -- Custom arrow shape
+    let arrow := Path.empty
+      |>.moveTo ⟨720, 600⟩
+      |>.lineTo ⟨780, 620⟩
+      |>.lineTo ⟨720, 640⟩
+      |>.moveTo ⟨720, 620⟩
+      |>.lineTo ⟨780, 620⟩
+    ctx.strokePathSimple arrow Color.white 3.0
+
+    -- Cross/plus shape
+    let cross := Path.empty
+      |>.moveTo ⟨830, 590⟩
+      |>.lineTo ⟨830, 650⟩
+      |>.moveTo ⟨800, 620⟩
+      |>.lineTo ⟨860, 620⟩
+    ctx.strokePathSimple cross Color.red 4.0
+
+  IO.println "Cleaning up..."
+  ctx.destroy
+
 def main : IO Unit := do
   IO.println "Afferent - 2D Vector Graphics Library"
   IO.println "======================================"
@@ -323,6 +447,9 @@ def main : IO Unit := do
 
   -- Run transform demo
   transformDemo
+
+  -- Run stroke demo
+  strokeDemo
 
   IO.println ""
   IO.println "Done!"

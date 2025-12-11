@@ -90,6 +90,46 @@ def fillEllipse (ctx : DrawContext) (center : Point) (radiusX radiusY : Float) (
 def fillRoundedRect (ctx : DrawContext) (rect : Rect) (cornerRadius : Float) (color : Color) : IO Unit :=
   ctx.fillPath (Path.roundedRect rect cornerRadius) color
 
+/-! ## Stroke Drawing (Simple API) -/
+
+/-- Stroke a path with a given style (pixel coordinates). -/
+def strokePath (ctx : DrawContext) (path : Path) (style : StrokeStyle) : IO Unit := do
+  let result := Tessellation.tessellateStrokeNDC path style ctx.width ctx.height
+  if result.vertices.size > 0 && result.indices.size > 0 then
+    let vertexBuffer ← FFI.Buffer.createVertex ctx.renderer result.vertices
+    let indexBuffer ← FFI.Buffer.createIndex ctx.renderer result.indices
+    ctx.renderer.drawTriangles vertexBuffer indexBuffer result.indices.size.toUInt32
+    FFI.Buffer.destroy indexBuffer
+    FFI.Buffer.destroy vertexBuffer
+
+/-- Stroke a path with a color and line width. -/
+def strokePathSimple (ctx : DrawContext) (path : Path) (color : Color) (lineWidth : Float := 1.0) : IO Unit :=
+  ctx.strokePath path { StrokeStyle.default with color, lineWidth }
+
+/-- Stroke a rectangle outline. -/
+def strokeRect (ctx : DrawContext) (rect : Rect) (style : StrokeStyle) : IO Unit :=
+  ctx.strokePath (Path.rectangle rect) style
+
+/-- Stroke a rectangle with x, y, width, height and simple style. -/
+def strokeRectXYWH (ctx : DrawContext) (x y width height : Float) (color : Color) (lineWidth : Float := 1.0) : IO Unit :=
+  ctx.strokePathSimple (Path.rectangle (Rect.mk' x y width height)) color lineWidth
+
+/-- Stroke a circle outline. -/
+def strokeCircle (ctx : DrawContext) (center : Point) (radius : Float) (color : Color) (lineWidth : Float := 1.0) : IO Unit :=
+  ctx.strokePathSimple (Path.circle center radius) color lineWidth
+
+/-- Stroke an ellipse outline. -/
+def strokeEllipse (ctx : DrawContext) (center : Point) (radiusX radiusY : Float) (color : Color) (lineWidth : Float := 1.0) : IO Unit :=
+  ctx.strokePathSimple (Path.ellipse center radiusX radiusY) color lineWidth
+
+/-- Stroke a rounded rectangle outline. -/
+def strokeRoundedRect (ctx : DrawContext) (rect : Rect) (cornerRadius : Float) (color : Color) (lineWidth : Float := 1.0) : IO Unit :=
+  ctx.strokePathSimple (Path.roundedRect rect cornerRadius) color lineWidth
+
+/-- Draw a line from p1 to p2. -/
+def drawLine (ctx : DrawContext) (p1 p2 : Point) (color : Color) (lineWidth : Float := 1.0) : IO Unit :=
+  ctx.strokePathSimple (Path.empty |>.moveTo p1 |>.lineTo p2) color lineWidth
+
 /-- Run a render loop until the window is closed. -/
 def runLoop (ctx : DrawContext) (clearColor : Color) (draw : DrawContext → IO Unit) : IO Unit := do
   while !(← ctx.shouldClose) do
@@ -216,6 +256,44 @@ def fillEllipse (center : Point) (radiusX radiusY : Float) (c : Canvas) : IO Uni
 /-- Fill a rounded rectangle using the current state. -/
 def fillRoundedRect (rect : Rect) (cornerRadius : Float) (c : Canvas) : IO Unit :=
   c.ctx.fillPathWithState (Path.roundedRect rect cornerRadius) c.state
+
+/-! ## Stroke operations -/
+
+/-- Get the effective stroke style with transform and global alpha applied. -/
+private def effectiveStrokeStyle (c : Canvas) : StrokeStyle :=
+  let state := c.state
+  { state.strokeStyle with
+    color := state.effectiveStrokeColor }
+
+/-- Stroke a path using the current state (applies transform and uses state's stroke style). -/
+def strokePath (path : Path) (c : Canvas) : IO Unit := do
+  let transformedPath := c.state.transformPath path
+  let style := c.effectiveStrokeStyle
+  c.ctx.strokePath transformedPath style
+
+/-- Stroke a rectangle using the current state. -/
+def strokeRect (rect : Rect) (c : Canvas) : IO Unit :=
+  c.strokePath (Path.rectangle rect)
+
+/-- Stroke a rectangle specified by x, y, width, height using current state. -/
+def strokeRectXYWH (x y width height : Float) (c : Canvas) : IO Unit :=
+  c.strokeRect (Rect.mk' x y width height)
+
+/-- Stroke a circle using the current state. -/
+def strokeCircle (center : Point) (radius : Float) (c : Canvas) : IO Unit :=
+  c.strokePath (Path.circle center radius)
+
+/-- Stroke an ellipse using the current state. -/
+def strokeEllipse (center : Point) (radiusX radiusY : Float) (c : Canvas) : IO Unit :=
+  c.strokePath (Path.ellipse center radiusX radiusY)
+
+/-- Stroke a rounded rectangle using the current state. -/
+def strokeRoundedRect (rect : Rect) (cornerRadius : Float) (c : Canvas) : IO Unit :=
+  c.strokePath (Path.roundedRect rect cornerRadius)
+
+/-- Draw a line from p1 to p2 using the current state. -/
+def drawLine (p1 p2 : Point) (c : Canvas) : IO Unit :=
+  c.strokePath (Path.empty |>.moveTo p1 |>.lineTo p2)
 
 /-! ## Window operations -/
 
