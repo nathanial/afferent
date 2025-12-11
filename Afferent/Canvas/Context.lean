@@ -139,6 +139,16 @@ def fillRectWithStyle (ctx : DrawContext) (rect : Rect) (style : FillStyle) : IO
     FFI.Buffer.destroy indexBuffer
     FFI.Buffer.destroy vertexBuffer
 
+/-- Fill a transformed rectangle with a fill style (fast path - no Path allocation). -/
+def fillTransformedRectWithStyle (ctx : DrawContext) (rect : Rect) (transform : Transform) (style : FillStyle) : IO Unit := do
+  let result := Tessellation.tessellateTransformedRectNDC rect transform style ctx.baseWidth ctx.baseHeight
+  if result.vertices.size > 0 && result.indices.size > 0 then
+    let vertexBuffer ← FFI.Buffer.createVertex ctx.renderer result.vertices
+    let indexBuffer ← FFI.Buffer.createIndex ctx.renderer result.indices
+    ctx.renderer.drawTriangles vertexBuffer indexBuffer result.indices.size.toUInt32
+    FFI.Buffer.destroy indexBuffer
+    FFI.Buffer.destroy vertexBuffer
+
 /-- Fill a convex path with a fill style (solid color or gradient). -/
 def fillPathWithStyle (ctx : DrawContext) (path : Path) (style : FillStyle) : IO Unit := do
   -- Use base (logical) canvas size for NDC conversion to maintain coordinate system
@@ -401,16 +411,19 @@ def fillPath (path : Path) (c : Canvas) : IO Canvas := do
     c.ctx.fillPathWithStyle transformedPath style
     pure c
 
-/-- Fill a rectangle using the current state. Batch-aware: adds to batch if active. -/
+/-- Fill a rectangle using the current state. Batch-aware: adds to batch if active.
+    Uses fast path that skips Path allocation - just transforms 4 corners directly. -/
 def fillRect (rect : Rect) (c : Canvas) : IO Canvas := do
-  let transformedPath := c.state.transformPath (Path.rectangle rect)
+  let transform := c.state.transform
   let style := c.state.effectiveFillStyle
-  let result := Tessellation.tessellateConvexPathFillNDC transformedPath style c.ctx.baseWidth c.ctx.baseHeight
   match c.batch with
   | some batch =>
-    pure { c with batch := some (batch.add result) }
+    -- FAST PATH: write directly into batch arrays, no intermediate allocation
+    let batch' := batch.addTransformedRect rect transform style c.ctx.baseWidth c.ctx.baseHeight
+    pure { c with batch := some batch' }
   | none =>
-    c.ctx.fillPathWithStyle transformedPath style
+    -- Non-batched: use normal tessellation
+    c.ctx.fillTransformedRectWithStyle rect transform style
     pure c
 
 /-- Fill a rectangle specified by x, y, width, height using current state. -/
