@@ -52,6 +52,9 @@ struct AfferentFont {
     uint32_t atlas_cursor_y;
     uint32_t atlas_row_height;
 
+    // Dirty tracking - only upload when new glyphs are added
+    int atlas_dirty;
+
     // Metal texture handle (set by renderer)
     void* metal_texture;
 };
@@ -232,6 +235,9 @@ static GlyphInfo* cache_glyph(AfferentFontRef font, uint32_t codepoint) {
     glyph->atlas_y = font->atlas_cursor_y;
     glyph->valid = 1;
 
+    // Mark atlas as dirty - needs upload to GPU
+    font->atlas_dirty = 1;
+
     // Update atlas cursor
     font->atlas_cursor_x += bitmap->width + 1;
     if (bitmap->rows > font->atlas_row_height) {
@@ -298,9 +304,14 @@ void* afferent_font_get_metal_texture(AfferentFontRef font) {
 
 // Check if atlas needs updating (new glyphs were added)
 int afferent_font_atlas_dirty(AfferentFontRef font) {
-    // Simple implementation - always return dirty after caching
-    // A more sophisticated implementation would track dirty regions
-    return 1;
+    return font ? font->atlas_dirty : 0;
+}
+
+// Clear the dirty flag after uploading atlas to GPU
+void afferent_font_atlas_clear_dirty(AfferentFontRef font) {
+    if (font) {
+        font->atlas_dirty = 0;
+    }
 }
 
 // Helper to apply 2D affine transform to a point

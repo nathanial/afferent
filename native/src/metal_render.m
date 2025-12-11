@@ -6,6 +6,10 @@
 extern id<MTLDevice> afferent_window_get_device(AfferentWindowRef window);
 extern CAMetalLayer* afferent_window_get_metal_layer(AfferentWindowRef window);
 
+// External declarations from text_render.c for atlas dirty tracking
+extern int afferent_font_atlas_dirty(AfferentFontRef font);
+extern void afferent_font_atlas_clear_dirty(AfferentFontRef font);
+
 // Shader source embedded in code - basic colored vertices
 static NSString *shaderSource = @R"(
 #include <metal_stdlib>
@@ -98,6 +102,76 @@ struct AfferentBuffer {
     id<MTLBuffer> mtlBuffer;
     uint32_t count;
 };
+
+// ============================================================================
+// Buffer Pool - Reuse MTLBuffers across frames to avoid allocation overhead
+// ============================================================================
+
+#define BUFFER_POOL_SIZE 64
+#define MAX_BUFFER_SIZE (1024 * 1024)  // 1MB max per pooled buffer
+
+typedef struct {
+    id<MTLBuffer> buffer;
+    size_t capacity;
+    bool in_use;
+} PooledBuffer;
+
+typedef struct {
+    PooledBuffer vertex_pool[BUFFER_POOL_SIZE];
+    PooledBuffer index_pool[BUFFER_POOL_SIZE];
+    int vertex_pool_count;
+    int index_pool_count;
+} BufferPool;
+
+static BufferPool g_buffer_pool = {0};
+
+// Find or create a buffer of at least the required size
+static id<MTLBuffer> pool_acquire_buffer(id<MTLDevice> device, PooledBuffer* pool, int* count, size_t required_size, bool is_vertex) {
+    // First, try to find an existing buffer that's large enough and not in use
+    for (int i = 0; i < *count; i++) {
+        if (!pool[i].in_use && pool[i].capacity >= required_size) {
+            pool[i].in_use = true;
+            return pool[i].buffer;
+        }
+    }
+
+    // No suitable buffer found - create a new one
+    // Round up to power of 2 for better reuse
+    size_t capacity = 4096;  // Minimum 4KB
+    while (capacity < required_size && capacity < MAX_BUFFER_SIZE) {
+        capacity *= 2;
+    }
+    if (capacity < required_size) {
+        capacity = required_size;  // For very large buffers
+    }
+
+    id<MTLBuffer> newBuffer = [device newBufferWithLength:capacity
+                                                  options:MTLResourceStorageModeShared];
+    if (!newBuffer) {
+        return nil;
+    }
+
+    // Add to pool if there's room
+    if (*count < BUFFER_POOL_SIZE) {
+        pool[*count].buffer = newBuffer;
+        pool[*count].capacity = capacity;
+        pool[*count].in_use = true;
+        (*count)++;
+    }
+    // If pool is full, just return the buffer (it won't be pooled)
+
+    return newBuffer;
+}
+
+// Mark all buffers as available for reuse (call at frame start)
+static void pool_reset_frame(void) {
+    for (int i = 0; i < g_buffer_pool.vertex_pool_count; i++) {
+        g_buffer_pool.vertex_pool[i].in_use = false;
+    }
+    for (int i = 0; i < g_buffer_pool.index_pool_count; i++) {
+        g_buffer_pool.index_pool[i].in_use = false;
+    }
+}
 
 AfferentResult afferent_renderer_create(
     AfferentWindowRef window,
@@ -293,6 +367,9 @@ static void ensureMSAATexture(AfferentRendererRef renderer, NSUInteger width, NS
 
 AfferentResult afferent_renderer_begin_frame(AfferentRendererRef renderer, float r, float g, float b, float a) {
     @autoreleasepool {
+        // Reset buffer pool at frame start - all buffers become available for reuse
+        pool_reset_frame();
+
         CAMetalLayer *metalLayer = afferent_window_get_metal_layer(renderer->window);
         if (!metalLayer) {
             return AFFERENT_ERROR_INIT_FAILED;
@@ -361,15 +438,27 @@ AfferentResult afferent_buffer_create_vertex(
     AfferentBufferRef* out_buffer
 ) {
     @autoreleasepool {
-        struct AfferentBuffer *buffer = malloc(sizeof(struct AfferentBuffer));
-        buffer->count = vertex_count;
-        buffer->mtlBuffer = [renderer->device newBufferWithBytes:vertices
-                                                          length:vertex_count * sizeof(AfferentVertex)
-                                                         options:MTLResourceStorageModeShared];
-        if (!buffer->mtlBuffer) {
-            free(buffer);
+        size_t required_size = vertex_count * sizeof(AfferentVertex);
+
+        // Get a buffer from the pool (or create a new one)
+        id<MTLBuffer> mtlBuffer = pool_acquire_buffer(
+            renderer->device,
+            g_buffer_pool.vertex_pool,
+            &g_buffer_pool.vertex_pool_count,
+            required_size,
+            true
+        );
+
+        if (!mtlBuffer) {
             return AFFERENT_ERROR_BUFFER_FAILED;
         }
+
+        // Copy vertex data into the pooled buffer
+        memcpy(mtlBuffer.contents, vertices, required_size);
+
+        struct AfferentBuffer *buffer = malloc(sizeof(struct AfferentBuffer));
+        buffer->count = vertex_count;
+        buffer->mtlBuffer = mtlBuffer;
         *out_buffer = buffer;
         return AFFERENT_OK;
     }
@@ -382,21 +471,35 @@ AfferentResult afferent_buffer_create_index(
     AfferentBufferRef* out_buffer
 ) {
     @autoreleasepool {
-        struct AfferentBuffer *buffer = malloc(sizeof(struct AfferentBuffer));
-        buffer->count = index_count;
-        buffer->mtlBuffer = [renderer->device newBufferWithBytes:indices
-                                                          length:index_count * sizeof(uint32_t)
-                                                         options:MTLResourceStorageModeShared];
-        if (!buffer->mtlBuffer) {
-            free(buffer);
+        size_t required_size = index_count * sizeof(uint32_t);
+
+        // Get a buffer from the pool (or create a new one)
+        id<MTLBuffer> mtlBuffer = pool_acquire_buffer(
+            renderer->device,
+            g_buffer_pool.index_pool,
+            &g_buffer_pool.index_pool_count,
+            required_size,
+            false
+        );
+
+        if (!mtlBuffer) {
             return AFFERENT_ERROR_BUFFER_FAILED;
         }
+
+        // Copy index data into the pooled buffer
+        memcpy(mtlBuffer.contents, indices, required_size);
+
+        struct AfferentBuffer *buffer = malloc(sizeof(struct AfferentBuffer));
+        buffer->count = index_count;
+        buffer->mtlBuffer = mtlBuffer;
         *out_buffer = buffer;
         return AFFERENT_OK;
     }
 }
 
 void afferent_buffer_destroy(AfferentBufferRef buffer) {
+    // Note: We don't actually destroy the MTLBuffer here anymore,
+    // it stays in the pool for reuse. We only free the wrapper struct.
     if (buffer) {
         free(buffer);
     }
@@ -520,8 +623,13 @@ static id<MTLTexture> ensureFontTexture(AfferentRendererRef renderer, AfferentFo
     return texture;
 }
 
-// Update the font texture with new glyph data
+// Update the font texture with new glyph data (only if atlas has changed)
 static void updateFontTexture(AfferentRendererRef renderer, AfferentFontRef font) {
+    // Only upload if new glyphs were added to the atlas
+    if (!afferent_font_atlas_dirty(font)) {
+        return;
+    }
+
     id<MTLTexture> texture = (__bridge id<MTLTexture>)afferent_font_get_metal_texture(font);
     if (texture) {
         uint8_t* atlas_data = afferent_font_get_atlas_data(font);
@@ -530,6 +638,9 @@ static void updateFontTexture(AfferentRendererRef renderer, AfferentFontRef font
 
         MTLRegion region = MTLRegionMake2D(0, 0, atlas_width, atlas_height);
         [texture replaceRegion:region mipmapLevel:0 withBytes:atlas_data bytesPerRow:atlas_width];
+
+        // Clear dirty flag after successful upload
+        afferent_font_atlas_clear_dirty(font);
     }
 }
 
