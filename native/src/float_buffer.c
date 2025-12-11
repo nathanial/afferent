@@ -62,3 +62,17 @@ size_t afferent_float_buffer_capacity(AfferentFloatBufferRef buf) {
 const float* afferent_float_buffer_data(AfferentFloatBufferRef buf) {
     return buf->data;
 }
+
+void afferent_float_buffer_set_vec8(AfferentFloatBufferRef buf, size_t index,
+    float v0, float v1, float v2, float v3, float v4, float v5, float v6, float v7) {
+    // Direct memory writes - 8x less FFI overhead than 8 separate calls
+    float* ptr = buf->data + index;
+    ptr[0] = v0;
+    ptr[1] = v1;
+    ptr[2] = v2;
+    ptr[3] = v3;
+    ptr[4] = v4;
+    ptr[5] = v5;
+    ptr[6] = v6;
+    ptr[7] = v7;
+}

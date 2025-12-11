@@ -184,6 +184,55 @@ float afferent_float_buffer_get(AfferentFloatBufferRef buf, size_t index);
 size_t afferent_float_buffer_capacity(AfferentFloatBufferRef buf);
 const float* afferent_float_buffer_data(AfferentFloatBufferRef buf);
 
+// Set 8 consecutive floats at once (reduces FFI overhead by 8x for instance data)
+void afferent_float_buffer_set_vec8(AfferentFloatBufferRef buf, size_t index,
+    float v0, float v1, float v2, float v3, float v4, float v5, float v6, float v7);
+
+// ============================================================================
+// Animated rendering - GPU-side animation for maximum performance
+// Static data uploaded once, only time uniform sent per frame
+// ============================================================================
+
+// Upload static instance data for animated rects (called once at startup)
+// data: [pixelX, pixelY, hueBase, halfSizePixels, phaseOffset, spinSpeed] × count
+void afferent_renderer_upload_animated_rects(
+    AfferentRendererRef renderer,
+    const float* data,
+    uint32_t count
+);
+
+// Upload static instance data for animated triangles
+void afferent_renderer_upload_animated_triangles(
+    AfferentRendererRef renderer,
+    const float* data,
+    uint32_t count
+);
+
+// Upload static instance data for animated circles
+void afferent_renderer_upload_animated_circles(
+    AfferentRendererRef renderer,
+    const float* data,
+    uint32_t count
+);
+
+// Draw animated rects (called every frame - only sends time uniform!)
+void afferent_renderer_draw_animated_rects(
+    AfferentRendererRef renderer,
+    float time
+);
+
+// Draw animated triangles (called every frame)
+void afferent_renderer_draw_animated_triangles(
+    AfferentRendererRef renderer,
+    float time
+);
+
+// Draw animated circles (called every frame)
+void afferent_renderer_draw_animated_circles(
+    AfferentRendererRef renderer,
+    float time
+);
+
 #ifdef __cplusplus
 }
 #endif

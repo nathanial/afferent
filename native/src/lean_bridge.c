@@ -562,6 +562,21 @@ LEAN_EXPORT lean_obj_res lean_afferent_float_buffer_get(
     return lean_io_result_mk_ok(lean_box_float((double)value));
 }
 
+// Set 8 floats at once - 8x less FFI overhead than 8 separate calls
+LEAN_EXPORT lean_obj_res lean_afferent_float_buffer_set_vec8(
+    lean_obj_arg buffer_obj,
+    size_t index,
+    double v0, double v1, double v2, double v3,
+    double v4, double v5, double v6, double v7,
+    lean_obj_arg world
+) {
+    AfferentFloatBufferRef buffer = (AfferentFloatBufferRef)lean_get_external_data(buffer_obj);
+    afferent_float_buffer_set_vec8(buffer, index,
+        (float)v0, (float)v1, (float)v2, (float)v3,
+        (float)v4, (float)v5, (float)v6, (float)v7);
+    return lean_io_result_mk_ok(lean_box(0));
+}
+
 // Draw instanced shapes directly from FloatBuffer (zero-copy path)
 LEAN_EXPORT lean_obj_res lean_afferent_renderer_draw_instanced_rects_buffer(
     lean_obj_arg renderer_obj,
@@ -612,5 +627,108 @@ LEAN_EXPORT lean_obj_res lean_afferent_renderer_draw_instanced_circles_buffer(
         afferent_float_buffer_data(buffer),
         instance_count
     );
+    return lean_io_result_mk_ok(lean_box(0));
+}
+
+// ============================================================================
+// ANIMATED RENDERING FFI - GPU-side animation for maximum performance
+// Static data uploaded once, only time uniform sent per frame
+// ============================================================================
+
+// Upload static instance data for animated rects
+// data format: [pixelX, pixelY, hueBase, halfSizePixels, phaseOffset, spinSpeed] × count
+LEAN_EXPORT lean_obj_res lean_afferent_renderer_upload_animated_rects(
+    lean_obj_arg renderer_obj,
+    lean_obj_arg data_arr,
+    uint32_t count,
+    lean_obj_arg world
+) {
+    AfferentRendererRef renderer = (AfferentRendererRef)lean_get_external_data(renderer_obj);
+
+    // Convert Lean Float array to C float array (one-time upload)
+    size_t arr_size = lean_array_size(data_arr);
+    float* data = malloc(arr_size * sizeof(float));
+    for (size_t i = 0; i < arr_size; i++) {
+        data[i] = (float)lean_unbox_float(lean_array_get_core(data_arr, i));
+    }
+
+    afferent_renderer_upload_animated_rects(renderer, data, count);
+
+    free(data);
+    return lean_io_result_mk_ok(lean_box(0));
+}
+
+// Upload static instance data for animated triangles
+LEAN_EXPORT lean_obj_res lean_afferent_renderer_upload_animated_triangles(
+    lean_obj_arg renderer_obj,
+    lean_obj_arg data_arr,
+    uint32_t count,
+    lean_obj_arg world
+) {
+    AfferentRendererRef renderer = (AfferentRendererRef)lean_get_external_data(renderer_obj);
+
+    size_t arr_size = lean_array_size(data_arr);
+    float* data = malloc(arr_size * sizeof(float));
+    for (size_t i = 0; i < arr_size; i++) {
+        data[i] = (float)lean_unbox_float(lean_array_get_core(data_arr, i));
+    }
+
+    afferent_renderer_upload_animated_triangles(renderer, data, count);
+
+    free(data);
+    return lean_io_result_mk_ok(lean_box(0));
+}
+
+// Upload static instance data for animated circles
+LEAN_EXPORT lean_obj_res lean_afferent_renderer_upload_animated_circles(
+    lean_obj_arg renderer_obj,
+    lean_obj_arg data_arr,
+    uint32_t count,
+    lean_obj_arg world
+) {
+    AfferentRendererRef renderer = (AfferentRendererRef)lean_get_external_data(renderer_obj);
+
+    size_t arr_size = lean_array_size(data_arr);
+    float* data = malloc(arr_size * sizeof(float));
+    for (size_t i = 0; i < arr_size; i++) {
+        data[i] = (float)lean_unbox_float(lean_array_get_core(data_arr, i));
+    }
+
+    afferent_renderer_upload_animated_circles(renderer, data, count);
+
+    free(data);
+    return lean_io_result_mk_ok(lean_box(0));
+}
+
+// Draw animated rects (called every frame - only sends time!)
+LEAN_EXPORT lean_obj_res lean_afferent_renderer_draw_animated_rects(
+    lean_obj_arg renderer_obj,
+    double time,
+    lean_obj_arg world
+) {
+    AfferentRendererRef renderer = (AfferentRendererRef)lean_get_external_data(renderer_obj);
+    afferent_renderer_draw_animated_rects(renderer, (float)time);
+    return lean_io_result_mk_ok(lean_box(0));
+}
+
+// Draw animated triangles (called every frame)
+LEAN_EXPORT lean_obj_res lean_afferent_renderer_draw_animated_triangles(
+    lean_obj_arg renderer_obj,
+    double time,
+    lean_obj_arg world
+) {
+    AfferentRendererRef renderer = (AfferentRendererRef)lean_get_external_data(renderer_obj);
+    afferent_renderer_draw_animated_triangles(renderer, (float)time);
+    return lean_io_result_mk_ok(lean_box(0));
+}
+
+// Draw animated circles (called every frame)
+LEAN_EXPORT lean_obj_res lean_afferent_renderer_draw_animated_circles(
+    lean_obj_arg renderer_obj,
+    double time,
+    lean_obj_arg world
+) {
+    AfferentRendererRef renderer = (AfferentRendererRef)lean_get_external_data(renderer_obj);
+    afferent_renderer_draw_animated_circles(renderer, (float)time);
     return lean_io_result_mk_ok(lean_box(0));
 }

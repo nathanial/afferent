@@ -209,6 +209,183 @@ fragment float4 instanced_circle_fragment(CircleVertexOut in [[stage_in]]) {
 }
 )";
 
+// ============================================================================
+// ANIMATED SHADERS - GPU-side animation for maximum performance
+// Static instance data uploaded once, only time uniform sent per frame
+// ============================================================================
+static NSString *animatedShaderSource = @R"(
+#include <metal_stdlib>
+using namespace metal;
+
+// Per-particle static data (uploaded once at startup)
+struct AnimatedInstanceData {
+    packed_float2 pixelPos;    // Position in pixel coordinates (8 bytes)
+    float hueBase;             // Base hue 0-1 (4 bytes)
+    float halfSizePixels;      // Half size in pixels (4 bytes)
+    float phaseOffset;         // Per-particle phase offset (4 bytes)
+    float spinSpeed;           // Spin speed multiplier (4 bytes)
+};  // Total: 24 bytes
+
+// Uniforms updated once per frame
+struct AnimationUniforms {
+    float time;
+    float canvasWidth;
+    float canvasHeight;
+    float padding;  // Align to 16 bytes
+};
+
+struct AnimatedVertexOut {
+    float4 position [[position]];
+    float4 color;
+};
+
+// HSV to RGB conversion (optimized for GPU)
+// Using smooth interpolation formula
+float3 hsv_to_rgb_fast(float h) {
+    // Simplified HSV->RGB with S=0.9, V=1.0
+    float3 rgb = clamp(abs(fmod(h * 6.0 + float3(0.0, 4.0, 2.0), 6.0) - 3.0) - 1.0, 0.0, 1.0);
+    return 1.0 - 0.9 * (1.0 - rgb);  // Apply saturation
+}
+
+vertex AnimatedVertexOut animated_rect_vertex(
+    uint vid [[vertex_id]],
+    uint iid [[instance_id]],
+    constant AnimatedInstanceData* instances [[buffer(0)]],
+    constant AnimationUniforms& uniforms [[buffer(1)]]
+) {
+    // Unit quad vertices for triangle strip
+    float2 unitQuad[4] = {
+        float2(-1, -1),
+        float2( 1, -1),
+        float2(-1,  1),
+        float2( 1,  1)
+    };
+
+    AnimatedInstanceData inst = instances[iid];
+    float2 v = unitQuad[vid];
+
+    // Compute angle from time (GPU-side!)
+    float angle = uniforms.time * inst.spinSpeed + inst.phaseOffset;
+
+    // Compute HSV -> RGB (GPU-side!)
+    float hue = fract(uniforms.time * 0.3 + inst.hueBase);
+    float3 rgb = hsv_to_rgb_fast(hue);
+
+    // Convert pixel -> NDC (GPU-side!)
+    float2 ndcPos = float2(
+        (inst.pixelPos.x / uniforms.canvasWidth) * 2.0 - 1.0,
+        1.0 - (inst.pixelPos.y / uniforms.canvasHeight) * 2.0
+    );
+    float ndcHalfSize = inst.halfSizePixels / uniforms.canvasWidth * 2.0;
+
+    // Rotate
+    float sinA = sin(angle);
+    float cosA = cos(angle);
+    float2 rotated = float2(
+        v.x * cosA - v.y * sinA,
+        v.x * sinA + v.y * cosA
+    );
+
+    // Scale and translate
+    float2 finalPos = ndcPos + rotated * ndcHalfSize;
+
+    AnimatedVertexOut out;
+    out.position = float4(finalPos, 0.0, 1.0);
+    out.color = float4(rgb, 1.0);
+    return out;
+}
+
+fragment float4 animated_rect_fragment(AnimatedVertexOut in [[stage_in]]) {
+    return in.color;
+}
+
+// Triangle variant - same animation, different geometry
+vertex AnimatedVertexOut animated_triangle_vertex(
+    uint vid [[vertex_id]],
+    uint iid [[instance_id]],
+    constant AnimatedInstanceData* instances [[buffer(0)]],
+    constant AnimationUniforms& uniforms [[buffer(1)]]
+) {
+    // Equilateral triangle vertices
+    float2 unitTriangle[3] = {
+        float2( 0.0,  1.15),
+        float2(-1.0, -0.58),
+        float2( 1.0, -0.58)
+    };
+
+    AnimatedInstanceData inst = instances[iid];
+    float2 v = unitTriangle[vid];
+
+    float angle = uniforms.time * inst.spinSpeed + inst.phaseOffset;
+    float hue = fract(uniforms.time * 0.3 + inst.hueBase);
+    float3 rgb = hsv_to_rgb_fast(hue);
+
+    float2 ndcPos = float2(
+        (inst.pixelPos.x / uniforms.canvasWidth) * 2.0 - 1.0,
+        1.0 - (inst.pixelPos.y / uniforms.canvasHeight) * 2.0
+    );
+    float ndcHalfSize = inst.halfSizePixels / uniforms.canvasWidth * 2.0;
+
+    float sinA = sin(angle);
+    float cosA = cos(angle);
+    float2 rotated = float2(v.x * cosA - v.y * sinA, v.x * sinA + v.y * cosA);
+    float2 finalPos = ndcPos + rotated * ndcHalfSize;
+
+    AnimatedVertexOut out;
+    out.position = float4(finalPos, 0.0, 1.0);
+    out.color = float4(rgb, 1.0);
+    return out;
+}
+
+// Circle variant - animated with HSV color cycling
+struct AnimatedCircleVertexOut {
+    float4 position [[position]];
+    float4 color;
+    float2 uv;
+};
+
+vertex AnimatedCircleVertexOut animated_circle_vertex(
+    uint vid [[vertex_id]],
+    uint iid [[instance_id]],
+    constant AnimatedInstanceData* instances [[buffer(0)]],
+    constant AnimationUniforms& uniforms [[buffer(1)]]
+) {
+    float2 unitQuad[4] = {
+        float2(-1, -1),
+        float2( 1, -1),
+        float2(-1,  1),
+        float2( 1,  1)
+    };
+
+    AnimatedInstanceData inst = instances[iid];
+    float2 v = unitQuad[vid];
+
+    // Circles don't rotate, but we animate color
+    float hue = fract(uniforms.time * 0.3 + inst.hueBase);
+    float3 rgb = hsv_to_rgb_fast(hue);
+
+    float2 ndcPos = float2(
+        (inst.pixelPos.x / uniforms.canvasWidth) * 2.0 - 1.0,
+        1.0 - (inst.pixelPos.y / uniforms.canvasHeight) * 2.0
+    );
+    float ndcHalfSize = inst.halfSizePixels / uniforms.canvasWidth * 2.0;
+    float2 finalPos = ndcPos + v * ndcHalfSize;
+
+    AnimatedCircleVertexOut out;
+    out.position = float4(finalPos, 0.0, 1.0);
+    out.color = float4(rgb, 1.0);
+    out.uv = v;
+    return out;
+}
+
+fragment float4 animated_circle_fragment(AnimatedCircleVertexOut in [[stage_in]]) {
+    float dist = length(in.uv);
+    float alpha = 1.0 - smoothstep(0.9, 1.0, dist);
+    if (alpha < 0.01) discard_fragment();
+    return float4(in.color.rgb, in.color.a * alpha);
+}
+)";
+
 // Text vertex structure (different layout than AfferentVertex)
 typedef struct {
     float position[2];
@@ -224,6 +401,23 @@ typedef struct __attribute__((packed)) {
     float color[4];     // RGBA (16 bytes)
 } InstanceData;  // Total: 32 bytes
 
+// Animated instance data structure (matches shader) - 24 bytes
+typedef struct {
+    float pixelPos[2];      // Position in pixel coordinates (8 bytes)
+    float hueBase;          // Base hue 0-1 (4 bytes)
+    float halfSizePixels;   // Half size in pixels (4 bytes)
+    float phaseOffset;      // Per-particle phase offset (4 bytes)
+    float spinSpeed;        // Spin speed multiplier (4 bytes)
+} AnimatedInstanceData;  // Total: 24 bytes
+
+// Animation uniforms structure (matches shader)
+typedef struct {
+    float time;
+    float canvasWidth;
+    float canvasHeight;
+    float padding;
+} AnimationUniforms;
+
 // Internal renderer structure
 struct AfferentRenderer {
     AfferentWindowRef window;
@@ -234,6 +428,10 @@ struct AfferentRenderer {
     id<MTLRenderPipelineState> instancedPipelineState; // For instanced rect rendering
     id<MTLRenderPipelineState> trianglePipelineState;  // For instanced triangle rendering
     id<MTLRenderPipelineState> circlePipelineState;    // For instanced circle rendering
+    // Animated pipelines (GPU-side animation)
+    id<MTLRenderPipelineState> animatedRectPipelineState;
+    id<MTLRenderPipelineState> animatedTrianglePipelineState;
+    id<MTLRenderPipelineState> animatedCirclePipelineState;
     id<MTLSamplerState> textSampler;                   // For text texture sampling
     id<MTLCommandBuffer> currentCommandBuffer;
     id<MTLRenderCommandEncoder> currentEncoder;
@@ -244,6 +442,13 @@ struct AfferentRenderer {
     MTLClearColor clearColor;
     float screenWidth;   // Current screen dimensions for text rendering
     float screenHeight;
+    // Persistent buffers for animated rendering (uploaded once, reused every frame)
+    id<MTLBuffer> animatedRectBuffer;
+    id<MTLBuffer> animatedTriangleBuffer;
+    id<MTLBuffer> animatedCircleBuffer;
+    uint32_t animatedRectCount;
+    uint32_t animatedTriangleCount;
+    uint32_t animatedCircleCount;
 };
 
 // Internal buffer structure
@@ -596,6 +801,109 @@ AfferentResult afferent_renderer_create(
             free(renderer);
             return AFFERENT_ERROR_PIPELINE_FAILED;
         }
+
+        // ====================================================================
+        // Create animated pipelines (GPU-side animation for maximum performance)
+        // ====================================================================
+        id<MTLLibrary> animatedLibrary = [renderer->device newLibraryWithSource:animatedShaderSource
+                                                                        options:nil
+                                                                          error:&error];
+        if (!animatedLibrary) {
+            NSLog(@"Animated shader compilation failed: %@", error);
+            free(renderer);
+            return AFFERENT_ERROR_PIPELINE_FAILED;
+        }
+
+        // Animated rect pipeline
+        id<MTLFunction> animRectVertexFunc = [animatedLibrary newFunctionWithName:@"animated_rect_vertex"];
+        id<MTLFunction> animRectFragmentFunc = [animatedLibrary newFunctionWithName:@"animated_rect_fragment"];
+        if (!animRectVertexFunc || !animRectFragmentFunc) {
+            NSLog(@"Failed to find animated rect shader functions");
+            free(renderer);
+            return AFFERENT_ERROR_PIPELINE_FAILED;
+        }
+
+        MTLRenderPipelineDescriptor *animRectPipelineDesc = [[MTLRenderPipelineDescriptor alloc] init];
+        animRectPipelineDesc.vertexFunction = animRectVertexFunc;
+        animRectPipelineDesc.fragmentFunction = animRectFragmentFunc;
+        animRectPipelineDesc.colorAttachments[0].pixelFormat = MTLPixelFormatBGRA8Unorm;
+        animRectPipelineDesc.rasterSampleCount = 4;
+        animRectPipelineDesc.colorAttachments[0].blendingEnabled = YES;
+        animRectPipelineDesc.colorAttachments[0].sourceRGBBlendFactor = MTLBlendFactorSourceAlpha;
+        animRectPipelineDesc.colorAttachments[0].destinationRGBBlendFactor = MTLBlendFactorOneMinusSourceAlpha;
+        animRectPipelineDesc.colorAttachments[0].sourceAlphaBlendFactor = MTLBlendFactorOne;
+        animRectPipelineDesc.colorAttachments[0].destinationAlphaBlendFactor = MTLBlendFactorOneMinusSourceAlpha;
+
+        renderer->animatedRectPipelineState = [renderer->device newRenderPipelineStateWithDescriptor:animRectPipelineDesc
+                                                                                               error:&error];
+        if (!renderer->animatedRectPipelineState) {
+            NSLog(@"Animated rect pipeline creation failed: %@", error);
+            free(renderer);
+            return AFFERENT_ERROR_PIPELINE_FAILED;
+        }
+
+        // Animated triangle pipeline
+        id<MTLFunction> animTriVertexFunc = [animatedLibrary newFunctionWithName:@"animated_triangle_vertex"];
+        if (!animTriVertexFunc) {
+            NSLog(@"Failed to find animated triangle vertex function");
+            free(renderer);
+            return AFFERENT_ERROR_PIPELINE_FAILED;
+        }
+
+        MTLRenderPipelineDescriptor *animTriPipelineDesc = [[MTLRenderPipelineDescriptor alloc] init];
+        animTriPipelineDesc.vertexFunction = animTriVertexFunc;
+        animTriPipelineDesc.fragmentFunction = animRectFragmentFunc;  // Same fragment shader
+        animTriPipelineDesc.colorAttachments[0].pixelFormat = MTLPixelFormatBGRA8Unorm;
+        animTriPipelineDesc.rasterSampleCount = 4;
+        animTriPipelineDesc.colorAttachments[0].blendingEnabled = YES;
+        animTriPipelineDesc.colorAttachments[0].sourceRGBBlendFactor = MTLBlendFactorSourceAlpha;
+        animTriPipelineDesc.colorAttachments[0].destinationRGBBlendFactor = MTLBlendFactorOneMinusSourceAlpha;
+        animTriPipelineDesc.colorAttachments[0].sourceAlphaBlendFactor = MTLBlendFactorOne;
+        animTriPipelineDesc.colorAttachments[0].destinationAlphaBlendFactor = MTLBlendFactorOneMinusSourceAlpha;
+
+        renderer->animatedTrianglePipelineState = [renderer->device newRenderPipelineStateWithDescriptor:animTriPipelineDesc
+                                                                                                   error:&error];
+        if (!renderer->animatedTrianglePipelineState) {
+            NSLog(@"Animated triangle pipeline creation failed: %@", error);
+            free(renderer);
+            return AFFERENT_ERROR_PIPELINE_FAILED;
+        }
+
+        // Animated circle pipeline
+        id<MTLFunction> animCircleVertexFunc = [animatedLibrary newFunctionWithName:@"animated_circle_vertex"];
+        id<MTLFunction> animCircleFragmentFunc = [animatedLibrary newFunctionWithName:@"animated_circle_fragment"];
+        if (!animCircleVertexFunc || !animCircleFragmentFunc) {
+            NSLog(@"Failed to find animated circle shader functions");
+            free(renderer);
+            return AFFERENT_ERROR_PIPELINE_FAILED;
+        }
+
+        MTLRenderPipelineDescriptor *animCirclePipelineDesc = [[MTLRenderPipelineDescriptor alloc] init];
+        animCirclePipelineDesc.vertexFunction = animCircleVertexFunc;
+        animCirclePipelineDesc.fragmentFunction = animCircleFragmentFunc;
+        animCirclePipelineDesc.colorAttachments[0].pixelFormat = MTLPixelFormatBGRA8Unorm;
+        animCirclePipelineDesc.rasterSampleCount = 4;
+        animCirclePipelineDesc.colorAttachments[0].blendingEnabled = YES;
+        animCirclePipelineDesc.colorAttachments[0].sourceRGBBlendFactor = MTLBlendFactorSourceAlpha;
+        animCirclePipelineDesc.colorAttachments[0].destinationRGBBlendFactor = MTLBlendFactorOneMinusSourceAlpha;
+        animCirclePipelineDesc.colorAttachments[0].sourceAlphaBlendFactor = MTLBlendFactorOne;
+        animCirclePipelineDesc.colorAttachments[0].destinationAlphaBlendFactor = MTLBlendFactorOneMinusSourceAlpha;
+
+        renderer->animatedCirclePipelineState = [renderer->device newRenderPipelineStateWithDescriptor:animCirclePipelineDesc
+                                                                                                 error:&error];
+        if (!renderer->animatedCirclePipelineState) {
+            NSLog(@"Animated circle pipeline creation failed: %@", error);
+            free(renderer);
+            return AFFERENT_ERROR_PIPELINE_FAILED;
+        }
+
+        // Initialize animated buffer pointers to nil
+        renderer->animatedRectBuffer = nil;
+        renderer->animatedTriangleBuffer = nil;
+        renderer->animatedCircleBuffer = nil;
+        renderer->animatedRectCount = 0;
+        renderer->animatedTriangleCount = 0;
+        renderer->animatedCircleCount = 0;
 
         *out_renderer = renderer;
         return AFFERENT_OK;
@@ -1152,5 +1460,147 @@ void afferent_release_metal_texture(void* texture_ptr) {
         // Transfer ownership back to ARC so it can release the texture
         id<MTLTexture> texture = (__bridge_transfer id<MTLTexture>)texture_ptr;
         (void)texture;  // Let ARC release it
+    }
+}
+
+// ============================================================================
+// ANIMATED RENDERING - GPU-side animation for maximum performance
+// Static data uploaded once, only time uniform sent per frame
+// ============================================================================
+
+// Upload static instance data for animated rects (called once at startup)
+// data: [pixelX, pixelY, hueBase, halfSizePixels, phaseOffset, spinSpeed] × count
+void afferent_renderer_upload_animated_rects(
+    AfferentRendererRef renderer,
+    const float* data,
+    uint32_t count
+) {
+    if (!renderer || !data || count == 0) return;
+
+    @autoreleasepool {
+        size_t size = count * sizeof(AnimatedInstanceData);
+        renderer->animatedRectBuffer = [renderer->device newBufferWithBytes:data
+                                                                     length:size
+                                                                    options:MTLResourceStorageModeShared];
+        renderer->animatedRectCount = count;
+    }
+}
+
+// Upload static instance data for animated triangles
+void afferent_renderer_upload_animated_triangles(
+    AfferentRendererRef renderer,
+    const float* data,
+    uint32_t count
+) {
+    if (!renderer || !data || count == 0) return;
+
+    @autoreleasepool {
+        size_t size = count * sizeof(AnimatedInstanceData);
+        renderer->animatedTriangleBuffer = [renderer->device newBufferWithBytes:data
+                                                                         length:size
+                                                                        options:MTLResourceStorageModeShared];
+        renderer->animatedTriangleCount = count;
+    }
+}
+
+// Upload static instance data for animated circles
+void afferent_renderer_upload_animated_circles(
+    AfferentRendererRef renderer,
+    const float* data,
+    uint32_t count
+) {
+    if (!renderer || !data || count == 0) return;
+
+    @autoreleasepool {
+        size_t size = count * sizeof(AnimatedInstanceData);
+        renderer->animatedCircleBuffer = [renderer->device newBufferWithBytes:data
+                                                                       length:size
+                                                                      options:MTLResourceStorageModeShared];
+        renderer->animatedCircleCount = count;
+    }
+}
+
+// Draw animated rects (called every frame - only sends time uniform!)
+void afferent_renderer_draw_animated_rects(
+    AfferentRendererRef renderer,
+    float time
+) {
+    if (!renderer || !renderer->currentEncoder || !renderer->animatedRectBuffer || renderer->animatedRectCount == 0) {
+        return;
+    }
+
+    @autoreleasepool {
+        // Prepare uniforms (just 16 bytes!)
+        AnimationUniforms uniforms = {
+            .time = time,
+            .canvasWidth = renderer->screenWidth,
+            .canvasHeight = renderer->screenHeight,
+            .padding = 0
+        };
+
+        [renderer->currentEncoder setRenderPipelineState:renderer->animatedRectPipelineState];
+        [renderer->currentEncoder setVertexBuffer:renderer->animatedRectBuffer offset:0 atIndex:0];
+        [renderer->currentEncoder setVertexBytes:&uniforms length:sizeof(uniforms) atIndex:1];
+        [renderer->currentEncoder drawPrimitives:MTLPrimitiveTypeTriangleStrip
+                                     vertexStart:0
+                                     vertexCount:4
+                                   instanceCount:renderer->animatedRectCount];
+        [renderer->currentEncoder setRenderPipelineState:renderer->pipelineState];
+    }
+}
+
+// Draw animated triangles (called every frame)
+void afferent_renderer_draw_animated_triangles(
+    AfferentRendererRef renderer,
+    float time
+) {
+    if (!renderer || !renderer->currentEncoder || !renderer->animatedTriangleBuffer || renderer->animatedTriangleCount == 0) {
+        return;
+    }
+
+    @autoreleasepool {
+        AnimationUniforms uniforms = {
+            .time = time,
+            .canvasWidth = renderer->screenWidth,
+            .canvasHeight = renderer->screenHeight,
+            .padding = 0
+        };
+
+        [renderer->currentEncoder setRenderPipelineState:renderer->animatedTrianglePipelineState];
+        [renderer->currentEncoder setVertexBuffer:renderer->animatedTriangleBuffer offset:0 atIndex:0];
+        [renderer->currentEncoder setVertexBytes:&uniforms length:sizeof(uniforms) atIndex:1];
+        [renderer->currentEncoder drawPrimitives:MTLPrimitiveTypeTriangle
+                                     vertexStart:0
+                                     vertexCount:3
+                                   instanceCount:renderer->animatedTriangleCount];
+        [renderer->currentEncoder setRenderPipelineState:renderer->pipelineState];
+    }
+}
+
+// Draw animated circles (called every frame)
+void afferent_renderer_draw_animated_circles(
+    AfferentRendererRef renderer,
+    float time
+) {
+    if (!renderer || !renderer->currentEncoder || !renderer->animatedCircleBuffer || renderer->animatedCircleCount == 0) {
+        return;
+    }
+
+    @autoreleasepool {
+        AnimationUniforms uniforms = {
+            .time = time,
+            .canvasWidth = renderer->screenWidth,
+            .canvasHeight = renderer->screenHeight,
+            .padding = 0
+        };
+
+        [renderer->currentEncoder setRenderPipelineState:renderer->animatedCirclePipelineState];
+        [renderer->currentEncoder setVertexBuffer:renderer->animatedCircleBuffer offset:0 atIndex:0];
+        [renderer->currentEncoder setVertexBytes:&uniforms length:sizeof(uniforms) atIndex:1];
+        [renderer->currentEncoder drawPrimitives:MTLPrimitiveTypeTriangleStrip
+                                     vertexStart:0
+                                     vertexCount:4
+                                   instanceCount:renderer->animatedCircleCount];
+        [renderer->currentEncoder setRenderPipelineState:renderer->pipelineState];
     }
 }

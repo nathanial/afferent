@@ -846,15 +846,8 @@ def batchInstancedGridParticlesFast (particles : GridParticleData) (t : Float)
     let ndcY := 1.0 - (y / c.ctx.baseHeight) * 2.0
     let ndcHalfSize := particles.halfSize / c.ctx.baseWidth * 2.0
     let base := (i * 8).toUSize
-    -- Direct memory writes - no array copies!
-    FFI.FloatBuffer.set buf base ndcX
-    FFI.FloatBuffer.set buf (base + 1) ndcY
-    FFI.FloatBuffer.set buf (base + 2) angle
-    FFI.FloatBuffer.set buf (base + 3) ndcHalfSize
-    FFI.FloatBuffer.set buf (base + 4) r
-    FFI.FloatBuffer.set buf (base + 5) g
-    FFI.FloatBuffer.set buf (base + 6) b
-    FFI.FloatBuffer.set buf (base + 7) 1.0
+    -- Single FFI call for 8 floats - 8x less overhead!
+    FFI.FloatBuffer.setVec8 buf base ndcX ndcY angle ndcHalfSize r g b 1.0
   FFI.Renderer.drawInstancedRectsBuffer c.ctx.renderer buf count.toUInt32
   pure c
 
@@ -898,14 +891,7 @@ def batchInstancedParticlesFast (particles : ParticleData) (t : Float)
     let ndcY := 1.0 - (y / c.ctx.baseHeight) * 2.0
     let ndcHalfSize := particles.halfSize / c.ctx.baseWidth * 2.0
     let base := (i * 8).toUSize
-    FFI.FloatBuffer.set buf base ndcX
-    FFI.FloatBuffer.set buf (base + 1) ndcY
-    FFI.FloatBuffer.set buf (base + 2) angle
-    FFI.FloatBuffer.set buf (base + 3) ndcHalfSize
-    FFI.FloatBuffer.set buf (base + 4) r
-    FFI.FloatBuffer.set buf (base + 5) g
-    FFI.FloatBuffer.set buf (base + 6) b
-    FFI.FloatBuffer.set buf (base + 7) 1.0
+    FFI.FloatBuffer.setVec8 buf base ndcX ndcY angle ndcHalfSize r g b 1.0
   FFI.Renderer.drawInstancedRectsBuffer c.ctx.renderer buf count.toUInt32
   pure c
 
@@ -941,14 +927,7 @@ def batchInstancedGridTrianglesFast (particles : GridParticleData) (t : Float)
     let ndcY := 1.0 - (y / c.ctx.baseHeight) * 2.0
     let ndcHalfSize := particles.halfSize / c.ctx.baseWidth * 2.0
     let base := (i * 8).toUSize
-    FFI.FloatBuffer.set buf base ndcX
-    FFI.FloatBuffer.set buf (base + 1) ndcY
-    FFI.FloatBuffer.set buf (base + 2) angle
-    FFI.FloatBuffer.set buf (base + 3) ndcHalfSize
-    FFI.FloatBuffer.set buf (base + 4) r
-    FFI.FloatBuffer.set buf (base + 5) g
-    FFI.FloatBuffer.set buf (base + 6) b
-    FFI.FloatBuffer.set buf (base + 7) 1.0
+    FFI.FloatBuffer.setVec8 buf base ndcX ndcY angle ndcHalfSize r g b 1.0
   FFI.Renderer.drawInstancedTrianglesBuffer c.ctx.renderer buf count.toUInt32
   pure c
 
@@ -982,14 +961,7 @@ def batchInstancedBouncingCirclesFast (particles : BouncingParticleData) (t : Fl
     let ndcY := 1.0 - (y / c.ctx.baseHeight) * 2.0
     let ndcRadius := particles.radius / c.ctx.baseWidth * 2.0
     let base := (i * 8).toUSize
-    FFI.FloatBuffer.set buf base ndcX
-    FFI.FloatBuffer.set buf (base + 1) ndcY
-    FFI.FloatBuffer.set buf (base + 2) 0.0
-    FFI.FloatBuffer.set buf (base + 3) ndcRadius
-    FFI.FloatBuffer.set buf (base + 4) r
-    FFI.FloatBuffer.set buf (base + 5) g
-    FFI.FloatBuffer.set buf (base + 6) b
-    FFI.FloatBuffer.set buf (base + 7) 1.0
+    FFI.FloatBuffer.setVec8 buf base ndcX ndcY 0.0 ndcRadius r g b 1.0
   FFI.Renderer.drawInstancedCirclesBuffer c.ctx.renderer buf count.toUInt32
   pure c
 
@@ -997,6 +969,100 @@ def batchInstancedBouncingCirclesFast (particles : BouncingParticleData) (t : Fl
 def destroyFloatBuffer (c : Canvas) : IO Unit := do
   if let some buf := c.floatBuffer then
     FFI.FloatBuffer.destroy buf
+
+/-! ## GPU-Animated Rendering (Pixi.js Style)
+    Static data uploaded once at startup, only time sent per frame.
+    GPU computes: angle, HSV→RGB, pixel→NDC conversion -/
+
+/-- Build static data array for animated grid particles.
+    Format: [pixelX, pixelY, hueBase, halfSizePixels, phaseOffset, spinSpeed] × count -/
+def buildAnimatedGridData (particles : GridParticleData) (spinSpeed : Float := 3.0) : Array Float := Id.run do
+  let mut data := Array.mkEmpty (particles.count * 6)
+  for i in [:particles.count] do
+    let sbase := i * 3
+    let x := particles.staticData[sbase]!
+    let y := particles.staticData[sbase + 1]!
+    let hueBase := particles.staticData[sbase + 2]!
+    data := data.push x
+    data := data.push y
+    data := data.push hueBase
+    data := data.push particles.halfSize
+    data := data.push (hueBase * 6.28318)  -- phase offset
+    data := data.push spinSpeed
+  data
+
+/-- Build static data array for animated orbital particles.
+    Note: This needs special handling since orbitals have dynamic positions.
+    For now, we use grid layout instead (positions won't orbit). -/
+def buildAnimatedOrbitalData (particles : ParticleData) (spinSpeed : Float := 3.0) : Array Float := Id.run do
+  -- For orbital particles, we need to compute initial positions
+  -- Since position depends on time, animated orbital would need a different shader
+  -- For now, fall back to using the center position (will just spin in place)
+  let mut data := Array.mkEmpty (particles.count * 6)
+  for i in [:particles.count] do
+    let sbase := i * 6
+    let phase := particles.staticData[sbase]!
+    let baseRadius := particles.staticData[sbase + 1]!
+    let hueBase := particles.staticData[sbase + 5]!
+    -- Use initial orbit position (t=0)
+    let x := particles.centerX + baseRadius * Float.cos phase
+    let y := particles.centerY + baseRadius * Float.sin phase
+    data := data.push x
+    data := data.push y
+    data := data.push hueBase
+    data := data.push particles.halfSize
+    data := data.push (phase)  -- phase offset
+    data := data.push spinSpeed
+  data
+
+/-- Build static data array for animated circles (bouncing circles need special handling).
+    For static circles, we just use fixed positions with color animation. -/
+def buildAnimatedCircleData (particles : BouncingParticleData) : Array Float := Id.run do
+  let mut data := Array.mkEmpty (particles.count * 6)
+  for i in [:particles.count] do
+    let pbase := i * 5
+    let x := particles.particleState[pbase]!
+    let y := particles.particleState[pbase + 1]!
+    let hueBase := particles.particleState[pbase + 4]!
+    data := data.push x
+    data := data.push y
+    data := data.push hueBase
+    data := data.push particles.radius
+    data := data.push 0.0  -- no rotation for circles
+    data := data.push 0.0  -- no spin speed for circles
+  data
+
+/-- Upload animated grid particle data to GPU (call once at startup).
+    After this, use drawAnimatedRects to render with just a time value. -/
+def uploadAnimatedGridRects (particles : GridParticleData) (spinSpeed : Float := 3.0) (c : Canvas) : IO Unit := do
+  let data := buildAnimatedGridData particles spinSpeed
+  FFI.Renderer.uploadAnimatedRects c.ctx.renderer data particles.count.toUInt32
+
+/-- Upload animated grid triangles to GPU (call once at startup). -/
+def uploadAnimatedGridTriangles (particles : GridParticleData) (spinSpeed : Float := 2.0) (c : Canvas) : IO Unit := do
+  let data := buildAnimatedGridData particles spinSpeed
+  FFI.Renderer.uploadAnimatedTriangles c.ctx.renderer data particles.count.toUInt32
+
+/-- Upload animated circles to GPU (call once at startup). -/
+def uploadAnimatedCircles (particles : BouncingParticleData) (c : Canvas) : IO Unit := do
+  let data := buildAnimatedCircleData particles
+  FFI.Renderer.uploadAnimatedCircles c.ctx.renderer data particles.count.toUInt32
+
+/-- Draw animated rects - GPU does all animation! Only sends time value.
+    Call uploadAnimatedGridRects once first, then call this every frame. -/
+def drawAnimatedRects (t : Float) (c : Canvas) : IO Canvas := do
+  FFI.Renderer.drawAnimatedRects c.ctx.renderer t
+  pure c
+
+/-- Draw animated triangles - GPU does all animation! Only sends time value. -/
+def drawAnimatedTriangles (t : Float) (c : Canvas) : IO Canvas := do
+  FFI.Renderer.drawAnimatedTriangles c.ctx.renderer t
+  pure c
+
+/-- Draw animated circles - GPU does all animation! Only sends time value. -/
+def drawAnimatedCircles (t : Float) (c : Canvas) : IO Canvas := do
+  FFI.Renderer.drawAnimatedCircles c.ctx.renderer t
+  pure c
 
 /-! ## Drawing operations -/
 

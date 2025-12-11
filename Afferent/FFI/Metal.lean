@@ -157,6 +157,11 @@ opaque FloatBuffer.set (buf : @& FloatBuffer) (index : USize) (value : Float) : 
 @[extern "lean_afferent_float_buffer_get"]
 opaque FloatBuffer.get (buf : @& FloatBuffer) (index : USize) : IO Float
 
+-- Set 8 consecutive floats at once (8x less FFI overhead for instance data)
+@[extern "lean_afferent_float_buffer_set_vec8"]
+opaque FloatBuffer.setVec8 (buf : @& FloatBuffer) (index : USize)
+  (v0 v1 v2 v3 v4 v5 v6 v7 : Float) : IO Unit
+
 -- Draw instanced shapes directly from FloatBuffer (zero-copy path)
 @[extern "lean_afferent_renderer_draw_instanced_rects_buffer"]
 opaque Renderer.drawInstancedRectsBuffer
@@ -175,5 +180,46 @@ opaque Renderer.drawInstancedCirclesBuffer
   (renderer : @& Renderer)
   (buffer : @& FloatBuffer)
   (instanceCount : UInt32) : IO Unit
+
+-- ============================================================================
+-- ANIMATED RENDERING - GPU-side animation for maximum performance
+-- Static data uploaded once, only time uniform sent per frame
+-- Data format: [pixelX, pixelY, hueBase, halfSizePixels, phaseOffset, spinSpeed] × count
+-- ============================================================================
+
+-- Upload static instance data (called once at startup)
+@[extern "lean_afferent_renderer_upload_animated_rects"]
+opaque Renderer.uploadAnimatedRects
+  (renderer : @& Renderer)
+  (data : @& Array Float)
+  (count : UInt32) : IO Unit
+
+@[extern "lean_afferent_renderer_upload_animated_triangles"]
+opaque Renderer.uploadAnimatedTriangles
+  (renderer : @& Renderer)
+  (data : @& Array Float)
+  (count : UInt32) : IO Unit
+
+@[extern "lean_afferent_renderer_upload_animated_circles"]
+opaque Renderer.uploadAnimatedCircles
+  (renderer : @& Renderer)
+  (data : @& Array Float)
+  (count : UInt32) : IO Unit
+
+-- Draw animated shapes (called every frame - only sends time!)
+@[extern "lean_afferent_renderer_draw_animated_rects"]
+opaque Renderer.drawAnimatedRects
+  (renderer : @& Renderer)
+  (time : Float) : IO Unit
+
+@[extern "lean_afferent_renderer_draw_animated_triangles"]
+opaque Renderer.drawAnimatedTriangles
+  (renderer : @& Renderer)
+  (time : Float) : IO Unit
+
+@[extern "lean_afferent_renderer_draw_animated_circles"]
+opaque Renderer.drawAnimatedCircles
+  (renderer : @& Renderer)
+  (time : Float) : IO Unit
 
 end Afferent.FFI

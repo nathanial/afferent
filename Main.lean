@@ -909,18 +909,19 @@ def renderOrbitalTest (c : Canvas) (t : Float) (font : Font) (particles : Canvas
   let c ← c.fillTextXY s!"Orbital: {particles.count} spinning squares (Space to advance)" 20 30 font
   c.batchInstancedParticlesFast particles t
 
-/-- Render grid spinning squares - particles in a grid, spinning in place.
-    Zero-copy FloatBuffer + GPU rotation = maximum performance! -/
+/-- Render grid spinning squares - GPU-animated rendering!
+    Static data uploaded once, only time sent per frame.
+    GPU computes: angle, HSV→RGB, pixel→NDC conversion -/
 def renderGridTest (c : Canvas) (t : Float) (font : Font) (particles : Canvas.GridParticleData) : IO Canvas := do
   let c := c.setFillColor Color.white
-  let c ← c.fillTextXY s!"Grid: {particles.count} spinning squares (Space to advance)" 20 30 font
-  c.batchInstancedGridParticlesFast particles t
+  let c ← c.fillTextXY s!"Grid: {particles.count} GPU-animated squares (Space to advance)" 20 30 font
+  c.drawAnimatedRects t
 
-/-- Render grid of spinning triangles. -/
+/-- Render grid of spinning triangles - GPU-animated rendering! -/
 def renderTriangleTest (c : Canvas) (t : Float) (font : Font) (particles : Canvas.GridParticleData) : IO Canvas := do
   let c := c.setFillColor Color.white
-  let c ← c.fillTextXY s!"Triangles: {particles.count} spinning triangles (Space to advance)" 20 30 font
-  c.batchInstancedGridTrianglesFast particles t
+  let c ← c.fillTextXY s!"Triangles: {particles.count} GPU-animated triangles (Space to advance)" 20 30 font
+  c.drawAnimatedTriangles t
 
 /-- Render bouncing circles. -/
 def renderCircleTest (c : Canvas) (t : Float) (font : Font) (particles : Canvas.BouncingParticleData) : IO Canvas := do
@@ -983,6 +984,13 @@ def unifiedDemo : IO Unit := do
   -- Bouncing circles
   let bouncingParticles := Canvas.BouncingParticleData.create 10000 1920.0 1080.0 5.0 42
   IO.println s!"Created {bouncingParticles.count} bouncing circles"
+
+  -- Upload static particle data to GPU ONCE for GPU-animated rendering
+  -- This is the Pixi.js-style optimization: upload once, animate on GPU
+  IO.println "Uploading particle data to GPU for GPU-animated rendering..."
+  Canvas.uploadAnimatedGridRects gridParticles 3.0 canvas
+  Canvas.uploadAnimatedGridTriangles gridParticles 2.0 canvas
+  IO.println "GPU particle data uploaded! Animation computed on GPU."
 
   -- Display modes: 0 = demo, 1 = orbital, 2 = grid squares, 3 = triangles, 4 = circles
   let startTime ← IO.monoMsNow
