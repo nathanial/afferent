@@ -109,6 +109,7 @@ struct AfferentBuffer {
 
 #define BUFFER_POOL_SIZE 64
 #define MAX_BUFFER_SIZE (1024 * 1024)  // 1MB max per pooled buffer
+#define WRAPPER_POOL_SIZE 256  // Pool for AfferentBuffer wrapper structs
 
 typedef struct {
     id<MTLBuffer> buffer;
@@ -121,9 +122,27 @@ typedef struct {
     PooledBuffer index_pool[BUFFER_POOL_SIZE];
     int vertex_pool_count;
     int index_pool_count;
+    // Wrapper struct pool to avoid malloc/free per draw call
+    struct AfferentBuffer* wrapper_pool[WRAPPER_POOL_SIZE];
+    int wrapper_pool_count;
+    int wrapper_pool_used;
 } BufferPool;
 
 static BufferPool g_buffer_pool = {0};
+
+// Get a wrapper struct from the pool (or allocate if pool is empty)
+static struct AfferentBuffer* pool_acquire_wrapper(void) {
+    if (g_buffer_pool.wrapper_pool_used < g_buffer_pool.wrapper_pool_count) {
+        return g_buffer_pool.wrapper_pool[g_buffer_pool.wrapper_pool_used++];
+    }
+    // Pool exhausted, allocate new and try to add to pool
+    struct AfferentBuffer* wrapper = malloc(sizeof(struct AfferentBuffer));
+    if (g_buffer_pool.wrapper_pool_count < WRAPPER_POOL_SIZE) {
+        g_buffer_pool.wrapper_pool[g_buffer_pool.wrapper_pool_count++] = wrapper;
+        g_buffer_pool.wrapper_pool_used++;
+    }
+    return wrapper;
+}
 
 // Find or create a buffer of at least the required size
 static id<MTLBuffer> pool_acquire_buffer(id<MTLDevice> device, PooledBuffer* pool, int* count, size_t required_size, bool is_vertex) {
@@ -171,6 +190,8 @@ static void pool_reset_frame(void) {
     for (int i = 0; i < g_buffer_pool.index_pool_count; i++) {
         g_buffer_pool.index_pool[i].in_use = false;
     }
+    // Reset wrapper pool (structs stay allocated, just reset usage counter)
+    g_buffer_pool.wrapper_pool_used = 0;
 }
 
 AfferentResult afferent_renderer_create(
@@ -456,7 +477,8 @@ AfferentResult afferent_buffer_create_vertex(
         // Copy vertex data into the pooled buffer
         memcpy(mtlBuffer.contents, vertices, required_size);
 
-        struct AfferentBuffer *buffer = malloc(sizeof(struct AfferentBuffer));
+        // Get wrapper struct from pool (avoids malloc per draw call)
+        struct AfferentBuffer *buffer = pool_acquire_wrapper();
         buffer->count = vertex_count;
         buffer->mtlBuffer = mtlBuffer;
         *out_buffer = buffer;
@@ -489,7 +511,8 @@ AfferentResult afferent_buffer_create_index(
         // Copy index data into the pooled buffer
         memcpy(mtlBuffer.contents, indices, required_size);
 
-        struct AfferentBuffer *buffer = malloc(sizeof(struct AfferentBuffer));
+        // Get wrapper struct from pool (avoids malloc per draw call)
+        struct AfferentBuffer *buffer = pool_acquire_wrapper();
         buffer->count = index_count;
         buffer->mtlBuffer = mtlBuffer;
         *out_buffer = buffer;
@@ -498,11 +521,11 @@ AfferentResult afferent_buffer_create_index(
 }
 
 void afferent_buffer_destroy(AfferentBufferRef buffer) {
-    // Note: We don't actually destroy the MTLBuffer here anymore,
-    // it stays in the pool for reuse. We only free the wrapper struct.
-    if (buffer) {
-        free(buffer);
-    }
+    // Note: We don't destroy anything here anymore.
+    // MTLBuffers stay in the pool for reuse, and wrapper structs
+    // are pooled and recycled at frame boundaries.
+    // This function is kept for API compatibility but is now a no-op.
+    (void)buffer;
 }
 
 void afferent_renderer_draw_triangles(

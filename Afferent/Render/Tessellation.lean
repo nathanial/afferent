@@ -37,7 +37,8 @@ partial def flattenCubicBezier (p0 p1 p2 p3 : Point) (tolerance : Float := 0.5) 
       let mid := Point.midpoint m012 m123
       let acc' := go p0 m01 m012 mid acc
       go mid m123 m23 p3 acc'
-  go p0 p1 p2 p3 #[]
+  -- Start with capacity for typical curve subdivision depth (8-16 segments)
+  go p0 p1 p2 p3 (Array.mkEmpty 16)
 where
   linePointDistance (lineStart lineEnd point : Point) : Float :=
     let dx := lineEnd.x - lineStart.x
@@ -58,7 +59,8 @@ def flattenQuadraticBezier (p0 cp p2 : Point) (tolerance : Float := 0.5) : Array
 /-- Convert a path to an array of polygon vertices (flatten all curves).
     Also returns whether the path is closed (ends with closePath or first/last points match). -/
 def pathToPolygonWithClosed (path : Path) (tolerance : Float := 0.5) : Array Point × Bool := Id.run do
-  let mut points : Array Point := #[]
+  -- Estimate capacity: typically 2-4 points per command on average
+  let mut points : Array Point := Array.mkEmpty (path.commands.size * 4)
   let mut current := Point.zero
   let mut subpathStart := Point.zero
   let mut isClosed := false
@@ -119,7 +121,8 @@ def pathToPolygon (path : Path) (tolerance : Float := 0.5) : Array Point :=
     Triangulates from first vertex to all other vertices. -/
 def triangulateConvexFan (numVertices : Nat) : Array UInt32 := Id.run do
   if numVertices < 3 then return #[]
-  let mut indices : Array UInt32 := #[]
+  let numTriangles := numVertices - 2
+  let mut indices : Array UInt32 := Array.mkEmpty (numTriangles * 3)
   for i in [1:numVertices - 1] do
     indices := indices.push 0
     indices := indices.push i.toUInt32
@@ -153,8 +156,8 @@ def tessellateConvexPath (path : Path) (color : Color) (tolerance : Float := 0.5
   if points.size < 3 then
     return { vertices := #[], indices := #[] }
 
-  -- Build vertex array
-  let mut vertices : Array Float := #[]
+  -- Build vertex array (6 floats per vertex: x, y, r, g, b, a)
+  let mut vertices : Array Float := Array.mkEmpty (points.size * 6)
   for p in points do
     vertices := vertices.push p.x
     vertices := vertices.push p.y
@@ -199,7 +202,8 @@ def tessellateConvexPathNDC (path : Path) (color : Color)
   if points.size < 3 then
     return { vertices := #[], indices := #[] }
 
-  let mut vertices : Array Float := #[]
+  -- Pre-allocate vertex array (6 floats per vertex: x, y, r, g, b, a)
+  let mut vertices : Array Float := Array.mkEmpty (points.size * 6)
   for p in points do
     let ndc := pixelToNDC p.x p.y screenWidth screenHeight
     vertices := vertices.push ndc.x
@@ -295,7 +299,8 @@ def tessellateConvexPathFillNDC (path : Path) (style : FillStyle)
   if points.size < 3 then
     return { vertices := #[], indices := #[] }
 
-  let mut vertices : Array Float := #[]
+  -- Pre-allocate vertex array (6 floats per vertex: x, y, r, g, b, a)
+  let mut vertices : Array Float := Array.mkEmpty (points.size * 6)
   for p in points do
     let color := sampleFillStyle style p
     let ndc := pixelToNDC p.x p.y screenWidth screenHeight
@@ -362,8 +367,9 @@ def expandPolylineToStroke (points : Array Point) (halfWidth : Float)
   if points.size < 2 then
     return (#[], #[])
 
-  let mut leftPoints : Array Point := #[]
-  let mut rightPoints : Array Point := #[]
+  -- Pre-allocate with estimated capacity (may grow for bevel joins)
+  let mut leftPoints : Array Point := Array.mkEmpty points.size
+  let mut rightPoints : Array Point := Array.mkEmpty points.size
 
   -- Process each segment
   for i in [:points.size] do
@@ -484,11 +490,13 @@ def strokeEdgesToTriangles (leftPoints rightPoints : Array Point) (color : Color
   if leftPoints.size < 2 || rightPoints.size < 2 then
     return { vertices := #[], indices := #[] }
 
-  let mut vertices : Array Float := #[]
-  let mut indices : Array UInt32 := #[]
+  let numPairs := min leftPoints.size rightPoints.size
+  -- Pre-allocate: 2 vertices per pair, 6 floats per vertex
+  let mut vertices : Array Float := Array.mkEmpty (numPairs * 2 * 6)
+  -- Pre-allocate: 2 triangles per segment, 3 indices per triangle
+  let mut indices : Array UInt32 := Array.mkEmpty ((numPairs - 1) * 6)
 
   -- Build vertices: interleave left and right points
-  let numPairs := min leftPoints.size rightPoints.size
   for i in [:numPairs] do
     if h : i < leftPoints.size ∧ i < rightPoints.size then
       let lp := leftPoints[i]
