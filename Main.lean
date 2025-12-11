@@ -1,14 +1,49 @@
 /-
   Afferent - A Lean 4 2D vector graphics library
-  Main executable - renders a colored triangle demo
+  Main executable - demonstrates collimator optics and Metal rendering
 -/
 import Afferent.FFI.Metal
+import Collimator.Prelude
 
 open Afferent.FFI
+open Collimator
+open scoped Collimator.Operators
 
-def main : IO Unit := do
-  IO.println "Afferent - 2D Vector Graphics Library"
-  IO.println "======================================"
+-- Demo: Using collimator lenses for data access
+structure Person where
+  name : String
+  age : Nat
+deriving Repr
+
+def nameLens : Lens' Person String :=
+  lens' (fun p => p.name) (fun p n => { p with name := n })
+
+def ageLens : Lens' Person Nat :=
+  lens' (fun p => p.age) (fun p a => { p with age := a })
+
+def collimatorDemo : IO Unit := do
+  IO.println "Collimator Optics Demo"
+  IO.println "----------------------"
+
+  let alice : Person := { name := "Alice", age := 30 }
+
+  -- View through a lens
+  IO.println s!"Name: {alice ^. nameLens}"
+  IO.println s!"Age: {alice ^. ageLens}"
+
+  -- Modify through a lens
+  let older := over' ageLens (· + 1) alice
+  IO.println s!"After birthday: {older ^. ageLens}"
+
+  -- Set through a lens
+  let renamed := set' nameLens "Alicia" alice
+  IO.println s!"Renamed: {renamed ^. nameLens}"
+
+  IO.println ""
+
+def graphicsDemo : IO Unit := do
+  IO.println "Metal Graphics Demo"
+  IO.println "-------------------"
 
   -- Initialize the native library
   init
@@ -68,4 +103,16 @@ def main : IO Unit := do
   Renderer.destroy renderer
   Window.destroy window
 
+def main : IO Unit := do
+  IO.println "Afferent - 2D Vector Graphics Library"
+  IO.println "======================================"
+  IO.println ""
+
+  -- Run collimator demo first
+  collimatorDemo
+
+  -- Then run graphics demo
+  graphicsDemo
+
+  IO.println ""
   IO.println "Done!"
