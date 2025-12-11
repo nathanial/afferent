@@ -74,6 +74,15 @@ opaque Renderer.drawTriangles
   (vertexBuffer indexBuffer : @& Buffer)
   (indexCount : UInt32) : IO Unit
 
+-- Scissor rect for clipping
+@[extern "lean_afferent_renderer_set_scissor"]
+opaque Renderer.setScissor
+  (renderer : @& Renderer)
+  (x y width height : UInt32) : IO Unit
+
+@[extern "lean_afferent_renderer_reset_scissor"]
+opaque Renderer.resetScissor (renderer : @& Renderer) : IO Unit
+
 -- Font management
 @[extern "lean_afferent_font_load"]
 opaque Font.load (path : @& String) (size : UInt32) : IO Font

@@ -55,11 +55,13 @@ def flattenQuadraticBezier (p0 cp p2 : Point) (tolerance : Float := 0.5) : Array
   let cp2 := Point.lerp p2 cp (2.0 / 3.0)
   flattenCubicBezier p0 cp1 cp2 p2 tolerance
 
-/-- Convert a path to an array of polygon vertices (flatten all curves). -/
-def pathToPolygon (path : Path) (tolerance : Float := 0.5) : Array Point := Id.run do
+/-- Convert a path to an array of polygon vertices (flatten all curves).
+    Also returns whether the path is closed (ends with closePath or first/last points match). -/
+def pathToPolygonWithClosed (path : Path) (tolerance : Float := 0.5) : Array Point × Bool := Id.run do
   let mut points : Array Point := #[]
   let mut current := Point.zero
   let mut subpathStart := Point.zero
+  let mut isClosed := false
 
   for cmd in path.commands do
     match cmd with
@@ -81,14 +83,16 @@ def pathToPolygon (path : Path) (tolerance : Float := 0.5) : Array Point := Id.r
         points := points.push pt
       current := p
     | .rect r =>
-      -- Add rectangle vertices
+      -- Add rectangle vertices (rectangles are implicitly closed)
       points := points.push r.topLeft
       points := points.push r.topRight
       points := points.push r.bottomRight
       points := points.push r.bottomLeft
       current := r.topLeft
       subpathStart := r.topLeft
+      isClosed := true
     | .closePath =>
+      isClosed := true
       current := subpathStart
     | .arc center radius startAngle endAngle counterclockwise =>
       -- Convert arc to bezier segments
@@ -105,7 +109,11 @@ def pathToPolygon (path : Path) (tolerance : Float := 0.5) : Array Point := Id.r
       points := points.push p2
       current := p2
 
-  return points
+  return (points, isClosed)
+
+/-- Convert a path to an array of polygon vertices (flatten all curves). -/
+def pathToPolygon (path : Path) (tolerance : Float := 0.5) : Array Point :=
+  (pathToPolygonWithClosed path tolerance).1
 
 /-- Simple fan triangulation for convex polygons.
     Triangulates from first vertex to all other vertices. -/
@@ -519,10 +527,16 @@ def strokeEdgesToTriangles (leftPoints rightPoints : Array Point) (color : Color
 /-- Tessellate a path as a stroke (outline). -/
 def tessellateStroke (path : Path) (style : StrokeStyle) (tolerance : Float := 0.5)
     : TessellationResult := Id.run do
-  let points := pathToPolygon path tolerance
+  let (points, isClosed) := pathToPolygonWithClosed path tolerance
 
   if points.size < 2 then
     return { vertices := #[], indices := #[] }
+
+  -- For closed paths, add the first point at the end to close the loop
+  let points := if isClosed && points.size > 0 then
+    points.push points[0]!
+  else
+    points
 
   let halfWidth := style.lineWidth / 2.0
   let (leftPoints, rightPoints) := expandPolylineToStroke points halfWidth
@@ -534,10 +548,16 @@ def tessellateStroke (path : Path) (style : StrokeStyle) (tolerance : Float := 0
 def tessellateStrokeNDC (path : Path) (style : StrokeStyle)
     (screenWidth screenHeight : Float) (tolerance : Float := 0.5)
     : TessellationResult := Id.run do
-  let points := pathToPolygon path tolerance
+  let (points, isClosed) := pathToPolygonWithClosed path tolerance
 
   if points.size < 2 then
     return { vertices := #[], indices := #[] }
+
+  -- For closed paths, add the first point at the end to close the loop
+  let points := if isClosed && points.size > 0 then
+    points.push points[0]!
+  else
+    points
 
   let halfWidth := style.lineWidth / 2.0
   let (leftPoints, rightPoints) := expandPolylineToStroke points halfWidth

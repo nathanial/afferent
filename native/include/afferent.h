@@ -78,6 +78,18 @@ void afferent_renderer_draw_triangles(
     uint32_t index_count
 );
 
+// Scissor rect for clipping (in pixel coordinates)
+void afferent_renderer_set_scissor(
+    AfferentRendererRef renderer,
+    uint32_t x,
+    uint32_t y,
+    uint32_t width,
+    uint32_t height
+);
+
+// Reset scissor to full viewport
+void afferent_renderer_reset_scissor(AfferentRendererRef renderer);
+
 // Text rendering (FreeType)
 // Initialize the text rendering subsystem (call once)
 AfferentResult afferent_text_init(void);

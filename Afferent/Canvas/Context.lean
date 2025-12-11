@@ -72,10 +72,18 @@ def destroy (ctx : DrawContext) : IO Unit := do
   FFI.Renderer.destroy ctx.renderer
   FFI.Window.destroy ctx.window
 
+/-- Set a scissor rectangle for clipping. Coordinates are in pixels. -/
+def setScissor (ctx : DrawContext) (x y width height : UInt32) : IO Unit :=
+  ctx.renderer.setScissor x y width height
+
+/-- Reset scissor to full viewport (disable clipping). -/
+def resetScissor (ctx : DrawContext) : IO Unit :=
+  ctx.renderer.resetScissor
+
 /-- Fill a rectangle with a solid color (pixel coordinates). -/
 def fillRect (ctx : DrawContext) (rect : Rect) (color : Color) : IO Unit := do
-  let (w, h) ← ctx.getCurrentSize
-  let result := Tessellation.tessellateRectNDC rect color w h
+  -- Use base (logical) canvas size for NDC conversion to maintain coordinate system
+  let result := Tessellation.tessellateRectNDC rect color ctx.baseWidth ctx.baseHeight
   if result.vertices.size > 0 && result.indices.size > 0 then
     let vertexBuffer ← FFI.Buffer.createVertex ctx.renderer result.vertices
     let indexBuffer ← FFI.Buffer.createIndex ctx.renderer result.indices
@@ -89,8 +97,8 @@ def fillRectXYWH (ctx : DrawContext) (x y w h : Float) (color : Color) : IO Unit
 
 /-- Fill a convex path with a solid color (pixel coordinates). -/
 def fillPath (ctx : DrawContext) (path : Path) (color : Color) : IO Unit := do
-  let (w, h) ← ctx.getCurrentSize
-  let result := Tessellation.tessellateConvexPathNDC path color w h
+  -- Use base (logical) canvas size for NDC conversion to maintain coordinate system
+  let result := Tessellation.tessellateConvexPathNDC path color ctx.baseWidth ctx.baseHeight
   if result.vertices.size > 0 && result.indices.size > 0 then
     let vertexBuffer ← FFI.Buffer.createVertex ctx.renderer result.vertices
     let indexBuffer ← FFI.Buffer.createIndex ctx.renderer result.indices
@@ -114,8 +122,8 @@ def fillRoundedRect (ctx : DrawContext) (rect : Rect) (cornerRadius : Float) (co
 
 /-- Fill a rectangle with a fill style (solid color or gradient). -/
 def fillRectWithStyle (ctx : DrawContext) (rect : Rect) (style : FillStyle) : IO Unit := do
-  let (w, h) ← ctx.getCurrentSize
-  let result := Tessellation.tessellateRectFillNDC rect style w h
+  -- Use base (logical) canvas size for NDC conversion to maintain coordinate system
+  let result := Tessellation.tessellateRectFillNDC rect style ctx.baseWidth ctx.baseHeight
   if result.vertices.size > 0 && result.indices.size > 0 then
     let vertexBuffer ← FFI.Buffer.createVertex ctx.renderer result.vertices
     let indexBuffer ← FFI.Buffer.createIndex ctx.renderer result.indices
@@ -125,8 +133,8 @@ def fillRectWithStyle (ctx : DrawContext) (rect : Rect) (style : FillStyle) : IO
 
 /-- Fill a convex path with a fill style (solid color or gradient). -/
 def fillPathWithStyle (ctx : DrawContext) (path : Path) (style : FillStyle) : IO Unit := do
-  let (w, h) ← ctx.getCurrentSize
-  let result := Tessellation.tessellateConvexPathFillNDC path style w h
+  -- Use base (logical) canvas size for NDC conversion to maintain coordinate system
+  let result := Tessellation.tessellateConvexPathFillNDC path style ctx.baseWidth ctx.baseHeight
   if result.vertices.size > 0 && result.indices.size > 0 then
     let vertexBuffer ← FFI.Buffer.createVertex ctx.renderer result.vertices
     let indexBuffer ← FFI.Buffer.createIndex ctx.renderer result.indices
@@ -163,8 +171,8 @@ def fillRoundedRectWithStyle (ctx : DrawContext) (rect : Rect) (cornerRadius : F
 
 /-- Stroke a path with a given style (pixel coordinates). -/
 def strokePath (ctx : DrawContext) (path : Path) (style : StrokeStyle) : IO Unit := do
-  let (w, h) ← ctx.getCurrentSize
-  let result := Tessellation.tessellateStrokeNDC path style w h
+  -- Use base (logical) canvas size for NDC conversion to maintain coordinate system
+  let result := Tessellation.tessellateStrokeNDC path style ctx.baseWidth ctx.baseHeight
   if result.vertices.size > 0 && result.indices.size > 0 then
     let vertexBuffer ← FFI.Buffer.createVertex ctx.renderer result.vertices
     let indexBuffer ← FFI.Buffer.createIndex ctx.renderer result.indices
@@ -203,10 +211,9 @@ def drawLine (ctx : DrawContext) (p1 p2 : Point) (color : Color) (lineWidth : Fl
 /-! ## Text Rendering -/
 
 /-- Draw text at a position with a font, color, and transform.
-    Uses the context's current size for NDC conversion so text scales with shapes. -/
-def fillTextTransformed (ctx : DrawContext) (text : String) (pos : Point) (font : Font) (color : Color) (transform : Transform) : IO Unit := do
-  let (w, h) ← ctx.getCurrentSize
-  FFI.Text.render ctx.renderer font.handle text pos.x pos.y color.r color.g color.b color.a transform.toArray w h
+    Uses the base (logical) canvas size for NDC conversion to maintain coordinate system. -/
+def fillTextTransformed (ctx : DrawContext) (text : String) (pos : Point) (font : Font) (color : Color) (transform : Transform) : IO Unit :=
+  FFI.Text.render ctx.renderer font.handle text pos.x pos.y color.r color.g color.b color.a transform.toArray ctx.baseWidth ctx.baseHeight
 
 /-- Draw text at a position with a font and color (identity transform). -/
 def fillText (ctx : DrawContext) (text : String) (pos : Point) (font : Font) (color : Color) : IO Unit :=
@@ -437,6 +444,31 @@ def width (c : Canvas) : IO Float := c.ctx.width
 def height (c : Canvas) : IO Float := c.ctx.height
 def baseWidth (c : Canvas) : Float := c.ctx.baseWidth
 def baseHeight (c : Canvas) : Float := c.ctx.baseHeight
+
+/-- Set a scissor rectangle for clipping in pixel coordinates.
+    Note: Scissor coordinates are in actual pixel space, not logical canvas coordinates. -/
+def setScissor (x y width height : UInt32) (c : Canvas) : IO Unit :=
+  c.ctx.setScissor x y width height
+
+/-- Reset scissor to full viewport (disable clipping). -/
+def resetScissor (c : Canvas) : IO Unit :=
+  c.ctx.resetScissor
+
+/-- Set a clip rectangle in logical canvas coordinates.
+    The coordinates will be scaled to match the current drawable size. -/
+def clip (rect : Rect) (c : Canvas) : IO Unit := do
+  let (drawW, drawH) ← c.ctx.getCurrentSize
+  let scaleX := drawW / c.ctx.baseWidth
+  let scaleY := drawH / c.ctx.baseHeight
+  let x := (rect.x * scaleX).toUInt32
+  let y := (rect.y * scaleY).toUInt32
+  let w := (rect.width * scaleX).toUInt32
+  let h := (rect.height * scaleY).toUInt32
+  c.ctx.setScissor x y w h
+
+/-- Remove clipping and restore full viewport. -/
+def unclip (c : Canvas) : IO Unit :=
+  c.ctx.resetScissor
 
 /-- Run a render loop with a Canvas that maintains state across frames.
     The draw function can return a modified Canvas with updated state. -/

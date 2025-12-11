@@ -87,17 +87,20 @@ def inverse (t : Transform) : Transform :=
       tx := (t.c * t.ty - t.d * t.tx) * invDet
       ty := (t.b * t.tx - t.a * t.ty) * invDet }
 
-/-- Helper to translate then apply another transform. -/
+/-- Apply a translation to the current transform (Canvas API semantics).
+    The translation is applied in local coordinates, before existing transform. -/
 def translated (t : Transform) (dx dy : Float) : Transform :=
-  concat t (translate dx dy)
+  concat (translate dx dy) t
 
-/-- Helper to scale then apply another transform. -/
+/-- Apply a scale to the current transform (Canvas API semantics).
+    The scale is applied in local coordinates, before existing transform. -/
 def scaled (t : Transform) (sx sy : Float) : Transform :=
-  concat t (scale sx sy)
+  concat (scale sx sy) t
 
-/-- Helper to rotate then apply another transform. -/
+/-- Apply a rotation to the current transform (Canvas API semantics).
+    The rotation is applied in local coordinates, before existing transform. -/
 def rotated (t : Transform) (angle : Float) : Transform :=
-  concat t (rotate angle)
+  concat (rotate angle) t
 
 instance : Mul Transform := ⟨concat⟩
 

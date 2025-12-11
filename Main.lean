@@ -801,42 +801,98 @@ def unifiedDemo : IO Unit := do
   -- - Gradients: 900x700 -> 0.51
   -- - Text: 900x700 -> 0.51
 
+  -- Grid cell dimensions (in logical canvas coordinates)
+  let cellWidth : Float := 960
+  let cellHeight : Float := 360
+
+  -- Background colors for each cell
+  let bg00 := Color.rgba 0.15 0.15 0.20 1.0  -- Dark blue-gray
+  let bg10 := Color.rgba 0.20 0.15 0.15 1.0  -- Dark red-gray
+  let bg01 := Color.rgba 0.15 0.20 0.15 1.0  -- Dark green-gray
+  let bg11 := Color.rgba 0.20 0.18 0.12 1.0  -- Dark warm gray
+  let bg02 := Color.rgba 0.18 0.15 0.20 1.0  -- Dark purple-gray
+  let bg12 := Color.rgba 0.12 0.18 0.20 1.0  -- Dark cyan-gray
+
   canvas.runLoop Color.darkGray fun c => do
     let c := c.resetTransform
 
     -- Cell 0,0: Shapes demo (top-left)
+    let cellRect00 := Rect.mk' 0 0 cellWidth cellHeight
+    c.clip cellRect00
+    let c := c.setFillColor bg00
+    c.fillRect cellRect00
+    let c := c.setFillColor (Color.rgba 1.0 1.0 1.0 0.5)
+    c.fillTextXY "Cell: 0,0 - Shapes" 10 20 fontSmall
     let c := c.save
     let c := c.scale 0.45 0.45
     let c ← renderShapes c
     let c := c.restore
+    c.unclip
 
     -- Cell 1,0: Transforms demo (top-right)
+    let cellRect10 := Rect.mk' cellWidth 0 cellWidth cellHeight
+    c.clip cellRect10
+    let c := c.setFillColor bg10
+    c.fillRect cellRect10
+    let c := c.setFillColor (Color.rgba 1.0 1.0 1.0 0.5)
+    c.fillTextXY "Cell: 1,0 - Transforms" (cellWidth + 10) 20 fontSmall
     let c := c.save
     let c := c.translate 960 0
     let c := c.scale 0.6 0.6
     let c ← renderTransforms c
     let c := c.restore
+    c.unclip
 
     -- Cell 0,1: Strokes demo (middle-left)
+    let cellRect01 := Rect.mk' 0 cellHeight cellWidth cellHeight
+    c.clip cellRect01
+    let c := c.setFillColor bg01
+    c.fillRect cellRect01
+    let c := c.setFillColor (Color.rgba 1.0 1.0 1.0 0.5)
+    c.fillTextXY "Cell: 0,1 - Strokes" 10 (cellHeight + 20) fontSmall
     let c := c.save
     let c := c.translate 0 360
     let c := c.scale 0.51 0.51
     let c ← renderStrokes c
     let c := c.restore
+    c.unclip
 
     -- Cell 1,1: Gradients demo (middle-right)
+    let cellRect11 := Rect.mk' cellWidth cellHeight cellWidth cellHeight
+    c.clip cellRect11
+    let c := c.setFillColor bg11
+    c.fillRect cellRect11
+    let c := c.setFillColor (Color.rgba 1.0 1.0 1.0 0.5)
+    c.fillTextXY "Cell: 1,1 - Gradients" (cellWidth + 10) (cellHeight + 20) fontSmall
     let c := c.save
     let c := c.translate 960 360
     let c := c.scale 0.51 0.51
     let c ← renderGradients c
     let c := c.restore
+    c.unclip
 
     -- Cell 0,2: Text demo (bottom-left)
+    let cellRect02 := Rect.mk' 0 (cellHeight * 2) cellWidth cellHeight
+    c.clip cellRect02
+    let c := c.setFillColor bg02
+    c.fillRect cellRect02
+    let c := c.setFillColor (Color.rgba 1.0 1.0 1.0 0.5)
+    c.fillTextXY "Cell: 0,2 - Text" 10 (cellHeight * 2 + 20) fontSmall
     let c := c.save
     let c := c.translate 0 720
     let c := c.scale 0.51 0.51
     let c ← renderText c fonts
     let c := c.restore
+    c.unclip
+
+    -- Cell 1,2: Empty cell (bottom-right)
+    let cellRect12 := Rect.mk' cellWidth (cellHeight * 2) cellWidth cellHeight
+    c.clip cellRect12
+    let c := c.setFillColor bg12
+    c.fillRect cellRect12
+    let c := c.setFillColor (Color.rgba 1.0 1.0 1.0 0.5)
+    c.fillTextXY "Cell: 1,2 - (Empty)" (cellWidth + 10) (cellHeight * 2 + 20) fontSmall
+    c.unclip
 
     pure c
 

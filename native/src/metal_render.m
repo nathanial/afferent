@@ -424,6 +424,53 @@ void afferent_renderer_draw_triangles(
                                   indexBufferOffset:0];
 }
 
+void afferent_renderer_set_scissor(
+    AfferentRendererRef renderer,
+    uint32_t x,
+    uint32_t y,
+    uint32_t width,
+    uint32_t height
+) {
+    if (!renderer || !renderer->currentEncoder) {
+        return;
+    }
+
+    // Clamp scissor to render target bounds
+    NSUInteger maxW = (NSUInteger)renderer->screenWidth;
+    NSUInteger maxH = (NSUInteger)renderer->screenHeight;
+
+    NSUInteger sx = (NSUInteger)x;
+    NSUInteger sy = (NSUInteger)y;
+    NSUInteger sw = (NSUInteger)width;
+    NSUInteger sh = (NSUInteger)height;
+
+    // Ensure scissor doesn't exceed render target
+    if (sx + sw > maxW) sw = maxW - sx;
+    if (sy + sh > maxH) sh = maxH - sy;
+
+    MTLScissorRect scissor;
+    scissor.x = sx;
+    scissor.y = sy;
+    scissor.width = sw;
+    scissor.height = sh;
+
+    [renderer->currentEncoder setScissorRect:scissor];
+}
+
+void afferent_renderer_reset_scissor(AfferentRendererRef renderer) {
+    if (!renderer || !renderer->currentEncoder) {
+        return;
+    }
+
+    // Reset to full drawable size
+    MTLScissorRect scissor;
+    scissor.x = 0;
+    scissor.y = 0;
+    scissor.width = (NSUInteger)renderer->screenWidth;
+    scissor.height = (NSUInteger)renderer->screenHeight;
+    [renderer->currentEncoder setScissorRect:scissor];
+}
+
 // External functions from text_render.c
 extern uint8_t* afferent_font_get_atlas_data(AfferentFontRef font);
 extern uint32_t afferent_font_get_atlas_width(AfferentFontRef font);
