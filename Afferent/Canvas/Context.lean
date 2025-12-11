@@ -5,6 +5,8 @@
 import Afferent.Core.Types
 import Afferent.Core.Path
 import Afferent.Core.Transform
+import Afferent.Core.Paint
+import Afferent.Canvas.State
 import Afferent.Render.Tessellation
 import Afferent.FFI.Metal
 
@@ -97,6 +99,155 @@ def runLoop (ctx : DrawContext) (clearColor : Color) (draw : DrawContext → IO 
       draw ctx
       ctx.endFrame
 
+/-! ## Stateful Drawing API -/
+
+/-- Fill a path using the current state (applies transform and uses state's fill color). -/
+def fillPathWithState (ctx : DrawContext) (path : Path) (state : CanvasState) : IO Unit := do
+  let transformedPath := state.transformPath path
+  let color := state.effectiveFillColor
+  ctx.fillPath transformedPath color
+
+/-- Fill a rectangle using the current state. -/
+def fillRectWithState (ctx : DrawContext) (rect : Rect) (state : CanvasState) : IO Unit := do
+  let path := Path.rectangle rect
+  ctx.fillPathWithState path state
+
+/-- Fill a circle using the current state. -/
+def fillCircleWithState (ctx : DrawContext) (center : Point) (radius : Float) (state : CanvasState) : IO Unit := do
+  ctx.fillPathWithState (Path.circle center radius) state
+
+/-- Run a stateful render loop with save/restore support.
+    The draw function receives a mutable StateStack reference. -/
+def runStatefulLoop (ctx : DrawContext) (clearColor : Color)
+    (draw : DrawContext → StateStack → IO StateStack) : IO Unit := do
+  let mut stack := StateStack.new
+  while !(← ctx.shouldClose) do
+    ctx.pollEvents
+    let ok ← ctx.beginFrame clearColor
+    if ok then
+      stack ← draw ctx stack
+      ctx.endFrame
+
 end DrawContext
+
+/-! ## Stateful Canvas - Higher-level API with automatic state management -/
+
+/-- A canvas with built-in state management. -/
+structure Canvas where
+  ctx : DrawContext
+  stateStack : StateStack
+
+namespace Canvas
+
+/-- Create a new canvas with a window. -/
+def create (width height : UInt32) (title : String) : IO Canvas := do
+  let ctx ← DrawContext.create width height title
+  pure { ctx, stateStack := StateStack.new }
+
+/-- Get the current state. -/
+def state (c : Canvas) : CanvasState :=
+  c.stateStack.current
+
+/-- Save the current state. -/
+def save (c : Canvas) : Canvas :=
+  { c with stateStack := c.stateStack.save }
+
+/-- Restore the most recently saved state. -/
+def restore (c : Canvas) : Canvas :=
+  { c with stateStack := c.stateStack.restore }
+
+/-- Modify the current state. -/
+def modifyState (f : CanvasState → CanvasState) (c : Canvas) : Canvas :=
+  { c with stateStack := c.stateStack.modify f }
+
+/-! ## Transform operations -/
+
+def translate (dx dy : Float) (c : Canvas) : Canvas :=
+  { c with stateStack := c.stateStack.translate dx dy }
+
+def rotate (angle : Float) (c : Canvas) : Canvas :=
+  { c with stateStack := c.stateStack.rotate angle }
+
+def scale (sx sy : Float) (c : Canvas) : Canvas :=
+  { c with stateStack := c.stateStack.scale sx sy }
+
+def scaleUniform (s : Float) (c : Canvas) : Canvas :=
+  { c with stateStack := c.stateStack.scaleUniform s }
+
+def resetTransform (c : Canvas) : Canvas :=
+  { c with stateStack := c.stateStack.resetTransform }
+
+/-! ## Style operations -/
+
+def setFillColor (color : Color) (c : Canvas) : Canvas :=
+  { c with stateStack := c.stateStack.setFillColor color }
+
+def setStrokeColor (color : Color) (c : Canvas) : Canvas :=
+  { c with stateStack := c.stateStack.setStrokeColor color }
+
+def setLineWidth (w : Float) (c : Canvas) : Canvas :=
+  { c with stateStack := c.stateStack.setLineWidth w }
+
+def setGlobalAlpha (a : Float) (c : Canvas) : Canvas :=
+  { c with stateStack := c.stateStack.setGlobalAlpha a }
+
+/-! ## Drawing operations -/
+
+/-- Fill a path using the current state. -/
+def fillPath (path : Path) (c : Canvas) : IO Unit :=
+  c.ctx.fillPathWithState path c.state
+
+/-- Fill a rectangle using the current state. -/
+def fillRect (rect : Rect) (c : Canvas) : IO Unit :=
+  c.ctx.fillRectWithState rect c.state
+
+/-- Fill a rectangle specified by x, y, width, height using current state. -/
+def fillRectXYWH (x y width height : Float) (c : Canvas) : IO Unit :=
+  c.fillRect (Rect.mk' x y width height)
+
+/-- Fill a circle using the current state. -/
+def fillCircle (center : Point) (radius : Float) (c : Canvas) : IO Unit :=
+  c.ctx.fillCircleWithState center radius c.state
+
+/-- Fill an ellipse using the current state. -/
+def fillEllipse (center : Point) (radiusX radiusY : Float) (c : Canvas) : IO Unit :=
+  c.ctx.fillPathWithState (Path.ellipse center radiusX radiusY) c.state
+
+/-- Fill a rounded rectangle using the current state. -/
+def fillRoundedRect (rect : Rect) (cornerRadius : Float) (c : Canvas) : IO Unit :=
+  c.ctx.fillPathWithState (Path.roundedRect rect cornerRadius) c.state
+
+/-! ## Window operations -/
+
+def shouldClose (c : Canvas) : IO Bool :=
+  c.ctx.shouldClose
+
+def pollEvents (c : Canvas) : IO Unit :=
+  c.ctx.pollEvents
+
+def beginFrame (clearColor : Color) (c : Canvas) : IO Bool :=
+  c.ctx.beginFrame clearColor
+
+def endFrame (c : Canvas) : IO Unit :=
+  c.ctx.endFrame
+
+def destroy (c : Canvas) : IO Unit :=
+  c.ctx.destroy
+
+def width (c : Canvas) : Float := c.ctx.width
+def height (c : Canvas) : Float := c.ctx.height
+
+/-- Run a render loop with a Canvas that maintains state across frames.
+    The draw function can return a modified Canvas with updated state. -/
+def runLoop (c : Canvas) (clearColor : Color) (draw : Canvas → IO Canvas) : IO Unit := do
+  let mut canvas := c
+  while !(← canvas.shouldClose) do
+    canvas.pollEvents
+    let ok ← canvas.beginFrame clearColor
+    if ok then
+      canvas ← draw canvas
+      canvas.endFrame
+
+end Canvas
 
 end Afferent

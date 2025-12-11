@@ -5,11 +5,13 @@
 import Afferent.Core.Types
 import Afferent.Core.Path
 import Afferent.Core.Transform
+import Afferent.Core.Paint
 
 -- Rendering
 import Afferent.Render.Tessellation
 
 -- Canvas API
+import Afferent.Canvas.State
 import Afferent.Canvas.Context
 
 -- FFI

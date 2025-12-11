@@ -154,6 +154,162 @@ def graphicsDemo : IO Unit := do
   IO.println "Cleaning up..."
   ctx.destroy
 
+def transformDemo : IO Unit := do
+  IO.println "Transform & State Demo"
+  IO.println "----------------------"
+
+  -- Create a stateful canvas
+  let canvas ← Canvas.create 800 600 "Afferent - Transforms"
+
+  IO.println "Rendering transformed shapes... (close window to exit)"
+
+  let pi := 3.14159265358979323846
+
+  -- Run the stateful render loop
+  canvas.runLoop Color.darkGray fun c => do
+    -- Reset transform at start of each frame
+    let c := c.resetTransform
+
+    -- Row 1: Basic shapes without transform (reference)
+    let c := c.setFillColor Color.white
+    c.fillRectXYWH 50 30 60 40
+    c.fillCircle ⟨180, 50⟩ 25
+
+    -- Row 1: Translated shapes
+    let c := c.save  -- Save state before transform
+    let c := c.translate 250 0
+    let c := c.setFillColor Color.red
+    c.fillRectXYWH 50 30 60 40
+    c.fillCircle ⟨180, 50⟩ 25
+    let c := c.restore  -- Restore to remove translation
+
+    -- Row 1: Scaled shapes (2x)
+    let c := c.save
+    let c := c.translate 500 50  -- Move to position first
+    let c := c.scale 1.5 1.5     -- Then scale
+    let c := c.setFillColor Color.green
+    c.fillRectXYWH (-30) (-20) 60 40  -- Draw centered at origin
+    c.fillCircle ⟨50, 0⟩ 25
+    let c := c.restore
+
+    -- Row 2: Rotated rectangles (rotation fan)
+    let c := c.save
+    let c := c.translate 150 200  -- Center point for rotation
+    for i in [:8] do
+      let c := c.save
+      let angle := i.toFloat * (pi / 4.0)  -- 45 degree increments
+      let c := c.rotate angle
+      let c := c.setFillColor (Color.rgba
+        (0.5 + 0.5 * Float.cos angle)
+        (0.5 + 0.5 * Float.sin angle)
+        0.5
+        0.8)
+      c.fillRectXYWH 30 (-10) 50 20
+      pure ()  -- Need pure for the loop
+    let c := c.restore
+
+    -- Row 2: Scaled circles (size variation)
+    let c := c.save
+    let c := c.translate 400 200
+    for i in [:5] do
+      let c := c.save
+      let s := 0.5 + i.toFloat * 0.3
+      let c := c.translate (i.toFloat * 50) 0
+      let c := c.scale s s
+      let c := c.setFillColor (Color.rgba (1.0 - i.toFloat * 0.15) (i.toFloat * 0.2) (0.5 + i.toFloat * 0.1) 1.0)
+      c.fillCircle ⟨0, 0⟩ 30
+      pure ()
+    let c := c.restore
+
+    -- Row 3: Combined transforms - rotating star
+    let c := c.save
+    let c := c.translate 150 380
+    let c := c.rotate (pi / 6.0)  -- 30 degree rotation
+    let c := c.scale 1.2 0.8       -- Squash it
+    let c := c.setFillColor Color.yellow
+    c.fillPath (Path.star ⟨0, 0⟩ 60 30 5)
+    let c := c.restore
+
+    -- Row 3: Nested transforms
+    let c := c.save
+    let c := c.translate 350 380
+    let c := c.setFillColor Color.blue
+    c.fillCircle ⟨0, 0⟩ 50  -- Outer circle
+
+    let c := c.save
+    let c := c.translate 0 0
+    let c := c.scale 0.6 0.6
+    let c := c.setFillColor Color.cyan
+    c.fillCircle ⟨0, 0⟩ 50  -- Inner circle (scaled down)
+
+    let c := c.save
+    let c := c.scale 0.5 0.5
+    let c := c.setFillColor Color.white
+    c.fillCircle ⟨0, 0⟩ 50  -- Innermost circle
+    let c := c.restore
+    let c := c.restore
+    let c := c.restore
+
+    -- Row 3: Global alpha demo
+    let c := c.save
+    let c := c.translate 550 380
+    let c := c.setFillColor Color.red
+    c.fillRectXYWH (-40) (-30) 80 60
+
+    let c := c.setGlobalAlpha 0.5  -- 50% transparent
+    let c := c.setFillColor Color.blue
+    c.fillRectXYWH (-20) (-10) 80 60  -- Overlapping semi-transparent
+
+    let c := c.setGlobalAlpha 0.3  -- 30% transparent
+    let c := c.setFillColor Color.green
+    c.fillRectXYWH 0 10 80 60  -- More transparent
+    let c := c.restore
+
+    -- Row 4: Transform composition demo - orbiting shapes
+    let c := c.save
+    let c := c.translate 200 520
+    for i in [:6] do
+      let c := c.save
+      let angle := i.toFloat * (pi / 3.0)
+      let c := c.rotate angle
+      let c := c.translate 60 0  -- Move out from center
+      let c := c.rotate (-angle)  -- Counter-rotate to keep upright
+      let c := c.setFillColor (Color.rgba
+        (if i % 2 == 0 then 1.0 else 0.5)
+        (if i % 3 == 0 then 1.0 else 0.3)
+        (if i % 2 == 1 then 1.0 else 0.2)
+        1.0)
+      c.fillRectXYWH (-15) (-15) 30 30
+      pure ()
+    let c := c.restore
+
+    -- Row 4: Skewed/sheared effect via non-uniform scale + rotation
+    let c := c.save
+    let c := c.translate 450 520
+    let c := c.rotate (pi / 12.0)  -- Slight rotation
+    let c := c.scale 1.5 0.7        -- Non-uniform scale creates shear-like effect
+    let c := c.setFillColor Color.magenta
+    c.fillRectXYWH (-40) (-25) 80 50
+    let c := c.restore
+
+    -- Row 4: Hearts with different transforms
+    let c := c.save
+    let c := c.translate 620 520
+    let c := c.setFillColor Color.red
+    c.fillPath (Path.heart ⟨0, 0⟩ 50)
+
+    let c := c.translate 100 0
+    let c := c.rotate (pi / 8.0)
+    let c := c.scale 0.7 0.7
+    let c := c.setFillColor Color.magenta
+    c.fillPath (Path.heart ⟨0, 0⟩ 50)
+    let c := c.restore
+
+    pure c
+
+  IO.println "Cleaning up..."
+  canvas.destroy
+
 def main : IO Unit := do
   IO.println "Afferent - 2D Vector Graphics Library"
   IO.println "======================================"
@@ -162,8 +318,11 @@ def main : IO Unit := do
   -- Run collimator demo first
   collimatorDemo
 
-  -- Then run graphics demo
+  -- Run shapes demo
   graphicsDemo
+
+  -- Run transform demo
+  transformDemo
 
   IO.println ""
   IO.println "Done!"
