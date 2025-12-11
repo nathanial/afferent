@@ -260,6 +260,10 @@ LEAN_EXPORT lean_obj_res lean_afferent_renderer_draw_triangles(
     return lean_io_result_mk_ok(lean_box(0));
 }
 
+// Reusable buffer for instanced rendering (avoids per-frame malloc)
+static float* g_instance_buffer = NULL;
+static size_t g_instance_buffer_capacity = 0;
+
 // Draw instanced rectangles - GPU-accelerated transforms
 // instance_data_arr: Array Float with 8 floats per instance
 //   (pos.x, pos.y, angle, halfSize, r, g, b, a)
@@ -278,18 +282,24 @@ LEAN_EXPORT lean_obj_res lean_afferent_renderer_draw_instanced_rects(
         return lean_io_result_mk_ok(lean_box(0));  // Silent fail on invalid input
     }
 
-    // Convert Lean array to float array
-    float* instance_data = malloc(arr_size * sizeof(float));
-    if (!instance_data) {
+    // Reuse or grow the static buffer
+    if (arr_size > g_instance_buffer_capacity) {
+        free(g_instance_buffer);
+        g_instance_buffer = malloc(arr_size * sizeof(float));
+        g_instance_buffer_capacity = g_instance_buffer ? arr_size : 0;
+    }
+
+    if (!g_instance_buffer) {
         return lean_io_result_mk_ok(lean_box(0));
     }
 
+    // Convert Lean array to float array (reusing buffer)
     for (size_t i = 0; i < arr_size; i++) {
-        instance_data[i] = (float)lean_unbox_float(lean_array_get_core(instance_data_arr, i));
+        g_instance_buffer[i] = (float)lean_unbox_float(lean_array_get_core(instance_data_arr, i));
     }
 
-    afferent_renderer_draw_instanced_rects(renderer, instance_data, instance_count);
-    free(instance_data);
+    afferent_renderer_draw_instanced_rects(renderer, g_instance_buffer, instance_count);
+    // Don't free - reuse next frame
 
     return lean_io_result_mk_ok(lean_box(0));
 }

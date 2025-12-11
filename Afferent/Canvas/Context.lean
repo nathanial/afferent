@@ -306,6 +306,10 @@ structure Canvas where
   stateStack : StateStack
   /-- Active batch accumulator. When Some, drawing ops add to batch instead of drawing immediately. -/
   batch : Option Batch := none
+  /-- Pre-allocated buffer for instanced rendering (avoids per-frame allocation). -/
+  instanceBuffer : Array Float := #[]
+  /-- Capacity of instance buffer (in number of instances, not floats). -/
+  instanceBufferCapacity : Nat := 0
 
 namespace Canvas
 
@@ -413,12 +417,20 @@ def batchRectsBy (count : Nat)
 /-- GPU INSTANCED: Render many rectangles with GPU-computed transforms.
     The generator function takes an index and returns (x, y, angle, halfSize, color).
     Transforms are computed on the GPU - maximum parallelism for large counts.
-    Use this for 1000+ rectangles for best performance. -/
+    Use this for 1000+ rectangles for best performance.
+    Reuses a pre-allocated buffer to avoid per-frame allocation. -/
 def batchInstancedRectsBy (count : Nat)
     (generator : Nat → Float × Float × Float × Float × Color)
     (c : Canvas) : IO Canvas := do
-  -- Build instance data: 8 floats per instance (angle instead of sin/cos - GPU computes trig)
-  let mut data := Array.mkEmpty (count * 8)
+  let floatCount := count * 8
+  -- Reuse existing buffer if large enough, otherwise grow it
+  let data := if c.instanceBufferCapacity >= count then
+      c.instanceBuffer
+    else
+      -- Allocate with some headroom to avoid frequent reallocation
+      Array.replicate floatCount 0.0
+  -- Fill instance data using set! for in-place mutation (8 floats per instance)
+  let mut data := data
   for i in [:count] do
     let (x, y, angle, halfSize, color) := generator i
     -- Convert position to NDC
@@ -426,15 +438,20 @@ def batchInstancedRectsBy (count : Nat)
     let ndcY := 1.0 - (y / c.ctx.baseHeight) * 2.0
     -- Convert halfSize to NDC (use width for uniform scale)
     let ndcHalfSize := halfSize / c.ctx.baseWidth * 2.0
-    -- Pack instance data - GPU will compute sin/cos
-    data := data
-      |>.push ndcX |>.push ndcY
-      |>.push angle
-      |>.push ndcHalfSize
-      |>.push color.r |>.push color.g |>.push color.b |>.push color.a
+    -- Pack instance data using set! (in-place mutation)
+    let base := i * 8
+    data := data.set! base ndcX
+    data := data.set! (base + 1) ndcY
+    data := data.set! (base + 2) angle
+    data := data.set! (base + 3) ndcHalfSize
+    data := data.set! (base + 4) color.r
+    data := data.set! (base + 5) color.g
+    data := data.set! (base + 6) color.b
+    data := data.set! (base + 7) color.a
   -- Single GPU draw call with instancing
   FFI.Renderer.drawInstancedRects c.ctx.renderer data count.toUInt32
-  pure c
+  -- Return canvas with buffer for reuse next frame
+  pure { c with instanceBuffer := data, instanceBufferCapacity := count }
 
 /-! ## Drawing operations -/
 
