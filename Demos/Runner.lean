@@ -14,7 +14,7 @@ import Demos.TrianglesPerf
 import Demos.CirclesPerf
 import Demos.SpritesPerf
 
-open Afferent
+open Afferent CanvasM
 
 namespace Demos
 
@@ -160,91 +160,91 @@ def unifiedDemo : IO Unit := do
         c := c1
       else
         -- Normal demo mode: grid of demos using CanvasM for proper state threading
-        c ← CanvasM.run' c' do
+        c ← run' c' do
           -- Cell 0,0: Shapes demo (top-left)
           let cellRect00 := Rect.mk' 0 0 cellWidth cellHeight
-          CanvasM.clip cellRect00
-          CanvasM.setFillColor bg00
-          CanvasM.fillRect cellRect00
-          CanvasM.setFillColor (Color.rgba 1.0 1.0 1.0 0.5)
-          CanvasM.fillTextXY "Cell: 0,0 - Shapes" 10 20 fontSmall
-          CanvasM.save
-          CanvasM.scale 0.45 0.45
+          clip cellRect00
+          setFillColor bg00
+          fillRect cellRect00
+          setFillColor (Color.rgba 1.0 1.0 1.0 0.5)
+          fillTextXY "Cell: 0,0 - Shapes" 10 20 fontSmall
+          save
+          scale 0.45 0.45
           renderShapesM
-          CanvasM.restore
-          CanvasM.unclip
+          restore
+          unclip
 
           -- Cell 1,0: Transforms demo (top-right)
           let cellRect10 := Rect.mk' cellWidth 0 cellWidth cellHeight
-          CanvasM.clip cellRect10
-          CanvasM.setFillColor bg10
-          CanvasM.fillRect cellRect10
-          CanvasM.setFillColor (Color.rgba 1.0 1.0 1.0 0.5)
-          CanvasM.fillTextXY "Cell: 1,0 - Transforms" (cellWidth + 10) 20 fontSmall
-          CanvasM.save
-          CanvasM.translate 960 0
-          CanvasM.scale 0.6 0.6
+          clip cellRect10
+          setFillColor bg10
+          fillRect cellRect10
+          setFillColor (Color.rgba 1.0 1.0 1.0 0.5)
+          fillTextXY "Cell: 1,0 - Transforms" (cellWidth + 10) 20 fontSmall
+          save
+          translate 960 0
+          scale 0.6 0.6
           renderTransformsM
-          CanvasM.restore
-          CanvasM.unclip
+          restore
+          unclip
 
           -- Cell 0,1: Strokes demo (middle-left)
           let cellRect01 := Rect.mk' 0 cellHeight cellWidth cellHeight
-          CanvasM.clip cellRect01
-          CanvasM.setFillColor bg01
-          CanvasM.fillRect cellRect01
-          CanvasM.setFillColor (Color.rgba 1.0 1.0 1.0 0.5)
-          CanvasM.fillTextXY "Cell: 0,1 - Strokes" 10 (cellHeight + 20) fontSmall
-          CanvasM.save
-          CanvasM.translate 0 360
-          CanvasM.scale 0.51 0.51
+          clip cellRect01
+          setFillColor bg01
+          fillRect cellRect01
+          setFillColor (Color.rgba 1.0 1.0 1.0 0.5)
+          fillTextXY "Cell: 0,1 - Strokes" 10 (cellHeight + 20) fontSmall
+          save
+          translate 0 360
+          scale 0.51 0.51
           renderStrokesM
-          CanvasM.restore
-          CanvasM.unclip
+          restore
+          unclip
 
           -- Cell 1,1: Gradients demo (middle-right)
           let cellRect11 := Rect.mk' cellWidth cellHeight cellWidth cellHeight
-          CanvasM.clip cellRect11
-          CanvasM.setFillColor bg11
-          CanvasM.fillRect cellRect11
-          CanvasM.setFillColor (Color.rgba 1.0 1.0 1.0 0.5)
-          CanvasM.fillTextXY "Cell: 1,1 - Gradients" (cellWidth + 10) (cellHeight + 20) fontSmall
-          CanvasM.save
-          CanvasM.translate 960 360
-          CanvasM.scale 0.51 0.51
+          clip cellRect11
+          setFillColor bg11
+          fillRect cellRect11
+          setFillColor (Color.rgba 1.0 1.0 1.0 0.5)
+          fillTextXY "Cell: 1,1 - Gradients" (cellWidth + 10) (cellHeight + 20) fontSmall
+          save
+          translate 960 360
+          scale 0.51 0.51
           renderGradientsM
-          CanvasM.restore
-          CanvasM.unclip
+          restore
+          unclip
 
           -- Cell 0,2: Text demo (bottom-left)
           let cellRect02 := Rect.mk' 0 (cellHeight * 2) cellWidth cellHeight
-          CanvasM.clip cellRect02
-          CanvasM.setFillColor bg02
-          CanvasM.fillRect cellRect02
-          CanvasM.setFillColor (Color.rgba 1.0 1.0 1.0 0.5)
-          CanvasM.fillTextXY "Cell: 0,2 - Text" 10 (cellHeight * 2 + 20) fontSmall
-          CanvasM.save
-          CanvasM.translate 0 720
-          CanvasM.scale 0.51 0.51
+          clip cellRect02
+          setFillColor bg02
+          fillRect cellRect02
+          setFillColor (Color.rgba 1.0 1.0 1.0 0.5)
+          fillTextXY "Cell: 0,2 - Text" 10 (cellHeight * 2 + 20) fontSmall
+          save
+          translate 0 720
+          scale 0.51 0.51
           renderTextM fonts
-          CanvasM.restore
-          CanvasM.unclip
+          restore
+          unclip
 
           -- Cell 1,2: Animations demo (bottom-right) - THE DISCO PARTY!
           let cellRect12 := Rect.mk' cellWidth (cellHeight * 2) cellWidth cellHeight
-          CanvasM.clip cellRect12
+          clip cellRect12
           -- Animated background color
           let bgHue := (t * 0.1) - (t * 0.1).floor
           let bg12 := hsvToRgb bgHue 0.3 0.15
-          CanvasM.setFillColor bg12
-          CanvasM.fillRect cellRect12
-          CanvasM.setFillColor (Color.rgba 1.0 1.0 1.0 0.7)
-          CanvasM.fillTextXY "Cell: 1,2 - DISCO PARTY!" (cellWidth + 10) (cellHeight * 2 + 20) fontSmall
-          CanvasM.save
-          CanvasM.translate cellWidth (cellHeight * 2 + 30)
+          setFillColor bg12
+          fillRect cellRect12
+          setFillColor (Color.rgba 1.0 1.0 1.0 0.7)
+          fillTextXY "Cell: 1,2 - DISCO PARTY!" (cellWidth + 10) (cellHeight * 2 + 20) fontSmall
+          save
+          translate cellWidth (cellHeight * 2 + 30)
           renderAnimationsM t
-          CanvasM.restore
-          CanvasM.unclip
+          restore
+          unclip
 
       -- Render FPS counter in top-right corner (after all other rendering)
       let fpsText := s!"{displayFps.toUInt32} FPS"

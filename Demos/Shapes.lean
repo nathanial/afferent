@@ -3,7 +3,7 @@
 -/
 import Afferent
 
-open Afferent
+open Afferent CanvasM
 
 namespace Demos
 
@@ -12,66 +12,66 @@ def renderShapesM : CanvasM Unit := do
   let pi := 3.14159265358979323846
 
   -- Row 1: Basic rectangles
-  CanvasM.setFillColor Color.red
-  CanvasM.fillRectXYWH 50 30 120 80
-  CanvasM.setFillColor Color.green
-  CanvasM.fillRectXYWH 200 30 120 80
-  CanvasM.setFillColor Color.blue
-  CanvasM.fillRectXYWH 350 30 120 80
+  setFillColor Color.red
+  fillRectXYWH 50 30 120 80
+  setFillColor Color.green
+  fillRectXYWH 200 30 120 80
+  setFillColor Color.blue
+  fillRectXYWH 350 30 120 80
 
   -- Row 1: Circles
-  CanvasM.setFillColor Color.yellow
-  CanvasM.fillCircle ⟨550, 70⟩ 40
-  CanvasM.setFillColor Color.cyan
-  CanvasM.fillCircle ⟨650, 70⟩ 40
-  CanvasM.setFillColor Color.magenta
-  CanvasM.fillCircle ⟨750, 70⟩ 40
+  setFillColor Color.yellow
+  fillCircle ⟨550, 70⟩ 40
+  setFillColor Color.cyan
+  fillCircle ⟨650, 70⟩ 40
+  setFillColor Color.magenta
+  fillCircle ⟨750, 70⟩ 40
 
   -- Row 1: Rounded rectangle
-  CanvasM.setFillColor Color.white
-  CanvasM.fillRoundedRect (Rect.mk' 820 30 130 80) 15
+  setFillColor Color.white
+  fillRoundedRect (Rect.mk' 820 30 130 80) 15
 
   -- Row 2: Stars
-  CanvasM.setFillColor Color.yellow
-  CanvasM.fillPath (Path.star ⟨100, 200⟩ 50 25 5)
-  CanvasM.setFillColor Color.orange
-  CanvasM.fillPath (Path.star ⟨220, 200⟩ 45 25 6)
-  CanvasM.setFillColor Color.red
-  CanvasM.fillPath (Path.star ⟨340, 200⟩ 40 25 8)
+  setFillColor Color.yellow
+  fillPath (Path.star ⟨100, 200⟩ 50 25 5)
+  setFillColor Color.orange
+  fillPath (Path.star ⟨220, 200⟩ 45 25 6)
+  setFillColor Color.red
+  fillPath (Path.star ⟨340, 200⟩ 40 25 8)
 
   -- Row 2: Regular polygons
-  CanvasM.setFillColor Color.green
-  CanvasM.fillPath (Path.polygon ⟨480, 200⟩ 45 3)
-  CanvasM.setFillColor Color.cyan
-  CanvasM.fillPath (Path.polygon ⟨600, 200⟩ 45 5)
-  CanvasM.setFillColor Color.blue
-  CanvasM.fillPath (Path.polygon ⟨720, 200⟩ 45 6)
-  CanvasM.setFillColor Color.purple
-  CanvasM.fillPath (Path.polygon ⟨850, 200⟩ 45 8)
+  setFillColor Color.green
+  fillPath (Path.polygon ⟨480, 200⟩ 45 3)
+  setFillColor Color.cyan
+  fillPath (Path.polygon ⟨600, 200⟩ 45 5)
+  setFillColor Color.blue
+  fillPath (Path.polygon ⟨720, 200⟩ 45 6)
+  setFillColor Color.purple
+  fillPath (Path.polygon ⟨850, 200⟩ 45 8)
 
   -- Row 3: Hearts and ellipses
-  CanvasM.setFillColor Color.red
-  CanvasM.fillPath (Path.heart ⟨100, 350⟩ 80)
-  CanvasM.setFillColor Color.magenta
-  CanvasM.fillPath (Path.heart ⟨230, 350⟩ 60)
-  CanvasM.setFillColor Color.orange
-  CanvasM.fillEllipse ⟨380, 350⟩ 70 40
-  CanvasM.setFillColor Color.green
-  CanvasM.fillEllipse ⟨520, 350⟩ 40 60
+  setFillColor Color.red
+  fillPath (Path.heart ⟨100, 350⟩ 80)
+  setFillColor Color.magenta
+  fillPath (Path.heart ⟨230, 350⟩ 60)
+  setFillColor Color.orange
+  fillEllipse ⟨380, 350⟩ 70 40
+  setFillColor Color.green
+  fillEllipse ⟨520, 350⟩ 40 60
 
   -- Row 3: Pie slices
-  CanvasM.setFillColor Color.red
-  CanvasM.fillPath (Path.pie ⟨680, 350⟩ 60 0 (pi * 0.5))
-  CanvasM.setFillColor Color.green
-  CanvasM.fillPath (Path.pie ⟨680, 350⟩ 60 (pi * 0.5) pi)
-  CanvasM.setFillColor Color.blue
-  CanvasM.fillPath (Path.pie ⟨680, 350⟩ 60 pi (pi * 1.5))
-  CanvasM.setFillColor Color.yellow
-  CanvasM.fillPath (Path.pie ⟨680, 350⟩ 60 (pi * 1.5) (pi * 2))
+  setFillColor Color.red
+  fillPath (Path.pie ⟨680, 350⟩ 60 0 (pi * 0.5))
+  setFillColor Color.green
+  fillPath (Path.pie ⟨680, 350⟩ 60 (pi * 0.5) pi)
+  setFillColor Color.blue
+  fillPath (Path.pie ⟨680, 350⟩ 60 pi (pi * 1.5))
+  setFillColor Color.yellow
+  fillPath (Path.pie ⟨680, 350⟩ 60 (pi * 1.5) (pi * 2))
 
   -- Row 3: Semicircle
-  CanvasM.setFillColor Color.purple
-  CanvasM.fillPath (Path.semicircle ⟨850, 350⟩ 50 0)
+  setFillColor Color.purple
+  fillPath (Path.semicircle ⟨850, 350⟩ 50 0)
 
   -- Row 4: Bezier curves
   let banner := Path.empty
@@ -81,36 +81,36 @@ def renderShapesM : CanvasM Unit := do
     |>.lineTo ⟨50, 580⟩
     |>.quadraticCurveTo ⟨0, 530⟩ ⟨50, 480⟩
     |>.closePath
-  CanvasM.setFillColor Color.cyan
-  CanvasM.fillPath banner
+  setFillColor Color.cyan
+  fillPath banner
 
   let teardrop := Path.empty
     |>.moveTo ⟨350, 480⟩
     |>.bezierCurveTo ⟨420, 450⟩ ⟨420, 600⟩ ⟨350, 580⟩
     |>.bezierCurveTo ⟨280, 600⟩ ⟨280, 450⟩ ⟨350, 480⟩
     |>.closePath
-  CanvasM.setFillColor Color.orange
-  CanvasM.fillPath teardrop
+  setFillColor Color.orange
+  fillPath teardrop
 
   -- Row 4: Arc paths
-  CanvasM.setFillColor Color.green
-  CanvasM.fillPath (Path.arcPath ⟨550, 530⟩ 50 0 (pi * 1.5) |>.closePath)
+  setFillColor Color.green
+  fillPath (Path.arcPath ⟨550, 530⟩ 50 0 (pi * 1.5) |>.closePath)
 
   -- Row 4: More rounded rectangles
-  CanvasM.setFillColor Color.red
-  CanvasM.fillRoundedRect (Rect.mk' 650 470 100 80) 5
-  CanvasM.setFillColor Color.blue
-  CanvasM.fillRoundedRect (Rect.mk' 780 470 100 80) 30
+  setFillColor Color.red
+  fillRoundedRect (Rect.mk' 650 470 100 80) 5
+  setFillColor Color.blue
+  fillRoundedRect (Rect.mk' 780 470 100 80) 30
 
   -- Row 5: Custom triangle
-  CanvasM.setFillColor Color.yellow
-  CanvasM.fillPath (Path.triangle ⟨100, 650⟩ ⟨180, 750⟩ ⟨20, 750⟩)
+  setFillColor Color.yellow
+  fillPath (Path.triangle ⟨100, 650⟩ ⟨180, 750⟩ ⟨20, 750⟩)
 
   -- Row 5: Equilateral triangles
-  CanvasM.setFillColor Color.green
-  CanvasM.fillPath (Path.equilateralTriangle ⟨280, 700⟩ 50)
-  CanvasM.setFillColor Color.cyan
-  CanvasM.fillPath (Path.equilateralTriangle ⟨380, 700⟩ 40)
+  setFillColor Color.green
+  fillPath (Path.equilateralTriangle ⟨280, 700⟩ 50)
+  setFillColor Color.cyan
+  fillPath (Path.equilateralTriangle ⟨380, 700⟩ 40)
 
   -- Row 5: Speech bubble
   let bubble := Path.empty
@@ -127,8 +127,8 @@ def renderShapesM : CanvasM Unit := do
     |>.lineTo ⟨470, 700⟩
     |>.bezierCurveTo ⟨470, 670⟩ ⟨470, 650⟩ ⟨500, 650⟩
     |>.closePath
-  CanvasM.setFillColor Color.white
-  CanvasM.fillPath bubble
+  setFillColor Color.white
+  fillPath bubble
 
   -- Row 5: Diamond shape
   let diamond := Path.empty
@@ -137,7 +137,7 @@ def renderShapesM : CanvasM Unit := do
     |>.lineTo ⟨850, 760⟩
     |>.lineTo ⟨800, 700⟩
     |>.closePath
-  CanvasM.setFillColor Color.cyan
-  CanvasM.fillPath diamond
+  setFillColor Color.cyan
+  fillPath diamond
 
 end Demos
