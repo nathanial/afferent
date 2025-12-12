@@ -8,15 +8,10 @@ set -e
 # Use system clang for proper macOS framework linking
 export LEAN_CC=/usr/bin/clang
 
-# Build the specified target (default: all)
-TARGET="${1:-}"
+# Build the specified target (default: afferent executable)
+TARGET="${1:-afferent}"
 
-if [ -z "$TARGET" ]; then
-    echo "Building all targets..."
-    lake build
-else
-    echo "Building $TARGET..."
-    lake build "$TARGET"
-fi
+echo "Building $TARGET..."
+lake build "$TARGET"
 
 echo "Build complete!"

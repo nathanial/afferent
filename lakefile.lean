@@ -12,6 +12,10 @@ require collimator from git "https://github.com/nathanial/collimator" @ "master"
 lean_lib Afferent where
   roots := #[`Afferent]
 
+-- Demo library
+lean_lib Demos where
+  roots := #[`Demos]
+
 lean_exe afferent where
   root := `Main
   -- Link against Metal and Cocoa frameworks on macOS
