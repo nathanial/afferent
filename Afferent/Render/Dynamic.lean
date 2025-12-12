@@ -93,6 +93,30 @@ def ParticleState.updateBouncing (p : ParticleState) (dt : Float) (shapeRadius :
     arr
   { p with data }
 
+/-! ## Fused Update + Packing (High Performance)
+
+These functions update the particle simulation and write the render instance
+buffers in a single pass to reduce memory bandwidth at 1M+ particles. -/
+
+/-- Update bouncing physics and write sprite instance buffer in one pass. -/
+def ParticleState.updateBouncingAndWriteSprites (p : ParticleState)
+    (dt halfSize : Float) (spriteBuffer : FFI.FloatBuffer) : IO ParticleState := do
+  let data ← FFI.Particles.updateBouncingAndWriteSprites
+    p.data p.count.toUInt32 dt halfSize p.screenWidth p.screenHeight spriteBuffer
+  pure { p with data }
+
+/-- Update bouncing physics and write dynamic circle buffer in one pass. -/
+def ParticleState.updateBouncingAndWriteCircles (p : ParticleState)
+    (dt radius : Float) (circleBuffer : FFI.FloatBuffer) : IO ParticleState := do
+  let data ← FFI.Particles.updateBouncingAndWriteCircles
+    p.data p.count.toUInt32 dt radius p.screenWidth p.screenHeight circleBuffer
+  pure { p with data }
+
+/-- Draw dynamic circles from a FloatBuffer containing `[x,y,hue,radius]` per circle. -/
+def drawCirclesFromBuffer (renderer : FFI.Renderer) (circleBuffer : FFI.FloatBuffer)
+    (count : UInt32) (t : Float) (screenWidth screenHeight : Float) : IO Unit := do
+  FFI.Renderer.drawDynamicCirclesBuffer renderer circleBuffer count t screenWidth screenHeight
+
 /-- Create particles in a grid layout with zero velocity. -/
 def ParticleState.createGrid (cols rows : Nat) (startX startY spacing : Float)
     (screenWidth screenHeight : Float) : ParticleState :=

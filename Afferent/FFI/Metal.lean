@@ -189,6 +189,35 @@ opaque FloatBuffer.writeSpritesFromParticles
   (rotation : Float)
   (alpha : Float) : IO Unit
 
+namespace Particles
+
+-- Update bouncing physics and write sprite instance data in the same pass.
+-- particleData layout: [x, y, vx, vy, hue] per particle (5 floats).
+-- spriteBuffer layout: [x, y, rotation(=0), halfSize, alpha(=1)] per particle (5 floats).
+@[extern "lean_afferent_particles_update_bouncing_and_write_sprites"]
+opaque updateBouncingAndWriteSprites
+  (particleData : FloatArray)
+  (count : UInt32)
+  (dt : Float)
+  (halfSize : Float)
+  (screenWidth : Float)
+  (screenHeight : Float)
+  (spriteBuffer : @& FloatBuffer) : IO FloatArray
+
+-- Update bouncing physics and write dynamic-circle instance data in the same pass.
+-- circleBuffer layout: [x, y, hueBase, radius] per particle (4 floats).
+@[extern "lean_afferent_particles_update_bouncing_and_write_circles"]
+opaque updateBouncingAndWriteCircles
+  (particleData : FloatArray)
+  (count : UInt32)
+  (dt : Float)
+  (radius : Float)
+  (screenWidth : Float)
+  (screenHeight : Float)
+  (circleBuffer : @& FloatBuffer) : IO FloatArray
+
+end Particles
+
 -- Draw instanced shapes directly from FloatBuffer (zero-copy path)
 @[extern "lean_afferent_renderer_draw_instanced_rects_buffer"]
 opaque Renderer.drawInstancedRectsBuffer
@@ -280,6 +309,17 @@ opaque Renderer.drawOrbitalParticles
 opaque Renderer.drawDynamicCircles
   (renderer : @& Renderer)
   (data : @& Array Float)
+  (count : UInt32)
+  (time : Float)
+  (canvasWidth : Float)
+  (canvasHeight : Float) : IO Unit
+
+-- Draw dynamic circles directly from a FloatBuffer containing the expected layout
+-- (no Lean Array boxing/unboxing).
+@[extern "lean_afferent_renderer_draw_dynamic_circles_buffer"]
+opaque Renderer.drawDynamicCirclesBuffer
+  (renderer : @& Renderer)
+  (buffer : @& FloatBuffer)
   (count : UInt32)
   (time : Float)
   (canvasWidth : Float)

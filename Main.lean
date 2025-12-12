@@ -1004,6 +1004,7 @@ def unifiedDemo : IO Unit := do
   -- Sprite particles for Bunnymark-style benchmark (Lean physics, FloatBuffer rendering)
   let spriteParticles := Render.Dynamic.ParticleState.create 1000000 1920.0 1080.0 123
   let spriteBuffer ← FFI.FloatBuffer.create (spriteParticles.count.toUSize * 5)  -- 5 floats per sprite
+  let circleBuffer ← FFI.FloatBuffer.create (bouncingParticles.count.toUSize * 4)  -- 4 floats per circle
   IO.println s!"Created {spriteParticles.count} bouncing sprites (Lean physics, FloatBuffer rendering)"
 
   -- No GPU upload needed! Dynamic module sends positions each frame.
@@ -1071,13 +1072,19 @@ def unifiedDemo : IO Unit := do
         c ← renderTriangleTest c' t fontMedium gridParticles halfSize
       else if displayMode == 3 then
         -- Circle performance test: bouncing circles
-        bouncingState := bouncingState.updateBouncing dt circleRadius
-        c ← renderCircleTest c' t fontMedium bouncingState circleRadius
+        bouncingState ← bouncingState.updateBouncingAndWriteCircles dt circleRadius circleBuffer
+        let c1 := c'.setFillColor Color.white
+        let c1 ← c1.fillTextXY s!"Circles: {bouncingState.count} dynamic circles [fused] (Space to advance)" 20 30 fontMedium
+        Render.Dynamic.drawCirclesFromBuffer c1.ctx.renderer circleBuffer bouncingState.count.toUInt32 t bouncingState.screenWidth bouncingState.screenHeight
+        c := c1
       else if displayMode == 4 then
         -- Sprite performance test: bouncing textured sprites (Bunnymark)
         -- Physics runs in Lean, rendering uses FloatBuffer for zero-copy GPU upload
-        spriteState := spriteState.updateBouncing dt spriteHalfSize
-        c ← renderSpriteTestFast c' fontMedium spriteState spriteBuffer spriteTexture spriteHalfSize
+        spriteState ← spriteState.updateBouncingAndWriteSprites dt spriteHalfSize spriteBuffer
+        let c1 := c'.setFillColor Color.white
+        let c1 ← c1.fillTextXY s!"Sprites: {spriteState.count} textured sprites [fused] (Space to advance)" 20 30 fontMedium
+        Render.Dynamic.drawSpritesFromBuffer c1.ctx.renderer spriteTexture spriteBuffer spriteState.count.toUInt32 spriteHalfSize spriteState.screenWidth spriteState.screenHeight
+        c := c1
       else
         -- Normal demo mode: grid of demos
         let canvas := c'

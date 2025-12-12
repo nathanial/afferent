@@ -2491,11 +2491,20 @@ void afferent_renderer_draw_dynamic_circles(
     }
 
     @autoreleasepool {
-        // Create temporary buffer for this frame's circle data
         size_t dataSize = count * sizeof(DynamicCircleData);
-        id<MTLBuffer> circleBuffer = [renderer->device newBufferWithBytes:data
-                                                                   length:dataSize
-                                                                  options:MTLResourceStorageModeShared];
+        id<MTLBuffer> circleBuffer = pool_acquire_buffer(
+            renderer->device,
+            g_buffer_pool.vertex_pool,
+            &g_buffer_pool.vertex_pool_count,
+            dataSize,
+            true
+        );
+
+        if (!circleBuffer) {
+            return;
+        }
+
+        memcpy(circleBuffer.contents, data, dataSize);
 
         DynamicCircleUniforms uniforms = {
             .time = time,

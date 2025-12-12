@@ -657,6 +657,158 @@ LEAN_EXPORT lean_obj_res lean_afferent_float_buffer_write_sprites_from_particles
     return lean_io_result_mk_ok(lean_box(0));
 }
 
+// ============================================================================
+// FUSED PHYSICS + PACKING (FloatArray particle state -> FloatBuffer instances)
+// ============================================================================
+
+// Update bouncing physics in-place and write sprite instance data to FloatBuffer.
+// particle_data_arr: FloatArray [x, y, vx, vy, hue] per particle (5 doubles).
+// sprite_buffer: FloatBuffer [x, y, rotation(=0), halfSize, alpha(=1)] per particle (5 floats).
+LEAN_EXPORT lean_obj_res lean_afferent_particles_update_bouncing_and_write_sprites(
+    lean_obj_arg particle_data_arr,
+    uint32_t count,
+    double dt,
+    double halfSize,
+    double screenWidth,
+    double screenHeight,
+    lean_obj_arg sprite_buffer_obj,
+    lean_obj_arg world
+) {
+    if (count == 0) {
+        return lean_io_result_mk_ok(particle_data_arr);
+    }
+
+    // Ensure exclusive so in-place mutation is safe.
+    if (!lean_is_exclusive(particle_data_arr)) {
+        lean_object* copy = lean_copy_float_array(particle_data_arr);
+        lean_dec(particle_data_arr);
+        particle_data_arr = copy;
+    }
+
+    size_t arr_size = (size_t)lean_unbox(lean_float_array_size(particle_data_arr));
+    size_t expected_size = (size_t)count * 5;
+    if (arr_size < expected_size) {
+        return lean_io_result_mk_ok(particle_data_arr);
+    }
+
+    AfferentFloatBufferRef sprite_buffer = (AfferentFloatBufferRef)lean_get_external_data(sprite_buffer_obj);
+    if (!sprite_buffer || afferent_float_buffer_capacity(sprite_buffer) < expected_size) {
+        return lean_io_result_mk_ok(particle_data_arr);
+    }
+
+    double* p = lean_float_array_cptr(particle_data_arr);
+    float* out = (float*)afferent_float_buffer_data(sprite_buffer);
+    float h = (float)halfSize;
+    float a = 1.0f;
+    float rot = 0.0f;
+
+    double w = screenWidth;
+    double ht = screenHeight;
+    double r = halfSize;
+
+    for (uint32_t i = 0; i < count; i++) {
+        size_t base = (size_t)i * 5;
+        double x = p[base + 0];
+        double y = p[base + 1];
+        double vx = p[base + 2];
+        double vy = p[base + 3];
+
+        x += vx * dt;
+        y += vy * dt;
+
+        if (x < r) { x = r; vx = -vx; }
+        else if (x > w - r) { x = w - r; vx = -vx; }
+        if (y < r) { y = r; vy = -vy; }
+        else if (y > ht - r) { y = ht - r; vy = -vy; }
+
+        p[base + 0] = x;
+        p[base + 1] = y;
+        p[base + 2] = vx;
+        p[base + 3] = vy;
+
+        out[base + 0] = (float)x;
+        out[base + 1] = (float)y;
+        out[base + 2] = rot;
+        out[base + 3] = h;
+        out[base + 4] = a;
+    }
+
+    return lean_io_result_mk_ok(particle_data_arr);
+}
+
+// Update bouncing physics in-place and write dynamic circle data to FloatBuffer.
+// circle_buffer: FloatBuffer [x, y, hueBase, radius] per particle (4 floats).
+LEAN_EXPORT lean_obj_res lean_afferent_particles_update_bouncing_and_write_circles(
+    lean_obj_arg particle_data_arr,
+    uint32_t count,
+    double dt,
+    double radius,
+    double screenWidth,
+    double screenHeight,
+    lean_obj_arg circle_buffer_obj,
+    lean_obj_arg world
+) {
+    if (count == 0) {
+        return lean_io_result_mk_ok(particle_data_arr);
+    }
+
+    if (!lean_is_exclusive(particle_data_arr)) {
+        lean_object* copy = lean_copy_float_array(particle_data_arr);
+        lean_dec(particle_data_arr);
+        particle_data_arr = copy;
+    }
+
+    size_t arr_size = (size_t)lean_unbox(lean_float_array_size(particle_data_arr));
+    size_t expected_size = (size_t)count * 5;
+    if (arr_size < expected_size) {
+        return lean_io_result_mk_ok(particle_data_arr);
+    }
+
+    AfferentFloatBufferRef circle_buffer = (AfferentFloatBufferRef)lean_get_external_data(circle_buffer_obj);
+    size_t out_needed = (size_t)count * 4;
+    if (!circle_buffer || afferent_float_buffer_capacity(circle_buffer) < out_needed) {
+        return lean_io_result_mk_ok(particle_data_arr);
+    }
+
+    double* p = lean_float_array_cptr(particle_data_arr);
+    float* out = (float*)afferent_float_buffer_data(circle_buffer);
+    float rad = (float)radius;
+
+    double w = screenWidth;
+    double ht = screenHeight;
+    double r = radius;
+
+    for (uint32_t i = 0; i < count; i++) {
+        size_t base = (size_t)i * 5;
+        double x = p[base + 0];
+        double y = p[base + 1];
+        double vx = p[base + 2];
+        double vy = p[base + 3];
+        double hue = p[base + 4];
+
+        x += vx * dt;
+        y += vy * dt;
+
+        if (x < r) { x = r; vx = -vx; }
+        else if (x > w - r) { x = w - r; vx = -vx; }
+        if (y < r) { y = r; vy = -vy; }
+        else if (y > ht - r) { y = ht - r; vy = -vy; }
+
+        p[base + 0] = x;
+        p[base + 1] = y;
+        p[base + 2] = vx;
+        p[base + 3] = vy;
+
+        size_t o = (size_t)i * 4;
+        out[o + 0] = (float)x;
+        out[o + 1] = (float)y;
+        out[o + 2] = (float)hue;
+        out[o + 3] = rad;
+    }
+
+    return lean_io_result_mk_ok(particle_data_arr);
+}
+
 // Draw instanced shapes directly from FloatBuffer (zero-copy path)
 LEAN_EXPORT lean_obj_res lean_afferent_renderer_draw_instanced_rects_buffer(
     lean_obj_arg renderer_obj,
@@ -877,6 +1029,29 @@ LEAN_EXPORT lean_obj_res lean_afferent_renderer_draw_dynamic_circles(
     afferent_renderer_draw_dynamic_circles(renderer, data, count, (float)time, (float)canvasWidth, (float)canvasHeight);
 
     free(data);
+    return lean_io_result_mk_ok(lean_box(0));
+}
+
+// Draw dynamic circles directly from FloatBuffer (no conversion)
+LEAN_EXPORT lean_obj_res lean_afferent_renderer_draw_dynamic_circles_buffer(
+    lean_obj_arg renderer_obj,
+    lean_obj_arg buffer_obj,
+    uint32_t count,
+    double time,
+    double canvasWidth,
+    double canvasHeight,
+    lean_obj_arg world
+) {
+    AfferentRendererRef renderer = (AfferentRendererRef)lean_get_external_data(renderer_obj);
+    AfferentFloatBufferRef buffer = (AfferentFloatBufferRef)lean_get_external_data(buffer_obj);
+    afferent_renderer_draw_dynamic_circles(
+        renderer,
+        afferent_float_buffer_data(buffer),
+        count,
+        (float)time,
+        (float)canvasWidth,
+        (float)canvasHeight
+    );
     return lean_io_result_mk_ok(lean_box(0));
 }
 
