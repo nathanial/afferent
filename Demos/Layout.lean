@@ -163,7 +163,7 @@ def demoComplex : CanvasM Unit := do
   drawLayoutResult result 50 500
 
 /-- Draw all layout demos -/
-def renderLayoutM : CanvasM Unit := do
+def renderLayoutM (font : Font) : CanvasM Unit := do
   -- Background
   setFillColor (Color.mk 0.1 0.1 0.15 1.0)
   fillRectXYWH 0 0 1000 800
@@ -178,6 +178,43 @@ def renderLayoutM : CanvasM Unit := do
   fillRectXYWH 440 270 270 100 -- Align items
   fillRectXYWH 440 380 320 120 -- Nested
   fillRectXYWH 40 490 370 270  -- Complex
+
+  -- Section labels with descriptions
+  setFillColor Color.white
+
+  -- Row 1: Basic flex row
+  fillTextXY "Row: 3 items left-aligned with 10px gap" 50 38 font
+  fillTextXY "Expected: [80px][10][100px][10][70px] touching left edge" 50 135 font
+
+  -- Row 2: Centered
+  fillTextXY "Row + justify:center" 50 148 font
+  fillTextXY "Expected: 3 equal boxes (60px) centered horizontally" 50 225 font
+
+  -- Row 3: Space-between
+  fillTextXY "Row + justify:space-between" 50 248 font
+  fillTextXY "Expected: 3 boxes (50px) - first at left, last at right, middle centered" 50 325 font
+
+  -- Row 4: Flex grow
+  fillTextXY "Row + flex-grow (1:2:1 ratio)" 50 348 font
+  fillTextXY "Expected: 3 boxes filling width, middle is 2x wider than sides" 50 425 font
+
+  -- Column
+  fillTextXY "Column: 3 items" 450 38 font
+  fillTextXY "stacked vertically" 450 52 font
+  fillTextXY "with 10px gap" 450 66 font
+
+  -- Align items
+  fillTextXY "Row + align:center (cross-axis)" 450 268 font
+  fillTextXY "Expected: different heights, vertically centered" 450 355 font
+
+  -- Nested
+  fillTextXY "Nested: row containing column" 450 378 font
+  fillTextXY "Expected: [fixed][column expands][fixed]" 450 495 font
+
+  -- Complex layout
+  fillTextXY "Complex: header + (sidebar | main)" 50 488 font
+  fillTextXY "Expected: full-width header on top," 50 745 font
+  fillTextXY "sidebar (3 items) left, main expands right" 200 745 font
 
   -- Run demos
   demoFlexRow

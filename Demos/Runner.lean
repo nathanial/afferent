@@ -15,6 +15,8 @@ import Demos.TrianglesPerf
 import Demos.CirclesPerf
 import Demos.SpritesPerf
 
+set_option maxRecDepth 1024
+
 open Afferent CanvasM
 
 namespace Demos
@@ -107,7 +109,7 @@ def unifiedDemo : IO Unit := do
     -- Check for Space key (key code 49) to cycle through modes
     let keyCode ← c.getKeyCode
     if keyCode == 49 then  -- Space bar
-      displayMode := (displayMode + 1) % 5
+      displayMode := (displayMode + 1) % 6
       c.clearKey
       -- Disable MSAA only for sprite benchmark mode to maximize throughput.
       -- Keep Retina/native drawable scaling enabled.
@@ -118,7 +120,8 @@ def unifiedDemo : IO Unit := do
       | 1 => IO.println "Switched to GRID (squares) performance test"
       | 2 => IO.println "Switched to TRIANGLES performance test"
       | 3 => IO.println "Switched to CIRCLES (bouncing) performance test"
-      | _ => IO.println "Switched to SPRITES (Bunnymark) performance test"
+      | 4 => IO.println "Switched to SPRITES (Bunnymark) performance test"
+      | _ => IO.println "Switched to LAYOUT demo (full-size)"
 
     let ok ← c.beginFrame Color.darkGray
     if ok then
@@ -136,32 +139,39 @@ def unifiedDemo : IO Unit := do
         fpsAccumulator := 0.0
         frameCount := 0
 
-      let c' := c.resetTransform
-
       if displayMode == 1 then
         -- Grid performance test: squares spinning in a grid
-        c ← renderGridTest c' t fontMedium gridParticles halfSize
+        c ← renderGridTest (c.resetTransform) t fontMedium gridParticles halfSize
       else if displayMode == 2 then
         -- Triangle performance test: triangles spinning in a grid
-        c ← renderTriangleTest c' t fontMedium gridParticles halfSize
+        c ← renderTriangleTest (c.resetTransform) t fontMedium gridParticles halfSize
       else if displayMode == 3 then
         -- Circle performance test: bouncing circles
         bouncingState ← bouncingState.updateBouncingAndWriteCircles dt circleRadius circleBuffer
-        let c1 := c'.setFillColor Color.white
-        let c1 ← c1.fillTextXY s!"Circles: {bouncingState.count} dynamic circles [fused] (Space to advance)" 20 30 fontMedium
-        Render.Dynamic.drawCirclesFromBuffer c1.ctx.renderer circleBuffer bouncingState.count.toUInt32 t bouncingState.screenWidth bouncingState.screenHeight
-        c := c1
+        c ← run' (c.resetTransform) do
+          setFillColor Color.white
+          fillTextXY s!"Circles: {bouncingState.count} dynamic circles [fused] (Space to advance)" 20 30 fontMedium
+        Render.Dynamic.drawCirclesFromBuffer c.ctx.renderer circleBuffer bouncingState.count.toUInt32 t bouncingState.screenWidth bouncingState.screenHeight
       else if displayMode == 4 then
         -- Sprite performance test: bouncing textured sprites (Bunnymark)
         -- Physics runs in Lean, rendering uses FloatBuffer for zero-copy GPU upload
         spriteState ← spriteState.updateBouncingAndWriteSprites dt spriteHalfSize spriteBuffer
-        let c1 := c'.setFillColor Color.white
-        let c1 ← c1.fillTextXY s!"Sprites: {spriteState.count} textured sprites [fused] (Space to advance)" 20 30 fontMedium
-        Render.Dynamic.drawSpritesFromBuffer c1.ctx.renderer spriteTexture spriteBuffer spriteState.count.toUInt32 spriteHalfSize spriteState.screenWidth spriteState.screenHeight
-        c := c1
+        c ← run' (c.resetTransform) do
+          setFillColor Color.white
+          fillTextXY s!"Sprites: {spriteState.count} textured sprites [fused] (Space to advance)" 20 30 fontMedium
+        Render.Dynamic.drawSpritesFromBuffer c.ctx.renderer spriteTexture spriteBuffer spriteState.count.toUInt32 spriteHalfSize spriteState.screenWidth spriteState.screenHeight
+      else if displayMode == 5 then
+        -- Full-size Layout demo
+        c ← run' (c.resetTransform) do
+          save
+          scale 2.0 1.3
+          renderLayoutM fontSmall
+          restore
+          setFillColor Color.white
+          fillTextXY "CSS Flexbox Layout Demo (Space to advance)" 20 30 fontMedium
       else
         -- Normal demo mode: grid of demos using CanvasM for proper state threading
-        c ← run' c' do
+        c ← run' (c.resetTransform) do
           -- Cell 0,0: Shapes demo (top-left)
           let cellRect00 := Rect.mk' 0 0 cellWidth cellHeight
           clip cellRect00
@@ -242,20 +252,20 @@ def unifiedDemo : IO Unit := do
           save
           translate cellWidth (cellHeight * 2)
           scale 0.45 0.45
-          renderLayoutM
+          renderLayoutM fontSmall
           restore
           unclip
 
       -- Render FPS counter in top-right corner (after all other rendering)
       let fpsText := s!"{displayFps.toUInt32} FPS"
       let (textWidth, _) ← fontSmall.measureText fpsText
-      let c' := c.resetTransform
-      let c' := c'.setFillColor (Color.hsva 0.0 0.0 0.0 0.6)
-      let c' ← c'.fillRectXYWH (1920.0 - textWidth - 20.0) 5.0 (textWidth + 15.0) 25.0
-      let c' := c'.setFillColor Color.white
-      let c' ← c'.fillTextXY fpsText (1920.0 - textWidth - 12.0) 22.0 fontSmall
+      c ← run' (c.resetTransform) do
+        setFillColor (Color.hsva 0.0 0.0 0.0 0.6)
+        fillRectXYWH (1920.0 - textWidth - 20.0) 5.0 (textWidth + 15.0) 25.0
+        setFillColor Color.white
+        fillTextXY fpsText (1920.0 - textWidth - 12.0) 22.0 fontSmall
 
-      c ← c'.endFrame
+      c ← c.endFrame
 
   IO.println "Cleaning up..."
   fontSmall.destroy

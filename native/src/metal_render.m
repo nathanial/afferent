@@ -1018,8 +1018,8 @@ typedef struct {
     int wrapper_pool_count;
     int wrapper_pool_used;
     // Text rendering buffer pools (separate from shape buffers)
-    PooledBuffer text_vertex_pool[32];
-    PooledBuffer text_index_pool[32];
+    PooledBuffer text_vertex_pool[BUFFER_POOL_SIZE];
+    PooledBuffer text_index_pool[BUFFER_POOL_SIZE];
     int text_vertex_pool_count;
     int text_index_pool_count;
 } BufferPool;
