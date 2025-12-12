@@ -780,6 +780,8 @@ LEAN_EXPORT lean_obj_res lean_afferent_renderer_draw_dynamic_circles(
     lean_obj_arg data_arr,
     uint32_t count,
     double time,
+    double canvasWidth,
+    double canvasHeight,
     lean_obj_arg world
 ) {
     AfferentRendererRef renderer = (AfferentRendererRef)lean_get_external_data(renderer_obj);
@@ -792,7 +794,7 @@ LEAN_EXPORT lean_obj_res lean_afferent_renderer_draw_dynamic_circles(
         data[i] = (float)lean_unbox_float(elem);
     }
 
-    afferent_renderer_draw_dynamic_circles(renderer, data, count, (float)time);
+    afferent_renderer_draw_dynamic_circles(renderer, data, count, (float)time, (float)canvasWidth, (float)canvasHeight);
 
     free(data);
     return lean_io_result_mk_ok(lean_box(0));
@@ -805,6 +807,8 @@ LEAN_EXPORT lean_obj_res lean_afferent_renderer_draw_dynamic_rects(
     lean_obj_arg data_arr,
     uint32_t count,
     double time,
+    double canvasWidth,
+    double canvasHeight,
     lean_obj_arg world
 ) {
     AfferentRendererRef renderer = (AfferentRendererRef)lean_get_external_data(renderer_obj);
@@ -817,7 +821,7 @@ LEAN_EXPORT lean_obj_res lean_afferent_renderer_draw_dynamic_rects(
         data[i] = (float)lean_unbox_float(elem);
     }
 
-    afferent_renderer_draw_dynamic_rects(renderer, data, count, (float)time);
+    afferent_renderer_draw_dynamic_rects(renderer, data, count, (float)time, (float)canvasWidth, (float)canvasHeight);
 
     free(data);
     return lean_io_result_mk_ok(lean_box(0));
@@ -830,6 +834,8 @@ LEAN_EXPORT lean_obj_res lean_afferent_renderer_draw_dynamic_triangles(
     lean_obj_arg data_arr,
     uint32_t count,
     double time,
+    double canvasWidth,
+    double canvasHeight,
     lean_obj_arg world
 ) {
     AfferentRendererRef renderer = (AfferentRendererRef)lean_get_external_data(renderer_obj);
@@ -842,7 +848,7 @@ LEAN_EXPORT lean_obj_res lean_afferent_renderer_draw_dynamic_triangles(
         data[i] = (float)lean_unbox_float(elem);
     }
 
-    afferent_renderer_draw_dynamic_triangles(renderer, data, count, (float)time);
+    afferent_renderer_draw_dynamic_triangles(renderer, data, count, (float)time, (float)canvasWidth, (float)canvasHeight);
 
     free(data);
     return lean_io_result_mk_ok(lean_box(0));

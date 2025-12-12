@@ -902,15 +902,6 @@ def renderAnimations (c : Canvas) (t : Float) : IO Canvas := do
 
 /-! ## Performance Test -/
 
-/-- Render orbital spinning squares using unified Dynamic module.
-    CPU computes orbital positions, GPU does color + NDC conversion. -/
-def renderOrbitalTest (c : Canvas) (t : Float) (font : Font) (orbital : Render.Dynamic.OrbitalState)
-    (halfSize : Float) : IO Canvas := do
-  let c := c.setFillColor Color.white
-  let c ← c.fillTextXY s!"Orbital: {orbital.count} dynamic squares (Space to advance)" 20 30 font
-  Render.Dynamic.drawOrbitalRects c.ctx.renderer orbital halfSize t 3.0
-  pure c
-
 /-- Render grid spinning squares using unified Dynamic module.
     Static grid positions, GPU does color + NDC conversion. -/
 def renderGridTest (c : Canvas) (t : Float) (font : Font) (particles : Render.Dynamic.ParticleState)
@@ -976,13 +967,8 @@ def unifiedDemo : IO Unit := do
   let bg02 := Color.rgba 0.18 0.15 0.20 1.0  -- Dark purple-gray
 
   -- Pre-compute particle data ONCE at startup using unified Dynamic module
-  let squareCount := 100000
   let halfSize := 1.5  -- Smaller for 100k
   let circleRadius := 2.0
-
-  -- Orbital particles (orbiting around center) using Dynamic.OrbitalState
-  let orbitalParticles := Render.Dynamic.OrbitalState.create squareCount 960.0 540.0 400.0 42
-  IO.println s!"Created {orbitalParticles.count} orbital particles"
 
   -- Grid particles (316x316 ≈ 100k grid of spinning squares/triangles)
   let gridCols := 316
@@ -1000,13 +986,12 @@ def unifiedDemo : IO Unit := do
   -- No GPU upload needed! Dynamic module sends positions each frame.
   IO.println "Using unified Dynamic rendering - CPU positions, GPU color/NDC."
 
-  -- Display modes: 0 = demo, 1 = orbital, 2 = grid squares, 3 = triangles, 4 = circles
+  -- Display modes: 0 = demo, 1 = grid squares, 2 = triangles, 3 = circles
   let startTime ← IO.monoMsNow
   let mut c := canvas
   let mut displayMode : Nat := 0
   let mut lastTime := startTime
   let mut bouncingState := bouncingParticles
-  let mut orbitalState := orbitalParticles
   -- FPS counter (smoothed over multiple frames)
   let mut frameCount : Nat := 0
   let mut fpsAccumulator : Float := 0.0
@@ -1018,13 +1003,12 @@ def unifiedDemo : IO Unit := do
     -- Check for Space key (key code 49) to cycle through modes
     let keyCode ← c.getKeyCode
     if keyCode == 49 then  -- Space bar
-      displayMode := (displayMode + 1) % 5
+      displayMode := (displayMode + 1) % 4
       c.clearKey
       match displayMode with
       | 0 => IO.println "Switched to DEMO mode"
-      | 1 => IO.println "Switched to ORBITAL performance test"
-      | 2 => IO.println "Switched to GRID (squares) performance test"
-      | 3 => IO.println "Switched to TRIANGLES performance test"
+      | 1 => IO.println "Switched to GRID (squares) performance test"
+      | 2 => IO.println "Switched to TRIANGLES performance test"
       | _ => IO.println "Switched to CIRCLES (bouncing) performance test"
 
     let ok ← c.beginFrame Color.darkGray
@@ -1046,16 +1030,12 @@ def unifiedDemo : IO Unit := do
       let c' := c.resetTransform
 
       if displayMode == 1 then
-        -- Orbital performance test: particles orbiting around center
-        orbitalState := orbitalState.update t
-        c ← renderOrbitalTest c' t fontMedium orbitalState halfSize
-      else if displayMode == 2 then
         -- Grid performance test: squares spinning in a grid
         c ← renderGridTest c' t fontMedium gridParticles halfSize
-      else if displayMode == 3 then
+      else if displayMode == 2 then
         -- Triangle performance test: triangles spinning in a grid
         c ← renderTriangleTest c' t fontMedium gridParticles halfSize
-      else if displayMode == 4 then
+      else if displayMode == 3 then
         -- Circle performance test: bouncing circles
         bouncingState := bouncingState.updateBouncing dt circleRadius
         c ← renderCircleTest c' t fontMedium bouncingState circleRadius

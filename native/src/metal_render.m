@@ -2248,7 +2248,9 @@ void afferent_renderer_draw_dynamic_circles(
     AfferentRendererRef renderer,
     const float* data,
     uint32_t count,
-    float time
+    float time,
+    float canvasWidth,
+    float canvasHeight
 ) {
     if (!renderer || !renderer->currentEncoder || !data || count == 0) {
         return;
@@ -2263,8 +2265,8 @@ void afferent_renderer_draw_dynamic_circles(
 
         DynamicCircleUniforms uniforms = {
             .time = time,
-            .canvasWidth = renderer->screenWidth,
-            .canvasHeight = renderer->screenHeight,
+            .canvasWidth = canvasWidth,
+            .canvasHeight = canvasHeight,
             .hueSpeed = 0.2f
         };
 
@@ -2285,7 +2287,9 @@ void afferent_renderer_draw_dynamic_rects(
     AfferentRendererRef renderer,
     const float* data,
     uint32_t count,
-    float time
+    float time,
+    float canvasWidth,
+    float canvasHeight
 ) {
     if (!renderer || !renderer->currentEncoder || !data || count == 0) {
         return;
@@ -2300,8 +2304,8 @@ void afferent_renderer_draw_dynamic_rects(
 
         DynamicRectUniforms uniforms = {
             .time = time,
-            .canvasWidth = renderer->screenWidth,
-            .canvasHeight = renderer->screenHeight,
+            .canvasWidth = canvasWidth,
+            .canvasHeight = canvasHeight,
             .hueSpeed = 0.2f
         };
 
@@ -2322,7 +2326,9 @@ void afferent_renderer_draw_dynamic_triangles(
     AfferentRendererRef renderer,
     const float* data,
     uint32_t count,
-    float time
+    float time,
+    float canvasWidth,
+    float canvasHeight
 ) {
     if (!renderer || !renderer->currentEncoder || !data || count == 0) {
         return;
@@ -2337,8 +2343,8 @@ void afferent_renderer_draw_dynamic_triangles(
 
         DynamicTriangleUniforms uniforms = {
             .time = time,
-            .canvasWidth = renderer->screenWidth,
-            .canvasHeight = renderer->screenHeight,
+            .canvasWidth = canvasWidth,
+            .canvasHeight = canvasHeight,
             .hueSpeed = 0.2f
         };
 
