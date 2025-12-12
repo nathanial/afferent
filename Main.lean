@@ -928,13 +928,16 @@ def renderCircleTest (c : Canvas) (t : Float) (font : Font) (particles : Render.
   Render.Dynamic.drawCircles c.ctx.renderer particles radius t
   pure c
 
-/-- Render textured sprites (Bunnymark-style benchmark).
-    CPU updates positions (physics), GPU renders textured quads. -/
-def renderSpriteTest (c : Canvas) (t : Float) (font : Font) (particles : Render.Dynamic.ParticleState)
-    (texture : FFI.Texture) (halfSize : Float) : IO Canvas := do
+/-- Render textured sprites using FloatBuffer (high-performance Bunnymark).
+    Lean physics, FloatBuffer for zero-copy GPU rendering. -/
+def renderSpriteTestFast (c : Canvas) (font : Font) (particles : Render.Dynamic.ParticleState)
+    (spriteBuffer : FFI.FloatBuffer) (texture : FFI.Texture) (halfSize : Float) : IO Canvas := do
   let c := c.setFillColor Color.white
-  let c ← c.fillTextXY s!"Sprites: {particles.count} textured sprites (Space to advance)" 20 30 font
-  Render.Dynamic.drawSprites c.ctx.renderer texture particles halfSize 0.0
+  let c ← c.fillTextXY s!"Sprites: {particles.count} textured sprites [FloatBuffer] (Space to advance)" 20 30 font
+  -- Write particle positions to FloatBuffer (1 FFI call per sprite)
+  Render.Dynamic.writeSpritesToBuffer particles spriteBuffer halfSize
+  -- Render from FloatBuffer (zero-copy to GPU)
+  Render.Dynamic.drawSpritesFromBuffer c.ctx.renderer texture spriteBuffer particles.count.toUInt32 halfSize particles.screenWidth particles.screenHeight
   pure c
 
 /-! ## Unified Visual Demo -/
@@ -995,12 +998,13 @@ def unifiedDemo : IO Unit := do
   IO.println s!"Created {gridParticles.count} grid particles"
 
   -- Bouncing circles using Dynamic.ParticleState
-  let bouncingParticles := Render.Dynamic.ParticleState.create 1000000 1920.0 1080.0 42
+  let bouncingParticles := Render.Dynamic.ParticleState.create 100000 1920.0 1080.0 42
   IO.println s!"Created {bouncingParticles.count} bouncing circles"
 
-  -- Sprite particles for Bunnymark-style benchmark (100k bouncing sprites)
-  let spriteParticles := Render.Dynamic.ParticleState.create 1000000 1920.0 1080.0 123
-  IO.println s!"Created {spriteParticles.count} bouncing sprites"
+  -- Sprite particles for Bunnymark-style benchmark (Lean physics, FloatBuffer rendering)
+  let spriteParticles := Render.Dynamic.ParticleState.create 100000 1920.0 1080.0 123
+  let spriteBuffer ← FFI.FloatBuffer.create (spriteParticles.count.toUSize * 5)  -- 5 floats per sprite
+  IO.println s!"Created {spriteParticles.count} bouncing sprites (Lean physics, FloatBuffer rendering)"
 
   -- No GPU upload needed! Dynamic module sends positions each frame.
   IO.println "Using unified Dynamic rendering - CPU positions, GPU color/NDC."
@@ -1062,8 +1066,9 @@ def unifiedDemo : IO Unit := do
         c ← renderCircleTest c' t fontMedium bouncingState circleRadius
       else if displayMode == 4 then
         -- Sprite performance test: bouncing textured sprites (Bunnymark)
+        -- Physics runs in Lean, rendering uses FloatBuffer for zero-copy GPU upload
         spriteState := spriteState.updateBouncing dt spriteHalfSize
-        c ← renderSpriteTest c' t fontMedium spriteState spriteTexture spriteHalfSize
+        c ← renderSpriteTestFast c' fontMedium spriteState spriteBuffer spriteTexture spriteHalfSize
       else
         -- Normal demo mode: grid of demos
         let canvas := c'

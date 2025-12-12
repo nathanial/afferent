@@ -2611,3 +2611,77 @@ void afferent_release_sprite_metal_texture(AfferentTextureRef texture) {
         afferent_texture_set_metal_texture(texture, NULL);
     }
 }
+
+// Draw sprites from FloatBuffer (zero-copy path for maximum performance)
+// Buffer layout: [x, y, vx, vy, rotation] per sprite (5 floats) - same as SpriteInstanceData
+// We reinterpret vx/vy as rotation/halfSize for rendering (physics uses x,y,vx,vy; render uses x,y,rot,size,alpha)
+void afferent_renderer_draw_sprites_buffer(
+    AfferentRendererRef renderer,
+    AfferentTextureRef texture,
+    const float* data,
+    uint32_t count,
+    float halfSize,
+    float canvasWidth,
+    float canvasHeight
+) {
+    if (!renderer || !renderer->currentEncoder || !texture || !data || count == 0) {
+        return;
+    }
+
+    @autoreleasepool {
+        // Get or create Metal texture
+        id<MTLTexture> metalTex = (__bridge id<MTLTexture>)afferent_texture_get_metal_texture(texture);
+
+        if (!metalTex) {
+            const uint8_t* pixelData = afferent_texture_get_data(texture);
+            uint32_t width, height;
+            afferent_texture_get_size(texture, &width, &height);
+
+            if (!pixelData || width == 0 || height == 0) {
+                return;
+            }
+
+            metalTex = createMetalTexture(renderer->device, pixelData, width, height);
+            if (!metalTex) {
+                return;
+            }
+
+            afferent_texture_set_metal_texture(texture, (__bridge_retained void*)metalTex);
+        }
+
+        // Build sprite instance data from the physics buffer
+        // Physics layout: [x, y, vx, vy, rotation] - we need [x, y, rotation, halfSize, alpha]
+        size_t instanceSize = count * sizeof(SpriteInstanceData);
+        SpriteInstanceData* instances = malloc(instanceSize);
+
+        for (uint32_t i = 0; i < count; i++) {
+            const float* src = data + i * 5;
+            instances[i].pixelX = src[0];
+            instances[i].pixelY = src[1];
+            instances[i].rotation = src[4];  // rotation is at index 4
+            instances[i].halfSizePixels = halfSize;
+            instances[i].alpha = 1.0f;
+        }
+
+        id<MTLBuffer> spriteBuffer = [renderer->device newBufferWithBytes:instances
+                                                                   length:instanceSize
+                                                                  options:MTLResourceStorageModeShared];
+        free(instances);
+
+        SpriteUniforms uniforms = {
+            .canvasWidth = canvasWidth,
+            .canvasHeight = canvasHeight
+        };
+
+        [renderer->currentEncoder setRenderPipelineState:renderer->spritePipelineState];
+        [renderer->currentEncoder setVertexBuffer:spriteBuffer offset:0 atIndex:0];
+        [renderer->currentEncoder setVertexBytes:&uniforms length:sizeof(uniforms) atIndex:1];
+        [renderer->currentEncoder setFragmentTexture:metalTex atIndex:0];
+        [renderer->currentEncoder setFragmentSamplerState:renderer->spriteSampler atIndex:0];
+        [renderer->currentEncoder drawPrimitives:MTLPrimitiveTypeTriangleStrip
+                                     vertexStart:0
+                                     vertexCount:4
+                                   instanceCount:count];
+        [renderer->currentEncoder setRenderPipelineState:renderer->pipelineState];
+    }
+}

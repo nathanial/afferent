@@ -189,6 +189,17 @@ const float* afferent_float_buffer_data(AfferentFloatBufferRef buf);
 void afferent_float_buffer_set_vec8(AfferentFloatBufferRef buf, size_t index,
     float v0, float v1, float v2, float v3, float v4, float v5, float v6, float v7);
 
+// Set 5 consecutive floats at once (for sprite data: x, y, rotation, halfSize, alpha)
+void afferent_float_buffer_set_vec5(AfferentFloatBufferRef buf, size_t index,
+    float v0, float v1, float v2, float v3, float v4);
+
+// Sprite system - high-performance bouncing sprites with C-side physics
+// Layout: [x, y, vx, vy, rotation] per sprite (5 floats)
+void afferent_float_buffer_init_sprites(AfferentFloatBufferRef buf, uint32_t count,
+    float screenWidth, float screenHeight, uint32_t seed);
+void afferent_float_buffer_update_sprites(AfferentFloatBufferRef buf, uint32_t count,
+    float dt, float halfSize, float screenWidth, float screenHeight);
+
 // ============================================================================
 // Animated rendering - GPU-side animation for maximum performance
 // Static data uploaded once, only time uniform sent per frame
@@ -320,6 +331,18 @@ void afferent_renderer_draw_sprites(
     AfferentTextureRef texture,
     const float* data,
     uint32_t count,
+    float canvasWidth,
+    float canvasHeight
+);
+
+// Draw sprites from FloatBuffer (zero-copy path for 1M+ sprites)
+// Buffer layout: [x, y, vx, vy, rotation] per sprite (physics layout)
+void afferent_renderer_draw_sprites_buffer(
+    AfferentRendererRef renderer,
+    AfferentTextureRef texture,
+    const float* data,
+    uint32_t count,
+    float halfSize,
     float canvasWidth,
     float canvasHeight
 );

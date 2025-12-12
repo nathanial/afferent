@@ -262,4 +262,30 @@ def drawSpritesAnimated (renderer : FFI.Renderer) (texture : FFI.Texture) (parti
   let data := buildSpriteDataAnimated particles halfSize t spinSpeed
   FFI.Renderer.drawSprites renderer texture data particles.count.toUInt32 particles.screenWidth particles.screenHeight
 
+/-! ## FloatBuffer-based Sprite Rendering
+
+For maximum performance with 1M+ sprites, write directly to a FloatBuffer
+instead of building a Lean Array. This eliminates:
+- Lean array allocation (copy-on-write overhead)
+- FFI array-to-C conversion (5M unboxing operations)
+
+The FloatBuffer approach: 1 FFI call per sprite (setVec5) vs 5M unbox calls. -/
+
+/-- Write sprite data for all particles directly into a FloatBuffer.
+    This is the high-performance path for 1M+ sprites.
+    Format: [x, y, rotation, halfSize, alpha] per sprite (5 floats) -/
+def writeSpritesToBuffer (particles : ParticleState) (buffer : FFI.FloatBuffer)
+    (halfSize : Float) (rotation : Float := 0.0) (alpha : Float := 1.0) : IO Unit := do
+  for i in [:particles.count] do
+    let base := i * 5
+    let x := particles.data[base]!
+    let y := particles.data[base + 1]!
+    FFI.FloatBuffer.setVec5 buffer (i * 5).toUSize x y rotation halfSize alpha
+
+/-- Draw sprites from a FloatBuffer. Call writeSpritesToBuffer first, then this. -/
+def drawSpritesFromBuffer (renderer : FFI.Renderer) (texture : FFI.Texture)
+    (buffer : FFI.FloatBuffer) (count : UInt32) (halfSize : Float)
+    (screenWidth screenHeight : Float) : IO Unit := do
+  FFI.Renderer.drawSpritesBuffer renderer texture buffer count halfSize screenWidth screenHeight
+
 end Afferent.Render.Dynamic

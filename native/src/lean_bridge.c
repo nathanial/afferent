@@ -583,6 +583,18 @@ LEAN_EXPORT lean_obj_res lean_afferent_float_buffer_set_vec8(
     return lean_io_result_mk_ok(lean_box(0));
 }
 
+LEAN_EXPORT lean_obj_res lean_afferent_float_buffer_set_vec5(
+    lean_obj_arg buffer_obj,
+    size_t index,
+    double v0, double v1, double v2, double v3, double v4,
+    lean_obj_arg world
+) {
+    AfferentFloatBufferRef buffer = (AfferentFloatBufferRef)lean_get_external_data(buffer_obj);
+    afferent_float_buffer_set_vec5(buffer, index,
+        (float)v0, (float)v1, (float)v2, (float)v3, (float)v4);
+    return lean_io_result_mk_ok(lean_box(0));
+}
+
 // Draw instanced shapes directly from FloatBuffer (zero-copy path)
 LEAN_EXPORT lean_obj_res lean_afferent_renderer_draw_instanced_rects_buffer(
     lean_obj_arg renderer_obj,
@@ -933,5 +945,61 @@ LEAN_EXPORT lean_obj_res lean_afferent_renderer_draw_sprites(
     afferent_renderer_draw_sprites(renderer, texture, data, count, (float)canvasWidth, (float)canvasHeight);
 
     free(data);
+    return lean_io_result_mk_ok(lean_box(0));
+}
+
+// ============================================================================
+// High-performance sprite system (FloatBuffer-based, C-side physics)
+// ============================================================================
+
+// Initialize sprites in FloatBuffer with random positions/velocities
+LEAN_EXPORT lean_obj_res lean_afferent_float_buffer_init_sprites(
+    lean_obj_arg buffer_obj,
+    uint32_t count,
+    double screenWidth,
+    double screenHeight,
+    uint32_t seed,
+    lean_obj_arg world
+) {
+    AfferentFloatBufferRef buffer = (AfferentFloatBufferRef)lean_get_external_data(buffer_obj);
+    afferent_float_buffer_init_sprites(buffer, count, (float)screenWidth, (float)screenHeight, seed);
+    return lean_io_result_mk_ok(lean_box(0));
+}
+
+// Update sprite physics (bouncing) - runs entirely in C
+LEAN_EXPORT lean_obj_res lean_afferent_float_buffer_update_sprites(
+    lean_obj_arg buffer_obj,
+    uint32_t count,
+    double dt,
+    double halfSize,
+    double screenWidth,
+    double screenHeight,
+    lean_obj_arg world
+) {
+    AfferentFloatBufferRef buffer = (AfferentFloatBufferRef)lean_get_external_data(buffer_obj);
+    afferent_float_buffer_update_sprites(buffer, count, (float)dt, (float)halfSize, (float)screenWidth, (float)screenHeight);
+    return lean_io_result_mk_ok(lean_box(0));
+}
+
+// Draw sprites from FloatBuffer (zero-copy path)
+LEAN_EXPORT lean_obj_res lean_afferent_renderer_draw_sprites_buffer(
+    lean_obj_arg renderer_obj,
+    lean_obj_arg texture_obj,
+    lean_obj_arg buffer_obj,
+    uint32_t count,
+    double halfSize,
+    double canvasWidth,
+    double canvasHeight,
+    lean_obj_arg world
+) {
+    AfferentRendererRef renderer = (AfferentRendererRef)lean_get_external_data(renderer_obj);
+    AfferentTextureRef texture = (AfferentTextureRef)lean_get_external_data(texture_obj);
+    AfferentFloatBufferRef buffer = (AfferentFloatBufferRef)lean_get_external_data(buffer_obj);
+
+    afferent_renderer_draw_sprites_buffer(
+        renderer, texture,
+        afferent_float_buffer_data(buffer),
+        count, (float)halfSize, (float)canvasWidth, (float)canvasHeight
+    );
     return lean_io_result_mk_ok(lean_box(0));
 }
