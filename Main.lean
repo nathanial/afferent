@@ -1031,14 +1031,10 @@ def unifiedDemo : IO Unit := do
     if keyCode == 49 then  -- Space bar
       displayMode := (displayMode + 1) % 5
       c.clearKey
-      -- Disable MSAA only for sprite benchmark mode to maximize throughput
+      -- Disable MSAA only for sprite benchmark mode to maximize throughput.
+      -- Keep Retina/native drawable scaling enabled.
       msaaEnabled := displayMode != 4
       FFI.Renderer.setMSAAEnabled c.ctx.renderer msaaEnabled
-      -- Also disable Retina (render at 1x drawable scale) for sprite benchmark
-      if displayMode == 4 then
-        FFI.Renderer.setDrawableScale c.ctx.renderer 1.0
-      else
-        FFI.Renderer.setDrawableScale c.ctx.renderer 0.0
       match displayMode with
       | 0 => IO.println "Switched to DEMO mode"
       | 1 => IO.println "Switched to GRID (squares) performance test"
