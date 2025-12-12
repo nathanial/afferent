@@ -2575,11 +2575,22 @@ void afferent_renderer_draw_sprites(
             afferent_texture_set_metal_texture(texture, (__bridge_retained void*)metalTex);
         }
 
-        // Create temporary buffer for this frame's sprite data
+        // Acquire pooled buffer for this frame's sprite data
         size_t dataSize = count * sizeof(SpriteInstanceData);
-        id<MTLBuffer> spriteBuffer = [renderer->device newBufferWithBytes:data
-                                                                   length:dataSize
-                                                                  options:MTLResourceStorageModeShared];
+        id<MTLBuffer> spriteBuffer = pool_acquire_buffer(
+            renderer->device,
+            g_buffer_pool.vertex_pool,
+            &g_buffer_pool.vertex_pool_count,
+            dataSize,
+            true
+        );
+
+        if (!spriteBuffer) {
+            NSLog(@"Failed to acquire sprite instance buffer");
+            return;
+        }
+
+        memcpy(spriteBuffer.contents, data, dataSize);
 
         SpriteUniforms uniforms = {
             .canvasWidth = canvasWidth,
@@ -2599,6 +2610,19 @@ void afferent_renderer_draw_sprites(
     }
 }
 
+// Draw sprites from FloatBuffer that already contains SpriteInstanceData layout
+void afferent_renderer_draw_sprites_instance_buffer(
+    AfferentRendererRef renderer,
+    AfferentTextureRef texture,
+    const float* data,
+    uint32_t count,
+    float canvasWidth,
+    float canvasHeight
+) {
+    // Same layout as afferent_renderer_draw_sprites, so forward directly
+    afferent_renderer_draw_sprites(renderer, texture, data, count, canvasWidth, canvasHeight);
+}
+
 // Release Metal texture associated with an AfferentTexture (called when texture is destroyed)
 void afferent_release_sprite_metal_texture(AfferentTextureRef texture) {
     if (!texture) return;
@@ -2612,9 +2636,9 @@ void afferent_release_sprite_metal_texture(AfferentTextureRef texture) {
     }
 }
 
-// Draw sprites from FloatBuffer (zero-copy path for maximum performance)
-// Buffer layout: [x, y, vx, vy, rotation] per sprite (5 floats) - same as SpriteInstanceData
-// We reinterpret vx/vy as rotation/halfSize for rendering (physics uses x,y,vx,vy; render uses x,y,rot,size,alpha)
+// Draw sprites from FloatBuffer using physics layout.
+// Buffer layout: [x, y, vx, vy, rotation] per sprite (5 floats).
+// Converted on CPU into SpriteInstanceData with uniform halfSize and alpha=1.0.
 void afferent_renderer_draw_sprites_buffer(
     AfferentRendererRef renderer,
     AfferentTextureRef texture,
@@ -2649,24 +2673,30 @@ void afferent_renderer_draw_sprites_buffer(
             afferent_texture_set_metal_texture(texture, (__bridge_retained void*)metalTex);
         }
 
-        // Build sprite instance data from the physics buffer
-        // Physics layout: [x, y, vx, vy, rotation] - we need [x, y, rotation, halfSize, alpha]
+        // Convert physics layout [x, y, vx, vy, rotation] -> SpriteInstanceData
         size_t instanceSize = count * sizeof(SpriteInstanceData);
-        SpriteInstanceData* instances = malloc(instanceSize);
+        id<MTLBuffer> spriteBuffer = pool_acquire_buffer(
+            renderer->device,
+            g_buffer_pool.vertex_pool,
+            &g_buffer_pool.vertex_pool_count,
+            instanceSize,
+            true
+        );
 
+        if (!spriteBuffer) {
+            NSLog(@"Failed to acquire sprite buffer");
+            return;
+        }
+
+        SpriteInstanceData* instances = (SpriteInstanceData*)spriteBuffer.contents;
         for (uint32_t i = 0; i < count; i++) {
             const float* src = data + i * 5;
             instances[i].pixelX = src[0];
             instances[i].pixelY = src[1];
-            instances[i].rotation = src[4];  // rotation is at index 4
+            instances[i].rotation = src[4];
             instances[i].halfSizePixels = halfSize;
             instances[i].alpha = 1.0f;
         }
-
-        id<MTLBuffer> spriteBuffer = [renderer->device newBufferWithBytes:instances
-                                                                   length:instanceSize
-                                                                  options:MTLResourceStorageModeShared];
-        free(instances);
 
         SpriteUniforms uniforms = {
             .canvasWidth = canvasWidth,

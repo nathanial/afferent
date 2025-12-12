@@ -335,6 +335,17 @@ void afferent_renderer_draw_sprites(
     float canvasHeight
 );
 
+// Draw sprites from FloatBuffer containing SpriteInstanceData layout
+// Buffer layout: [pixelX, pixelY, rotation, halfSizePixels, alpha] per sprite (5 floats)
+void afferent_renderer_draw_sprites_instance_buffer(
+    AfferentRendererRef renderer,
+    AfferentTextureRef texture,
+    const float* data,
+    uint32_t count,
+    float canvasWidth,
+    float canvasHeight
+);
+
 // Draw sprites from FloatBuffer (zero-copy path for 1M+ sprites)
 // Buffer layout: [x, y, vx, vy, rotation] per sprite (physics layout)
 void afferent_renderer_draw_sprites_buffer(

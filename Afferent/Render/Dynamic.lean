@@ -276,16 +276,15 @@ The FloatBuffer approach: 1 FFI call per sprite (setVec5) vs 5M unbox calls. -/
     Format: [x, y, rotation, halfSize, alpha] per sprite (5 floats) -/
 def writeSpritesToBuffer (particles : ParticleState) (buffer : FFI.FloatBuffer)
     (halfSize : Float) (rotation : Float := 0.0) (alpha : Float := 1.0) : IO Unit := do
-  for i in [:particles.count] do
-    let base := i * 5
-    let x := particles.data[base]!
-    let y := particles.data[base + 1]!
-    FFI.FloatBuffer.setVec5 buffer (i * 5).toUSize x y rotation halfSize alpha
+  -- One FFI call for all sprites (avoids 100k boundary crossings per frame)
+  FFI.FloatBuffer.writeSpritesFromParticles buffer particles.data particles.count.toUInt32 halfSize rotation alpha
 
 /-- Draw sprites from a FloatBuffer. Call writeSpritesToBuffer first, then this. -/
 def drawSpritesFromBuffer (renderer : FFI.Renderer) (texture : FFI.Texture)
     (buffer : FFI.FloatBuffer) (count : UInt32) (halfSize : Float)
     (screenWidth screenHeight : Float) : IO Unit := do
-  FFI.Renderer.drawSpritesBuffer renderer texture buffer count halfSize screenWidth screenHeight
+  -- Buffer already contains SpriteInstanceData layout, so use direct instance draw.
+  -- halfSize is ignored (kept for API compatibility).
+  FFI.Renderer.drawSpritesInstanceBuffer renderer texture buffer count screenWidth screenHeight
 
 end Afferent.Render.Dynamic

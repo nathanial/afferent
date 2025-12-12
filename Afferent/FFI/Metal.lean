@@ -167,6 +167,18 @@ opaque FloatBuffer.setVec8 (buf : @& FloatBuffer) (index : USize)
 opaque FloatBuffer.setVec5 (buf : @& FloatBuffer) (index : USize)
   (v0 v1 v2 v3 v4 : Float) : IO Unit
 
+-- Bulk-write sprite instance data from a ParticleState data array.
+-- particleData layout: [x, y, vx, vy, hue] per particle (5 floats).
+-- Writes SpriteInstanceData layout into FloatBuffer: [x, y, rotation, halfSize, alpha].
+@[extern "lean_afferent_float_buffer_write_sprites_from_particles"]
+opaque FloatBuffer.writeSpritesFromParticles
+  (buffer : @& FloatBuffer)
+  (particleData : @& Array Float)
+  (count : UInt32)
+  (halfSize : Float)
+  (rotation : Float)
+  (alpha : Float) : IO Unit
+
 -- Draw instanced shapes directly from FloatBuffer (zero-copy path)
 @[extern "lean_afferent_renderer_draw_instanced_rects_buffer"]
 opaque Renderer.drawInstancedRectsBuffer
@@ -350,6 +362,16 @@ opaque Renderer.drawSpritesBuffer
   (buffer : @& FloatBuffer)
   (count : UInt32)
   (halfSize : Float)
+  (canvasWidth : Float)
+  (canvasHeight : Float) : IO Unit
+
+-- Draw sprites from FloatBuffer already in SpriteInstanceData layout.
+@[extern "lean_afferent_renderer_draw_sprites_instance_buffer"]
+opaque Renderer.drawSpritesInstanceBuffer
+  (renderer : @& Renderer)
+  (texture : @& Texture)
+  (buffer : @& FloatBuffer)
+  (count : UInt32)
   (canvasWidth : Float)
   (canvasHeight : Float) : IO Unit
 

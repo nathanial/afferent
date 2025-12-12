@@ -595,6 +595,44 @@ LEAN_EXPORT lean_obj_res lean_afferent_float_buffer_set_vec5(
     return lean_io_result_mk_ok(lean_box(0));
 }
 
+// Bulk-write sprite instance data from Lean particle array into a FloatBuffer.
+// particle_data_arr layout: [x, y, vx, vy, hue] per particle (5 floats).
+// Writes SpriteInstanceData layout into buffer: [x, y, rotation, halfSize, alpha].
+LEAN_EXPORT lean_obj_res lean_afferent_float_buffer_write_sprites_from_particles(
+    lean_obj_arg buffer_obj,
+    lean_obj_arg particle_data_arr,
+    uint32_t count,
+    double halfSize,
+    double rotation,
+    double alpha,
+    lean_obj_arg world
+) {
+    AfferentFloatBufferRef buffer = (AfferentFloatBufferRef)lean_get_external_data(buffer_obj);
+
+    size_t arr_size = lean_array_size(particle_data_arr);
+    size_t expected_size = (size_t)count * 5;
+    if (count == 0 || arr_size < expected_size) {
+        return lean_io_result_mk_ok(lean_box(0));
+    }
+
+    if (afferent_float_buffer_capacity(buffer) < expected_size) {
+        return lean_io_result_mk_ok(lean_box(0));
+    }
+
+    float h = (float)halfSize;
+    float r = (float)rotation;
+    float a = (float)alpha;
+
+    for (uint32_t i = 0; i < count; i++) {
+        size_t base = (size_t)i * 5;
+        float x = (float)lean_unbox_float(lean_array_get_core(particle_data_arr, base));
+        float y = (float)lean_unbox_float(lean_array_get_core(particle_data_arr, base + 1));
+        afferent_float_buffer_set_vec5(buffer, base, x, y, r, h, a);
+    }
+
+    return lean_io_result_mk_ok(lean_box(0));
+}
+
 // Draw instanced shapes directly from FloatBuffer (zero-copy path)
 LEAN_EXPORT lean_obj_res lean_afferent_renderer_draw_instanced_rects_buffer(
     lean_obj_arg renderer_obj,
@@ -1000,6 +1038,28 @@ LEAN_EXPORT lean_obj_res lean_afferent_renderer_draw_sprites_buffer(
         renderer, texture,
         afferent_float_buffer_data(buffer),
         count, (float)halfSize, (float)canvasWidth, (float)canvasHeight
+    );
+    return lean_io_result_mk_ok(lean_box(0));
+}
+
+// Draw sprites from FloatBuffer already in SpriteInstanceData layout
+LEAN_EXPORT lean_obj_res lean_afferent_renderer_draw_sprites_instance_buffer(
+    lean_obj_arg renderer_obj,
+    lean_obj_arg texture_obj,
+    lean_obj_arg buffer_obj,
+    uint32_t count,
+    double canvasWidth,
+    double canvasHeight,
+    lean_obj_arg world
+) {
+    AfferentRendererRef renderer = (AfferentRendererRef)lean_get_external_data(renderer_obj);
+    AfferentTextureRef texture = (AfferentTextureRef)lean_get_external_data(texture_obj);
+    AfferentFloatBufferRef buffer = (AfferentFloatBufferRef)lean_get_external_data(buffer_obj);
+
+    afferent_renderer_draw_sprites_instance_buffer(
+        renderer, texture,
+        afferent_float_buffer_data(buffer),
+        count, (float)canvasWidth, (float)canvasHeight
     );
     return lean_io_result_mk_ok(lean_box(0));
 }
