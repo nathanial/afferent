@@ -54,11 +54,11 @@ def unifiedDemo : IO Unit := do
   let cellHeight : Float := 360
 
   -- Background colors for each cell (animated versions will vary with time)
-  let bg00 := Color.rgba 0.15 0.15 0.20 1.0  -- Dark blue-gray
-  let bg10 := Color.rgba 0.20 0.15 0.15 1.0  -- Dark red-gray
-  let bg01 := Color.rgba 0.15 0.20 0.15 1.0  -- Dark green-gray
-  let bg11 := Color.rgba 0.20 0.18 0.12 1.0  -- Dark warm gray
-  let bg02 := Color.rgba 0.18 0.15 0.20 1.0  -- Dark purple-gray
+  let bg00 := Color.hsva 0.667 0.25 0.20 1.0  -- Dark blue-gray
+  let bg10 := Color.hsva 0.0 0.25 0.20 1.0    -- Dark red-gray
+  let bg01 := Color.hsva 0.333 0.25 0.20 1.0  -- Dark green-gray
+  let bg11 := Color.hsva 0.125 0.4 0.20 1.0   -- Dark warm gray
+  let bg02 := Color.hsva 0.767 0.25 0.20 1.0  -- Dark purple-gray
 
   -- Pre-compute particle data ONCE at startup using unified Dynamic module
   let halfSize := 1.5  -- Smaller for 100k
@@ -166,7 +166,7 @@ def unifiedDemo : IO Unit := do
           clip cellRect00
           setFillColor bg00
           fillRect cellRect00
-          setFillColor (Color.rgba 1.0 1.0 1.0 0.5)
+          setFillColor (Color.hsva 0.0 0.0 1.0 0.5)
           fillTextXY "Cell: 0,0 - Shapes" 10 20 fontSmall
           save
           scale 0.45 0.45
@@ -179,7 +179,7 @@ def unifiedDemo : IO Unit := do
           clip cellRect10
           setFillColor bg10
           fillRect cellRect10
-          setFillColor (Color.rgba 1.0 1.0 1.0 0.5)
+          setFillColor (Color.hsva 0.0 0.0 1.0 0.5)
           fillTextXY "Cell: 1,0 - Transforms" (cellWidth + 10) 20 fontSmall
           save
           translate 960 0
@@ -193,7 +193,7 @@ def unifiedDemo : IO Unit := do
           clip cellRect01
           setFillColor bg01
           fillRect cellRect01
-          setFillColor (Color.rgba 1.0 1.0 1.0 0.5)
+          setFillColor (Color.hsva 0.0 0.0 1.0 0.5)
           fillTextXY "Cell: 0,1 - Strokes" 10 (cellHeight + 20) fontSmall
           save
           translate 0 360
@@ -207,7 +207,7 @@ def unifiedDemo : IO Unit := do
           clip cellRect11
           setFillColor bg11
           fillRect cellRect11
-          setFillColor (Color.rgba 1.0 1.0 1.0 0.5)
+          setFillColor (Color.hsva 0.0 0.0 1.0 0.5)
           fillTextXY "Cell: 1,1 - Gradients" (cellWidth + 10) (cellHeight + 20) fontSmall
           save
           translate 960 360
@@ -221,7 +221,7 @@ def unifiedDemo : IO Unit := do
           clip cellRect02
           setFillColor bg02
           fillRect cellRect02
-          setFillColor (Color.rgba 1.0 1.0 1.0 0.5)
+          setFillColor (Color.hsva 0.0 0.0 1.0 0.5)
           fillTextXY "Cell: 0,2 - Text" 10 (cellHeight * 2 + 20) fontSmall
           save
           translate 0 720
@@ -238,7 +238,7 @@ def unifiedDemo : IO Unit := do
           let bg12 := hsvToRgb bgHue 0.3 0.15
           setFillColor bg12
           fillRect cellRect12
-          setFillColor (Color.rgba 1.0 1.0 1.0 0.7)
+          setFillColor (Color.hsva 0.0 0.0 1.0 0.7)
           fillTextXY "Cell: 1,2 - DISCO PARTY!" (cellWidth + 10) (cellHeight * 2 + 20) fontSmall
           save
           translate cellWidth (cellHeight * 2 + 30)
@@ -250,7 +250,7 @@ def unifiedDemo : IO Unit := do
       let fpsText := s!"{displayFps.toUInt32} FPS"
       let (textWidth, _) ← fontSmall.measureText fpsText
       let c' := c.resetTransform
-      let c' := c'.setFillColor (Color.rgba 0.0 0.0 0.0 0.6)
+      let c' := c'.setFillColor (Color.hsva 0.0 0.0 0.0 0.6)
       let c' ← c'.fillRectXYWH (1920.0 - textWidth - 20.0) 5.0 (textWidth + 15.0) 25.0
       let c' := c'.setFillColor Color.white
       let c' ← c'.fillTextXY fpsText (1920.0 - textWidth - 12.0) 22.0 fontSmall

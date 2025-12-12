@@ -110,13 +110,13 @@ def renderStrokesM : CanvasM Unit := do
   strokePath (Path.heart ⟨560, 420⟩ 60)
 
   -- Row 4: Combined fill and stroke
-  setFillColor (Color.rgba 0.2 0.2 0.8 1.0)
+  setFillColor (Color.hsva 0.667 0.75 0.8 1.0)  -- blue
   fillCircle ⟨700, 420⟩ 40
   setStrokeColor Color.white
   setLineWidth 3.0
   strokeCircle ⟨700, 420⟩ 40
 
-  setFillColor (Color.rgba 0.8 0.2 0.2 1.0)
+  setFillColor (Color.hsva 0.0 0.75 0.8 1.0)  -- red
   fillRoundedRect (Rect.mk' 770 380 100 80) 15
   setStrokeColor Color.white
   setLineWidth 2.0

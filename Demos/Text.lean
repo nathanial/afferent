@@ -64,25 +64,25 @@ def renderTextM (fonts : Fonts) : CanvasM Unit := do
   fillTextXY "0123456789 !@#$%^&*()_+-=" 50 550 fonts.medium
 
   -- Row 6: Semi-transparent text
-  setFillColor (Color.rgba 1.0 1.0 1.0 0.7)
+  setFillColor (Color.hsva 0.0 0.0 1.0 0.7)
   fillTextXY "Semi-transparent" 50 600 fonts.medium
-  setFillColor (Color.rgba 1.0 1.0 1.0 0.4)
+  setFillColor (Color.hsva 0.0 0.0 1.0 0.4)
   fillTextXY "More transparent" 300 600 fonts.medium
-  setFillColor (Color.rgba 1.0 1.0 1.0 0.2)
+  setFillColor (Color.hsva 0.0 0.0 1.0 0.2)
   fillTextXY "Very faint" 550 600 fonts.medium
 
   -- Row 7: Colored backgrounds with text
-  setFillColor (Color.rgba 0.8 0.2 0.2 1.0)
+  setFillColor (Color.hsva 0.0 0.75 0.8 1.0)  -- red
   fillRect (Rect.mk' 50 640 200 40)
   setFillColor Color.white
   fillTextXY "Error Message" 60 670 fonts.small
 
-  setFillColor (Color.rgba 0.2 0.6 0.2 1.0)
+  setFillColor (Color.hsva 0.333 0.667 0.6 1.0)  -- green
   fillRect (Rect.mk' 280 640 200 40)
   setFillColor Color.white
   fillTextXY "Success!" 330 670 fonts.small
 
-  setFillColor (Color.rgba 0.8 0.6 0.1 1.0)
+  setFillColor (Color.hsva 0.119 0.875 0.8 1.0)  -- orange/warning
   fillRect (Rect.mk' 510 640 200 40)
   setFillColor Color.black
   fillTextXY "Warning" 570 670 fonts.small

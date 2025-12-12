@@ -93,7 +93,7 @@ def myDrawing : Canvas Unit := do
   Canvas.restore
 
   -- Draw a circle
-  Canvas.setFillColor (Color.rgba 0.0 0.8 0.3 0.8)
+  Canvas.setFillColor (Color.hsva 0.396 1.0 0.8 0.8)  -- green with alpha
   Canvas.fillCircle 600 200 80
 
 def main : IO Unit := do
