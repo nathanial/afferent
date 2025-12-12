@@ -15,6 +15,7 @@ typedef struct AfferentRenderer* AfferentRendererRef;
 typedef struct AfferentBuffer* AfferentBufferRef;
 typedef struct AfferentFont* AfferentFontRef;
 typedef struct AfferentFloatBuffer* AfferentFloatBufferRef;
+typedef struct AfferentTexture* AfferentTextureRef;
 
 // Result codes
 typedef enum {
@@ -288,6 +289,37 @@ void afferent_renderer_draw_dynamic_triangles(
     const float* data,
     uint32_t count,
     float time,
+    float canvasWidth,
+    float canvasHeight
+);
+
+// ============================================================================
+// Texture/Sprite rendering - Load textures and render textured sprites
+// ============================================================================
+
+// Load a texture from a file path (supports PNG, JPG, etc via stb_image)
+AfferentResult afferent_texture_load(
+    const char* path,
+    AfferentTextureRef* out_texture
+);
+
+// Destroy a loaded texture
+void afferent_texture_destroy(AfferentTextureRef texture);
+
+// Get texture dimensions
+void afferent_texture_get_size(
+    AfferentTextureRef texture,
+    uint32_t* width,
+    uint32_t* height
+);
+
+// Draw textured sprites (called every frame with position data)
+// data: [pixelX, pixelY, rotation, halfSizePixels, alpha] × count (5 floats per sprite)
+void afferent_renderer_draw_sprites(
+    AfferentRendererRef renderer,
+    AfferentTextureRef texture,
+    const float* data,
+    uint32_t count,
     float canvasWidth,
     float canvasHeight
 );

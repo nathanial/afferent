@@ -104,6 +104,18 @@ target float_buffer_o pkg : FilePath := do
     "-O2"
   ] #[] "cc"
 
+target texture_o pkg : FilePath := do
+  let oFile := pkg.buildDir / "native" / "texture.o"
+  let srcFile := pkg.dir / "native" / "src" / "texture.c"
+  let includeDir := pkg.dir / "native" / "include"
+  let srcDir := pkg.dir / "native" / "src"
+  buildO oFile (← inputTextFile srcFile) #[
+    "-I", includeDir.toString,
+    "-I", srcDir.toString,  -- For stb_image.h
+    "-fPIC",
+    "-O2"
+  ] #[] "cc"
+
 extern_lib libafferent_native pkg := do
   let name := nameToStaticLib "afferent_native"
   let windowO ← window_o.fetch
@@ -111,4 +123,5 @@ extern_lib libafferent_native pkg := do
   let textO ← text_render_o.fetch
   let bridgeO ← lean_bridge_o.fetch
   let floatBufferO ← float_buffer_o.fetch
-  buildStaticLib (pkg.staticLibDir / name) #[windowO, metalO, textO, bridgeO, floatBufferO]
+  let textureO ← texture_o.fetch
+  buildStaticLib (pkg.staticLibDir / name) #[windowO, metalO, textO, bridgeO, floatBufferO, textureO]

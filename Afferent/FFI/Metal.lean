@@ -280,4 +280,36 @@ opaque Renderer.drawDynamicTriangles
   (canvasWidth : Float)
   (canvasHeight : Float) : IO Unit
 
+-- ============================================================================
+-- TEXTURE/SPRITE RENDERING - Textured quads with transparency
+-- Load textures and render textured sprites with rotation and alpha
+-- ============================================================================
+
+opaque TexturePointed : NonemptyType
+def Texture : Type := TexturePointed.type
+instance : Nonempty Texture := TexturePointed.property
+
+-- Load a texture from a file path (supports PNG, JPG, etc via stb_image)
+@[extern "lean_afferent_texture_load"]
+opaque Texture.load (path : @& String) : IO Texture
+
+-- Destroy a texture
+@[extern "lean_afferent_texture_destroy"]
+opaque Texture.destroy (texture : @& Texture) : IO Unit
+
+-- Get texture dimensions (width, height)
+@[extern "lean_afferent_texture_get_size"]
+opaque Texture.getSize (texture : @& Texture) : IO (UInt32 × UInt32)
+
+-- Draw textured sprites (called every frame with position data)
+-- data: [pixelX, pixelY, rotation, halfSizePixels, alpha] × count (5 floats per sprite)
+@[extern "lean_afferent_renderer_draw_sprites"]
+opaque Renderer.drawSprites
+  (renderer : @& Renderer)
+  (texture : @& Texture)
+  (data : @& Array Float)
+  (count : UInt32)
+  (canvasWidth : Float)
+  (canvasHeight : Float) : IO Unit
+
 end Afferent.FFI

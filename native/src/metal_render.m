@@ -727,6 +727,92 @@ fragment float4 dynamic_triangle_fragment(DynamicTriangleVertexOut in [[stage_in
 }
 )";
 
+// ============================================================================
+// SPRITE SHADER - Textured quad with rotation and alpha
+// Data format: [pixelX, pixelY, rotation, halfSize, alpha] × count (5 floats)
+// ============================================================================
+
+static NSString *spriteShaderSource = @R"(
+#include <metal_stdlib>
+using namespace metal;
+
+struct SpriteInstanceData {
+    float pixelX;           // Position X in pixels
+    float pixelY;           // Position Y in pixels
+    float rotation;         // Rotation angle in radians
+    float halfSizePixels;   // Half size in pixels
+    float alpha;            // Alpha transparency 0-1
+};  // 20 bytes
+
+struct SpriteUniforms {
+    float canvasWidth;
+    float canvasHeight;
+};
+
+struct SpriteVertexOut {
+    float4 position [[position]];
+    float2 uv;
+    float alpha;
+};
+
+vertex SpriteVertexOut sprite_vertex(
+    uint vid [[vertex_id]],
+    uint iid [[instance_id]],
+    constant SpriteInstanceData* instances [[buffer(0)]],
+    constant SpriteUniforms& uniforms [[buffer(1)]]
+) {
+    // Unit quad positions and UVs (triangle strip order)
+    float2 positions[4] = {
+        float2(-1.0, -1.0),  // Bottom-left
+        float2( 1.0, -1.0),  // Bottom-right
+        float2(-1.0,  1.0),  // Top-left
+        float2( 1.0,  1.0)   // Top-right
+    };
+    float2 uvs[4] = {
+        float2(0.0, 1.0),    // Bottom-left
+        float2(1.0, 1.0),    // Bottom-right
+        float2(0.0, 0.0),    // Top-left
+        float2(1.0, 0.0)     // Top-right
+    };
+
+    SpriteInstanceData inst = instances[iid];
+    float2 v = positions[vid];
+    float2 uv = uvs[vid];
+
+    // Convert pixel -> NDC
+    float2 ndcPos = float2(
+        (inst.pixelX / uniforms.canvasWidth) * 2.0 - 1.0,
+        1.0 - (inst.pixelY / uniforms.canvasHeight) * 2.0
+    );
+    float ndcHalfSize = inst.halfSizePixels / uniforms.canvasWidth * 2.0;
+
+    // Apply rotation
+    float sinA = sin(inst.rotation);
+    float cosA = cos(inst.rotation);
+    float2 rotated = float2(v.x * cosA - v.y * sinA, v.x * sinA + v.y * cosA);
+
+    float2 finalPos = ndcPos + rotated * ndcHalfSize;
+
+    SpriteVertexOut out;
+    out.position = float4(finalPos, 0.0, 1.0);
+    out.uv = uv;
+    out.alpha = inst.alpha;
+    return out;
+}
+
+fragment float4 sprite_fragment(
+    SpriteVertexOut in [[stage_in]],
+    texture2d<float> tex [[texture(0)]],
+    sampler samp [[sampler(0)]]
+) {
+    float4 color = tex.sample(samp, in.uv);
+    color.a *= in.alpha;
+    // Premultiplied alpha discard for transparency
+    if (color.a < 0.01) discard_fragment();
+    return color;
+}
+)";
+
 // Text vertex structure (different layout than AfferentVertex)
 typedef struct {
     float position[2];
@@ -833,6 +919,21 @@ typedef struct {
     float hueSpeed;
 } DynamicTriangleUniforms;
 
+// Sprite instance data structure (matches shader) - 20 bytes
+typedef struct {
+    float pixelX;           // Position X in pixels
+    float pixelY;           // Position Y in pixels
+    float rotation;         // Rotation angle in radians
+    float halfSizePixels;   // Half size in pixels
+    float alpha;            // Alpha transparency 0-1
+} SpriteInstanceData;  // Total: 20 bytes
+
+// Sprite uniforms structure (matches shader)
+typedef struct {
+    float canvasWidth;
+    float canvasHeight;
+} SpriteUniforms;
+
 // Internal renderer structure
 struct AfferentRenderer {
     AfferentWindowRef window;
@@ -851,7 +952,9 @@ struct AfferentRenderer {
     id<MTLRenderPipelineState> dynamicCirclePipelineState;  // For dynamic position circles
     id<MTLRenderPipelineState> dynamicRectPipelineState;    // For dynamic position rects
     id<MTLRenderPipelineState> dynamicTrianglePipelineState; // For dynamic position triangles
+    id<MTLRenderPipelineState> spritePipelineState;    // For sprite/texture rendering
     id<MTLSamplerState> textSampler;                   // For text texture sampling
+    id<MTLSamplerState> spriteSampler;                 // For sprite texture sampling
     id<MTLCommandBuffer> currentCommandBuffer;
     id<MTLRenderCommandEncoder> currentEncoder;
     id<CAMetalDrawable> currentDrawable;
@@ -1129,6 +1232,14 @@ AfferentResult afferent_renderer_create(
         samplerDesc.sAddressMode = MTLSamplerAddressModeClampToEdge;
         samplerDesc.tAddressMode = MTLSamplerAddressModeClampToEdge;
         renderer->textSampler = [renderer->device newSamplerStateWithDescriptor:samplerDesc];
+
+        // Create sprite sampler (for textured sprite rendering)
+        MTLSamplerDescriptor *spriteSamplerDesc = [[MTLSamplerDescriptor alloc] init];
+        spriteSamplerDesc.minFilter = MTLSamplerMinMagFilterLinear;
+        spriteSamplerDesc.magFilter = MTLSamplerMinMagFilterLinear;
+        spriteSamplerDesc.sAddressMode = MTLSamplerAddressModeClampToEdge;
+        spriteSamplerDesc.tAddressMode = MTLSamplerAddressModeClampToEdge;
+        renderer->spriteSampler = [renderer->device newSamplerStateWithDescriptor:spriteSamplerDesc];
 
         // Create instanced rendering pipeline (for GPU-accelerated rectangle batches)
         id<MTLLibrary> instancedLibrary = [renderer->device newLibraryWithSource:instancedShaderSource
@@ -1467,6 +1578,43 @@ AfferentResult afferent_renderer_create(
                                                                                                   error:&error];
         if (!renderer->dynamicTrianglePipelineState) {
             NSLog(@"Dynamic triangle pipeline creation failed: %@", error);
+            free(renderer);
+            return AFFERENT_ERROR_PIPELINE_FAILED;
+        }
+
+        // Create sprite pipeline (textured quads)
+        id<MTLLibrary> spriteLibrary = [renderer->device newLibraryWithSource:spriteShaderSource
+                                                                      options:nil
+                                                                        error:&error];
+        if (!spriteLibrary) {
+            NSLog(@"Sprite shader compilation failed: %@", error);
+            free(renderer);
+            return AFFERENT_ERROR_PIPELINE_FAILED;
+        }
+
+        id<MTLFunction> spriteVertexFunc = [spriteLibrary newFunctionWithName:@"sprite_vertex"];
+        id<MTLFunction> spriteFragmentFunc = [spriteLibrary newFunctionWithName:@"sprite_fragment"];
+        if (!spriteVertexFunc || !spriteFragmentFunc) {
+            NSLog(@"Failed to find sprite shader functions");
+            free(renderer);
+            return AFFERENT_ERROR_PIPELINE_FAILED;
+        }
+
+        MTLRenderPipelineDescriptor *spritePipelineDesc = [[MTLRenderPipelineDescriptor alloc] init];
+        spritePipelineDesc.vertexFunction = spriteVertexFunc;
+        spritePipelineDesc.fragmentFunction = spriteFragmentFunc;
+        spritePipelineDesc.colorAttachments[0].pixelFormat = MTLPixelFormatBGRA8Unorm;
+        spritePipelineDesc.rasterSampleCount = 4;
+        spritePipelineDesc.colorAttachments[0].blendingEnabled = YES;
+        spritePipelineDesc.colorAttachments[0].sourceRGBBlendFactor = MTLBlendFactorSourceAlpha;
+        spritePipelineDesc.colorAttachments[0].destinationRGBBlendFactor = MTLBlendFactorOneMinusSourceAlpha;
+        spritePipelineDesc.colorAttachments[0].sourceAlphaBlendFactor = MTLBlendFactorOne;
+        spritePipelineDesc.colorAttachments[0].destinationAlphaBlendFactor = MTLBlendFactorOneMinusSourceAlpha;
+
+        renderer->spritePipelineState = [renderer->device newRenderPipelineStateWithDescriptor:spritePipelineDesc
+                                                                                         error:&error];
+        if (!renderer->spritePipelineState) {
+            NSLog(@"Sprite pipeline creation failed: %@", error);
             free(renderer);
             return AFFERENT_ERROR_PIPELINE_FAILED;
         }
@@ -2356,5 +2504,110 @@ void afferent_renderer_draw_dynamic_triangles(
                                      vertexCount:3
                                    instanceCount:count];
         [renderer->currentEncoder setRenderPipelineState:renderer->pipelineState];
+    }
+}
+
+// ============================================================================
+// SPRITE/TEXTURE RENDERING - Textured quads with transparency
+// ============================================================================
+
+// External declarations from texture.c
+extern const uint8_t* afferent_texture_get_data(AfferentTextureRef texture);
+extern void afferent_texture_get_size(AfferentTextureRef texture, uint32_t* width, uint32_t* height);
+extern void* afferent_texture_get_metal_texture(AfferentTextureRef texture);
+extern void afferent_texture_set_metal_texture(AfferentTextureRef texture, void* metal_tex);
+
+// Create a Metal texture from raw RGBA pixel data
+static id<MTLTexture> createMetalTexture(id<MTLDevice> device, const uint8_t* data, uint32_t width, uint32_t height) {
+    MTLTextureDescriptor *desc = [MTLTextureDescriptor texture2DDescriptorWithPixelFormat:MTLPixelFormatRGBA8Unorm
+                                                                                    width:width
+                                                                                   height:height
+                                                                                mipmapped:NO];
+    desc.usage = MTLTextureUsageShaderRead;
+    desc.storageMode = MTLStorageModeManaged;
+
+    id<MTLTexture> texture = [device newTextureWithDescriptor:desc];
+    if (!texture) return nil;
+
+    MTLRegion region = MTLRegionMake2D(0, 0, width, height);
+    [texture replaceRegion:region
+               mipmapLevel:0
+                 withBytes:data
+               bytesPerRow:width * 4];
+
+    return texture;
+}
+
+// Draw textured sprites (positions/rotation updated each frame)
+// data: [pixelX, pixelY, rotation, halfSizePixels, alpha] × count (5 floats per sprite)
+void afferent_renderer_draw_sprites(
+    AfferentRendererRef renderer,
+    AfferentTextureRef texture,
+    const float* data,
+    uint32_t count,
+    float canvasWidth,
+    float canvasHeight
+) {
+    if (!renderer || !renderer->currentEncoder || !texture || !data || count == 0) {
+        return;
+    }
+
+    @autoreleasepool {
+        // Get or create Metal texture for this sprite
+        id<MTLTexture> metalTex = (__bridge id<MTLTexture>)afferent_texture_get_metal_texture(texture);
+
+        if (!metalTex) {
+            // Create Metal texture from pixel data
+            const uint8_t* pixelData = afferent_texture_get_data(texture);
+            uint32_t width, height;
+            afferent_texture_get_size(texture, &width, &height);
+
+            if (!pixelData || width == 0 || height == 0) {
+                return;
+            }
+
+            metalTex = createMetalTexture(renderer->device, pixelData, width, height);
+            if (!metalTex) {
+                return;
+            }
+
+            // Store for future use (transfer ownership via __bridge_retained)
+            afferent_texture_set_metal_texture(texture, (__bridge_retained void*)metalTex);
+        }
+
+        // Create temporary buffer for this frame's sprite data
+        size_t dataSize = count * sizeof(SpriteInstanceData);
+        id<MTLBuffer> spriteBuffer = [renderer->device newBufferWithBytes:data
+                                                                   length:dataSize
+                                                                  options:MTLResourceStorageModeShared];
+
+        SpriteUniforms uniforms = {
+            .canvasWidth = canvasWidth,
+            .canvasHeight = canvasHeight
+        };
+
+        [renderer->currentEncoder setRenderPipelineState:renderer->spritePipelineState];
+        [renderer->currentEncoder setVertexBuffer:spriteBuffer offset:0 atIndex:0];
+        [renderer->currentEncoder setVertexBytes:&uniforms length:sizeof(uniforms) atIndex:1];
+        [renderer->currentEncoder setFragmentTexture:metalTex atIndex:0];
+        [renderer->currentEncoder setFragmentSamplerState:renderer->spriteSampler atIndex:0];
+        [renderer->currentEncoder drawPrimitives:MTLPrimitiveTypeTriangleStrip
+                                     vertexStart:0
+                                     vertexCount:4
+                                   instanceCount:count];
+        [renderer->currentEncoder setRenderPipelineState:renderer->pipelineState];
+    }
+}
+
+// Release Metal texture associated with an AfferentTexture (called when texture is destroyed)
+void afferent_release_sprite_metal_texture(AfferentTextureRef texture) {
+    if (!texture) return;
+
+    void* metalTexPtr = afferent_texture_get_metal_texture(texture);
+    if (metalTexPtr) {
+        // Release the Metal texture (transfer back ownership with __bridge_transfer)
+        id<MTLTexture> metalTex = (__bridge_transfer id<MTLTexture>)metalTexPtr;
+        metalTex = nil;  // ARC will release
+        afferent_texture_set_metal_texture(texture, NULL);
     }
 }

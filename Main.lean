@@ -928,6 +928,15 @@ def renderCircleTest (c : Canvas) (t : Float) (font : Font) (particles : Render.
   Render.Dynamic.drawCircles c.ctx.renderer particles radius t
   pure c
 
+/-- Render textured sprites (Bunnymark-style benchmark).
+    CPU updates positions (physics), GPU renders textured quads. -/
+def renderSpriteTest (c : Canvas) (t : Float) (font : Font) (particles : Render.Dynamic.ParticleState)
+    (texture : FFI.Texture) (halfSize : Float) : IO Canvas := do
+  let c := c.setFillColor Color.white
+  let c ← c.fillTextXY s!"Sprites: {particles.count} textured sprites (Space to advance)" 20 30 font
+  Render.Dynamic.drawSprites c.ctx.renderer texture particles halfSize 0.0
+  pure c
+
 /-! ## Unified Visual Demo -/
 
 def unifiedDemo : IO Unit := do
@@ -943,6 +952,11 @@ def unifiedDemo : IO Unit := do
   let fontLarge ← Font.load "/System/Library/Fonts/Monaco.ttf" 36
   let fontHuge ← Font.load "/System/Library/Fonts/Monaco.ttf" 48
   let fonts : Fonts := { small := fontSmall, medium := fontMedium, large := fontLarge, huge := fontHuge }
+
+  IO.println "Loading sprite texture..."
+  let spriteTexture ← FFI.Texture.load "nibble.png"
+  let (texWidth, texHeight) ← FFI.Texture.getSize spriteTexture
+  IO.println s!"Loaded nibble.png: {texWidth}x{texHeight}"
 
   IO.println "Rendering animated demo... (close window to exit)"
   IO.println "Press SPACE to toggle performance test mode (10000 spinning squares)"
@@ -969,29 +983,35 @@ def unifiedDemo : IO Unit := do
   -- Pre-compute particle data ONCE at startup using unified Dynamic module
   let halfSize := 1.5  -- Smaller for 100k
   let circleRadius := 2.0
+  let spriteHalfSize := 15.0  -- Size for sprite rendering
 
   -- Grid particles (316x316 ≈ 100k grid of spinning squares/triangles)
-  let gridCols := 316
-  let gridRows := 316
-  let gridSpacing := 6.0
+  let gridCols := 316 * 3
+  let gridRows := 316 * 2
+  let gridSpacing := 2.0
   let gridStartX := (1920.0 - (gridCols.toFloat - 1) * gridSpacing) / 2.0
   let gridStartY := (1080.0 - (gridRows.toFloat - 1) * gridSpacing) / 2.0
   let gridParticles := Render.Dynamic.ParticleState.createGrid gridCols gridRows gridStartX gridStartY gridSpacing 1920.0 1080.0
   IO.println s!"Created {gridParticles.count} grid particles"
 
   -- Bouncing circles using Dynamic.ParticleState
-  let bouncingParticles := Render.Dynamic.ParticleState.create 100000 1920.0 1080.0 42
+  let bouncingParticles := Render.Dynamic.ParticleState.create 1000000 1920.0 1080.0 42
   IO.println s!"Created {bouncingParticles.count} bouncing circles"
+
+  -- Sprite particles for Bunnymark-style benchmark (100k bouncing sprites)
+  let spriteParticles := Render.Dynamic.ParticleState.create 1000000 1920.0 1080.0 123
+  IO.println s!"Created {spriteParticles.count} bouncing sprites"
 
   -- No GPU upload needed! Dynamic module sends positions each frame.
   IO.println "Using unified Dynamic rendering - CPU positions, GPU color/NDC."
 
-  -- Display modes: 0 = demo, 1 = grid squares, 2 = triangles, 3 = circles
+  -- Display modes: 0 = demo, 1 = grid squares, 2 = triangles, 3 = circles, 4 = sprites
   let startTime ← IO.monoMsNow
   let mut c := canvas
   let mut displayMode : Nat := 0
   let mut lastTime := startTime
   let mut bouncingState := bouncingParticles
+  let mut spriteState := spriteParticles
   -- FPS counter (smoothed over multiple frames)
   let mut frameCount : Nat := 0
   let mut fpsAccumulator : Float := 0.0
@@ -1003,13 +1023,14 @@ def unifiedDemo : IO Unit := do
     -- Check for Space key (key code 49) to cycle through modes
     let keyCode ← c.getKeyCode
     if keyCode == 49 then  -- Space bar
-      displayMode := (displayMode + 1) % 4
+      displayMode := (displayMode + 1) % 5
       c.clearKey
       match displayMode with
       | 0 => IO.println "Switched to DEMO mode"
       | 1 => IO.println "Switched to GRID (squares) performance test"
       | 2 => IO.println "Switched to TRIANGLES performance test"
-      | _ => IO.println "Switched to CIRCLES (bouncing) performance test"
+      | 3 => IO.println "Switched to CIRCLES (bouncing) performance test"
+      | _ => IO.println "Switched to SPRITES (Bunnymark) performance test"
 
     let ok ← c.beginFrame Color.darkGray
     if ok then
@@ -1039,6 +1060,10 @@ def unifiedDemo : IO Unit := do
         -- Circle performance test: bouncing circles
         bouncingState := bouncingState.updateBouncing dt circleRadius
         c ← renderCircleTest c' t fontMedium bouncingState circleRadius
+      else if displayMode == 4 then
+        -- Sprite performance test: bouncing textured sprites (Bunnymark)
+        spriteState := spriteState.updateBouncing dt spriteHalfSize
+        c ← renderSpriteTest c' t fontMedium spriteState spriteTexture spriteHalfSize
       else
         -- Normal demo mode: grid of demos
         let canvas := c'

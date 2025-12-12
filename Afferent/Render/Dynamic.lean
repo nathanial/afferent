@@ -217,4 +217,49 @@ def drawTrianglesUniform (renderer : FFI.Renderer) (particles : ParticleState)
   let data := buildTriangleDataUniform particles halfSize rotation
   FFI.Renderer.drawDynamicTriangles renderer data particles.count.toUInt32 t particles.screenWidth particles.screenHeight
 
+/-! ## Sprite Data Builders
+
+Build packed float arrays for sprite rendering (textured quads).
+Format: [pixelX, pixelY, rotation, halfSize, alpha] × count (5 floats per sprite) -/
+
+/-- Build sprite data from particle state.
+    Format: [pixelX, pixelY, rotation, halfSize, alpha] × count (5 floats per sprite) -/
+def buildSpriteData (particles : ParticleState) (halfSize : Float)
+    (getRotation : Nat → Float) (getAlpha : Nat → Float) : Array Float := Id.run do
+  let mut data := Array.mkEmpty (particles.count * 5)
+  for i in [:particles.count] do
+    let base := i * 5
+    let x := particles.data[base]!
+    let y := particles.data[base + 1]!
+    data := data.push x
+    data := data.push y
+    data := data.push (getRotation i)
+    data := data.push halfSize
+    data := data.push (getAlpha i)
+  data
+
+/-- Build sprite data with uniform rotation and full opacity. -/
+def buildSpriteDataUniform (particles : ParticleState) (halfSize rotation : Float) : Array Float :=
+  buildSpriteData particles halfSize (fun _ => rotation) (fun _ => 1.0)
+
+/-- Build sprite data with time-based per-particle rotation. -/
+def buildSpriteDataAnimated (particles : ParticleState) (halfSize t spinSpeed : Float) : Array Float :=
+  buildSpriteData particles halfSize
+    (fun i =>
+      let hue := particles.data[i * 5 + 4]!
+      t * spinSpeed + hue * 6.28)
+    (fun _ => 1.0)
+
+/-- Draw sprites with texture. Position from particle state, GPU handles NDC conversion. -/
+def drawSprites (renderer : FFI.Renderer) (texture : FFI.Texture) (particles : ParticleState)
+    (halfSize : Float) (rotation : Float := 0.0) : IO Unit := do
+  let data := buildSpriteDataUniform particles halfSize rotation
+  FFI.Renderer.drawSprites renderer texture data particles.count.toUInt32 particles.screenWidth particles.screenHeight
+
+/-- Draw sprites with time-based rotation animation. -/
+def drawSpritesAnimated (renderer : FFI.Renderer) (texture : FFI.Texture) (particles : ParticleState)
+    (halfSize t spinSpeed : Float) : IO Unit := do
+  let data := buildSpriteDataAnimated particles halfSize t spinSpeed
+  FFI.Renderer.drawSprites renderer texture data particles.count.toUInt32 particles.screenWidth particles.screenHeight
+
 end Afferent.Render.Dynamic

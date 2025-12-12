@@ -9,6 +9,7 @@ static lean_external_class* g_renderer_class = NULL;
 static lean_external_class* g_buffer_class = NULL;
 static lean_external_class* g_font_class = NULL;
 static lean_external_class* g_float_buffer_class = NULL;
+static lean_external_class* g_texture_class = NULL;
 
 // Weak reference so we don't double-free if Lean GC happens after explicit destroy
 static void window_finalizer(void* ptr) {
@@ -32,6 +33,10 @@ static void float_buffer_finalizer(void* ptr) {
     // Same as above
 }
 
+static void texture_finalizer(void* ptr) {
+    // Same as above
+}
+
 // Module initialization
 LEAN_EXPORT lean_obj_res afferent_initialize(uint8_t builtin, lean_obj_arg world) {
     g_window_class = lean_register_external_class(window_finalizer, NULL);
@@ -39,6 +44,7 @@ LEAN_EXPORT lean_obj_res afferent_initialize(uint8_t builtin, lean_obj_arg world
     g_buffer_class = lean_register_external_class(buffer_finalizer, NULL);
     g_font_class = lean_register_external_class(font_finalizer, NULL);
     g_float_buffer_class = lean_register_external_class(float_buffer_finalizer, NULL);
+    g_texture_class = lean_register_external_class(texture_finalizer, NULL);
 
     // Initialize text subsystem
     afferent_text_init();
@@ -849,6 +855,82 @@ LEAN_EXPORT lean_obj_res lean_afferent_renderer_draw_dynamic_triangles(
     }
 
     afferent_renderer_draw_dynamic_triangles(renderer, data, count, (float)time, (float)canvasWidth, (float)canvasHeight);
+
+    free(data);
+    return lean_io_result_mk_ok(lean_box(0));
+}
+
+// ============================================================================
+// Texture/Sprite Rendering FFI
+// ============================================================================
+
+// Load texture from file
+LEAN_EXPORT lean_obj_res lean_afferent_texture_load(
+    lean_obj_arg path_obj,
+    lean_obj_arg world
+) {
+    const char* path = lean_string_cstr(path_obj);
+    AfferentTextureRef texture = NULL;
+    AfferentResult result = afferent_texture_load(path, &texture);
+
+    if (result != AFFERENT_OK) {
+        return lean_io_result_mk_error(lean_mk_io_user_error(
+            lean_mk_string("Failed to load texture")));
+    }
+
+    lean_object* obj = lean_alloc_external(g_texture_class, texture);
+    return lean_io_result_mk_ok(obj);
+}
+
+// Destroy texture
+LEAN_EXPORT lean_obj_res lean_afferent_texture_destroy(
+    lean_obj_arg texture_obj,
+    lean_obj_arg world
+) {
+    AfferentTextureRef texture = (AfferentTextureRef)lean_get_external_data(texture_obj);
+    afferent_texture_destroy(texture);
+    return lean_io_result_mk_ok(lean_box(0));
+}
+
+// Get texture size
+LEAN_EXPORT lean_obj_res lean_afferent_texture_get_size(
+    lean_obj_arg texture_obj,
+    lean_obj_arg world
+) {
+    AfferentTextureRef texture = (AfferentTextureRef)lean_get_external_data(texture_obj);
+    uint32_t width = 0, height = 0;
+    afferent_texture_get_size(texture, &width, &height);
+
+    // Return UInt32 × UInt32 = Prod UInt32 UInt32
+    lean_object* pair = lean_alloc_ctor(0, 2, 0);
+    lean_ctor_set(pair, 0, lean_box_uint32(width));
+    lean_ctor_set(pair, 1, lean_box_uint32(height));
+    return lean_io_result_mk_ok(pair);
+}
+
+// Draw sprites with texture
+// data: [pixelX, pixelY, rotation, halfSizePixels, alpha] × count (5 floats per sprite)
+LEAN_EXPORT lean_obj_res lean_afferent_renderer_draw_sprites(
+    lean_obj_arg renderer_obj,
+    lean_obj_arg texture_obj,
+    lean_obj_arg data_arr,
+    uint32_t count,
+    double canvasWidth,
+    double canvasHeight,
+    lean_obj_arg world
+) {
+    AfferentRendererRef renderer = (AfferentRendererRef)lean_get_external_data(renderer_obj);
+    AfferentTextureRef texture = (AfferentTextureRef)lean_get_external_data(texture_obj);
+
+    // Extract float array data - 5 floats per sprite
+    size_t arr_size = lean_array_size(data_arr);
+    float* data = malloc(arr_size * sizeof(float));
+    for (size_t i = 0; i < arr_size; i++) {
+        lean_object* elem = lean_array_get_core(data_arr, i);
+        data[i] = (float)lean_unbox_float(elem);
+    }
+
+    afferent_renderer_draw_sprites(renderer, texture, data, count, (float)canvasWidth, (float)canvasHeight);
 
     free(data);
     return lean_io_result_mk_ok(lean_box(0));
