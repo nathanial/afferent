@@ -306,6 +306,10 @@ structure Canvas where
   stateStack : StateStack
   /-- Active batch accumulator. When Some, drawing ops add to batch instead of drawing immediately. -/
   batch : Option Batch := none
+  /-- Auto-batch: always accumulates geometry, flushed at endFrame. Reduces per-draw allocations. -/
+  autoBatch : Batch := Batch.withCapacity 100
+  /-- Whether auto-batching is enabled (default: true). Use CanvasM for automatic state threading. -/
+  autoBatchEnabled : Bool := true
   /-- Pre-allocated buffer for instanced rendering (avoids per-frame allocation). -/
   instanceBuffer : Array Float := #[]
   /-- Capacity of instance buffer (in number of instances, not floats). -/
@@ -394,9 +398,18 @@ def flushBatch (c : Canvas) : IO Canvas := do
     c.ctx.drawBatch batch
     pure { c with batch := none }
 
-/-- Check if batching is currently active. -/
+/-- Check if batching is currently active (explicit batch). -/
 def isBatching (c : Canvas) : Bool :=
   c.batch.isSome
+
+/-- Enable or disable auto-batching. When enabled (default), geometry is accumulated
+    and drawn in a single draw call at endFrame. Disable for immediate-mode rendering. -/
+def setAutoBatch (enabled : Bool) (c : Canvas) : Canvas :=
+  { c with autoBatchEnabled := enabled }
+
+/-- Check if auto-batching is enabled. -/
+def isAutoBatching (c : Canvas) : Bool :=
+  c.autoBatchEnabled
 
 /-- Execute an action with batching enabled.
     All shapes drawn within the action are batched and drawn with a single draw call at the end. -/
@@ -459,7 +472,8 @@ def batchInstancedRectsBy (count : Nat)
 
 /-! ## Drawing operations -/
 
-/-- Fill a path using the current state. Batch-aware: adds to batch if active. -/
+/-- Fill a path using the current state. Batch-aware: adds to batch if active.
+    When auto-batching is enabled, geometry is accumulated and drawn at endFrame. -/
 def fillPath (path : Path) (c : Canvas) : IO Canvas := do
   let transformedPath := c.state.transformPath path
   let style := c.state.effectiveFillStyle
@@ -468,23 +482,34 @@ def fillPath (path : Path) (c : Canvas) : IO Canvas := do
   | some batch =>
     pure { c with batch := some (batch.add result) }
   | none =>
-    c.ctx.fillPathWithStyle transformedPath style
-    pure c
+    if c.autoBatchEnabled then
+      -- Auto-batch: accumulate in autoBatch, will be flushed at endFrame
+      pure { c with autoBatch := c.autoBatch.add result }
+    else
+      -- Immediate mode: draw directly (legacy behavior)
+      c.ctx.fillPathWithStyle transformedPath style
+      pure c
 
 /-- Fill a rectangle using the current state. Batch-aware: adds to batch if active.
-    Uses fast path that skips Path allocation - just transforms 4 corners directly. -/
+    Uses fast path that skips Path allocation - just transforms 4 corners directly.
+    When auto-batching is enabled, geometry is accumulated and drawn at endFrame. -/
 def fillRect (rect : Rect) (c : Canvas) : IO Canvas := do
   let transform := c.state.transform
   let style := c.state.effectiveFillStyle
   match c.batch with
   | some batch =>
-    -- FAST PATH: write directly into batch arrays, no intermediate allocation
+    -- Explicit batch: write directly into batch arrays
     let batch' := batch.addTransformedRect rect transform style c.ctx.baseWidth c.ctx.baseHeight
     pure { c with batch := some batch' }
   | none =>
-    -- Non-batched: use normal tessellation
-    c.ctx.fillTransformedRectWithStyle rect transform style
-    pure c
+    if c.autoBatchEnabled then
+      -- Auto-batch: accumulate in autoBatch, will be flushed at endFrame
+      let autoBatch' := c.autoBatch.addTransformedRect rect transform style c.ctx.baseWidth c.ctx.baseHeight
+      pure { c with autoBatch := autoBatch' }
+    else
+      -- Immediate mode: draw directly (legacy behavior)
+      c.ctx.fillTransformedRectWithStyle rect transform style
+      pure c
 
 /-- Fill a rectangle specified by x, y, width, height using current state. -/
 def fillRectXYWH (x y width height : Float) (c : Canvas) : IO Canvas :=
@@ -510,7 +535,8 @@ private def effectiveStrokeStyle (c : Canvas) : StrokeStyle :=
   { state.strokeStyle with
     color := state.effectiveStrokeColor }
 
-/-- Stroke a path using the current state. Batch-aware: adds to batch if active. -/
+/-- Stroke a path using the current state. Batch-aware: adds to batch if active.
+    When auto-batching is enabled, geometry is accumulated and drawn at endFrame. -/
 def strokePath (path : Path) (c : Canvas) : IO Canvas := do
   let transformedPath := c.state.transformPath path
   let style := c.effectiveStrokeStyle
@@ -519,8 +545,13 @@ def strokePath (path : Path) (c : Canvas) : IO Canvas := do
   | some batch =>
     pure { c with batch := some (batch.add result) }
   | none =>
-    c.ctx.strokePath transformedPath style
-    pure c
+    if c.autoBatchEnabled then
+      -- Auto-batch: accumulate in autoBatch, will be flushed at endFrame
+      pure { c with autoBatch := c.autoBatch.add result }
+    else
+      -- Immediate mode: draw directly (legacy behavior)
+      c.ctx.strokePath transformedPath style
+      pure c
 
 /-- Stroke a rectangle using the current state. -/
 def strokeRect (rect : Rect) (c : Canvas) : IO Canvas :=
@@ -548,12 +579,22 @@ def drawLine (p1 p2 : Point) (c : Canvas) : IO Canvas :=
 
 /-! ## Text operations -/
 
+/-- Flush the auto-batch if it has any pending geometry.
+    Used internally before operations that require a different pipeline (e.g., text). -/
+private def flushAutoBatch (c : Canvas) : IO Canvas := do
+  if c.autoBatchEnabled && !c.autoBatch.isEmpty then
+    c.ctx.drawBatch c.autoBatch
+    pure { c with autoBatch := Batch.withCapacity 100 }
+  else
+    pure c
+
 /-- Draw text at a position with a font using the current fill color and transform.
     Note: Text uses a different shader and cannot be batched with shapes.
-    If batching is active, the batch is flushed before drawing text. -/
+    If batching is active, both explicit batch and auto-batch are flushed before drawing text. -/
 def fillText (text : String) (pos : Point) (font : Font) (c : Canvas) : IO Canvas := do
-  -- Flush any pending batch since text uses different pipeline
+  -- Flush any pending batches since text uses different pipeline
   let c ← c.flushBatch
+  let c ← c.flushAutoBatch
   let color := c.state.effectiveFillColor
   let transform := c.state.transform
   c.ctx.fillTextTransformed text pos font color transform
@@ -565,8 +606,9 @@ def fillTextXY (text : String) (x y : Float) (font : Font) (c : Canvas) : IO Can
 
 /-- Draw text with an explicit color (still uses current transform). -/
 def fillTextColor (text : String) (pos : Point) (font : Font) (color : Color) (c : Canvas) : IO Canvas := do
-  -- Flush any pending batch since text uses different pipeline
+  -- Flush any pending batches since text uses different pipeline
   let c ← c.flushBatch
+  let c ← c.flushAutoBatch
   let transform := c.state.transform
   c.ctx.fillTextTransformed text pos font color transform
   pure c
@@ -594,8 +636,20 @@ def clearKey (c : Canvas) : IO Unit :=
 def beginFrame (clearColor : Color) (c : Canvas) : IO Bool :=
   c.ctx.beginFrame clearColor
 
-def endFrame (c : Canvas) : IO Unit :=
+/-- End the current frame. Flushes auto-batch if enabled and presents.
+    Returns updated Canvas with reset autoBatch for next frame. -/
+def endFrame (c : Canvas) : IO Canvas := do
+  -- Flush auto-batch if enabled and has geometry
+  if c.autoBatchEnabled && !c.autoBatch.isEmpty then
+    c.ctx.drawBatch c.autoBatch
   c.ctx.endFrame
+  -- Reset autoBatch for next frame (reuse capacity hint from original size)
+  pure { c with autoBatch := Batch.withCapacity 100 }
+
+/-- End the current frame (unit version for compatibility).
+    Prefer using endFrame when you need the updated Canvas. -/
+def endFrame' (c : Canvas) : IO Unit := do
+  discard (c.endFrame)
 
 def destroy (c : Canvas) : IO Unit :=
   c.ctx.destroy
@@ -615,8 +669,11 @@ def resetScissor (c : Canvas) : IO Unit :=
   c.ctx.resetScissor
 
 /-- Set a clip rectangle in logical canvas coordinates.
-    The coordinates will be scaled to match the current drawable size. -/
-def clip (rect : Rect) (c : Canvas) : IO Unit := do
+    The coordinates will be scaled to match the current drawable size.
+    Flushes any pending auto-batch geometry before setting the scissor. -/
+def clip (rect : Rect) (c : Canvas) : IO Canvas := do
+  -- Flush pending geometry so it renders without the new clip
+  let c ← c.flushAutoBatch
   let (drawW, drawH) ← c.ctx.getCurrentSize
   let scaleX := drawW / c.ctx.baseWidth
   let scaleY := drawH / c.ctx.baseHeight
@@ -625,10 +682,15 @@ def clip (rect : Rect) (c : Canvas) : IO Unit := do
   let w := (rect.width * scaleX).toUInt32
   let h := (rect.height * scaleY).toUInt32
   c.ctx.setScissor x y w h
+  pure c
 
-/-- Remove clipping and restore full viewport. -/
-def unclip (c : Canvas) : IO Unit :=
+/-- Remove clipping and restore full viewport.
+    Flushes any pending auto-batch geometry before resetting the scissor. -/
+def unclip (c : Canvas) : IO Canvas := do
+  -- Flush pending geometry so it renders with the current clip
+  let c ← c.flushAutoBatch
   c.ctx.resetScissor
+  pure c
 
 /-- Run a render loop with a Canvas that maintains state across frames.
     The draw function can return a modified Canvas with updated state. -/
@@ -639,7 +701,7 @@ def runLoop (c : Canvas) (clearColor : Color) (draw : Canvas → IO Canvas) : IO
     let ok ← canvas.beginFrame clearColor
     if ok then
       canvas ← draw canvas
-      canvas.endFrame
+      canvas ← canvas.endFrame
 
 /-- Run a render loop with time parameter (in seconds since start).
     The draw function receives canvas and elapsed time. -/
@@ -653,8 +715,109 @@ def runLoopWithTime (c : Canvas) (clearColor : Color) (draw : Canvas → Float �
       let now ← IO.monoMsNow
       let elapsed := (now - startTime).toFloat / 1000.0  -- Convert ms to seconds
       canvas ← draw canvas elapsed
-      canvas.endFrame
+      canvas ← canvas.endFrame
 
 end Canvas
+
+/-! ## CanvasM - StateT-based Canvas Monad for automatic state threading -/
+
+/-- Canvas monad that automatically threads Canvas state through operations.
+    Use this to avoid manually passing Canvas through every drawing operation. -/
+abbrev CanvasM := StateT Canvas IO
+
+namespace CanvasM
+
+/-- Run a CanvasM action with an initial canvas, returning the result and final canvas. -/
+def run (c : Canvas) (action : CanvasM α) : IO (α × Canvas) :=
+  StateT.run action c
+
+/-- Run a CanvasM action, returning only the final canvas. -/
+def run' (c : Canvas) (action : CanvasM Unit) : IO Canvas := do
+  let ((), c') ← StateT.run action c
+  pure c'
+
+/-- Get the current canvas. -/
+def getCanvas : CanvasM Canvas := get
+
+/-- Replace the current canvas. -/
+def setCanvas (c : Canvas) : CanvasM Unit := set c
+
+/-- Modify the canvas with a pure function. -/
+def modifyCanvas (f : Canvas → Canvas) : CanvasM Unit := modify f
+
+/-- Lift an IO action that takes and returns Canvas. -/
+def liftCanvas (f : Canvas → IO Canvas) : CanvasM Unit := do
+  let c ← get
+  let c' ← f c
+  set c'
+
+/-! ## Transform operations -/
+
+def save : CanvasM Unit := modifyCanvas Canvas.save
+def restore : CanvasM Unit := modifyCanvas Canvas.restore
+def translate (dx dy : Float) : CanvasM Unit := modifyCanvas (Canvas.translate dx dy)
+def rotate (angle : Float) : CanvasM Unit := modifyCanvas (Canvas.rotate angle)
+def scale (sx sy : Float) : CanvasM Unit := modifyCanvas (Canvas.scale sx sy)
+def scaleUniform (s : Float) : CanvasM Unit := modifyCanvas (Canvas.scaleUniform s)
+def resetTransform : CanvasM Unit := modifyCanvas Canvas.resetTransform
+
+/-! ## Style operations -/
+
+def setFillColor (color : Color) : CanvasM Unit := modifyCanvas (Canvas.setFillColor color)
+def setStrokeColor (color : Color) : CanvasM Unit := modifyCanvas (Canvas.setStrokeColor color)
+def setLineWidth (w : Float) : CanvasM Unit := modifyCanvas (Canvas.setLineWidth w)
+def setGlobalAlpha (a : Float) : CanvasM Unit := modifyCanvas (Canvas.setGlobalAlpha a)
+def setFillStyle (style : FillStyle) : CanvasM Unit := modifyCanvas (Canvas.setFillStyle style)
+def setFillLinearGradient (start finish : Point) (stops : Array GradientStop) : CanvasM Unit :=
+  modifyCanvas (Canvas.setFillLinearGradient start finish stops)
+def setFillRadialGradient (center : Point) (radius : Float) (stops : Array GradientStop) : CanvasM Unit :=
+  modifyCanvas (Canvas.setFillRadialGradient center radius stops)
+
+/-! ## Drawing operations -/
+
+def fillPath (path : Path) : CanvasM Unit := liftCanvas (Canvas.fillPath path)
+def fillRect (rect : Rect) : CanvasM Unit := liftCanvas (Canvas.fillRect rect)
+def fillRectXYWH (x y width height : Float) : CanvasM Unit := liftCanvas (Canvas.fillRectXYWH x y width height)
+def fillCircle (center : Point) (radius : Float) : CanvasM Unit := liftCanvas (Canvas.fillCircle center radius)
+def fillEllipse (center : Point) (radiusX radiusY : Float) : CanvasM Unit := liftCanvas (Canvas.fillEllipse center radiusX radiusY)
+def fillRoundedRect (rect : Rect) (cornerRadius : Float) : CanvasM Unit := liftCanvas (Canvas.fillRoundedRect rect cornerRadius)
+
+def strokePath (path : Path) : CanvasM Unit := liftCanvas (Canvas.strokePath path)
+def strokeRect (rect : Rect) : CanvasM Unit := liftCanvas (Canvas.strokeRect rect)
+def strokeRectXYWH (x y width height : Float) : CanvasM Unit := liftCanvas (Canvas.strokeRectXYWH x y width height)
+def strokeCircle (center : Point) (radius : Float) : CanvasM Unit := liftCanvas (Canvas.strokeCircle center radius)
+def strokeEllipse (center : Point) (radiusX radiusY : Float) : CanvasM Unit := liftCanvas (Canvas.strokeEllipse center radiusX radiusY)
+def strokeRoundedRect (rect : Rect) (cornerRadius : Float) : CanvasM Unit := liftCanvas (Canvas.strokeRoundedRect rect cornerRadius)
+def drawLine (p1 p2 : Point) : CanvasM Unit := liftCanvas (Canvas.drawLine p1 p2)
+
+/-! ## Text operations -/
+
+def fillText (text : String) (pos : Point) (font : Font) : CanvasM Unit := liftCanvas (Canvas.fillText text pos font)
+def fillTextXY (text : String) (x y : Float) (font : Font) : CanvasM Unit := liftCanvas (Canvas.fillTextXY text x y font)
+def fillTextColor (text : String) (pos : Point) (font : Font) (color : Color) : CanvasM Unit :=
+  liftCanvas (Canvas.fillTextColor text pos font color)
+def measureText (text : String) (font : Font) : CanvasM (Float × Float) := do
+  let c ← get
+  c.measureText text font
+
+/-! ## Clipping -/
+
+def clip (rect : Rect) : CanvasM Unit := liftCanvas (Canvas.clip rect)
+def unclip : CanvasM Unit := liftCanvas Canvas.unclip
+
+/-! ## Batching -/
+
+def beginBatch (capacityHint : Nat := 1000) : CanvasM Unit := modifyCanvas (fun c => Canvas.beginBatch c capacityHint)
+def flushBatch : CanvasM Unit := liftCanvas Canvas.flushBatch
+def setAutoBatch (enabled : Bool) : CanvasM Unit := modifyCanvas (Canvas.setAutoBatch enabled)
+
+/-! ## Accessors -/
+
+def baseWidth : CanvasM Float := do return (← get).baseWidth
+def baseHeight : CanvasM Float := do return (← get).baseHeight
+def width : CanvasM Float := do (← get).width
+def height : CanvasM Float := do (← get).height
+
+end CanvasM
 
 end Afferent

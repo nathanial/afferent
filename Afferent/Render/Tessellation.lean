@@ -19,6 +19,10 @@ deriving Repr, Inhabited
 
 namespace Tessellation
 
+/-- Cached rectangle indices for two triangles (0,1,2) and (0,2,3).
+    Reused across all rectangle tessellation to avoid repeated allocation. -/
+private def rectIndices : Array UInt32 := #[0, 1, 2, 0, 2, 3]
+
 /-- Flatten a cubic Bezier curve to line segments using de Casteljau subdivision.
     Returns array of points (excluding start point, which caller already has). -/
 partial def flattenCubicBezier (p0 p1 p2 p3 : Point) (tolerance : Float := 0.5) : Array Point :=
@@ -145,10 +149,7 @@ def tessellateRect (r : Rect) (color : Color) : TessellationResult :=
     bl.x, bl.y, color.r, color.g, color.b, color.a   -- 3: bottom-left
   ]
 
-  -- Two triangles: (0,1,2) and (0,2,3)
-  let indices : Array UInt32 := #[0, 1, 2, 0, 2, 3]
-
-  { vertices, indices }
+  { vertices, indices := rectIndices }
 
 /-- Tessellate a convex path with a solid color. -/
 def tessellateConvexPath (path : Path) (color : Color) (tolerance : Float := 0.5) : TessellationResult := Id.run do
@@ -192,8 +193,7 @@ def tessellateRectNDC (r : Rect) (color : Color) (screenWidth screenHeight : Flo
     bl.x, bl.y, color.r, color.g, color.b, color.a
   ]
 
-  let indices : Array UInt32 := #[0, 1, 2, 0, 2, 3]
-  { vertices, indices }
+  { vertices, indices := rectIndices }
 
 /-- Tessellate a convex path with pixel coordinates, converting to NDC. -/
 def tessellateConvexPathNDC (path : Path) (color : Color)
@@ -341,8 +341,7 @@ def tessellateRectFillNDC (r : Rect) (style : FillStyle) (screenWidth screenHeig
     blNDC.x, blNDC.y, blColor.r, blColor.g, blColor.b, blColor.a
   ]
 
-  let indices : Array UInt32 := #[0, 1, 2, 0, 2, 3]
-  { vertices, indices }
+  { vertices, indices := rectIndices }
 
 /-- Fast path: Tessellate a rectangle with pre-transformed corners.
     Skips Path creation entirely - just transforms 4 points and outputs triangles.
@@ -376,8 +375,7 @@ def tessellateTransformedRectNDC
     blNDC.x, blNDC.y, blColor.r, blColor.g, blColor.b, blColor.a
   ]
 
-  let indices : Array UInt32 := #[0, 1, 2, 0, 2, 3]
-  { vertices, indices }
+  { vertices, indices := rectIndices }
 
 /-! ## Stroke Tessellation -/
 
@@ -654,25 +652,33 @@ def withCapacity (shapeCount : Nat) : Batch :=
     vertexCount := 0 }
 
 /-- Add a tessellation result to the batch.
-    Indices are automatically remapped to account for existing vertices. -/
+    Indices are automatically remapped to account for existing vertices.
+    Uses in-place push loop to avoid intermediate array allocation from .map -/
 def add (batch : Batch) (result : TessellationResult) : Batch :=
   if result.vertices.size == 0 then batch
-  else
+  else Id.run do
     let offset := batch.vertexCount.toUInt32
-    let remappedIndices := result.indices.map (· + offset)
+    -- Push indices one by one with offset applied inline (no intermediate array)
+    let mut indices := batch.indices
+    for idx in result.indices do
+      indices := indices.push (idx + offset)
     { vertices := batch.vertices ++ result.vertices
-      indices := batch.indices ++ remappedIndices
+      indices := indices
       vertexCount := batch.vertexCount + result.vertices.size / 6 }
 
-/-- Combine two batches. -/
+/-- Combine two batches.
+    Uses in-place push loop to avoid intermediate array allocation from .map -/
 def append (b1 b2 : Batch) : Batch :=
   if b2.vertices.size == 0 then b1
   else if b1.vertices.size == 0 then b2
-  else
+  else Id.run do
     let offset := b1.vertexCount.toUInt32
-    let remappedIndices := b2.indices.map (· + offset)
+    -- Push indices one by one with offset applied inline (no intermediate array)
+    let mut indices := b1.indices
+    for idx in b2.indices do
+      indices := indices.push (idx + offset)
     { vertices := b1.vertices ++ b2.vertices
-      indices := b1.indices ++ remappedIndices
+      indices := indices
       vertexCount := b1.vertexCount + b2.vertexCount }
 
 /-- FAST PATH: Add a transformed rectangle directly to the batch.
