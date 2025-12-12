@@ -157,6 +157,17 @@ LEAN_EXPORT lean_obj_res lean_afferent_renderer_begin_frame(
     return lean_io_result_mk_ok(lean_box(1)); // true
 }
 
+// Enable/disable MSAA for subsequent frames
+LEAN_EXPORT lean_obj_res lean_afferent_renderer_set_msaa_enabled(
+    lean_obj_arg renderer_obj,
+    uint8_t enabled,
+    lean_obj_arg world
+) {
+    AfferentRendererRef renderer = (AfferentRendererRef)lean_get_external_data(renderer_obj);
+    afferent_renderer_set_msaa_enabled(renderer, enabled != 0);
+    return lean_io_result_mk_ok(lean_box(0));
+}
+
 // End frame
 LEAN_EXPORT lean_obj_res lean_afferent_renderer_end_frame(lean_obj_arg renderer_obj, lean_obj_arg world) {
     AfferentRendererRef renderer = (AfferentRendererRef)lean_get_external_data(renderer_obj);

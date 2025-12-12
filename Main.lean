@@ -1013,6 +1013,7 @@ def unifiedDemo : IO Unit := do
   let startTime ← IO.monoMsNow
   let mut c := canvas
   let mut displayMode : Nat := 0
+  let mut msaaEnabled : Bool := true
   let mut lastTime := startTime
   let mut bouncingState := bouncingParticles
   let mut spriteState := spriteParticles
@@ -1029,6 +1030,9 @@ def unifiedDemo : IO Unit := do
     if keyCode == 49 then  -- Space bar
       displayMode := (displayMode + 1) % 5
       c.clearKey
+      -- Disable MSAA only for sprite benchmark mode to maximize throughput
+      msaaEnabled := displayMode != 4
+      FFI.Renderer.setMSAAEnabled c.ctx.renderer msaaEnabled
       match displayMode with
       | 0 => IO.println "Switched to DEMO mode"
       | 1 => IO.println "Switched to GRID (squares) performance test"

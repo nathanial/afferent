@@ -62,6 +62,9 @@ void afferent_renderer_destroy(AfferentRendererRef renderer);
 AfferentResult afferent_renderer_begin_frame(AfferentRendererRef renderer, float r, float g, float b, float a);
 AfferentResult afferent_renderer_end_frame(AfferentRendererRef renderer);
 
+// Enable/disable MSAA for subsequent frames.
+void afferent_renderer_set_msaa_enabled(AfferentRendererRef renderer, bool enabled);
+
 // Buffer management
 AfferentResult afferent_buffer_create_vertex(
     AfferentRendererRef renderer,

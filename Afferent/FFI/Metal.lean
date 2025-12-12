@@ -68,6 +68,10 @@ opaque Renderer.beginFrame (renderer : @& Renderer) (r g b a : Float) : IO Bool
 @[extern "lean_afferent_renderer_end_frame"]
 opaque Renderer.endFrame (renderer : @& Renderer) : IO Unit
 
+-- Enable/disable MSAA for subsequent frames.
+@[extern "lean_afferent_renderer_set_msaa_enabled"]
+opaque Renderer.setMSAAEnabled (renderer : @& Renderer) (enabled : Bool) : IO Unit
+
 -- Buffer management
 -- Vertices: Array of Float, 6 per vertex (pos.x, pos.y, color.r, color.g, color.b, color.a)
 @[extern "lean_afferent_buffer_create_vertex"]

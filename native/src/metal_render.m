@@ -939,8 +939,18 @@ struct AfferentRenderer {
     AfferentWindowRef window;
     id<MTLDevice> device;
     id<MTLCommandQueue> commandQueue;
+    bool msaaEnabled;                                  // Per-frame MSAA toggle
+    // Active pipeline pointers (match current render pass sample count)
     id<MTLRenderPipelineState> pipelineState;
     id<MTLRenderPipelineState> textPipelineState;      // For text rendering
+    id<MTLRenderPipelineState> spritePipelineState;    // For sprite/texture rendering
+    // MSAA / non-MSAA variants for pipelines used in sprite benchmark
+    id<MTLRenderPipelineState> pipelineStateMSAA;
+    id<MTLRenderPipelineState> pipelineStateNoMSAA;
+    id<MTLRenderPipelineState> textPipelineStateMSAA;
+    id<MTLRenderPipelineState> textPipelineStateNoMSAA;
+    id<MTLRenderPipelineState> spritePipelineStateMSAA;
+    id<MTLRenderPipelineState> spritePipelineStateNoMSAA;
     id<MTLRenderPipelineState> instancedPipelineState; // For instanced rect rendering
     id<MTLRenderPipelineState> trianglePipelineState;  // For instanced triangle rendering
     id<MTLRenderPipelineState> circlePipelineState;    // For instanced circle rendering
@@ -952,7 +962,6 @@ struct AfferentRenderer {
     id<MTLRenderPipelineState> dynamicCirclePipelineState;  // For dynamic position circles
     id<MTLRenderPipelineState> dynamicRectPipelineState;    // For dynamic position rects
     id<MTLRenderPipelineState> dynamicTrianglePipelineState; // For dynamic position triangles
-    id<MTLRenderPipelineState> spritePipelineState;    // For sprite/texture rendering
     id<MTLSamplerState> textSampler;                   // For text texture sampling
     id<MTLSamplerState> spriteSampler;                 // For sprite texture sampling
     id<MTLCommandBuffer> currentCommandBuffer;
@@ -1138,13 +1147,13 @@ AfferentResult afferent_renderer_create(
         vertexDescriptor.layouts[0].stride = sizeof(AfferentVertex);
         vertexDescriptor.layouts[0].stepFunction = MTLVertexStepFunctionPerVertex;
 
-        // Create pipeline state
+        // Create pipeline states (MSAA + non-MSAA)
         MTLRenderPipelineDescriptor *pipelineDesc = [[MTLRenderPipelineDescriptor alloc] init];
         pipelineDesc.vertexFunction = vertexFunction;
         pipelineDesc.fragmentFunction = fragmentFunction;
         pipelineDesc.vertexDescriptor = vertexDescriptor;
         pipelineDesc.colorAttachments[0].pixelFormat = MTLPixelFormatBGRA8Unorm;
-        pipelineDesc.rasterSampleCount = 4;  // Enable 4x MSAA
+        pipelineDesc.rasterSampleCount = 4;  // Enable 4x MSAA by default
 
         // Enable blending for transparency
         pipelineDesc.colorAttachments[0].blendingEnabled = YES;
@@ -1153,13 +1162,25 @@ AfferentResult afferent_renderer_create(
         pipelineDesc.colorAttachments[0].sourceAlphaBlendFactor = MTLBlendFactorOne;
         pipelineDesc.colorAttachments[0].destinationAlphaBlendFactor = MTLBlendFactorOneMinusSourceAlpha;
 
-        renderer->pipelineState = [renderer->device newRenderPipelineStateWithDescriptor:pipelineDesc
-                                                                                   error:&error];
-        if (!renderer->pipelineState) {
-            NSLog(@"Pipeline creation failed: %@", error);
+        renderer->pipelineStateMSAA = [renderer->device newRenderPipelineStateWithDescriptor:pipelineDesc
+                                                                                       error:&error];
+        if (!renderer->pipelineStateMSAA) {
+            NSLog(@"Pipeline creation failed (MSAA): %@", error);
             free(renderer);
             return AFFERENT_ERROR_PIPELINE_FAILED;
         }
+
+        pipelineDesc.rasterSampleCount = 1;
+        renderer->pipelineStateNoMSAA = [renderer->device newRenderPipelineStateWithDescriptor:pipelineDesc
+                                                                                         error:&error];
+        if (!renderer->pipelineStateNoMSAA) {
+            NSLog(@"Pipeline creation failed (no MSAA): %@", error);
+            free(renderer);
+            return AFFERENT_ERROR_PIPELINE_FAILED;
+        }
+
+        renderer->pipelineState = renderer->pipelineStateMSAA;
+        renderer->msaaEnabled = true;
 
         // Create text rendering pipeline
         id<MTLLibrary> textLibrary = [renderer->device newLibraryWithSource:textShaderSource
@@ -1202,13 +1223,13 @@ AfferentResult afferent_renderer_create(
         textVertexDescriptor.layouts[0].stride = sizeof(TextVertex);
         textVertexDescriptor.layouts[0].stepFunction = MTLVertexStepFunctionPerVertex;
 
-        // Create text pipeline state
+        // Create text pipeline states (MSAA + non-MSAA)
         MTLRenderPipelineDescriptor *textPipelineDesc = [[MTLRenderPipelineDescriptor alloc] init];
         textPipelineDesc.vertexFunction = textVertexFunction;
         textPipelineDesc.fragmentFunction = textFragmentFunction;
         textPipelineDesc.vertexDescriptor = textVertexDescriptor;
         textPipelineDesc.colorAttachments[0].pixelFormat = MTLPixelFormatBGRA8Unorm;
-        textPipelineDesc.rasterSampleCount = 4;  // Match MSAA
+        textPipelineDesc.rasterSampleCount = 4;  // Match MSAA by default
 
         // Enable blending for text
         textPipelineDesc.colorAttachments[0].blendingEnabled = YES;
@@ -1217,13 +1238,24 @@ AfferentResult afferent_renderer_create(
         textPipelineDesc.colorAttachments[0].sourceAlphaBlendFactor = MTLBlendFactorOne;
         textPipelineDesc.colorAttachments[0].destinationAlphaBlendFactor = MTLBlendFactorOneMinusSourceAlpha;
 
-        renderer->textPipelineState = [renderer->device newRenderPipelineStateWithDescriptor:textPipelineDesc
-                                                                                       error:&error];
-        if (!renderer->textPipelineState) {
-            NSLog(@"Text pipeline creation failed: %@", error);
+        renderer->textPipelineStateMSAA = [renderer->device newRenderPipelineStateWithDescriptor:textPipelineDesc
+                                                                                           error:&error];
+        if (!renderer->textPipelineStateMSAA) {
+            NSLog(@"Text pipeline creation failed (MSAA): %@", error);
             free(renderer);
             return AFFERENT_ERROR_PIPELINE_FAILED;
         }
+
+        textPipelineDesc.rasterSampleCount = 1;
+        renderer->textPipelineStateNoMSAA = [renderer->device newRenderPipelineStateWithDescriptor:textPipelineDesc
+                                                                                             error:&error];
+        if (!renderer->textPipelineStateNoMSAA) {
+            NSLog(@"Text pipeline creation failed (no MSAA): %@", error);
+            free(renderer);
+            return AFFERENT_ERROR_PIPELINE_FAILED;
+        }
+
+        renderer->textPipelineState = renderer->textPipelineStateMSAA;
 
         // Create text sampler
         MTLSamplerDescriptor *samplerDesc = [[MTLSamplerDescriptor alloc] init];
@@ -1611,13 +1643,24 @@ AfferentResult afferent_renderer_create(
         spritePipelineDesc.colorAttachments[0].sourceAlphaBlendFactor = MTLBlendFactorOne;
         spritePipelineDesc.colorAttachments[0].destinationAlphaBlendFactor = MTLBlendFactorOneMinusSourceAlpha;
 
-        renderer->spritePipelineState = [renderer->device newRenderPipelineStateWithDescriptor:spritePipelineDesc
-                                                                                         error:&error];
-        if (!renderer->spritePipelineState) {
-            NSLog(@"Sprite pipeline creation failed: %@", error);
+        renderer->spritePipelineStateMSAA = [renderer->device newRenderPipelineStateWithDescriptor:spritePipelineDesc
+                                                                                             error:&error];
+        if (!renderer->spritePipelineStateMSAA) {
+            NSLog(@"Sprite pipeline creation failed (MSAA): %@", error);
             free(renderer);
             return AFFERENT_ERROR_PIPELINE_FAILED;
         }
+
+        spritePipelineDesc.rasterSampleCount = 1;
+        renderer->spritePipelineStateNoMSAA = [renderer->device newRenderPipelineStateWithDescriptor:spritePipelineDesc
+                                                                                               error:&error];
+        if (!renderer->spritePipelineStateNoMSAA) {
+            NSLog(@"Sprite pipeline creation failed (no MSAA): %@", error);
+            free(renderer);
+            return AFFERENT_ERROR_PIPELINE_FAILED;
+        }
+
+        renderer->spritePipelineState = renderer->spritePipelineStateMSAA;
 
         // Initialize animated buffer pointers to nil
         renderer->animatedRectBuffer = nil;
@@ -1640,6 +1683,16 @@ void afferent_renderer_destroy(AfferentRendererRef renderer) {
     if (renderer) {
         free(renderer);
     }
+}
+
+// Toggle MSAA for subsequent frames. This only switches the active pipelines and
+// beginFrame render pass configuration; it doesn't rebuild resources.
+void afferent_renderer_set_msaa_enabled(AfferentRendererRef renderer, bool enabled) {
+    if (!renderer) return;
+    renderer->msaaEnabled = enabled;
+    renderer->pipelineState = enabled ? renderer->pipelineStateMSAA : renderer->pipelineStateNoMSAA;
+    renderer->textPipelineState = enabled ? renderer->textPipelineStateMSAA : renderer->textPipelineStateNoMSAA;
+    renderer->spritePipelineState = enabled ? renderer->spritePipelineStateMSAA : renderer->spritePipelineStateNoMSAA;
 }
 
 // Helper function to create or recreate MSAA texture if needed
@@ -1685,21 +1738,29 @@ AfferentResult afferent_renderer_begin_frame(AfferentRendererRef renderer, float
             return AFFERENT_ERROR_INIT_FAILED;
         }
 
-        // Ensure MSAA texture matches drawable size
         id<MTLTexture> drawableTexture = renderer->currentDrawable.texture;
-        ensureMSAATexture(renderer, drawableTexture.width, drawableTexture.height);
 
         // Store screen dimensions for text rendering
         renderer->screenWidth = drawableTexture.width;
         renderer->screenHeight = drawableTexture.height;
 
-        // Set up render pass with MSAA
         MTLRenderPassDescriptor *passDesc = [MTLRenderPassDescriptor renderPassDescriptor];
-        passDesc.colorAttachments[0].texture = renderer->msaaTexture;        // Render to MSAA texture
-        passDesc.colorAttachments[0].resolveTexture = drawableTexture;       // Resolve to drawable
         passDesc.colorAttachments[0].loadAction = MTLLoadActionClear;
-        passDesc.colorAttachments[0].storeAction = MTLStoreActionMultisampleResolve;  // Resolve on store
         passDesc.colorAttachments[0].clearColor = MTLClearColorMake(r, g, b, a);
+
+        if (renderer->msaaEnabled) {
+            // Ensure MSAA texture matches drawable size
+            ensureMSAATexture(renderer, drawableTexture.width, drawableTexture.height);
+            // Render to MSAA texture and resolve to drawable
+            passDesc.colorAttachments[0].texture = renderer->msaaTexture;
+            passDesc.colorAttachments[0].resolveTexture = drawableTexture;
+            passDesc.colorAttachments[0].storeAction = MTLStoreActionMultisampleResolve;
+        } else {
+            // Render directly to drawable without MSAA
+            passDesc.colorAttachments[0].texture = drawableTexture;
+            passDesc.colorAttachments[0].resolveTexture = nil;
+            passDesc.colorAttachments[0].storeAction = MTLStoreActionStore;
+        }
 
         renderer->currentEncoder = [renderer->currentCommandBuffer renderCommandEncoderWithDescriptor:passDesc];
         if (!renderer->currentEncoder) {
