@@ -998,11 +998,11 @@ def unifiedDemo : IO Unit := do
   IO.println s!"Created {gridParticles.count} grid particles"
 
   -- Bouncing circles using Dynamic.ParticleState
-  let bouncingParticles := Render.Dynamic.ParticleState.create 100000 1920.0 1080.0 42
+  let bouncingParticles := Render.Dynamic.ParticleState.create 1000000 1920.0 1080.0 42
   IO.println s!"Created {bouncingParticles.count} bouncing circles"
 
   -- Sprite particles for Bunnymark-style benchmark (Lean physics, FloatBuffer rendering)
-  let spriteParticles := Render.Dynamic.ParticleState.create 100000 1920.0 1080.0 123
+  let spriteParticles := Render.Dynamic.ParticleState.create 1000000 1920.0 1080.0 123
   let spriteBuffer ← FFI.FloatBuffer.create (spriteParticles.count.toUSize * 5)  -- 5 floats per sprite
   IO.println s!"Created {spriteParticles.count} bouncing sprites (Lean physics, FloatBuffer rendering)"
 
