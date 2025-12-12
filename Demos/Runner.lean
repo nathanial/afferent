@@ -8,6 +8,7 @@ import Demos.Strokes
 import Demos.Gradients
 import Demos.Text
 import Demos.Animations
+import Demos.Layout
 import Demos.Collimator
 import Demos.GridPerf
 import Demos.TrianglesPerf
@@ -230,19 +231,18 @@ def unifiedDemo : IO Unit := do
           restore
           unclip
 
-          -- Cell 1,2: Animations demo (bottom-right) - THE DISCO PARTY!
+          -- Cell 1,2: Layout demo (bottom-right)
           let cellRect12 := Rect.mk' cellWidth (cellHeight * 2) cellWidth cellHeight
           clip cellRect12
-          -- Animated background color
-          let bgHue := (t * 0.1) - (t * 0.1).floor
-          let bg12 := hsvToRgb bgHue 0.3 0.15
+          let bg12 := Color.hsva 0.75 0.25 0.20 1.0  -- Dark purple-gray
           setFillColor bg12
           fillRect cellRect12
-          setFillColor (Color.hsva 0.0 0.0 1.0 0.7)
-          fillTextXY "Cell: 1,2 - DISCO PARTY!" (cellWidth + 10) (cellHeight * 2 + 20) fontSmall
+          setFillColor (Color.hsva 0.0 0.0 1.0 0.5)
+          fillTextXY "Cell: 1,2 - Layout" (cellWidth + 10) (cellHeight * 2 + 20) fontSmall
           save
-          translate cellWidth (cellHeight * 2 + 30)
-          renderAnimationsM t
+          translate cellWidth (cellHeight * 2)
+          scale 0.45 0.45
+          renderLayoutM
           restore
           unclip
 

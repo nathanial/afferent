@@ -20,3 +20,6 @@ import Afferent.Text.Font
 
 -- FFI
 import Afferent.FFI.Metal
+
+-- Layout
+import Afferent.Layout

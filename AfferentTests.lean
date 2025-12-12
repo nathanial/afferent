@@ -3,6 +3,7 @@
   Entry point for running all tests.
 -/
 import Afferent.Tests.TessellationTests
+import Afferent.Tests.LayoutTests
 
 open Afferent.Tests
 
@@ -16,6 +17,10 @@ def main : IO UInt32 := do
   -- Run tessellation tests
   let tessResult ← TessellationTests.runAllTests
   if tessResult != 0 then exitCode := 1
+
+  -- Run layout tests
+  let layoutResult ← LayoutTests.runAllTests
+  if layoutResult != 0 then exitCode := 1
 
   -- Summary
   IO.println ""
