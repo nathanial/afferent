@@ -473,11 +473,14 @@ def batchInstancedRectsBy (count : Nat)
 /-! ## Drawing operations -/
 
 /-- Fill a path using the current state. Batch-aware: adds to batch if active.
-    When auto-batching is enabled, geometry is accumulated and drawn at endFrame. -/
+    When auto-batching is enabled, geometry is accumulated and drawn at endFrame.
+    Note: Gradients are sampled at original path positions since gradient coordinates
+    are defined in the original coordinate space. -/
 def fillPath (path : Path) (c : Canvas) : IO Canvas := do
   let transformedPath := c.state.transformPath path
   let style := c.state.effectiveFillStyle
-  let result := Tessellation.tessellateConvexPathFillNDC transformedPath style c.ctx.baseWidth c.ctx.baseHeight
+  -- Use both original and transformed paths: original for gradient sampling, transformed for positions
+  let result := Tessellation.tessellateConvexPathFillNDCWithOriginal path transformedPath style c.ctx.baseWidth c.ctx.baseHeight
   match c.batch with
   | some batch =>
     pure { c with batch := some (batch.add result) }
