@@ -30,11 +30,11 @@ def collimatorDemo : IO Unit := do
   IO.println s!"Age: {alice ^. ageLens}"
 
   -- Modify through a lens
-  let older := over' ageLens (· + 1) alice
+  let older := alice & ageLens %~ (· + 1)
   IO.println s!"After birthday: {older ^. ageLens}"
 
   -- Set through a lens
-  let renamed := set' nameLens "Alicia" alice
+  let renamed := alice & nameLens .~ "Alicia"
   IO.println s!"Renamed: {renamed ^. nameLens}"
 
   IO.println ""
