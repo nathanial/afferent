@@ -940,6 +940,7 @@ struct AfferentRenderer {
     id<MTLDevice> device;
     id<MTLCommandQueue> commandQueue;
     bool msaaEnabled;                                  // Per-frame MSAA toggle
+    float drawableScaleOverride;                       // 0 = native scale, >0 overrides
     // Active pipeline pointers (match current render pass sample count)
     id<MTLRenderPipelineState> pipelineState;
     id<MTLRenderPipelineState> textPipelineState;      // For text rendering
@@ -1695,6 +1696,23 @@ void afferent_renderer_set_msaa_enabled(AfferentRendererRef renderer, bool enabl
     renderer->spritePipelineState = enabled ? renderer->spritePipelineStateMSAA : renderer->spritePipelineStateNoMSAA;
 }
 
+// Enable a drawable scale override (typically 1.0 to disable Retina).
+// Pass scale <= 0 to restore native backing scale.
+void afferent_renderer_set_drawable_scale(AfferentRendererRef renderer, float scale) {
+    if (!renderer) return;
+    renderer->drawableScaleOverride = scale;
+    CAMetalLayer *metalLayer = afferent_window_get_metal_layer(renderer->window);
+    if (!metalLayer) return;
+    CGSize boundsSize = metalLayer.bounds.size;
+    if (scale > 0.0f) {
+        metalLayer.drawableSize = CGSizeMake(boundsSize.width * scale, boundsSize.height * scale);
+    } else {
+        CGFloat nativeScale = metalLayer.contentsScale;
+        if (nativeScale <= 0.0) nativeScale = 1.0;
+        metalLayer.drawableSize = CGSizeMake(boundsSize.width * nativeScale, boundsSize.height * nativeScale);
+    }
+}
+
 // Helper function to create or recreate MSAA texture if needed
 static void ensureMSAATexture(AfferentRendererRef renderer, NSUInteger width, NSUInteger height) {
     if (renderer->msaaTexture &&
@@ -1726,6 +1744,13 @@ AfferentResult afferent_renderer_begin_frame(AfferentRendererRef renderer, float
         CAMetalLayer *metalLayer = afferent_window_get_metal_layer(renderer->window);
         if (!metalLayer) {
             return AFFERENT_ERROR_INIT_FAILED;
+        }
+
+        // Re-apply drawable scale override each frame (handles window resizes)
+        if (renderer->drawableScaleOverride > 0.0f) {
+            CGSize boundsSize = metalLayer.bounds.size;
+            float s = renderer->drawableScaleOverride;
+            metalLayer.drawableSize = CGSizeMake(boundsSize.width * s, boundsSize.height * s);
         }
 
         renderer->currentDrawable = [metalLayer nextDrawable];

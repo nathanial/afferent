@@ -72,6 +72,10 @@ opaque Renderer.endFrame (renderer : @& Renderer) : IO Unit
 @[extern "lean_afferent_renderer_set_msaa_enabled"]
 opaque Renderer.setMSAAEnabled (renderer : @& Renderer) (enabled : Bool) : IO Unit
 
+-- Override drawable pixel scale (1.0 disables Retina). Pass 0 to restore native scale.
+@[extern "lean_afferent_renderer_set_drawable_scale"]
+opaque Renderer.setDrawableScale (renderer : @& Renderer) (scale : Float) : IO Unit
+
 -- Buffer management
 -- Vertices: Array of Float, 6 per vertex (pos.x, pos.y, color.r, color.g, color.b, color.a)
 @[extern "lean_afferent_buffer_create_vertex"]

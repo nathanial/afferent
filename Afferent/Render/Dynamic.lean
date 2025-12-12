@@ -73,20 +73,22 @@ def ParticleState.updateBouncing (p : ParticleState) (dt : Float) (shapeRadius :
       let x' := x + vx * dt
       let y' := y + vy * dt
 
-      -- Bounce off walls
-      let (x'', vx') :=
-        if x' < shapeRadius then (shapeRadius, -vx)
-        else if x' > p.screenWidth - shapeRadius then (p.screenWidth - shapeRadius, -vx)
-        else (x', vx)
-      let (y'', vy') :=
-        if y' < shapeRadius then (shapeRadius, -vy)
-        else if y' > p.screenHeight - shapeRadius then (p.screenHeight - shapeRadius, -vy)
-        else (y', vy)
+      -- Bounce off walls (avoid boxing vx/vy unless they change)
+      let (x'', vx', bouncedX) :=
+        if x' < shapeRadius then (shapeRadius, -vx, true)
+        else if x' > p.screenWidth - shapeRadius then (p.screenWidth - shapeRadius, -vx, true)
+        else (x', vx, false)
+      let (y'', vy', bouncedY) :=
+        if y' < shapeRadius then (shapeRadius, -vy, true)
+        else if y' > p.screenHeight - shapeRadius then (p.screenHeight - shapeRadius, -vy, true)
+        else (y', vy, false)
 
       arr := arr.set! base x''
       arr := arr.set! (base + 1) y''
-      arr := arr.set! (base + 2) vx'
-      arr := arr.set! (base + 3) vy'
+      if bouncedX then
+        arr := arr.set! (base + 2) vx'
+      if bouncedY then
+        arr := arr.set! (base + 3) vy'
     arr
   { p with data }
 

@@ -1033,6 +1033,11 @@ def unifiedDemo : IO Unit := do
       -- Disable MSAA only for sprite benchmark mode to maximize throughput
       msaaEnabled := displayMode != 4
       FFI.Renderer.setMSAAEnabled c.ctx.renderer msaaEnabled
+      -- Also disable Retina (render at 1x drawable scale) for sprite benchmark
+      if displayMode == 4 then
+        FFI.Renderer.setDrawableScale c.ctx.renderer 1.0
+      else
+        FFI.Renderer.setDrawableScale c.ctx.renderer 0.0
       match displayMode with
       | 0 => IO.println "Switched to DEMO mode"
       | 1 => IO.println "Switched to GRID (squares) performance test"

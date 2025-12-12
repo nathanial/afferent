@@ -65,6 +65,9 @@ AfferentResult afferent_renderer_end_frame(AfferentRendererRef renderer);
 // Enable/disable MSAA for subsequent frames.
 void afferent_renderer_set_msaa_enabled(AfferentRendererRef renderer, bool enabled);
 
+// Override drawable pixel scale (1.0 disables Retina). Pass <= 0 to restore native scale.
+void afferent_renderer_set_drawable_scale(AfferentRendererRef renderer, float scale);
+
 // Buffer management
 AfferentResult afferent_buffer_create_vertex(
     AfferentRendererRef renderer,
