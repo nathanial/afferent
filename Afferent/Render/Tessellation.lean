@@ -345,21 +345,24 @@ def tessellateRectFillNDC (r : Rect) (style : FillStyle) (screenWidth screenHeig
 
 /-- Fast path: Tessellate a rectangle with pre-transformed corners.
     Skips Path creation entirely - just transforms 4 points and outputs triangles.
-    This is ~10x faster than going through Path for simple rectangles. -/
+    This is ~10x faster than going through Path for simple rectangles.
+    Note: Gradients are sampled at ORIGINAL positions since gradient coordinates
+    are defined in the original coordinate space. -/
 def tessellateTransformedRectNDC
     (rect : Rect) (transform : Transform) (style : FillStyle)
     (screenWidth screenHeight : Float) : TessellationResult :=
-  -- Transform the 4 corners directly (no Path allocation)
+  -- Sample colors at ORIGINAL positions (before transform)
+  -- This is correct because gradient coordinates are in original space
+  let tlColor := sampleFillStyle style rect.topLeft
+  let trColor := sampleFillStyle style rect.topRight
+  let blColor := sampleFillStyle style rect.bottomLeft
+  let brColor := sampleFillStyle style rect.bottomRight
+
+  -- Transform the 4 corners for rendering positions
   let tl := transform.apply rect.topLeft
   let tr := transform.apply rect.topRight
   let bl := transform.apply rect.bottomLeft
   let br := transform.apply rect.bottomRight
-
-  -- Sample colors at transformed positions (for gradient support)
-  let tlColor := sampleFillStyle style tl
-  let trColor := sampleFillStyle style tr
-  let blColor := sampleFillStyle style bl
-  let brColor := sampleFillStyle style br
 
   -- Convert to NDC
   let toNDC := fun (p : Point) => pixelToNDC p.x p.y screenWidth screenHeight
@@ -683,20 +686,23 @@ def append (b1 b2 : Batch) : Batch :=
 
 /-- FAST PATH: Add a transformed rectangle directly to the batch.
     No intermediate TessellationResult allocation - writes directly to batch arrays.
-    This is the hot path for batched rectangle rendering. -/
+    This is the hot path for batched rectangle rendering.
+    Note: Gradients are sampled at ORIGINAL positions (before transform) since gradient
+    coordinates are defined in the original coordinate space. -/
 def addTransformedRect (batch : Batch) (rect : Rect) (transform : Transform)
     (style : FillStyle) (screenWidth screenHeight : Float) : Batch :=
-  -- Transform corners directly
+  -- Sample colors at ORIGINAL positions (before transform)
+  -- This is correct because gradient coordinates are in original space
+  let tlColor := Tessellation.sampleFillStyle style rect.topLeft
+  let trColor := Tessellation.sampleFillStyle style rect.topRight
+  let blColor := Tessellation.sampleFillStyle style rect.bottomLeft
+  let brColor := Tessellation.sampleFillStyle style rect.bottomRight
+
+  -- Transform corners for rendering positions
   let tl := transform.apply rect.topLeft
   let tr := transform.apply rect.topRight
   let bl := transform.apply rect.bottomLeft
   let br := transform.apply rect.bottomRight
-
-  -- Sample colors
-  let tlColor := Tessellation.sampleFillStyle style tl
-  let trColor := Tessellation.sampleFillStyle style tr
-  let blColor := Tessellation.sampleFillStyle style bl
-  let brColor := Tessellation.sampleFillStyle style br
 
   -- Convert to NDC
   let tlNDC := Tessellation.pixelToNDC tl.x tl.y screenWidth screenHeight

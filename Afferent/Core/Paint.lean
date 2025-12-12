@@ -60,6 +60,35 @@ structure GradientStop where
   color : Color
 deriving Repr, BEq, Inhabited
 
+namespace GradientStop
+
+/-- Create gradient stops with auto-distributed positions from colors.
+    For n colors, positions are: 0, 1/(n-1), 2/(n-1), ..., 1 -/
+def distribute (colors : Array Color) : Array GradientStop :=
+  let n := colors.size
+  if n <= 1 then
+    colors.map fun c => { position := 0.0, color := c }
+  else
+    let divisor := (n - 1).toFloat
+    Id.run do
+      let mut result := #[]
+      for h : i in [:n] do
+        result := result.push { position := i.toFloat / divisor, color := colors[i] }
+      return result
+
+end GradientStop
+
+/-- Gradient macro for creating gradient stop arrays with auto-distributed positions.
+    For n colors, positions are evenly spaced: 0, 1/(n-1), 2/(n-1), ..., 1
+
+    ```
+    gradient![Color.red, Color.blue]               -- positions: 0.0, 1.0
+    gradient![Color.red, Color.green, Color.blue]  -- positions: 0.0, 0.5, 1.0
+    ```
+-/
+macro "gradient![" cs:term,+ "]" : term =>
+  `(GradientStop.distribute #[$cs,*])
+
 /-- Gradient definition. -/
 inductive Gradient where
   | linear (start finish : Point) (stops : Array GradientStop)

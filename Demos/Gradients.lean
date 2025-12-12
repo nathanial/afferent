@@ -10,54 +10,26 @@ namespace Demos
 /-- Render gradients demo content to canvas using CanvasM -/
 def renderGradientsM : CanvasM Unit := do
   -- Row 1: Linear gradients - horizontal
-  let redYellow : Array GradientStop := #[
-    { position := 0.0, color := Color.red },
-    { position := 1.0, color := Color.yellow }
-  ]
-  setFillLinearGradient ⟨50, 70⟩ ⟨200, 70⟩ redYellow
+  setFillLinearGradient ⟨50, 70⟩ ⟨200, 70⟩ gradient![Color.red, Color.yellow]
   fillRect (Rect.mk' 50 30 150 80)
 
-  let blueCyan : Array GradientStop := #[
-    { position := 0.0, color := Color.blue },
-    { position := 1.0, color := Color.cyan }
-  ]
-  setFillLinearGradient ⟨230, 70⟩ ⟨380, 70⟩ blueCyan
+  setFillLinearGradient ⟨230, 70⟩ ⟨380, 70⟩ gradient![Color.blue, Color.cyan]
   fillRect (Rect.mk' 230 30 150 80)
 
-  let greenWhite : Array GradientStop := #[
-    { position := 0.0, color := Color.green },
-    { position := 1.0, color := Color.white }
-  ]
-  setFillLinearGradient ⟨410, 70⟩ ⟨560, 70⟩ greenWhite
+  setFillLinearGradient ⟨410, 70⟩ ⟨560, 70⟩ gradient![Color.green, Color.white]
   fillRect (Rect.mk' 410 30 150 80)
 
   -- Row 1: Vertical gradient
-  let purpleOrange : Array GradientStop := #[
-    { position := 0.0, color := Color.purple },
-    { position := 1.0, color := Color.orange }
-  ]
-  setFillLinearGradient ⟨640, 30⟩ ⟨640, 110⟩ purpleOrange
+  setFillLinearGradient ⟨640, 30⟩ ⟨640, 110⟩ gradient![Color.purple, Color.orange]
   fillRect (Rect.mk' 590 30 100 80)
 
   -- Diagonal gradient
-  let magentaCyan : Array GradientStop := #[
-    { position := 0.0, color := Color.magenta },
-    { position := 1.0, color := Color.cyan }
-  ]
-  setFillLinearGradient ⟨720, 30⟩ ⟨870, 110⟩ magentaCyan
+  setFillLinearGradient ⟨720, 30⟩ ⟨870, 110⟩ gradient![Color.magenta, Color.cyan]
   fillRect (Rect.mk' 720 30 150 80)
 
-  -- Row 2: Multi-stop gradients (rainbow)
-  let rainbow : Array GradientStop := #[
-    { position := 0.0, color := Color.red },
-    { position := 0.17, color := Color.orange },
-    { position := 0.33, color := Color.yellow },
-    { position := 0.5, color := Color.green },
-    { position := 0.67, color := Color.blue },
-    { position := 0.83, color := Color.purple },
-    { position := 1.0, color := Color.magenta }
-  ]
-  setFillLinearGradient ⟨50, 180⟩ ⟨450, 180⟩ rainbow
+  -- Row 2: Multi-stop gradients (rainbow) - 7 evenly spaced colors
+  setFillLinearGradient ⟨50, 180⟩ ⟨450, 180⟩
+    gradient![Color.red, Color.orange, Color.yellow, Color.green, Color.blue, Color.purple, Color.magenta]
   fillRect (Rect.mk' 50 140 400 80)
 
   -- Sunset gradient
@@ -72,27 +44,14 @@ def renderGradientsM : CanvasM Unit := do
   fillRect (Rect.mk' 480 140 180 80)
 
   -- Grayscale
-  let grayscale : Array GradientStop := #[
-    { position := 0.0, color := Color.black },
-    { position := 1.0, color := Color.white }
-  ]
-  setFillLinearGradient ⟨690, 180⟩ ⟨870, 180⟩ grayscale
+  setFillLinearGradient ⟨690, 180⟩ ⟨870, 180⟩ gradient![Color.black, Color.white]
   fillRect (Rect.mk' 690 140 180 80)
 
   -- Row 3: Radial gradients
-  let whiteBlue : Array GradientStop := #[
-    { position := 0.0, color := Color.white },
-    { position := 1.0, color := Color.blue }
-  ]
-  setFillRadialGradient ⟨120, 320⟩ 70 whiteBlue
+  setFillRadialGradient ⟨120, 320⟩ 70 gradient![Color.white, Color.blue]
   fillCircle ⟨120, 320⟩ 70
 
-  let sunGlow : Array GradientStop := #[
-    { position := 0.0, color := Color.yellow },
-    { position := 0.5, color := Color.orange },
-    { position := 1.0, color := Color.red }
-  ]
-  setFillRadialGradient ⟨280, 320⟩ 70 sunGlow
+  setFillRadialGradient ⟨280, 320⟩ 70 gradient![Color.yellow, Color.orange, Color.red]
   fillCircle ⟨280, 320⟩ 70
 
   let spotlight : Array GradientStop := #[
@@ -103,46 +62,25 @@ def renderGradientsM : CanvasM Unit := do
   setFillRadialGradient ⟨440, 320⟩ 70 spotlight
   fillCircle ⟨440, 320⟩ 70
 
-  let greenGlow : Array GradientStop := #[
-    { position := 0.0, color := Color.rgba 0.5 1.0 0.5 1.0 },
-    { position := 0.5, color := Color.green },
-    { position := 1.0, color := Color.rgba 0.0 0.3 0.0 1.0 }
-  ]
-  setFillRadialGradient ⟨600, 320⟩ 70 greenGlow
+  setFillRadialGradient ⟨600, 320⟩ 70
+    gradient![Color.rgba 0.5 1.0 0.5 1.0, Color.green, Color.rgba 0.0 0.3 0.0 1.0]
   fillCircle ⟨600, 320⟩ 70
 
-  let cyanMagenta : Array GradientStop := #[
-    { position := 0.0, color := Color.cyan },
-    { position := 1.0, color := Color.magenta }
-  ]
-  setFillRadialGradient ⟨760, 320⟩ 70 cyanMagenta
+  setFillRadialGradient ⟨760, 320⟩ 70 gradient![Color.cyan, Color.magenta]
   fillCircle ⟨760, 320⟩ 70
 
   -- Row 4: Gradients on different shapes
-  setFillLinearGradient ⟨50, 420⟩ ⟨200, 520⟩ #[
-    { position := 0.0, color := Color.red },
-    { position := 1.0, color := Color.blue }
-  ]
+  setFillLinearGradient ⟨50, 420⟩ ⟨200, 520⟩ gradient![Color.red, Color.blue]
   fillRoundedRect (Rect.mk' 50 420 150 100) 20
 
-  setFillRadialGradient ⟨330, 470⟩ 80 #[
-    { position := 0.0, color := Color.yellow },
-    { position := 1.0, color := Color.purple }
-  ]
+  setFillRadialGradient ⟨330, 470⟩ 80 gradient![Color.yellow, Color.purple]
   fillEllipse ⟨330, 470⟩ 80 50
 
-  setFillLinearGradient ⟨460, 410⟩ ⟨580, 530⟩ #[
-    { position := 0.0, color := Color.yellow },
-    { position := 0.5, color := Color.orange },
-    { position := 1.0, color := Color.red }
-  ]
+  setFillLinearGradient ⟨460, 410⟩ ⟨580, 530⟩ gradient![Color.yellow, Color.orange, Color.red]
   fillPath (Path.star ⟨520, 470⟩ 60 30 5)
 
-  setFillRadialGradient ⟨700, 450⟩ 80 #[
-    { position := 0.0, color := Color.rgba 1.0 0.5 0.5 1.0 },
-    { position := 0.5, color := Color.red },
-    { position := 1.0, color := Color.rgba 0.5 0.0 0.0 1.0 }
-  ]
+  setFillRadialGradient ⟨700, 450⟩ 80
+    gradient![Color.rgba 1.0 0.5 0.5 1.0, Color.red, Color.rgba 0.5 0.0 0.0 1.0]
   fillPath (Path.heart ⟨700, 470⟩ 70)
 
   -- Row 5: More gradient variations
@@ -185,11 +123,8 @@ def renderGradientsM : CanvasM Unit := do
   ]
   fillRect (Rect.mk' 590 560 130 100)
 
-  let purplePink : Array GradientStop := #[
-    { position := 0.0, color := Color.rgba 0.4 0.0 0.6 1.0 },
-    { position := 1.0, color := Color.rgba 1.0 0.4 0.6 1.0 }
-  ]
-  setFillLinearGradient ⟨750, 660⟩ ⟨870, 560⟩ purplePink
+  setFillLinearGradient ⟨750, 660⟩ ⟨870, 560⟩
+    gradient![Color.rgba 0.4 0.0 0.6 1.0, Color.rgba 1.0 0.4 0.6 1.0]
   fillRect (Rect.mk' 750 560 120 100)
 
 end Demos
