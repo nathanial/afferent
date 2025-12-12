@@ -3,6 +3,8 @@
   These are low-level bindings - higher level APIs will be built on top.
 -/
 
+import Init.Data.FloatArray
+
 namespace Afferent.FFI
 
 -- Opaque handle types using NonemptyType pattern
@@ -181,7 +183,7 @@ opaque FloatBuffer.setVec5 (buf : @& FloatBuffer) (index : USize)
 @[extern "lean_afferent_float_buffer_write_sprites_from_particles"]
 opaque FloatBuffer.writeSpritesFromParticles
   (buffer : @& FloatBuffer)
-  (particleData : @& Array Float)
+  (particleData : @& FloatArray)
   (count : UInt32)
   (halfSize : Float)
   (rotation : Float)

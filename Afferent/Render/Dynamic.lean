@@ -14,6 +14,7 @@
 -/
 
 import Afferent.FFI.Metal
+import Init.Data.FloatArray
 
 namespace Afferent.Render.Dynamic
 
@@ -26,7 +27,7 @@ The GPU then handles color computation and coordinate conversion. -/
     Each particle has position, velocity, and a base hue. -/
 structure ParticleState where
   /-- Per-particle: x, y, vx, vy, hueBase (5 floats) -/
-  data : Array Float
+  data : FloatArray
   /-- Number of particles -/
   count : Nat
   /-- Screen bounds for collision detection -/
@@ -37,7 +38,7 @@ structure ParticleState where
 /-- Create initial particle state with random positions and velocities. -/
 def ParticleState.create (count : Nat) (screenWidth screenHeight : Float) (seed : Nat) : ParticleState :=
   let data := Id.run do
-    let mut arr := Array.mkEmpty (count * 5)
+    let mut arr := FloatArray.emptyWithCapacity (count * 5)
     let mut s := seed
     for i in [:count] do
       -- Simple LCG for deterministic randomness
@@ -64,10 +65,10 @@ def ParticleState.updateBouncing (p : ParticleState) (dt : Float) (shapeRadius :
     let mut arr := p.data
     for i in [:p.count] do
       let base := i * 5
-      let x := arr[base]!
-      let y := arr[base + 1]!
-      let vx := arr[base + 2]!
-      let vy := arr[base + 3]!
+      let x := arr.get! base
+      let y := arr.get! (base + 1)
+      let vx := arr.get! (base + 2)
+      let vy := arr.get! (base + 3)
 
       -- Update position
       let x' := x + vx * dt
@@ -97,7 +98,7 @@ def ParticleState.createGrid (cols rows : Nat) (startX startY spacing : Float)
     (screenWidth screenHeight : Float) : ParticleState :=
   let count := cols * rows
   let data := Id.run do
-    let mut arr := Array.mkEmpty (count * 5)
+    let mut arr := FloatArray.emptyWithCapacity (count * 5)
     for row in [:rows] do
       for col in [:cols] do
         let x := startX + col.toFloat * spacing
@@ -123,9 +124,9 @@ def buildCircleData (particles : ParticleState) (radius : Float) : Array Float :
   let mut data := Array.mkEmpty (particles.count * 4)
   for i in [:particles.count] do
     let base := i * 5
-    let x := particles.data[base]!
-    let y := particles.data[base + 1]!
-    let hue := particles.data[base + 4]!
+    let x := particles.data.get! base
+    let y := particles.data.get! (base + 1)
+    let hue := particles.data.get! (base + 4)
     data := data.push x
     data := data.push y
     data := data.push hue
@@ -139,9 +140,9 @@ def buildRectData (particles : ParticleState) (halfSize : Float) (getRotation : 
   let mut data := Array.mkEmpty (particles.count * 5)
   for i in [:particles.count] do
     let base := i * 5
-    let x := particles.data[base]!
-    let y := particles.data[base + 1]!
-    let hue := particles.data[base + 4]!
+    let x := particles.data.get! base
+    let y := particles.data.get! (base + 1)
+    let hue := particles.data.get! (base + 4)
     data := data.push x
     data := data.push y
     data := data.push hue
@@ -156,7 +157,7 @@ def buildRectDataUniform (particles : ParticleState) (halfSize rotation : Float)
 /-- Build dynamic rect data with time-based per-particle rotation. -/
 def buildRectDataAnimated (particles : ParticleState) (halfSize t spinSpeed : Float) : Array Float :=
   buildRectData particles halfSize (fun i =>
-    let hue := particles.data[i * 5 + 4]!
+    let hue := particles.data.get! (i * 5 + 4)
     t * spinSpeed + hue * 6.28)
 
 /-- Build dynamic triangle data from particle state.
@@ -165,9 +166,9 @@ def buildTriangleData (particles : ParticleState) (halfSize : Float) (getRotatio
   let mut data := Array.mkEmpty (particles.count * 5)
   for i in [:particles.count] do
     let base := i * 5
-    let x := particles.data[base]!
-    let y := particles.data[base + 1]!
-    let hue := particles.data[base + 4]!
+    let x := particles.data.get! base
+    let y := particles.data.get! (base + 1)
+    let hue := particles.data.get! (base + 4)
     data := data.push x
     data := data.push y
     data := data.push hue
@@ -182,7 +183,7 @@ def buildTriangleDataUniform (particles : ParticleState) (halfSize rotation : Fl
 /-- Build dynamic triangle data with time-based per-particle rotation. -/
 def buildTriangleDataAnimated (particles : ParticleState) (halfSize t spinSpeed : Float) : Array Float :=
   buildTriangleData particles halfSize (fun i =>
-    let hue := particles.data[i * 5 + 4]!
+    let hue := particles.data.get! (i * 5 + 4)
     t * spinSpeed + hue * 6.28)
 
 /-! ## Draw Functions
@@ -231,8 +232,8 @@ def buildSpriteData (particles : ParticleState) (halfSize : Float)
   let mut data := Array.mkEmpty (particles.count * 5)
   for i in [:particles.count] do
     let base := i * 5
-    let x := particles.data[base]!
-    let y := particles.data[base + 1]!
+    let x := particles.data.get! base
+    let y := particles.data.get! (base + 1)
     data := data.push x
     data := data.push y
     data := data.push (getRotation i)
@@ -248,7 +249,7 @@ def buildSpriteDataUniform (particles : ParticleState) (halfSize rotation : Floa
 def buildSpriteDataAnimated (particles : ParticleState) (halfSize t spinSpeed : Float) : Array Float :=
   buildSpriteData particles halfSize
     (fun i =>
-      let hue := particles.data[i * 5 + 4]!
+      let hue := particles.data.get! (i * 5 + 4)
       t * spinSpeed + hue * 6.28)
     (fun _ => 1.0)
 
@@ -283,7 +284,7 @@ def writeSpritesToBuffer (particles : ParticleState) (buffer : FFI.FloatBuffer)
 
 /-- Draw sprites from a FloatBuffer. Call writeSpritesToBuffer first, then this. -/
 def drawSpritesFromBuffer (renderer : FFI.Renderer) (texture : FFI.Texture)
-    (buffer : FFI.FloatBuffer) (count : UInt32) (halfSize : Float)
+    (buffer : FFI.FloatBuffer) (count : UInt32) (_halfSize : Float)
     (screenWidth screenHeight : Float) : IO Unit := do
   -- Buffer already contains SpriteInstanceData layout, so use direct instance draw.
   -- halfSize is ignored (kept for API compatibility).

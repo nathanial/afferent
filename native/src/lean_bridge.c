@@ -631,7 +631,8 @@ LEAN_EXPORT lean_obj_res lean_afferent_float_buffer_write_sprites_from_particles
 ) {
     AfferentFloatBufferRef buffer = (AfferentFloatBufferRef)lean_get_external_data(buffer_obj);
 
-    size_t arr_size = lean_array_size(particle_data_arr);
+    // particle_data_arr is a FloatArray (unboxed doubles in an sarray)
+    size_t arr_size = (size_t)lean_unbox(lean_float_array_size(particle_data_arr));
     size_t expected_size = (size_t)count * 5;
     if (count == 0 || arr_size < expected_size) {
         return lean_io_result_mk_ok(lean_box(0));
@@ -645,10 +646,11 @@ LEAN_EXPORT lean_obj_res lean_afferent_float_buffer_write_sprites_from_particles
     float r = (float)rotation;
     float a = (float)alpha;
 
+    const double* src = lean_float_array_cptr(particle_data_arr);
     for (uint32_t i = 0; i < count; i++) {
         size_t base = (size_t)i * 5;
-        float x = (float)lean_unbox_float(lean_array_get_core(particle_data_arr, base));
-        float y = (float)lean_unbox_float(lean_array_get_core(particle_data_arr, base + 1));
+        float x = (float)src[base];
+        float y = (float)src[base + 1];
         afferent_float_buffer_set_vec5(buffer, base, x, y, r, h, a);
     }
 
