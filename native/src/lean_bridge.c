@@ -797,3 +797,53 @@ LEAN_EXPORT lean_obj_res lean_afferent_renderer_draw_dynamic_circles(
     free(data);
     return lean_io_result_mk_ok(lean_box(0));
 }
+
+// Draw dynamic rects (positions/rotation from CPU, color + NDC from GPU)
+// data: [pixelX, pixelY, hueBase, halfSizePixels, rotation] × count (5 floats per rect)
+LEAN_EXPORT lean_obj_res lean_afferent_renderer_draw_dynamic_rects(
+    lean_obj_arg renderer_obj,
+    lean_obj_arg data_arr,
+    uint32_t count,
+    double time,
+    lean_obj_arg world
+) {
+    AfferentRendererRef renderer = (AfferentRendererRef)lean_get_external_data(renderer_obj);
+
+    // Extract float array data - 5 floats per rect
+    size_t arr_size = lean_array_size(data_arr);
+    float* data = malloc(arr_size * sizeof(float));
+    for (size_t i = 0; i < arr_size; i++) {
+        lean_object* elem = lean_array_get_core(data_arr, i);
+        data[i] = (float)lean_unbox_float(elem);
+    }
+
+    afferent_renderer_draw_dynamic_rects(renderer, data, count, (float)time);
+
+    free(data);
+    return lean_io_result_mk_ok(lean_box(0));
+}
+
+// Draw dynamic triangles (positions/rotation from CPU, color + NDC from GPU)
+// data: [pixelX, pixelY, hueBase, halfSizePixels, rotation] × count (5 floats per triangle)
+LEAN_EXPORT lean_obj_res lean_afferent_renderer_draw_dynamic_triangles(
+    lean_obj_arg renderer_obj,
+    lean_obj_arg data_arr,
+    uint32_t count,
+    double time,
+    lean_obj_arg world
+) {
+    AfferentRendererRef renderer = (AfferentRendererRef)lean_get_external_data(renderer_obj);
+
+    // Extract float array data - 5 floats per triangle
+    size_t arr_size = lean_array_size(data_arr);
+    float* data = malloc(arr_size * sizeof(float));
+    for (size_t i = 0; i < arr_size; i++) {
+        lean_object* elem = lean_array_get_core(data_arr, i);
+        data[i] = (float)lean_unbox_float(elem);
+    }
+
+    afferent_renderer_draw_dynamic_triangles(renderer, data, count, (float)time);
+
+    free(data);
+    return lean_io_result_mk_ok(lean_box(0));
+}

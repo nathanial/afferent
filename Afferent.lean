@@ -9,6 +9,7 @@ import Afferent.Core.Paint
 
 -- Rendering
 import Afferent.Render.Tessellation
+import Afferent.Render.Dynamic
 
 -- Canvas API
 import Afferent.Canvas.State

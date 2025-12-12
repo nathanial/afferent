@@ -256,4 +256,22 @@ opaque Renderer.drawDynamicCircles
   (count : UInt32)
   (time : Float) : IO Unit
 
+-- Draw dynamic rects (called every frame with position data)
+-- data: [pixelX, pixelY, hueBase, halfSizePixels, rotation] × count (5 floats per rect)
+@[extern "lean_afferent_renderer_draw_dynamic_rects"]
+opaque Renderer.drawDynamicRects
+  (renderer : @& Renderer)
+  (data : @& Array Float)
+  (count : UInt32)
+  (time : Float) : IO Unit
+
+-- Draw dynamic triangles (called every frame with position data)
+-- data: [pixelX, pixelY, hueBase, halfSizePixels, rotation] × count (5 floats per triangle)
+@[extern "lean_afferent_renderer_draw_dynamic_triangles"]
+opaque Renderer.drawDynamicTriangles
+  (renderer : @& Renderer)
+  (data : @& Array Float)
+  (count : UInt32)
+  (time : Float) : IO Unit
+
 end Afferent.FFI

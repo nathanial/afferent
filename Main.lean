@@ -902,35 +902,40 @@ def renderAnimations (c : Canvas) (t : Float) : IO Canvas := do
 
 /-! ## Performance Test -/
 
-/-- Render orbital spinning squares - GPU-animated rendering!
-    Static data uploaded once, only time sent per frame.
-    GPU computes: orbital position, spin angle, HSV→RGB, pixel→NDC -/
-def renderOrbitalTest (c : Canvas) (t : Float) (font : Font) (particles : Canvas.ParticleData) : IO Canvas := do
+/-- Render orbital spinning squares using unified Dynamic module.
+    CPU computes orbital positions, GPU does color + NDC conversion. -/
+def renderOrbitalTest (c : Canvas) (t : Float) (font : Font) (orbital : Render.Dynamic.OrbitalState)
+    (halfSize : Float) : IO Canvas := do
   let c := c.setFillColor Color.white
-  let c ← c.fillTextXY s!"Orbital: {particles.count} GPU-animated squares (Space to advance)" 20 30 font
-  c.drawOrbitalParticles t
+  let c ← c.fillTextXY s!"Orbital: {orbital.count} dynamic squares (Space to advance)" 20 30 font
+  Render.Dynamic.drawOrbitalRects c.ctx.renderer orbital halfSize t 3.0
+  pure c
 
-/-- Render grid spinning squares - GPU-animated rendering!
-    Static data uploaded once, only time sent per frame.
-    GPU computes: angle, HSV→RGB, pixel→NDC conversion -/
-def renderGridTest (c : Canvas) (t : Float) (font : Font) (particles : Canvas.GridParticleData) : IO Canvas := do
+/-- Render grid spinning squares using unified Dynamic module.
+    Static grid positions, GPU does color + NDC conversion. -/
+def renderGridTest (c : Canvas) (t : Float) (font : Font) (particles : Render.Dynamic.ParticleState)
+    (halfSize : Float) : IO Canvas := do
   let c := c.setFillColor Color.white
-  let c ← c.fillTextXY s!"Grid: {particles.count} GPU-animated squares (Space to advance)" 20 30 font
-  c.drawAnimatedRects t
+  let c ← c.fillTextXY s!"Grid: {particles.count} dynamic squares (Space to advance)" 20 30 font
+  Render.Dynamic.drawRectsAnimated c.ctx.renderer particles halfSize t 3.0
+  pure c
 
-/-- Render grid of spinning triangles - GPU-animated rendering! -/
-def renderTriangleTest (c : Canvas) (t : Float) (font : Font) (particles : Canvas.GridParticleData) : IO Canvas := do
+/-- Render grid of spinning triangles using unified Dynamic module. -/
+def renderTriangleTest (c : Canvas) (t : Float) (font : Font) (particles : Render.Dynamic.ParticleState)
+    (halfSize : Float) : IO Canvas := do
   let c := c.setFillColor Color.white
-  let c ← c.fillTextXY s!"Triangles: {particles.count} GPU-animated triangles (Space to advance)" 20 30 font
-  c.drawAnimatedTriangles t
+  let c ← c.fillTextXY s!"Triangles: {particles.count} dynamic triangles (Space to advance)" 20 30 font
+  Render.Dynamic.drawTrianglesAnimated c.ctx.renderer particles halfSize t 2.0
+  pure c
 
-/-- Render bouncing circles - Dynamic GPU rendering!
-    CPU updates positions (physics), GPU does HSV->RGB and pixel->NDC.
-    Half the data transfer compared to old approach. -/
-def renderCircleTest (c : Canvas) (t : Float) (font : Font) (particles : Canvas.BouncingParticleData) : IO Canvas := do
+/-- Render bouncing circles using unified Dynamic module.
+    CPU updates positions (physics), GPU does color + NDC conversion. -/
+def renderCircleTest (c : Canvas) (t : Float) (font : Font) (particles : Render.Dynamic.ParticleState)
+    (radius : Float) : IO Canvas := do
   let c := c.setFillColor Color.white
-  let c ← c.fillTextXY s!"Circles: {particles.count} dynamic GPU circles (Space to advance)" 20 30 font
-  c.drawDynamicCircles particles t
+  let c ← c.fillTextXY s!"Circles: {particles.count} dynamic circles (Space to advance)" 20 30 font
+  Render.Dynamic.drawCircles c.ctx.renderer particles radius t
+  pure c
 
 /-! ## Unified Visual Demo -/
 
@@ -970,31 +975,30 @@ def unifiedDemo : IO Unit := do
   let bg11 := Color.rgba 0.20 0.18 0.12 1.0  -- Dark warm gray
   let bg02 := Color.rgba 0.18 0.15 0.20 1.0  -- Dark purple-gray
 
-  -- Pre-compute particle data ONCE at startup (not every frame!)
+  -- Pre-compute particle data ONCE at startup using unified Dynamic module
   let squareCount := 100000
   let halfSize := 1.5  -- Smaller for 100k
-  -- Orbital particles (orbiting around center)
-  let orbitalParticles := Canvas.ParticleData.create squareCount 960.0 540.0 halfSize
-  IO.println s!"Pre-computed {squareCount} orbital particle trajectories"
+  let circleRadius := 2.0
+
+  -- Orbital particles (orbiting around center) using Dynamic.OrbitalState
+  let orbitalParticles := Render.Dynamic.OrbitalState.create squareCount 960.0 540.0 400.0 42
+  IO.println s!"Created {orbitalParticles.count} orbital particles"
+
   -- Grid particles (316x316 ≈ 100k grid of spinning squares/triangles)
   let gridCols := 316
   let gridRows := 316
   let gridSpacing := 6.0
   let gridStartX := (1920.0 - (gridCols.toFloat - 1) * gridSpacing) / 2.0
   let gridStartY := (1080.0 - (gridRows.toFloat - 1) * gridSpacing) / 2.0
-  let gridParticles := Canvas.GridParticleData.create gridCols gridRows gridStartX gridStartY gridSpacing 2.0
-  IO.println s!"Pre-computed {gridParticles.count} grid particle positions"
-  -- Bouncing circles
-  let bouncingParticles := Canvas.BouncingParticleData.create 100000 1920.0 1080.0 2.0 42
+  let gridParticles := Render.Dynamic.ParticleState.createGrid gridCols gridRows gridStartX gridStartY gridSpacing 1920.0 1080.0
+  IO.println s!"Created {gridParticles.count} grid particles"
+
+  -- Bouncing circles using Dynamic.ParticleState
+  let bouncingParticles := Render.Dynamic.ParticleState.create 100000 1920.0 1080.0 42
   IO.println s!"Created {bouncingParticles.count} bouncing circles"
 
-  -- Upload static particle data to GPU ONCE for GPU-animated rendering
-  -- This is the Pixi.js-style optimization: upload once, animate on GPU
-  IO.println "Uploading particle data to GPU for GPU-animated rendering..."
-  Canvas.uploadAnimatedGridRects gridParticles 3.0 canvas
-  Canvas.uploadAnimatedGridTriangles gridParticles 2.0 canvas
-  Canvas.uploadOrbitalParticles orbitalParticles canvas
-  IO.println "GPU particle data uploaded! Animation computed on GPU."
+  -- No GPU upload needed! Dynamic module sends positions each frame.
+  IO.println "Using unified Dynamic rendering - CPU positions, GPU color/NDC."
 
   -- Display modes: 0 = demo, 1 = orbital, 2 = grid squares, 3 = triangles, 4 = circles
   let startTime ← IO.monoMsNow
@@ -1002,6 +1006,7 @@ def unifiedDemo : IO Unit := do
   let mut displayMode : Nat := 0
   let mut lastTime := startTime
   let mut bouncingState := bouncingParticles
+  let mut orbitalState := orbitalParticles
   -- FPS counter (smoothed over multiple frames)
   let mut frameCount : Nat := 0
   let mut fpsAccumulator : Float := 0.0
@@ -1038,23 +1043,22 @@ def unifiedDemo : IO Unit := do
         fpsAccumulator := 0.0
         frameCount := 0
 
-      -- Update bouncing particles (even when not displaying, to keep physics consistent)
-      bouncingState := bouncingState.update dt
-
       let c' := c.resetTransform
 
       if displayMode == 1 then
         -- Orbital performance test: particles orbiting around center
-        c ← renderOrbitalTest c' t fontMedium orbitalParticles
+        orbitalState := orbitalState.update t
+        c ← renderOrbitalTest c' t fontMedium orbitalState halfSize
       else if displayMode == 2 then
         -- Grid performance test: squares spinning in a grid
-        c ← renderGridTest c' t fontMedium gridParticles
+        c ← renderGridTest c' t fontMedium gridParticles halfSize
       else if displayMode == 3 then
         -- Triangle performance test: triangles spinning in a grid
-        c ← renderTriangleTest c' t fontMedium gridParticles
+        c ← renderTriangleTest c' t fontMedium gridParticles halfSize
       else if displayMode == 4 then
         -- Circle performance test: bouncing circles
-        c ← renderCircleTest c' t fontMedium bouncingState
+        bouncingState := bouncingState.updateBouncing dt circleRadius
+        c ← renderCircleTest c' t fontMedium bouncingState circleRadius
       else
         -- Normal demo mode: grid of demos
         let canvas := c'

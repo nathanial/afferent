@@ -268,6 +268,24 @@ void afferent_renderer_draw_dynamic_circles(
     float time
 );
 
+// Draw dynamic rects (called every frame with position data)
+// data: [pixelX, pixelY, hueBase, halfSizePixels, rotation] × count (5 floats per rect)
+void afferent_renderer_draw_dynamic_rects(
+    AfferentRendererRef renderer,
+    const float* data,
+    uint32_t count,
+    float time
+);
+
+// Draw dynamic triangles (called every frame with position data)
+// data: [pixelX, pixelY, hueBase, halfSizePixels, rotation] × count (5 floats per triangle)
+void afferent_renderer_draw_dynamic_triangles(
+    AfferentRendererRef renderer,
+    const float* data,
+    uint32_t count,
+    float time
+);
+
 #ifdef __cplusplus
 }
 #endif

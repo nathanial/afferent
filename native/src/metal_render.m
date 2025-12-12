@@ -571,6 +571,162 @@ fragment float4 dynamic_circle_fragment(DynamicCircleVertexOut in [[stage_in]]) 
 }
 )";
 
+// ============================================================================
+// DYNAMIC RECT SHADER - Rects with CPU-updated positions/rotation, GPU color/NDC
+// 5 floats per instance: [pixelX, pixelY, hueBase, halfSizePixels, rotation]
+// ============================================================================
+static NSString *dynamicRectShaderSource = @R"(
+#include <metal_stdlib>
+using namespace metal;
+
+struct DynamicRectData {
+    float pixelX;           // Position X in pixels
+    float pixelY;           // Position Y in pixels
+    float hueBase;          // Base color hue 0-1
+    float halfSizePixels;   // Half size in pixels
+    float rotation;         // Rotation angle in radians
+};  // 20 bytes
+
+struct DynamicRectUniforms {
+    float time;
+    float canvasWidth;
+    float canvasHeight;
+    float hueSpeed;
+};
+
+struct DynamicRectVertexOut {
+    float4 position [[position]];
+    float4 color;
+};
+
+float3 dynamic_rect_hsv_to_rgb(float h) {
+    float3 rgb = clamp(abs(fmod(h * 6.0 + float3(0.0, 4.0, 2.0), 6.0) - 3.0) - 1.0, 0.0, 1.0);
+    return 1.0 - 0.9 * (1.0 - rgb);
+}
+
+vertex DynamicRectVertexOut dynamic_rect_vertex(
+    uint vid [[vertex_id]],
+    uint iid [[instance_id]],
+    constant DynamicRectData* instances [[buffer(0)]],
+    constant DynamicRectUniforms& uniforms [[buffer(1)]]
+) {
+    float2 unitQuad[4] = {
+        float2(-1, -1),
+        float2( 1, -1),
+        float2(-1,  1),
+        float2( 1,  1)
+    };
+
+    DynamicRectData inst = instances[iid];
+    float2 v = unitQuad[vid];
+
+    // Compute HSV -> RGB (GPU-side!)
+    float hue = fract(uniforms.time * uniforms.hueSpeed + inst.hueBase);
+    float3 rgb = dynamic_rect_hsv_to_rgb(hue);
+
+    // Convert pixel -> NDC (GPU-side!)
+    float2 ndcPos = float2(
+        (inst.pixelX / uniforms.canvasWidth) * 2.0 - 1.0,
+        1.0 - (inst.pixelY / uniforms.canvasHeight) * 2.0
+    );
+    float ndcHalfSize = inst.halfSizePixels / uniforms.canvasWidth * 2.0;
+
+    // Apply rotation (from CPU)
+    float sinA = sin(inst.rotation);
+    float cosA = cos(inst.rotation);
+    float2 rotated = float2(v.x * cosA - v.y * sinA, v.x * sinA + v.y * cosA);
+
+    float2 finalPos = ndcPos + rotated * ndcHalfSize;
+
+    DynamicRectVertexOut out;
+    out.position = float4(finalPos, 0.0, 1.0);
+    out.color = float4(rgb, 1.0);
+    return out;
+}
+
+fragment float4 dynamic_rect_fragment(DynamicRectVertexOut in [[stage_in]]) {
+    return in.color;
+}
+)";
+
+// ============================================================================
+// DYNAMIC TRIANGLE SHADER - Triangles with CPU-updated positions/rotation, GPU color/NDC
+// 5 floats per instance: [pixelX, pixelY, hueBase, halfSizePixels, rotation]
+// ============================================================================
+static NSString *dynamicTriangleShaderSource = @R"(
+#include <metal_stdlib>
+using namespace metal;
+
+struct DynamicTriangleData {
+    float pixelX;           // Position X in pixels
+    float pixelY;           // Position Y in pixels
+    float hueBase;          // Base color hue 0-1
+    float halfSizePixels;   // Half size in pixels
+    float rotation;         // Rotation angle in radians
+};  // 20 bytes
+
+struct DynamicTriangleUniforms {
+    float time;
+    float canvasWidth;
+    float canvasHeight;
+    float hueSpeed;
+};
+
+struct DynamicTriangleVertexOut {
+    float4 position [[position]];
+    float4 color;
+};
+
+float3 dynamic_triangle_hsv_to_rgb(float h) {
+    float3 rgb = clamp(abs(fmod(h * 6.0 + float3(0.0, 4.0, 2.0), 6.0) - 3.0) - 1.0, 0.0, 1.0);
+    return 1.0 - 0.9 * (1.0 - rgb);
+}
+
+vertex DynamicTriangleVertexOut dynamic_triangle_vertex(
+    uint vid [[vertex_id]],
+    uint iid [[instance_id]],
+    constant DynamicTriangleData* instances [[buffer(0)]],
+    constant DynamicTriangleUniforms& uniforms [[buffer(1)]]
+) {
+    // Unit equilateral triangle (pointing up)
+    float2 unitTriangle[3] = {
+        float2( 0.0,  1.0),      // Top
+        float2(-0.866, -0.5),   // Bottom left
+        float2( 0.866, -0.5)    // Bottom right
+    };
+
+    DynamicTriangleData inst = instances[iid];
+    float2 v = unitTriangle[vid];
+
+    // Compute HSV -> RGB (GPU-side!)
+    float hue = fract(uniforms.time * uniforms.hueSpeed + inst.hueBase);
+    float3 rgb = dynamic_triangle_hsv_to_rgb(hue);
+
+    // Convert pixel -> NDC (GPU-side!)
+    float2 ndcPos = float2(
+        (inst.pixelX / uniforms.canvasWidth) * 2.0 - 1.0,
+        1.0 - (inst.pixelY / uniforms.canvasHeight) * 2.0
+    );
+    float ndcHalfSize = inst.halfSizePixels / uniforms.canvasWidth * 2.0;
+
+    // Apply rotation (from CPU)
+    float sinA = sin(inst.rotation);
+    float cosA = cos(inst.rotation);
+    float2 rotated = float2(v.x * cosA - v.y * sinA, v.x * sinA + v.y * cosA);
+
+    float2 finalPos = ndcPos + rotated * ndcHalfSize;
+
+    DynamicTriangleVertexOut out;
+    out.position = float4(finalPos, 0.0, 1.0);
+    out.color = float4(rgb, 1.0);
+    return out;
+}
+
+fragment float4 dynamic_triangle_fragment(DynamicTriangleVertexOut in [[stage_in]]) {
+    return in.color;
+}
+)";
+
 // Text vertex structure (different layout than AfferentVertex)
 typedef struct {
     float position[2];
@@ -643,6 +799,40 @@ typedef struct {
     float hueSpeed;
 } DynamicCircleUniforms;
 
+// Dynamic rect data structure (matches shader) - 20 bytes
+typedef struct {
+    float pixelX;           // Position X in pixels
+    float pixelY;           // Position Y in pixels
+    float hueBase;          // Base color hue 0-1
+    float halfSizePixels;   // Half size in pixels
+    float rotation;         // Rotation angle in radians
+} DynamicRectData;  // Total: 20 bytes
+
+// Dynamic rect uniforms structure (matches shader)
+typedef struct {
+    float time;
+    float canvasWidth;
+    float canvasHeight;
+    float hueSpeed;
+} DynamicRectUniforms;
+
+// Dynamic triangle data structure (matches shader) - 20 bytes
+typedef struct {
+    float pixelX;           // Position X in pixels
+    float pixelY;           // Position Y in pixels
+    float hueBase;          // Base color hue 0-1
+    float halfSizePixels;   // Half size in pixels
+    float rotation;         // Rotation angle in radians
+} DynamicTriangleData;  // Total: 20 bytes
+
+// Dynamic triangle uniforms structure (matches shader)
+typedef struct {
+    float time;
+    float canvasWidth;
+    float canvasHeight;
+    float hueSpeed;
+} DynamicTriangleUniforms;
+
 // Internal renderer structure
 struct AfferentRenderer {
     AfferentWindowRef window;
@@ -659,6 +849,8 @@ struct AfferentRenderer {
     id<MTLRenderPipelineState> animatedCirclePipelineState;
     id<MTLRenderPipelineState> orbitalPipelineState;   // For orbital particle rendering
     id<MTLRenderPipelineState> dynamicCirclePipelineState;  // For dynamic position circles
+    id<MTLRenderPipelineState> dynamicRectPipelineState;    // For dynamic position rects
+    id<MTLRenderPipelineState> dynamicTrianglePipelineState; // For dynamic position triangles
     id<MTLSamplerState> textSampler;                   // For text texture sampling
     id<MTLCommandBuffer> currentCommandBuffer;
     id<MTLRenderCommandEncoder> currentEncoder;
@@ -1201,6 +1393,80 @@ AfferentResult afferent_renderer_create(
                                                                                                 error:&error];
         if (!renderer->dynamicCirclePipelineState) {
             NSLog(@"Dynamic circle pipeline creation failed: %@", error);
+            free(renderer);
+            return AFFERENT_ERROR_PIPELINE_FAILED;
+        }
+
+        // Create dynamic rect pipeline
+        id<MTLLibrary> dynamicRectLibrary = [renderer->device newLibraryWithSource:dynamicRectShaderSource
+                                                                           options:nil
+                                                                             error:&error];
+        if (!dynamicRectLibrary) {
+            NSLog(@"Dynamic rect shader compilation failed: %@", error);
+            free(renderer);
+            return AFFERENT_ERROR_PIPELINE_FAILED;
+        }
+
+        id<MTLFunction> dynamicRectVertexFunc = [dynamicRectLibrary newFunctionWithName:@"dynamic_rect_vertex"];
+        id<MTLFunction> dynamicRectFragmentFunc = [dynamicRectLibrary newFunctionWithName:@"dynamic_rect_fragment"];
+        if (!dynamicRectVertexFunc || !dynamicRectFragmentFunc) {
+            NSLog(@"Failed to find dynamic rect shader functions");
+            free(renderer);
+            return AFFERENT_ERROR_PIPELINE_FAILED;
+        }
+
+        MTLRenderPipelineDescriptor *dynamicRectPipelineDesc = [[MTLRenderPipelineDescriptor alloc] init];
+        dynamicRectPipelineDesc.vertexFunction = dynamicRectVertexFunc;
+        dynamicRectPipelineDesc.fragmentFunction = dynamicRectFragmentFunc;
+        dynamicRectPipelineDesc.colorAttachments[0].pixelFormat = MTLPixelFormatBGRA8Unorm;
+        dynamicRectPipelineDesc.rasterSampleCount = 4;
+        dynamicRectPipelineDesc.colorAttachments[0].blendingEnabled = YES;
+        dynamicRectPipelineDesc.colorAttachments[0].sourceRGBBlendFactor = MTLBlendFactorSourceAlpha;
+        dynamicRectPipelineDesc.colorAttachments[0].destinationRGBBlendFactor = MTLBlendFactorOneMinusSourceAlpha;
+        dynamicRectPipelineDesc.colorAttachments[0].sourceAlphaBlendFactor = MTLBlendFactorOne;
+        dynamicRectPipelineDesc.colorAttachments[0].destinationAlphaBlendFactor = MTLBlendFactorOneMinusSourceAlpha;
+
+        renderer->dynamicRectPipelineState = [renderer->device newRenderPipelineStateWithDescriptor:dynamicRectPipelineDesc
+                                                                                              error:&error];
+        if (!renderer->dynamicRectPipelineState) {
+            NSLog(@"Dynamic rect pipeline creation failed: %@", error);
+            free(renderer);
+            return AFFERENT_ERROR_PIPELINE_FAILED;
+        }
+
+        // Create dynamic triangle pipeline
+        id<MTLLibrary> dynamicTriangleLibrary = [renderer->device newLibraryWithSource:dynamicTriangleShaderSource
+                                                                               options:nil
+                                                                                 error:&error];
+        if (!dynamicTriangleLibrary) {
+            NSLog(@"Dynamic triangle shader compilation failed: %@", error);
+            free(renderer);
+            return AFFERENT_ERROR_PIPELINE_FAILED;
+        }
+
+        id<MTLFunction> dynamicTriangleVertexFunc = [dynamicTriangleLibrary newFunctionWithName:@"dynamic_triangle_vertex"];
+        id<MTLFunction> dynamicTriangleFragmentFunc = [dynamicTriangleLibrary newFunctionWithName:@"dynamic_triangle_fragment"];
+        if (!dynamicTriangleVertexFunc || !dynamicTriangleFragmentFunc) {
+            NSLog(@"Failed to find dynamic triangle shader functions");
+            free(renderer);
+            return AFFERENT_ERROR_PIPELINE_FAILED;
+        }
+
+        MTLRenderPipelineDescriptor *dynamicTrianglePipelineDesc = [[MTLRenderPipelineDescriptor alloc] init];
+        dynamicTrianglePipelineDesc.vertexFunction = dynamicTriangleVertexFunc;
+        dynamicTrianglePipelineDesc.fragmentFunction = dynamicTriangleFragmentFunc;
+        dynamicTrianglePipelineDesc.colorAttachments[0].pixelFormat = MTLPixelFormatBGRA8Unorm;
+        dynamicTrianglePipelineDesc.rasterSampleCount = 4;
+        dynamicTrianglePipelineDesc.colorAttachments[0].blendingEnabled = YES;
+        dynamicTrianglePipelineDesc.colorAttachments[0].sourceRGBBlendFactor = MTLBlendFactorSourceAlpha;
+        dynamicTrianglePipelineDesc.colorAttachments[0].destinationRGBBlendFactor = MTLBlendFactorOneMinusSourceAlpha;
+        dynamicTrianglePipelineDesc.colorAttachments[0].sourceAlphaBlendFactor = MTLBlendFactorOne;
+        dynamicTrianglePipelineDesc.colorAttachments[0].destinationAlphaBlendFactor = MTLBlendFactorOneMinusSourceAlpha;
+
+        renderer->dynamicTrianglePipelineState = [renderer->device newRenderPipelineStateWithDescriptor:dynamicTrianglePipelineDesc
+                                                                                                  error:&error];
+        if (!renderer->dynamicTrianglePipelineState) {
+            NSLog(@"Dynamic triangle pipeline creation failed: %@", error);
             free(renderer);
             return AFFERENT_ERROR_PIPELINE_FAILED;
         }
@@ -2008,6 +2274,80 @@ void afferent_renderer_draw_dynamic_circles(
         [renderer->currentEncoder drawPrimitives:MTLPrimitiveTypeTriangleStrip
                                      vertexStart:0
                                      vertexCount:4
+                                   instanceCount:count];
+        [renderer->currentEncoder setRenderPipelineState:renderer->pipelineState];
+    }
+}
+
+// Draw dynamic rects (positions/rotation updated each frame, GPU does color + NDC)
+// data: [pixelX, pixelY, hueBase, halfSizePixels, rotation] × count (5 floats per rect)
+void afferent_renderer_draw_dynamic_rects(
+    AfferentRendererRef renderer,
+    const float* data,
+    uint32_t count,
+    float time
+) {
+    if (!renderer || !renderer->currentEncoder || !data || count == 0) {
+        return;
+    }
+
+    @autoreleasepool {
+        // Create temporary buffer for this frame's rect data
+        size_t dataSize = count * sizeof(DynamicRectData);
+        id<MTLBuffer> rectBuffer = [renderer->device newBufferWithBytes:data
+                                                                 length:dataSize
+                                                                options:MTLResourceStorageModeShared];
+
+        DynamicRectUniforms uniforms = {
+            .time = time,
+            .canvasWidth = renderer->screenWidth,
+            .canvasHeight = renderer->screenHeight,
+            .hueSpeed = 0.2f
+        };
+
+        [renderer->currentEncoder setRenderPipelineState:renderer->dynamicRectPipelineState];
+        [renderer->currentEncoder setVertexBuffer:rectBuffer offset:0 atIndex:0];
+        [renderer->currentEncoder setVertexBytes:&uniforms length:sizeof(uniforms) atIndex:1];
+        [renderer->currentEncoder drawPrimitives:MTLPrimitiveTypeTriangleStrip
+                                     vertexStart:0
+                                     vertexCount:4
+                                   instanceCount:count];
+        [renderer->currentEncoder setRenderPipelineState:renderer->pipelineState];
+    }
+}
+
+// Draw dynamic triangles (positions/rotation updated each frame, GPU does color + NDC)
+// data: [pixelX, pixelY, hueBase, halfSizePixels, rotation] × count (5 floats per triangle)
+void afferent_renderer_draw_dynamic_triangles(
+    AfferentRendererRef renderer,
+    const float* data,
+    uint32_t count,
+    float time
+) {
+    if (!renderer || !renderer->currentEncoder || !data || count == 0) {
+        return;
+    }
+
+    @autoreleasepool {
+        // Create temporary buffer for this frame's triangle data
+        size_t dataSize = count * sizeof(DynamicTriangleData);
+        id<MTLBuffer> triangleBuffer = [renderer->device newBufferWithBytes:data
+                                                                     length:dataSize
+                                                                    options:MTLResourceStorageModeShared];
+
+        DynamicTriangleUniforms uniforms = {
+            .time = time,
+            .canvasWidth = renderer->screenWidth,
+            .canvasHeight = renderer->screenHeight,
+            .hueSpeed = 0.2f
+        };
+
+        [renderer->currentEncoder setRenderPipelineState:renderer->dynamicTrianglePipelineState];
+        [renderer->currentEncoder setVertexBuffer:triangleBuffer offset:0 atIndex:0];
+        [renderer->currentEncoder setVertexBytes:&uniforms length:sizeof(uniforms) atIndex:1];
+        [renderer->currentEncoder drawPrimitives:MTLPrimitiveTypeTriangle
+                                     vertexStart:0
+                                     vertexCount:3
                                    instanceCount:count];
         [renderer->currentEncoder setRenderPipelineState:renderer->pipelineState];
     }
