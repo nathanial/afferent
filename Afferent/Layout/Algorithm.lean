@@ -84,6 +84,8 @@ deriving Repr, Inhabited
 /-- Intermediate state for a grid item during layout. -/
 structure GridItemState where
   node : LayoutNode
+  /-- Outer margin. -/
+  margin : EdgeInsets
   /-- Resolved row start (0-indexed). -/
   rowStart : Nat
   /-- Resolved row end (exclusive, 0-indexed). -/
@@ -92,9 +94,9 @@ structure GridItemState where
   colStart : Nat
   /-- Resolved column end (exclusive, 0-indexed). -/
   colEnd : Nat
-  /-- Content width of the item. -/
+  /-- Content width of the item (including margins for track sizing). -/
   contentWidth : Length
-  /-- Content height of the item. -/
+  /-- Content height of the item (including margins for track sizing). -/
   contentHeight : Length
   /-- Final X position. -/
   resolvedX : Length := 0
@@ -524,7 +526,7 @@ def resolveTrackBaseSize (size : TrackSize) (available : Length) : Length :=
   | .minmax min _ => resolveTrackBaseSize min available
   | .fitContent max => min max available
 
-/-- Calculate the maximum content size for items in a given track. -/
+/-- Calculate the maximum content size for items in a given track (including margins). -/
 def maxContentInTrack (items : Array GridItemState) (trackIdx : Nat) (isColumn : Bool) : Length :=
   items.foldl (fun acc item =>
     let inTrack := if isColumn then
@@ -534,7 +536,11 @@ def maxContentInTrack (items : Array GridItemState) (trackIdx : Nat) (isColumn :
     if inTrack then
       -- For spanning items, divide content size by span count
       let span := if isColumn then item.colEnd - item.colStart else item.rowEnd - item.rowStart
-      let size := if isColumn then item.contentWidth else item.contentHeight
+      -- Include margins in content size
+      let size := if isColumn then
+        item.contentWidth + item.margin.horizontal
+      else
+        item.contentHeight + item.margin.vertical
       max acc (size / span.toFloat)
     else acc
   ) 0
@@ -615,23 +621,28 @@ def getGridArea (rowTracks colTracks : Array ResolvedTrack)
 
   (x, y, width, height)
 
-/-- Apply alignment within a cell. -/
+/-- Apply alignment within a cell, accounting for margins. -/
 def alignInCell (itemWidth itemHeight : Length)
     (cellX cellY cellWidth cellHeight : Length)
+    (margin : EdgeInsets)
     (justifySelf alignSelf : AlignItems) : Length × Length × Length × Length :=
+  -- Available space after margins
+  let availWidth := cellWidth - margin.horizontal
+  let availHeight := cellHeight - margin.vertical
+
   let (x, w) := match justifySelf with
-    | .stretch => (cellX, cellWidth)
-    | .flexStart => (cellX, itemWidth)
-    | .flexEnd => (cellX + cellWidth - itemWidth, itemWidth)
-    | .center => (cellX + (cellWidth - itemWidth) / 2, itemWidth)
-    | .baseline => (cellX, itemWidth)  -- Baseline = flexStart for now
+    | .stretch => (cellX + margin.left, availWidth)
+    | .flexStart => (cellX + margin.left, itemWidth)
+    | .flexEnd => (cellX + cellWidth - margin.right - itemWidth, itemWidth)
+    | .center => (cellX + margin.left + (availWidth - itemWidth) / 2, itemWidth)
+    | .baseline => (cellX + margin.left, itemWidth)  -- Baseline = flexStart for now
 
   let (y, h) := match alignSelf with
-    | .stretch => (cellY, cellHeight)
-    | .flexStart => (cellY, itemHeight)
-    | .flexEnd => (cellY + cellHeight - itemHeight, itemHeight)
-    | .center => (cellY + (cellHeight - itemHeight) / 2, itemHeight)
-    | .baseline => (cellY, itemHeight)
+    | .stretch => (cellY + margin.top, availHeight)
+    | .flexStart => (cellY + margin.top, itemHeight)
+    | .flexEnd => (cellY + cellHeight - margin.bottom - itemHeight, itemHeight)
+    | .center => (cellY + margin.top + (availHeight - itemHeight) / 2, itemHeight)
+    | .baseline => (cellY + margin.top, itemHeight)
 
   (x, y, w, h)
 
@@ -749,9 +760,9 @@ def positionGridItems (items : Array GridItemState) (rowTracks colTracks : Array
     let justifySelf := gridItem.justifySelf.getD container.justifyItems
     let alignSelf := gridItem.alignSelf.getD container.alignItems
 
-    -- Apply alignment
+    -- Apply alignment (with margins)
     let (x, y, w, h) := alignInCell item.contentWidth item.contentHeight
-      cellX cellY cellWidth cellHeight justifySelf alignSelf
+      cellX cellY cellWidth cellHeight item.margin justifySelf alignSelf
 
     result := result.push { item with resolvedX := x, resolvedY := y, resolvedWidth := w, resolvedHeight := h }
 
@@ -768,15 +779,17 @@ def layoutGridContainer (container : GridContainer) (children : Array LayoutNode
   let explicitCols := container.templateColumns.tracks.size
   let explicitRows := container.templateRows.tracks.size
 
-  -- Initialize items with content sizes
+  -- Initialize items with content sizes and margins
   let mut items : Array GridItemState := #[]
   for child in children do
     let contentSize := getContentSize child
+    let box := child.box
     let placement := child.gridItem?.map (·.placement) |>.getD GridPlacement.auto
     let (rowStart, rowEnd) := resolveGridSpan placement.row explicitRows
     let (colStart, colEnd) := resolveGridSpan placement.column explicitCols
     items := items.push {
       node := child
+      margin := box.margin
       rowStart, rowEnd, colStart, colEnd
       contentWidth := contentSize.1
       contentHeight := contentSize.2

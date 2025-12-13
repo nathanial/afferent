@@ -48,6 +48,7 @@ lean_exe hello_triangle where
   ]
 
 -- Test executable
+@[test_driver]
 lean_exe afferent_tests where
   root := `AfferentTests
   moreLinkArgs := #["-L/opt/homebrew/lib"]
