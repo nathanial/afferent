@@ -51,6 +51,9 @@ void afferent_window_get_size(AfferentWindowRef window, uint32_t* width, uint32_
 uint16_t afferent_window_get_key_code(AfferentWindowRef window);
 void afferent_window_clear_key(AfferentWindowRef window);
 
+// Get the main screen's backing scale factor (e.g., 2.0 for Retina, 1.5 for 150% scaling)
+float afferent_get_screen_scale(void);
+
 // Renderer management
 AfferentResult afferent_renderer_create(
     AfferentWindowRef window,

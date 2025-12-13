@@ -57,6 +57,10 @@ opaque Window.getKeyCode (window : @& Window) : IO UInt16
 @[extern "lean_afferent_window_clear_key"]
 opaque Window.clearKey (window : @& Window) : IO Unit
 
+-- Get the main screen's backing scale factor (e.g., 2.0 for Retina, 1.5 for 150% scaling)
+@[extern "lean_afferent_get_screen_scale"]
+opaque getScreenScale : IO Float
+
 -- Renderer management
 @[extern "lean_afferent_renderer_create"]
 opaque Renderer.create (window : @& Window) : IO Renderer

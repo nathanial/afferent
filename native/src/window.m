@@ -23,11 +23,15 @@ struct AfferentWindow {
 @property (nonatomic, strong) CAMetalLayer *metalLayer;
 @property (nonatomic, strong) id<MTLDevice> device;
 @property (nonatomic, assign) struct AfferentWindow *windowHandle;
+@property (nonatomic, assign) CGSize fixedDrawableSize;
 @end
 
 @implementation AfferentView
 
-- (instancetype)initWithFrame:(NSRect)frameRect device:(id<MTLDevice>)device {
+- (instancetype)initWithFrame:(NSRect)frameRect
+                       device:(id<MTLDevice>)device
+                 drawableSize:(CGSize)drawableSize
+                contentsScale:(CGFloat)contentsScale {
     self = [super initWithFrame:frameRect];
     if (self) {
         self.device = device;
@@ -42,22 +46,28 @@ struct AfferentWindow {
         self.metalLayer.displaySyncEnabled = YES;
         // Triple buffering for smoother frame pacing
         self.metalLayer.maximumDrawableCount = 3;
+        // Anchor content to top-left, don't scale when window resizes
+        self.metalLayer.contentsGravity = kCAGravityTopLeft;
+        // Match the window/screen backing scale so 1 unit in drawableSize == 1 physical pixel.
+        if (contentsScale <= 0.0) contentsScale = 1.0;
+        self.metalLayer.contentsScale = contentsScale;
         self.layer = self.metalLayer;
+
+        // Fixed drawable at requested pixel size - Lean code uses pixel coordinates.
+        self.fixedDrawableSize = drawableSize;
+        self.metalLayer.drawableSize = drawableSize;
     }
     return self;
 }
 
 - (void)setFrameSize:(NSSize)newSize {
     [super setFrameSize:newSize];
-    CGFloat scale = self.window.backingScaleFactor;
-    self.metalLayer.drawableSize = CGSizeMake(newSize.width * scale, newSize.height * scale);
+    // Don't update drawable size - keep it fixed for 1:1 pixel rendering
 }
 
 - (void)viewDidChangeBackingProperties {
     [super viewDidChangeBackingProperties];
-    CGFloat scale = self.window.backingScaleFactor;
-    NSSize size = self.bounds.size;
-    self.metalLayer.drawableSize = CGSizeMake(size.width * scale, size.height * scale);
+    // Don't update drawable size - keep it fixed for 1:1 pixel rendering
 }
 
 - (BOOL)acceptsFirstResponder {
@@ -107,6 +117,14 @@ AfferentResult afferent_window_create(
     AfferentWindowRef* out_window
 ) {
     @autoreleasepool {
+        // Treat requested width/height as pixel dimensions. Convert to Cocoa "points" so the
+        // on-screen window size matches the requested physical pixel size on Retina displays.
+        NSScreen *screen = [NSScreen mainScreen];
+        CGFloat scale = screen ? screen.backingScaleFactor : 1.0;
+        if (scale <= 0.0) scale = 1.0;
+        CGFloat pointsWidth = ((CGFloat)width) / scale;
+        CGFloat pointsHeight = ((CGFloat)height) / scale;
+
         // Initialize NSApplication if needed
         [NSApplication sharedApplication];
         [NSApp setActivationPolicy:NSApplicationActivationPolicyRegular];
@@ -134,7 +152,7 @@ AfferentResult afferent_window_create(
         }
 
         // Create window
-        NSRect contentRect = NSMakeRect(0, 0, width, height);
+        NSRect contentRect = NSMakeRect(0, 0, pointsWidth, pointsHeight);
         NSWindowStyleMask style = NSWindowStyleMaskTitled |
                                   NSWindowStyleMaskClosable |
                                   NSWindowStyleMaskMiniaturizable |
@@ -154,7 +172,10 @@ AfferentResult afferent_window_create(
         [window center];
 
         // Create Metal view
-        AfferentView *view = [[AfferentView alloc] initWithFrame:contentRect device:device];
+        AfferentView *view = [[AfferentView alloc] initWithFrame:contentRect
+                                                          device:device
+                                                    drawableSize:CGSizeMake(width, height)
+                                                   contentsScale:scale];
         [window setContentView:view];
 
         // Create delegate
@@ -244,5 +265,12 @@ void afferent_window_clear_key(AfferentWindowRef window) {
     if (window) {
         window->keyPressed = false;
         window->lastKeyCode = 0;
+    }
+}
+
+// Get the main screen's backing scale factor
+float afferent_get_screen_scale(void) {
+    @autoreleasepool {
+        return (float)[NSScreen mainScreen].backingScaleFactor;
     }
 }

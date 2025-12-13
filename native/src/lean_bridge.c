@@ -120,6 +120,12 @@ LEAN_EXPORT lean_obj_res lean_afferent_window_clear_key(lean_obj_arg window_obj,
     return lean_io_result_mk_ok(lean_box(0));
 }
 
+// Get screen scale factor
+LEAN_EXPORT lean_obj_res lean_afferent_get_screen_scale(lean_obj_arg world) {
+    float scale = afferent_get_screen_scale();
+    return lean_io_result_mk_ok(lean_box_float((double)scale));
+}
+
 // Renderer creation
 LEAN_EXPORT lean_obj_res lean_afferent_renderer_create(lean_obj_arg window_obj, lean_obj_arg world) {
     AfferentWindowRef window = (AfferentWindowRef)lean_get_external_data(window_obj);
