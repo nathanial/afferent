@@ -62,6 +62,20 @@ opaque Window.getClick (window : @& Window) : IO (Option ClickEvent)
 @[extern "lean_afferent_window_clear_click"]
 opaque Window.clearClick (window : @& Window) : IO Unit
 
+-- Pointer lock (for FPS camera controls)
+@[extern "lean_afferent_window_set_pointer_lock"]
+opaque Window.setPointerLock (window : @& Window) (locked : Bool) : IO Unit
+
+@[extern "lean_afferent_window_get_pointer_lock"]
+opaque Window.getPointerLock (window : @& Window) : IO Bool
+
+@[extern "lean_afferent_window_get_mouse_delta"]
+opaque Window.getMouseDelta (window : @& Window) : IO (Float × Float)
+
+-- Key state (for continuous movement input)
+@[extern "lean_afferent_window_is_key_down"]
+opaque Window.isKeyDown (window : @& Window) (keyCode : UInt16) : IO Bool
+
 -- Get the main screen's backing scale factor (e.g., 2.0 for Retina, 1.5 for 150% scaling)
 @[extern "lean_afferent_get_screen_scale"]
 opaque getScreenScale : IO Float

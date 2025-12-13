@@ -20,6 +20,7 @@ struct AfferentWindow {
     // Keyboard state
     uint16_t lastKeyCode;
     bool keyPressed;
+    bool keysDown[256];         // Track all key states for continuous input
     // Mouse state
     float mouseX;               // Canvas coordinates (Y-down)
     float mouseY;
@@ -28,6 +29,10 @@ struct AfferentWindow {
     float scrollDeltaY;
     bool mouseInWindow;
     uint16_t modifiers;         // Bitmask: shift=1, ctrl=2, alt=4, cmd=8
+    // Pointer lock state (for FPS camera)
+    bool pointerLocked;
+    float mouseDeltaX;          // Accumulated delta since last query
+    float mouseDeltaY;
     // Click events (poll-based like keyboard). Use a small ring buffer so multiple clicks
     // between frames don't overwrite each other.
     uint16_t clickHead;
@@ -112,14 +117,22 @@ static inline void afferent_window_push_click(struct AfferentWindow *w, uint8_t 
 
 - (void)keyDown:(NSEvent *)event {
     if (self.windowHandle) {
-        self.windowHandle->lastKeyCode = [event keyCode];
+        uint16_t keyCode = [event keyCode];
+        self.windowHandle->lastKeyCode = keyCode;
         self.windowHandle->keyPressed = true;
+        if (keyCode < 256) {
+            self.windowHandle->keysDown[keyCode] = true;
+        }
     }
 }
 
 - (void)keyUp:(NSEvent *)event {
-    // Don't clear on key up - let the app poll and clear explicitly
-    // This ensures key presses aren't missed between frames
+    if (self.windowHandle) {
+        uint16_t keyCode = [event keyCode];
+        if (keyCode < 256) {
+            self.windowHandle->keysDown[keyCode] = false;
+        }
+    }
 }
 
 // Helper: Convert macOS view coordinates (Y-up) to canvas coordinates (Y-down)
@@ -158,23 +171,49 @@ static inline void afferent_window_push_click(struct AfferentWindow *w, uint8_t 
 
 - (void)mouseMoved:(NSEvent *)event {
     if (self.windowHandle) {
-        CGPoint p = [self canvasPointFromEvent:event];
-        self.windowHandle->mouseX = p.x;
-        self.windowHandle->mouseY = p.y;
+        if (self.windowHandle->pointerLocked) {
+            // Accumulate delta from event when pointer locked
+            self.windowHandle->mouseDeltaX += [event deltaX];
+            self.windowHandle->mouseDeltaY += [event deltaY];
+        } else {
+            // Normal position tracking
+            CGPoint p = [self canvasPointFromEvent:event];
+            self.windowHandle->mouseX = p.x;
+            self.windowHandle->mouseY = p.y;
+        }
         [self updateModifiers:event];
     }
 }
 
 - (void)mouseDragged:(NSEvent *)event {
-    [self mouseMoved:event];
+    if (self.windowHandle && self.windowHandle->pointerLocked) {
+        // Accumulate delta when pointer locked
+        self.windowHandle->mouseDeltaX += [event deltaX];
+        self.windowHandle->mouseDeltaY += [event deltaY];
+        [self updateModifiers:event];
+    } else {
+        [self mouseMoved:event];
+    }
 }
 
 - (void)rightMouseDragged:(NSEvent *)event {
-    [self mouseMoved:event];
+    if (self.windowHandle && self.windowHandle->pointerLocked) {
+        self.windowHandle->mouseDeltaX += [event deltaX];
+        self.windowHandle->mouseDeltaY += [event deltaY];
+        [self updateModifiers:event];
+    } else {
+        [self mouseMoved:event];
+    }
 }
 
 - (void)otherMouseDragged:(NSEvent *)event {
-    [self mouseMoved:event];
+    if (self.windowHandle && self.windowHandle->pointerLocked) {
+        self.windowHandle->mouseDeltaX += [event deltaX];
+        self.windowHandle->mouseDeltaY += [event deltaY];
+        [self updateModifiers:event];
+    } else {
+        [self mouseMoved:event];
+    }
 }
 
 - (void)mouseDown:(NSEvent *)event {
@@ -361,6 +400,9 @@ AfferentResult afferent_window_create(
 
         [window setTitle:[NSString stringWithUTF8String:title]];
         [window center];
+        // Required to receive `mouseMoved:` events when no buttons are pressed.
+        // Without this, FPS-style mouse look won't work unless the user is dragging.
+        [window setAcceptsMouseMovedEvents:YES];
 
         // Create Metal view
         AfferentView *view = [[AfferentView alloc] initWithFrame:contentRect
@@ -368,6 +410,8 @@ AfferentResult afferent_window_create(
                                                     drawableSize:CGSizeMake(width, height)
                                                    contentsScale:scale];
         [window setContentView:view];
+        // Prefer the Metal view as the initial key-view responder (WASD / Escape) once the window is key.
+        [window setInitialFirstResponder:view];
 
         // Create delegate
         AfferentWindowDelegate *delegate = [[AfferentWindowDelegate alloc] init];
@@ -376,6 +420,8 @@ AfferentResult afferent_window_create(
         // Show window
         [window makeKeyAndOrderFront:nil];
         [NSApp activateIgnoringOtherApps:YES];
+        // Ensure the view receives keyboard events immediately, without requiring a click.
+        [window makeFirstResponder:view];
 
         // Finish launching if not done
         if (![NSApp isRunning]) {
@@ -390,6 +436,7 @@ AfferentResult afferent_window_create(
         handle->device = device;
         handle->lastKeyCode = 0;
         handle->keyPressed = false;
+        memset(handle->keysDown, 0, sizeof(handle->keysDown));  // All keys up
         // Initialize mouse state
         handle->mouseX = 0;
         handle->mouseY = 0;
@@ -398,6 +445,10 @@ AfferentResult afferent_window_create(
         handle->scrollDeltaY = 0;
         handle->mouseInWindow = false;
         handle->modifiers = 0;
+        // Initialize pointer lock state
+        handle->pointerLocked = false;
+        handle->mouseDeltaX = 0;
+        handle->mouseDeltaY = 0;
         handle->clickHead = 0;
         handle->clickCount = 0;
 
@@ -537,4 +588,48 @@ void afferent_window_clear_click(AfferentWindowRef window) {
             window->clickCount--;
         }
     }
+}
+
+// Pointer lock functions (for FPS camera controls)
+void afferent_window_set_pointer_lock(AfferentWindowRef window, bool locked) {
+    if (!window) return;
+
+    window->pointerLocked = locked;
+    if (locked) {
+        // Disable mouse-cursor association (mouse moves don't move cursor)
+        CGAssociateMouseAndMouseCursorPosition(false);
+        [NSCursor hide];
+    } else {
+        // Re-enable normal mouse behavior
+        CGAssociateMouseAndMouseCursorPosition(true);
+        [NSCursor unhide];
+    }
+    // Reset delta accumulator
+    window->mouseDeltaX = 0;
+    window->mouseDeltaY = 0;
+}
+
+bool afferent_window_get_pointer_lock(AfferentWindowRef window) {
+    return window ? window->pointerLocked : false;
+}
+
+void afferent_window_get_mouse_delta(AfferentWindowRef window, float* dx, float* dy) {
+    if (window) {
+        *dx = window->mouseDeltaX;
+        *dy = window->mouseDeltaY;
+        // Reset after reading
+        window->mouseDeltaX = 0;
+        window->mouseDeltaY = 0;
+    } else {
+        *dx = 0;
+        *dy = 0;
+    }
+}
+
+// Key state tracking (for continuous movement input)
+bool afferent_window_is_key_down(AfferentWindowRef window, uint16_t keyCode) {
+    if (window && keyCode < 256) {
+        return window->keysDown[keyCode];
+    }
+    return false;
 }

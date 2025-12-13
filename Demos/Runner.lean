@@ -140,6 +140,8 @@ def unifiedDemo : IO Unit := do
   let mut lastClickHit : Option Widget.WidgetId := none
   let mut lastHoverHit : Option Widget.WidgetId := none
   let mut lastInteractiveMsgs : Array CounterMsg := #[]
+  -- FPS camera for 3D demo (mode 9)
+  let mut fpsCamera : Render.FPSCamera := default
 
   while !(← c.shouldClose) do
     c.pollEvents
@@ -147,6 +149,9 @@ def unifiedDemo : IO Unit := do
     -- Check for Space key (key code 49) to cycle through modes
     let keyCode ← c.getKeyCode
     if keyCode == 49 then  -- Space bar
+      -- Release pointer lock when leaving mode 9
+      if displayMode == 9 then
+        FFI.Window.setPointerLock c.ctx.window false
       displayMode := (displayMode + 1) % 10
       c.clearKey
       -- Disable MSAA only for sprite benchmark mode to maximize throughput.
@@ -287,11 +292,55 @@ def unifiedDemo : IO Unit := do
           fillTextXY clickCountStr (20 * screenScale) (145 * screenScale) fontSmall
           fillTextXY msgStr (20 * screenScale) (165 * screenScale) fontSmall
       else if displayMode == 9 then
-        -- 3D Spinning Cubes demo
-        renderSpinningCubes c.ctx.renderer t physWidthF physHeightF
+        -- 3D Spinning Cubes demo with FPS camera controls
+        -- Pointer lock controls:
+        -- - Escape toggles capture/release
+        -- - Left click captures (when not captured)
+        let mut locked ← FFI.Window.getPointerLock c.ctx.window
+        if keyCode == 53 then  -- Escape
+          FFI.Window.setPointerLock c.ctx.window (!locked)
+          locked := !locked
+          c.clearKey
+        else if !locked then
+          -- Convenience: click to capture mouse so users don't have to discover Escape first.
+          let click ← FFI.Window.getClick c.ctx.window
+          match click with
+          | some ce =>
+            FFI.Window.clearClick c.ctx.window
+            if ce.button == 0 then
+              FFI.Window.setPointerLock c.ctx.window true
+              locked := true
+          | none => pure ()
+
+        -- Check movement keys (WASD + Q/E) using continuous key state.
+        -- Movement works even when not pointer-locked; mouse-look only when locked.
+        let wDown ← FFI.Window.isKeyDown c.ctx.window 13  -- W
+        let aDown ← FFI.Window.isKeyDown c.ctx.window 0   -- A
+        let sDown ← FFI.Window.isKeyDown c.ctx.window 1   -- S
+        let dDown ← FFI.Window.isKeyDown c.ctx.window 2   -- D
+        let qDown ← FFI.Window.isKeyDown c.ctx.window 12  -- Q
+        let eDown ← FFI.Window.isKeyDown c.ctx.window 14  -- E
+
+        let (dx, dy) ←
+          if locked then
+            FFI.Window.getMouseDelta c.ctx.window
+          else
+            pure (0.0, 0.0)
+
+        -- Update camera (forward, back, left, right, up, down)
+        fpsCamera := fpsCamera.update dt wDown sDown aDown dDown eDown qDown dx dy
+
+        -- Render with camera.
+        renderSpinningCubesWithCamera c.ctx.renderer t physWidthF physHeightF fpsCamera
         c ← run' (c.resetTransform) do
           setFillColor Color.white
-          fillTextXY "3D Spinning Cubes Demo (Space to advance)" (20 * screenScale) (30 * screenScale) fontMedium
+          if locked then
+            fillTextXY "3D Spinning Cubes - WASD+Q/E to move, mouse to look, Escape to release (Space to advance)" (20 * screenScale) (30 * screenScale) fontMedium
+          else
+            fillTextXY "3D Spinning Cubes - WASD+Q/E to move, click or Escape to capture mouse (Space to advance)" (20 * screenScale) (30 * screenScale) fontMedium
+
+          -- Debug line (helps confirm input is arriving)
+          fillTextXY s!"lock={locked} dx={dx} dy={dy} pos=({fpsCamera.x},{fpsCamera.y},{fpsCamera.z}) yaw={fpsCamera.yaw} pitch={fpsCamera.pitch}" (20 * screenScale) (55 * screenScale) fontSmall
       else
         -- Normal demo mode: grid of demos using CanvasM for proper state threading
         c ← run' (c.resetTransform) do

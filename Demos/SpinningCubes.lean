@@ -9,17 +9,10 @@ open Afferent Afferent.FFI Afferent.Render
 
 namespace Demos
 
-/-- Render a 5x5 grid of spinning cubes.
-    t: elapsed time in seconds
-    renderer: the FFI renderer
-    screenWidth/screenHeight: for aspect ratio calculation -/
-def renderSpinningCubes (renderer : Renderer) (t : Float) (screenWidth screenHeight : Float) : IO Unit := do
-  -- Camera setup (pulled back to see 5x5 grid)
-  let aspect := screenWidth / screenHeight
-  let fovY := 3.14159265358979 / 4.0  -- pi/4 radians = 45 degrees
-  let proj := Matrix4.perspective fovY aspect 0.1 100.0
-  let view := Matrix4.lookAt (0, 0, 12) (0, 0, 0) (0, 1, 0)
-
+/-- Render spinning cubes with a given view matrix.
+    Internal helper used by both static and FPS camera versions. -/
+private def renderCubesWithView (renderer : Renderer) (t : Float)
+    (proj view : Matrix4) : IO Unit := do
   -- Light direction (normalized, pointing from upper-right-front)
   let lightDir := #[0.5, 0.7, 0.5]
 
@@ -53,5 +46,29 @@ def renderSpinningCubes (renderer : Renderer) (t : Float) (screenWidth screenHei
         model.toArray
         lightDir
         0.5  -- ambient light factor
+
+/-- Render a 5x5 grid of spinning cubes with static camera.
+    t: elapsed time in seconds
+    renderer: the FFI renderer
+    screenWidth/screenHeight: for aspect ratio calculation -/
+def renderSpinningCubes (renderer : Renderer) (t : Float) (screenWidth screenHeight : Float) : IO Unit := do
+  let aspect := screenWidth / screenHeight
+  let fovY := 3.14159265358979 / 4.0  -- pi/4 radians = 45 degrees
+  let proj := Matrix4.perspective fovY aspect 0.1 100.0
+  let view := Matrix4.lookAt (0, 0, 12) (0, 0, 0) (0, 1, 0)
+  renderCubesWithView renderer t proj view
+
+/-- Render a 5x5 grid of spinning cubes with FPS camera.
+    t: elapsed time in seconds
+    renderer: the FFI renderer
+    screenWidth/screenHeight: for aspect ratio calculation
+    camera: FPS camera state -/
+def renderSpinningCubesWithCamera (renderer : Renderer) (t : Float)
+    (screenWidth screenHeight : Float) (camera : FPSCamera) : IO Unit := do
+  let aspect := screenWidth / screenHeight
+  let fovY := 3.14159265358979 / 4.0  -- pi/4 radians = 45 degrees
+  let proj := Matrix4.perspective fovY aspect 0.1 100.0
+  let view := camera.viewMatrix
+  renderCubesWithView renderer t proj view
 
 end Demos

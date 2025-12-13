@@ -240,6 +240,39 @@ LEAN_EXPORT lean_obj_res lean_afferent_window_clear_click(lean_obj_arg window_ob
     return lean_io_result_mk_ok(lean_box(0));
 }
 
+// Pointer lock (for FPS camera)
+LEAN_EXPORT lean_obj_res lean_afferent_window_set_pointer_lock(lean_obj_arg window_obj, uint8_t locked, lean_obj_arg world) {
+    AfferentWindowRef window = (AfferentWindowRef)lean_get_external_data(window_obj);
+    afferent_window_set_pointer_lock(window, locked != 0);
+    return lean_io_result_mk_ok(lean_box(0));
+}
+
+LEAN_EXPORT lean_obj_res lean_afferent_window_get_pointer_lock(lean_obj_arg window_obj, lean_obj_arg world) {
+    AfferentWindowRef window = (AfferentWindowRef)lean_get_external_data(window_obj);
+    bool locked = afferent_window_get_pointer_lock(window);
+    return lean_io_result_mk_ok(lean_box(locked ? 1 : 0));
+}
+
+LEAN_EXPORT lean_obj_res lean_afferent_window_get_mouse_delta(lean_obj_arg window_obj, lean_obj_arg world) {
+    AfferentWindowRef window = (AfferentWindowRef)lean_get_external_data(window_obj);
+    float dx, dy;
+    afferent_window_get_mouse_delta(window, &dx, &dy);
+
+    // Return (Float × Float) as Prod Float Float
+    lean_object* result = lean_alloc_ctor(0, 2, 0);
+    lean_ctor_set(result, 0, lean_box_float((double)dx));
+    lean_ctor_set(result, 1, lean_box_float((double)dy));
+
+    return lean_io_result_mk_ok(result);
+}
+
+// Key state (for continuous movement)
+LEAN_EXPORT lean_obj_res lean_afferent_window_is_key_down(lean_obj_arg window_obj, uint16_t keyCode, lean_obj_arg world) {
+    AfferentWindowRef window = (AfferentWindowRef)lean_get_external_data(window_obj);
+    bool down = afferent_window_is_key_down(window, keyCode);
+    return lean_io_result_mk_ok(lean_box(down ? 1 : 0));
+}
+
 // Renderer creation
 LEAN_EXPORT lean_obj_res lean_afferent_renderer_create(lean_obj_arg window_obj, lean_obj_arg world) {
     AfferentWindowRef window = (AfferentWindowRef)lean_get_external_data(window_obj);

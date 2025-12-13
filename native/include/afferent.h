@@ -68,6 +68,14 @@ bool afferent_window_mouse_in_window(AfferentWindowRef window);
 bool afferent_window_get_click(AfferentWindowRef window, uint8_t* button, float* x, float* y, uint16_t* modifiers);
 void afferent_window_clear_click(AfferentWindowRef window);
 
+// Pointer lock (for FPS camera controls)
+void afferent_window_set_pointer_lock(AfferentWindowRef window, bool locked);
+bool afferent_window_get_pointer_lock(AfferentWindowRef window);
+void afferent_window_get_mouse_delta(AfferentWindowRef window, float* dx, float* dy);
+
+// Key state (for continuous movement input)
+bool afferent_window_is_key_down(AfferentWindowRef window, uint16_t keyCode);
+
 // Get the main screen's backing scale factor (e.g., 2.0 for Retina, 1.5 for 150% scaling)
 float afferent_get_screen_scale(void);
 
