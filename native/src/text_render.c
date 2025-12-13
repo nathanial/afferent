@@ -122,10 +122,40 @@ AfferentResult afferent_font_load(
 
     font->size = size;
 
-    // Calculate font metrics (convert from 26.6 fixed point)
-    font->ascender = font->face->size->metrics.ascender / 64.0f;
-    font->descender = font->face->size->metrics.descender / 64.0f;
-    font->line_height = font->face->size->metrics.height / 64.0f;
+    // Calculate font metrics.
+    //
+    // FreeType face metrics are often slightly optimistic once hinting/rasterization is applied,
+    // which can make layout under-allocate vertical space and cause text overlap. Since we
+    // currently render/cache only basic ASCII, compute conservative ascent/descent from the
+    // rasterized glyph bitmaps for that range, and use it to derive a safe line height.
+    float ft_asc = font->face->size->metrics.ascender / 64.0f;
+    float ft_desc = font->face->size->metrics.descender / 64.0f;
+    float ft_line = font->face->size->metrics.height / 64.0f;
+
+    float max_ascent = 0.0f;
+    float max_descent = 0.0f;
+    for (uint32_t cp = 32; cp < MAX_GLYPHS; cp++) {
+        FT_Error e = FT_Load_Char(font->face, cp, FT_LOAD_RENDER);
+        if (e) continue;
+        FT_GlyphSlot slot = font->face->glyph;
+        float ascent = (float)slot->bitmap_top;  // baseline -> top
+        float descent = (float)slot->bitmap.rows - (float)slot->bitmap_top; // baseline -> bottom
+        if (ascent > max_ascent) max_ascent = ascent;
+        if (descent > max_descent) max_descent = descent;
+    }
+
+    float bitmap_line = max_ascent + max_descent;
+    if (bitmap_line <= 0.0f) {
+        // Fallback to FreeType metrics if raster scan failed.
+        font->ascender = ft_asc;
+        font->descender = ft_desc;
+        font->line_height = ft_line;
+    } else {
+        font->ascender = max_ascent;
+        font->descender = -max_descent;
+        // Keep FreeType's line gap if it is larger than bitmap extents.
+        font->line_height = (ft_line > bitmap_line) ? ft_line : bitmap_line;
+    }
 
     // Allocate texture atlas
     font->atlas_width = ATLAS_WIDTH;

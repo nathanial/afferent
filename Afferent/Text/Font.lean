@@ -52,6 +52,10 @@ def descender (font : Font) : Float :=
 def lineHeight (font : Font) : Float :=
   font.metrics.lineHeight
 
+/-- Approximate glyph bounding-box height for a single line (ascender - descender). -/
+def glyphHeight (font : Font) : Float :=
+  font.metrics.ascender - font.metrics.descender
+
 /-- Measure the dimensions of a text string. Returns (width, height). -/
 def measureText (font : Font) (text : String) : IO (Float × Float) :=
   FFI.Text.measure font.handle text

@@ -97,4 +97,27 @@ def renderUIDebug (widget : Widget) (availWidth availHeight : Float)
     setStrokeColor contentColor
     strokeRectXYWH layout.contentRect.x layout.contentRect.y layout.contentRect.width layout.contentRect.height
 
+/-- Render widget bounds for debugging, centered using intrinsic sizing.
+    Draws rectangles around each widget's border and content areas. -/
+def renderUICenteredDebug (widget : Widget) (availWidth availHeight : Float)
+    (borderColor : Color := Color.red) (contentColor : Color := Color.blue) : CanvasM Unit := do
+  let (intrinsicW, intrinsicH) ← intrinsicSize widget
+  let prepared ← prepareUI widget intrinsicW intrinsicH
+
+  let offsetX := (availWidth - intrinsicW) / 2
+  let offsetY := (availHeight - intrinsicH) / 2
+
+  save
+  translate offsetX offsetY
+  renderPreparedUI prepared
+
+  setLineWidth 1
+  for layout in prepared.layoutResult.layouts do
+    setStrokeColor borderColor
+    strokeRectXYWH layout.borderRect.x layout.borderRect.y layout.borderRect.width layout.borderRect.height
+    setStrokeColor contentColor
+    strokeRectXYWH layout.contentRect.x layout.contentRect.y layout.contentRect.width layout.contentRect.height
+
+  restore
+
 end Afferent.Widget

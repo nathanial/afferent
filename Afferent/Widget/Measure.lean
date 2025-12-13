@@ -24,6 +24,12 @@ structure MeasureResult where
   widget : Widget
 deriving Inhabited
 
+/-- Get the intrinsic content size stored on a layout node (0 if missing). -/
+def nodeContentSize (n : Layout.LayoutNode) : Float × Float :=
+  match n.content with
+  | some cs => (cs.width, cs.height)
+  | none => (0, 0)
+
 /-- Measure a widget tree and convert to LayoutNode tree.
     Also computes and stores TextLayout for text widgets.
     Returns both the LayoutNode tree and the updated Widget tree with computed layouts. -/
@@ -65,7 +71,26 @@ partial def measureWidget (w : Widget) (availWidth availHeight : Float) : IO Mea
       let result ← measureWidget child availWidth availHeight
       childNodes := childNodes.push result.node
       updatedChildren := updatedChildren.push result.widget
-    let node := Layout.LayoutNode.flexBox id props childNodes box
+    -- Store an intrinsic content size on the container so parent flex/grid layout
+    -- can size this node based on its children (avoids collapsing to 0).
+    let padding := style.padding
+    let gap := props.gap
+    let isColumn := !props.direction.isHorizontal
+    let childSizes := childNodes.map nodeContentSize
+    let (contentW, contentH) :=
+      if isColumn then
+        let maxWidth := childSizes.foldl (fun acc (cw, _) => max acc cw) 0
+        let totalHeight := childSizes.foldl (fun acc (_, ch) => acc + ch) 0
+        let gaps := if childNodes.size > 1 then gap * (childNodes.size - 1).toFloat else 0
+        (maxWidth + padding.horizontal, totalHeight + gaps + padding.vertical)
+      else
+        let totalWidth := childSizes.foldl (fun acc (cw, _) => acc + cw) 0
+        let maxHeight := childSizes.foldl (fun acc (_, ch) => max acc ch) 0
+        let gaps := if childNodes.size > 1 then gap * (childNodes.size - 1).toFloat else 0
+        (totalWidth + gaps + padding.horizontal, maxHeight + padding.vertical)
+
+    let node :=
+      Layout.LayoutNode.mk id box (.flex props) .none (some (Layout.ContentSize.mk' contentW contentH)) childNodes
     let updatedWidget := Widget.flex id props style updatedChildren
     pure ⟨node, updatedWidget⟩
 
@@ -78,7 +103,29 @@ partial def measureWidget (w : Widget) (availWidth availHeight : Float) : IO Mea
       let result ← measureWidget child availWidth availHeight
       childNodes := childNodes.push result.node
       updatedChildren := updatedChildren.push result.widget
-    let node := Layout.LayoutNode.gridBox id props childNodes box
+    -- Store an intrinsic content size on the container so parent flex/grid layout
+    -- can size this node based on its children (avoids collapsing to 0).
+    let padding := style.padding
+    let numCols := props.templateColumns.tracks.size
+    let numCols := if numCols == 0 then 1 else numCols
+    let colGap := props.columnGap
+    let rowGap := props.rowGap
+
+    let childSizes := childNodes.map nodeContentSize
+    let numRows := (childNodes.size + numCols - 1) / numCols
+    let mut maxColWidth : Float := 0
+    let mut maxRowHeight : Float := 0
+    for (cw, ch) in childSizes do
+      maxColWidth := max maxColWidth cw
+      maxRowHeight := max maxRowHeight ch
+
+    let totalWidth := maxColWidth * numCols.toFloat + colGap * (numCols - 1).toFloat
+    let totalHeight := maxRowHeight * numRows.toFloat + rowGap * (numRows - 1).toFloat
+    let contentW := totalWidth + padding.horizontal
+    let contentH := totalHeight + padding.vertical
+
+    let node :=
+      Layout.LayoutNode.mk id box (.grid props) .none (some (Layout.ContentSize.mk' contentW contentH)) childNodes
     let updatedWidget := Widget.grid id props style updatedChildren
     pure ⟨node, updatedWidget⟩
 
@@ -89,7 +136,13 @@ partial def measureWidget (w : Widget) (availWidth availHeight : Float) : IO Mea
     -- The scroll container's LayoutNode is a flex container that will be sized by parent
     -- The child will be laid out at full content size
     let childNode := childResult.node
-    let node := Layout.LayoutNode.flexBox id Layout.FlexContainer.default #[childNode] box
+    let viewportW := style.minWidth.getD contentW
+    let viewportH := style.minHeight.getD contentH
+    let viewportBorderW := viewportW + style.padding.horizontal
+    let viewportBorderH := viewportH + style.padding.vertical
+    let node :=
+      Layout.LayoutNode.mk id box (.flex Layout.FlexContainer.default) .none
+        (some (Layout.ContentSize.mk' viewportBorderW viewportBorderH)) #[childNode]
     let updatedWidget := Widget.scroll id style scrollState contentW contentH childResult.widget
     pure ⟨node, updatedWidget⟩
 

@@ -34,8 +34,9 @@ def renderBoxStyle (rect : Layout.LayoutRect) (style : BoxStyle) : CanvasM Unit 
 def renderWrappedText (contentRect : Layout.LayoutRect) (font : Font)
     (color : Color) (align : TextAlign) (textLayout : TextLayout) : CanvasM Unit := do
   setFillColor color
-  let lineHeight := font.lineHeight
   let ascender := font.ascender
+  let glyphHeight := font.glyphHeight
+  let lineAdvance := max font.lineHeight glyphHeight
 
   -- Start y at baseline of first line (rect.y + ascender)
   let mut y := contentRect.y + ascender
@@ -48,7 +49,7 @@ def renderWrappedText (contentRect : Layout.LayoutRect) (font : Font)
       | .right => contentRect.x + contentRect.width - line.width
 
     fillTextXY line.text x y font
-    y := y + lineHeight
+    y := y + lineAdvance
 
 /-- Render a single-line text (no wrapping). -/
 def renderSingleLineText (contentRect : Layout.LayoutRect) (text : String)

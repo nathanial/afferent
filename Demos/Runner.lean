@@ -217,7 +217,7 @@ def unifiedDemo : IO Unit := do
       else if displayMode == 7 then
         -- Widget system demo
         c ← run' (c.resetTransform) do
-          renderWidgetShapesM fontMedium fontSmall physWidthF physHeightF
+          renderWidgetShapesDebugM fontMedium fontSmall physWidthF physHeightF screenScale
           setFillColor Color.white
           fillTextXY "Widget System Demo (Space to advance)" (20 * screenScale) (30 * screenScale) fontMedium
       else

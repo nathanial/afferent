@@ -63,13 +63,15 @@ def wrapText (font : Font) (text : String) (maxWidth : Float) : IO TextLayout :=
   if text.isEmpty then
     return TextLayout.empty
 
+  let glyphHeight := font.glyphHeight
+  let lineAdvance := max font.lineHeight glyphHeight
+
   -- No wrapping case (maxWidth <= 0 means single line)
   if maxWidth <= 0 then
     let (w, h) ← font.measureText text
-    return TextLayout.singleLine text w h
+    return TextLayout.singleLine text w (max h glyphHeight)
 
   let tokens := tokenize text
-  let lineHeight := font.lineHeight
 
   let mut lines : Array TextLine := #[]
   let mut currentLineText := ""
@@ -80,8 +82,10 @@ def wrapText (font : Font) (text : String) (maxWidth : Float) : IO TextLayout :=
     match token with
     | .newline =>
       -- Explicit line break - emit current line
-      lines := lines.push ⟨currentLineText, currentLineWidth⟩
-      maxLineWidth := max maxLineWidth currentLineWidth
+      let lineText := currentLineText.trimRight
+      let (lineWidth, _) ← font.measureText lineText
+      lines := lines.push ⟨lineText, lineWidth⟩
+      maxLineWidth := max maxLineWidth lineWidth
       currentLineText := ""
       currentLineWidth := 0
 
@@ -98,8 +102,10 @@ def wrapText (font : Font) (text : String) (maxWidth : Float) : IO TextLayout :=
           currentLineWidth := newWidth
         else
           -- Space would overflow, emit line and skip the space
-          lines := lines.push ⟨currentLineText, currentLineWidth⟩
-          maxLineWidth := max maxLineWidth currentLineWidth
+          let lineText := currentLineText.trimRight
+          let (lineWidth, _) ← font.measureText lineText
+          lines := lines.push ⟨lineText, lineWidth⟩
+          maxLineWidth := max maxLineWidth lineWidth
           currentLineText := ""
           currentLineWidth := 0
 
@@ -118,8 +124,10 @@ def wrapText (font : Font) (text : String) (maxWidth : Float) : IO TextLayout :=
           currentLineWidth := newWidth
         else
           -- Word doesn't fit - emit current line and start new one
-          lines := lines.push ⟨currentLineText.trimRight, currentLineWidth⟩
-          maxLineWidth := max maxLineWidth currentLineWidth
+          let lineText := currentLineText.trimRight
+          let (lineWidth, _) ← font.measureText lineText
+          lines := lines.push ⟨lineText, lineWidth⟩
+          maxLineWidth := max maxLineWidth lineWidth
           currentLineText := w
           currentLineWidth := wordWidth
 
@@ -136,7 +144,9 @@ def wrapText (font : Font) (text : String) (maxWidth : Float) : IO TextLayout :=
 
   return {
     lines := lines
-    totalHeight := lineHeight * lines.size.toFloat
+    totalHeight :=
+      if lines.size == 0 then 0
+      else glyphHeight + lineAdvance * (lines.size - 1).toFloat
     maxWidth := maxLineWidth
   }
 
@@ -145,6 +155,7 @@ def measureSingleLine (font : Font) (text : String) : IO TextLayout := do
   if text.isEmpty then
     return TextLayout.empty
   let (w, h) ← font.measureText text
-  return TextLayout.singleLine text w h
+  let glyphHeight := font.glyphHeight
+  return TextLayout.singleLine text w (max h glyphHeight)
 
 end Afferent.Widget
