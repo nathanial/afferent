@@ -59,24 +59,22 @@ def renderUIAt (widget : Widget) (x y : Float) (availWidth availHeight : Float) 
   restore
 
 /-- Render a widget centered in the available space.
-    The widget is measured at the available size, then centered. -/
+    Uses intrinsic size calculation for accurate centering. -/
 def renderUICentered (widget : Widget) (availWidth availHeight : Float) : CanvasM Unit := do
-  let prepared ← prepareUI widget availWidth availHeight
+  -- First compute intrinsic size of the widget tree
+  let (intrinsicW, intrinsicH) ← intrinsicSize widget
 
-  -- Find the root widget's bounds to center it
-  if let some rootLayout := prepared.layoutResult.get widget.id then
-    let widgetWidth := rootLayout.borderRect.width
-    let widgetHeight := rootLayout.borderRect.height
-    let offsetX := (availWidth - widgetWidth) / 2
-    let offsetY := (availHeight - widgetHeight) / 2
+  -- Use intrinsic size for layout (so children are positioned correctly within the widget bounds)
+  let prepared ← prepareUI widget intrinsicW intrinsicH
 
-    save
-    translate offsetX offsetY
-    renderPreparedUI prepared
-    restore
-  else
-    -- Fallback: render at origin
-    renderPreparedUI prepared
+  -- Center based on intrinsic size
+  let offsetX := (availWidth - intrinsicW) / 2
+  let offsetY := (availHeight - intrinsicH) / 2
+
+  save
+  translate offsetX offsetY
+  renderPreparedUI prepared
+  restore
 
 /-! ## Debug Rendering -/
 

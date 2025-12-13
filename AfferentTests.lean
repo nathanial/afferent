@@ -4,6 +4,7 @@
 -/
 import Afferent.Tests.TessellationTests
 import Afferent.Tests.LayoutTests
+import Afferent.Tests.WidgetTests
 
 open Afferent.Tests
 
@@ -21,6 +22,10 @@ def main : IO UInt32 := do
   -- Run layout tests
   let layoutResult ← LayoutTests.runAllTests
   if layoutResult != 0 then exitCode := 1
+
+  -- Run widget tests
+  let widgetResult ← WidgetTests.runAllTests
+  if widgetResult != 0 then exitCode := 1
 
   -- Summary
   IO.println ""

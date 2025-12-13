@@ -51,7 +51,17 @@ lean_exe hello_triangle where
 @[test_driver]
 lean_exe afferent_tests where
   root := `AfferentTests
-  moreLinkArgs := #["-L/opt/homebrew/lib"]
+  moreLinkArgs := #[
+    "-L/Users/nathanialhartman/.elan/toolchains/leanprover--lean4---v4.25.2/lib",
+    "-L/Users/nathanialhartman/.elan/toolchains/leanprover--lean4---v4.25.2/lib/libc",
+    "-framework", "Metal",
+    "-framework", "Cocoa",
+    "-framework", "QuartzCore",
+    "-framework", "Foundation",
+    "-lobjc",
+    "-L/opt/homebrew/lib",
+    "-lfreetype"
+  ]
 
 -- Native code targets
 target window_o pkg : FilePath := do
