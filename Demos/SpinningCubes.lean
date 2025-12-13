@@ -52,6 +52,6 @@ def renderSpinningCubes (renderer : Renderer) (t : Float) (screenWidth screenHei
         mvp.toArray
         model.toArray
         lightDir
-        0.3  -- ambient light factor
+        0.5  -- ambient light factor
 
 end Demos

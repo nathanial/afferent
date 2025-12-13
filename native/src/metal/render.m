@@ -836,10 +836,11 @@ struct Vertex3DOut {
 };
 
 // Scene uniforms for 3D rendering
+// NOTE: Using packed_float3 to match C struct layout (12 bytes, no padding)
 struct Scene3DUniforms {
     float4x4 modelViewProj;   // Combined MVP matrix
     float4x4 modelMatrix;     // Model matrix for normal transformation
-    float3 lightDir;          // Light direction (normalized)
+    packed_float3 lightDir;   // Light direction (12 bytes, packed to match C)
     float ambient;            // Ambient light factor
 };
 

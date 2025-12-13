@@ -68,7 +68,7 @@ def main : IO Unit := do
             mvp.toArray
             model.toArray
             lightDir
-            0.3  -- ambient light factor
+            0.5  -- ambient light factor
 
       renderer.endFrame
 
