@@ -1382,3 +1382,100 @@ LEAN_EXPORT lean_obj_res lean_afferent_renderer_draw_sprites_instance_buffer(
     );
     return lean_io_result_mk_ok(lean_box(0));
 }
+
+// =============================================================================
+// 3D Mesh Rendering
+// =============================================================================
+// Draw 3D mesh with perspective projection and lighting
+// vertices_arr: Array Float (10 floats per vertex: pos[3], normal[3], color[4])
+// indices_arr: Array UInt32 (triangle indices)
+// mvp_matrix: Array Float (16 floats, column-major)
+// model_matrix: Array Float (16 floats, column-major)
+// light_dir: Array Float (3 floats, normalized direction)
+// ambient: Float (ambient light factor 0-1)
+LEAN_EXPORT lean_obj_res lean_afferent_renderer_draw_mesh_3d(
+    lean_obj_arg renderer_obj,
+    lean_obj_arg vertices_arr,
+    lean_obj_arg indices_arr,
+    lean_obj_arg mvp_matrix,
+    lean_obj_arg model_matrix,
+    lean_obj_arg light_dir,
+    double ambient,
+    lean_obj_arg world
+) {
+    AfferentRendererRef renderer = (AfferentRendererRef)lean_get_external_data(renderer_obj);
+
+    // Convert vertex array (10 floats per vertex)
+    size_t vert_floats = lean_array_size(vertices_arr);
+    size_t vertex_count = vert_floats / 10;
+
+    if (vertex_count == 0) {
+        return lean_io_result_mk_ok(lean_box(0));
+    }
+
+    AfferentVertex3D* vertices = malloc(vertex_count * sizeof(AfferentVertex3D));
+    if (!vertices) {
+        return lean_io_result_mk_error(lean_mk_io_user_error(
+            lean_mk_string("Failed to allocate vertex buffer")));
+    }
+
+    for (size_t i = 0; i < vertex_count; i++) {
+        size_t base = i * 10;
+        // Position
+        vertices[i].position[0] = (float)lean_unbox_float(lean_array_get_core(vertices_arr, base + 0));
+        vertices[i].position[1] = (float)lean_unbox_float(lean_array_get_core(vertices_arr, base + 1));
+        vertices[i].position[2] = (float)lean_unbox_float(lean_array_get_core(vertices_arr, base + 2));
+        // Normal
+        vertices[i].normal[0] = (float)lean_unbox_float(lean_array_get_core(vertices_arr, base + 3));
+        vertices[i].normal[1] = (float)lean_unbox_float(lean_array_get_core(vertices_arr, base + 4));
+        vertices[i].normal[2] = (float)lean_unbox_float(lean_array_get_core(vertices_arr, base + 5));
+        // Color
+        vertices[i].color[0] = (float)lean_unbox_float(lean_array_get_core(vertices_arr, base + 6));
+        vertices[i].color[1] = (float)lean_unbox_float(lean_array_get_core(vertices_arr, base + 7));
+        vertices[i].color[2] = (float)lean_unbox_float(lean_array_get_core(vertices_arr, base + 8));
+        vertices[i].color[3] = (float)lean_unbox_float(lean_array_get_core(vertices_arr, base + 9));
+    }
+
+    // Convert index array
+    size_t index_count = lean_array_size(indices_arr);
+    uint32_t* indices = malloc(index_count * sizeof(uint32_t));
+    if (!indices) {
+        free(vertices);
+        return lean_io_result_mk_error(lean_mk_io_user_error(
+            lean_mk_string("Failed to allocate index buffer")));
+    }
+
+    for (size_t i = 0; i < index_count; i++) {
+        indices[i] = lean_unbox_uint32(lean_array_get_core(indices_arr, i));
+    }
+
+    // Convert MVP matrix (16 floats)
+    float mvp[16];
+    for (size_t i = 0; i < 16; i++) {
+        mvp[i] = (float)lean_unbox_float(lean_array_get_core(mvp_matrix, i));
+    }
+
+    // Convert model matrix (16 floats)
+    float model[16];
+    for (size_t i = 0; i < 16; i++) {
+        model[i] = (float)lean_unbox_float(lean_array_get_core(model_matrix, i));
+    }
+
+    // Convert light direction (3 floats)
+    float light[3];
+    for (size_t i = 0; i < 3; i++) {
+        light[i] = (float)lean_unbox_float(lean_array_get_core(light_dir, i));
+    }
+
+    // Draw the mesh
+    afferent_renderer_draw_mesh_3d(
+        renderer, vertices, (uint32_t)vertex_count,
+        indices, (uint32_t)index_count,
+        mvp, model, light, (float)ambient
+    );
+
+    free(vertices);
+    free(indices);
+
+    return lean_io_result_mk_ok(lean_box(0));
+}

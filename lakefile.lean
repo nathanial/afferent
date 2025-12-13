@@ -47,6 +47,21 @@ lean_exe hello_triangle where
     "-lfreetype"
   ]
 
+-- 3D Spinning Cubes demo
+lean_exe spinning_cubes where
+  root := `Examples.SpinningCubes
+  moreLinkArgs := #[
+    "-L/Users/nathanialhartman/.elan/toolchains/leanprover--lean4---v4.25.2/lib",
+    "-L/Users/nathanialhartman/.elan/toolchains/leanprover--lean4---v4.25.2/lib/libc",
+    "-framework", "Metal",
+    "-framework", "Cocoa",
+    "-framework", "QuartzCore",
+    "-framework", "Foundation",
+    "-lobjc",
+    "-L/opt/homebrew/lib",
+    "-lfreetype"
+  ]
+
 -- Test executable
 @[test_driver]
 lean_exe afferent_tests where

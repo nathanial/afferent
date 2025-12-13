@@ -17,6 +17,7 @@ import Demos.CirclesPerf
 import Demos.SpritesPerf
 import Demos.Widgets
 import Demos.Interactive
+import Demos.SpinningCubes
 
 set_option maxRecDepth 1024
 
@@ -146,7 +147,7 @@ def unifiedDemo : IO Unit := do
     -- Check for Space key (key code 49) to cycle through modes
     let keyCode ← c.getKeyCode
     if keyCode == 49 then  -- Space bar
-      displayMode := (displayMode + 1) % 9
+      displayMode := (displayMode + 1) % 10
       c.clearKey
       -- Disable MSAA only for sprite benchmark mode to maximize throughput.
       -- Keep Retina/native drawable scaling enabled.
@@ -161,7 +162,8 @@ def unifiedDemo : IO Unit := do
       | 5 => IO.println "Switched to LAYOUT demo (full-size)"
       | 6 => IO.println "Switched to CSS GRID demo (full-size)"
       | 7 => IO.println "Switched to WIDGET demo (full-size)"
-      | _ => IO.println "Switched to INTERACTIVE demo (click the buttons!)"
+      | 8 => IO.println "Switched to INTERACTIVE demo (click the buttons!)"
+      | _ => IO.println "Switched to 3D SPINNING CUBES demo"
 
     let ok ← c.beginFrame Color.darkGray
     if ok then
@@ -284,6 +286,12 @@ def unifiedDemo : IO Unit := do
           fillTextXY clickHitStr (20 * screenScale) (125 * screenScale) fontSmall
           fillTextXY clickCountStr (20 * screenScale) (145 * screenScale) fontSmall
           fillTextXY msgStr (20 * screenScale) (165 * screenScale) fontSmall
+      else if displayMode == 9 then
+        -- 3D Spinning Cubes demo
+        renderSpinningCubes c.ctx.renderer t physWidthF physHeightF
+        c ← run' (c.resetTransform) do
+          setFillColor Color.white
+          fillTextXY "3D Spinning Cubes Demo (Space to advance)" (20 * screenScale) (30 * screenScale) fontMedium
       else
         -- Normal demo mode: grid of demos using CanvasM for proper state threading
         c ← run' (c.resetTransform) do

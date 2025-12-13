@@ -813,6 +813,60 @@ fragment float4 sprite_fragment(
 }
 )";
 
+// ============================================================================
+// 3D SHADER - Perspective projection with basic lighting
+// Vertices: position[3], normal[3], color[4] (10 floats per vertex)
+// ============================================================================
+static NSString *shader3DSource = @R"(
+#include <metal_stdlib>
+using namespace metal;
+
+// 3D Vertex input (matches AfferentVertex3D layout)
+struct Vertex3DIn {
+    float3 position [[attribute(0)]];
+    float3 normal [[attribute(1)]];
+    float4 color [[attribute(2)]];
+};
+
+// 3D Vertex output
+struct Vertex3DOut {
+    float4 position [[position]];
+    float3 worldNormal;
+    float4 color;
+};
+
+// Scene uniforms for 3D rendering
+struct Scene3DUniforms {
+    float4x4 modelViewProj;   // Combined MVP matrix
+    float4x4 modelMatrix;     // Model matrix for normal transformation
+    float3 lightDir;          // Light direction (normalized)
+    float ambient;            // Ambient light factor
+};
+
+vertex Vertex3DOut vertex_main_3d(
+    Vertex3DIn in [[stage_in]],
+    constant Scene3DUniforms& uniforms [[buffer(1)]]
+) {
+    Vertex3DOut out;
+    out.position = uniforms.modelViewProj * float4(in.position, 1.0);
+    // Transform normal to world space (using upper-left 3x3 of model matrix)
+    out.worldNormal = (uniforms.modelMatrix * float4(in.normal, 0.0)).xyz;
+    out.color = in.color;
+    return out;
+}
+
+fragment float4 fragment_main_3d(
+    Vertex3DOut in [[stage_in]],
+    constant Scene3DUniforms& uniforms [[buffer(0)]]
+) {
+    float3 N = normalize(in.worldNormal);
+    float3 L = normalize(uniforms.lightDir);
+    float diffuse = max(0.0, dot(N, L));
+    float3 color = in.color.rgb * (uniforms.ambient + (1.0 - uniforms.ambient) * diffuse);
+    return float4(color, in.color.a);
+}
+)";
+
 // Text vertex structure (different layout than AfferentVertex)
 typedef struct {
     float position[2];
@@ -934,6 +988,14 @@ typedef struct {
     float canvasHeight;
 } SpriteUniforms;
 
+// 3D scene uniforms structure (matches shader)
+typedef struct {
+    float modelViewProj[16];  // MVP matrix (64 bytes)
+    float modelMatrix[16];    // Model matrix (64 bytes)
+    float lightDir[3];        // Light direction (12 bytes)
+    float ambient;            // Ambient factor (4 bytes)
+} Scene3DUniforms;  // Total: 144 bytes
+
 // Internal renderer structure
 struct AfferentRenderer {
     AfferentWindowRef window;
@@ -971,6 +1033,13 @@ struct AfferentRenderer {
     id<MTLTexture> msaaTexture;  // 4x MSAA render target
     NSUInteger msaaWidth;        // Track size for recreation
     NSUInteger msaaHeight;
+    // 3D rendering support
+    id<MTLTexture> depthTexture;           // Depth buffer (non-MSAA)
+    id<MTLTexture> msaaDepthTexture;       // Depth buffer (MSAA)
+    id<MTLDepthStencilState> depthState;   // Depth test state
+    id<MTLRenderPipelineState> pipeline3D; // 3D rendering pipeline
+    NSUInteger depthWidth;                 // Track depth texture size
+    NSUInteger depthHeight;
     MTLClearColor clearColor;
     float screenWidth;   // Current screen dimensions for text rendering
     float screenHeight;
@@ -1680,6 +1749,86 @@ AfferentResult afferent_renderer_create(
 
         renderer->spritePipelineState = renderer->spritePipelineStateMSAA;
 
+        // ====================================================================
+        // Create depth stencil state for 3D rendering
+        // ====================================================================
+        MTLDepthStencilDescriptor *depthStateDesc = [[MTLDepthStencilDescriptor alloc] init];
+        depthStateDesc.depthCompareFunction = MTLCompareFunctionLess;
+        depthStateDesc.depthWriteEnabled = YES;
+        renderer->depthState = [renderer->device newDepthStencilStateWithDescriptor:depthStateDesc];
+
+        // ====================================================================
+        // Create 3D rendering pipeline
+        // ====================================================================
+        id<MTLLibrary> library3D = [renderer->device newLibraryWithSource:shader3DSource
+                                                                  options:nil
+                                                                    error:&error];
+        if (!library3D) {
+            NSLog(@"3D shader compilation failed: %@", error);
+            free(renderer);
+            return AFFERENT_ERROR_PIPELINE_FAILED;
+        }
+
+        id<MTLFunction> vertex3DFunction = [library3D newFunctionWithName:@"vertex_main_3d"];
+        id<MTLFunction> fragment3DFunction = [library3D newFunctionWithName:@"fragment_main_3d"];
+
+        if (!vertex3DFunction || !fragment3DFunction) {
+            NSLog(@"Failed to find 3D shader functions");
+            free(renderer);
+            return AFFERENT_ERROR_PIPELINE_FAILED;
+        }
+
+        // Create 3D vertex descriptor
+        MTLVertexDescriptor *vertex3DDescriptor = [[MTLVertexDescriptor alloc] init];
+
+        // Position: 3 floats at offset 0
+        vertex3DDescriptor.attributes[0].format = MTLVertexFormatFloat3;
+        vertex3DDescriptor.attributes[0].offset = 0;
+        vertex3DDescriptor.attributes[0].bufferIndex = 0;
+
+        // Normal: 3 floats at offset 12
+        vertex3DDescriptor.attributes[1].format = MTLVertexFormatFloat3;
+        vertex3DDescriptor.attributes[1].offset = 12;
+        vertex3DDescriptor.attributes[1].bufferIndex = 0;
+
+        // Color: 4 floats at offset 24
+        vertex3DDescriptor.attributes[2].format = MTLVertexFormatFloat4;
+        vertex3DDescriptor.attributes[2].offset = 24;
+        vertex3DDescriptor.attributes[2].bufferIndex = 0;
+
+        // Layout: 40 bytes per vertex (3+3+4 floats)
+        vertex3DDescriptor.layouts[0].stride = 40;
+        vertex3DDescriptor.layouts[0].stepFunction = MTLVertexStepFunctionPerVertex;
+
+        MTLRenderPipelineDescriptor *pipeline3DDesc = [[MTLRenderPipelineDescriptor alloc] init];
+        pipeline3DDesc.vertexFunction = vertex3DFunction;
+        pipeline3DDesc.fragmentFunction = fragment3DFunction;
+        pipeline3DDesc.vertexDescriptor = vertex3DDescriptor;
+        pipeline3DDesc.colorAttachments[0].pixelFormat = MTLPixelFormatBGRA8Unorm;
+        pipeline3DDesc.depthAttachmentPixelFormat = MTLPixelFormatDepth32Float;
+        pipeline3DDesc.rasterSampleCount = 4;  // Match MSAA
+
+        // Enable blending for transparency
+        pipeline3DDesc.colorAttachments[0].blendingEnabled = YES;
+        pipeline3DDesc.colorAttachments[0].sourceRGBBlendFactor = MTLBlendFactorSourceAlpha;
+        pipeline3DDesc.colorAttachments[0].destinationRGBBlendFactor = MTLBlendFactorOneMinusSourceAlpha;
+        pipeline3DDesc.colorAttachments[0].sourceAlphaBlendFactor = MTLBlendFactorOne;
+        pipeline3DDesc.colorAttachments[0].destinationAlphaBlendFactor = MTLBlendFactorOneMinusSourceAlpha;
+
+        renderer->pipeline3D = [renderer->device newRenderPipelineStateWithDescriptor:pipeline3DDesc
+                                                                                error:&error];
+        if (!renderer->pipeline3D) {
+            NSLog(@"3D pipeline creation failed: %@", error);
+            free(renderer);
+            return AFFERENT_ERROR_PIPELINE_FAILED;
+        }
+
+        // Initialize depth texture pointers
+        renderer->depthTexture = nil;
+        renderer->msaaDepthTexture = nil;
+        renderer->depthWidth = 0;
+        renderer->depthHeight = 0;
+
         // Initialize animated buffer pointers to nil
         renderer->animatedRectBuffer = nil;
         renderer->animatedTriangleBuffer = nil;
@@ -1753,6 +1902,36 @@ static void ensureMSAATexture(AfferentRendererRef renderer, NSUInteger width, NS
     renderer->msaaHeight = height;
 }
 
+// Helper function to create or recreate depth textures if needed
+static void ensureDepthTexture(AfferentRendererRef renderer, NSUInteger width, NSUInteger height, bool msaa) {
+    if (renderer->depthWidth == width && renderer->depthHeight == height) {
+        // Check if we have the right textures already
+        if (msaa && renderer->msaaDepthTexture) return;
+        if (!msaa && renderer->depthTexture) return;
+    }
+
+    // Create depth texture descriptor
+    MTLTextureDescriptor *depthDesc = [MTLTextureDescriptor texture2DDescriptorWithPixelFormat:MTLPixelFormatDepth32Float
+                                                                                          width:width
+                                                                                         height:height
+                                                                                      mipmapped:NO];
+    depthDesc.usage = MTLTextureUsageRenderTarget;
+    depthDesc.storageMode = MTLStorageModePrivate;
+
+    if (msaa) {
+        depthDesc.textureType = MTLTextureType2DMultisample;
+        depthDesc.sampleCount = 4;
+        renderer->msaaDepthTexture = [renderer->device newTextureWithDescriptor:depthDesc];
+    } else {
+        depthDesc.textureType = MTLTextureType2D;
+        depthDesc.sampleCount = 1;
+        renderer->depthTexture = [renderer->device newTextureWithDescriptor:depthDesc];
+    }
+
+    renderer->depthWidth = width;
+    renderer->depthHeight = height;
+}
+
 AfferentResult afferent_renderer_begin_frame(AfferentRendererRef renderer, float r, float g, float b, float a) {
     @autoreleasepool {
         // Reset buffer pool at frame start - all buffers become available for reuse
@@ -1793,15 +1972,29 @@ AfferentResult afferent_renderer_begin_frame(AfferentRendererRef renderer, float
         if (renderer->msaaEnabled) {
             // Ensure MSAA texture matches drawable size
             ensureMSAATexture(renderer, drawableTexture.width, drawableTexture.height);
+            // Ensure MSAA depth texture
+            ensureDepthTexture(renderer, drawableTexture.width, drawableTexture.height, true);
             // Render to MSAA texture and resolve to drawable
             passDesc.colorAttachments[0].texture = renderer->msaaTexture;
             passDesc.colorAttachments[0].resolveTexture = drawableTexture;
             passDesc.colorAttachments[0].storeAction = MTLStoreActionMultisampleResolve;
+            // Attach depth buffer for 3D rendering
+            passDesc.depthAttachment.texture = renderer->msaaDepthTexture;
+            passDesc.depthAttachment.loadAction = MTLLoadActionClear;
+            passDesc.depthAttachment.storeAction = MTLStoreActionDontCare;
+            passDesc.depthAttachment.clearDepth = 1.0;
         } else {
+            // Ensure non-MSAA depth texture
+            ensureDepthTexture(renderer, drawableTexture.width, drawableTexture.height, false);
             // Render directly to drawable without MSAA
             passDesc.colorAttachments[0].texture = drawableTexture;
             passDesc.colorAttachments[0].resolveTexture = nil;
             passDesc.colorAttachments[0].storeAction = MTLStoreActionStore;
+            // Attach depth buffer for 3D rendering
+            passDesc.depthAttachment.texture = renderer->depthTexture;
+            passDesc.depthAttachment.loadAction = MTLLoadActionClear;
+            passDesc.depthAttachment.storeAction = MTLStoreActionDontCare;
+            passDesc.depthAttachment.clearDepth = 1.0;
         }
 
         renderer->currentEncoder = [renderer->currentCommandBuffer renderCommandEncoderWithDescriptor:passDesc];
@@ -2914,6 +3107,72 @@ void afferent_renderer_draw_sprites_buffer(
                                      vertexStart:0
                                      vertexCount:4
                                    instanceCount:count];
+        [renderer->currentEncoder setRenderPipelineState:renderer->pipelineState];
+    }
+}
+
+// ============================================================================
+// 3D Mesh Rendering
+// ============================================================================
+void afferent_renderer_draw_mesh_3d(
+    AfferentRendererRef renderer,
+    const AfferentVertex3D* vertices,
+    uint32_t vertex_count,
+    const uint32_t* indices,
+    uint32_t index_count,
+    const float* mvp_matrix,
+    const float* model_matrix,
+    const float* light_dir,
+    float ambient
+) {
+    if (!renderer || !renderer->currentEncoder || !vertices || !indices ||
+        vertex_count == 0 || index_count == 0) {
+        return;
+    }
+
+    @autoreleasepool {
+        // Create temporary vertex buffer
+        size_t vertex_size = vertex_count * sizeof(AfferentVertex3D);
+        id<MTLBuffer> vertexBuffer = [renderer->device newBufferWithBytes:vertices
+                                                                   length:vertex_size
+                                                                  options:MTLResourceStorageModeShared];
+        if (!vertexBuffer) {
+            NSLog(@"Failed to create 3D vertex buffer");
+            return;
+        }
+
+        // Create temporary index buffer
+        size_t index_size = index_count * sizeof(uint32_t);
+        id<MTLBuffer> indexBuffer = [renderer->device newBufferWithBytes:indices
+                                                                  length:index_size
+                                                                 options:MTLResourceStorageModeShared];
+        if (!indexBuffer) {
+            NSLog(@"Failed to create 3D index buffer");
+            return;
+        }
+
+        // Set up uniforms
+        Scene3DUniforms uniforms;
+        memcpy(uniforms.modelViewProj, mvp_matrix, 64);
+        memcpy(uniforms.modelMatrix, model_matrix, 64);
+        memcpy(uniforms.lightDir, light_dir, 12);
+        uniforms.ambient = ambient;
+
+        // Configure encoder for 3D rendering
+        [renderer->currentEncoder setRenderPipelineState:renderer->pipeline3D];
+        [renderer->currentEncoder setDepthStencilState:renderer->depthState];
+        [renderer->currentEncoder setVertexBuffer:vertexBuffer offset:0 atIndex:0];
+        [renderer->currentEncoder setVertexBytes:&uniforms length:sizeof(uniforms) atIndex:1];
+        [renderer->currentEncoder setFragmentBytes:&uniforms length:sizeof(uniforms) atIndex:0];
+
+        // Draw indexed triangles
+        [renderer->currentEncoder drawIndexedPrimitives:MTLPrimitiveTypeTriangle
+                                             indexCount:index_count
+                                              indexType:MTLIndexTypeUInt32
+                                            indexBuffer:indexBuffer
+                                      indexBufferOffset:0];
+
+        // Restore default pipeline
         [renderer->currentEncoder setRenderPipelineState:renderer->pipelineState];
     }
 }

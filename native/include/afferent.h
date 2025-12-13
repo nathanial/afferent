@@ -35,6 +35,13 @@ typedef struct {
     float color[4];
 } AfferentVertex;
 
+// 3D Vertex structure (for 3D mesh rendering)
+typedef struct {
+    float position[3];  // x, y, z
+    float normal[3];    // nx, ny, nz
+    float color[4];     // r, g, b, a
+} AfferentVertex3D;
+
 // Window management
 AfferentResult afferent_window_create(
     uint32_t width,
@@ -375,6 +382,25 @@ void afferent_renderer_draw_sprites_buffer(
     float halfSize,
     float canvasWidth,
     float canvasHeight
+);
+
+// 3D Mesh rendering with perspective projection and lighting
+// vertices: array of AfferentVertex3D (10 floats each: pos[3], normal[3], color[4])
+// indices: triangle indices
+// mvp_matrix: 4x4 model-view-projection matrix (16 floats, column-major)
+// model_matrix: 4x4 model matrix for normal transformation (16 floats)
+// light_dir: normalized light direction (3 floats)
+// ambient: ambient light factor (0.0-1.0)
+void afferent_renderer_draw_mesh_3d(
+    AfferentRendererRef renderer,
+    const AfferentVertex3D* vertices,
+    uint32_t vertex_count,
+    const uint32_t* indices,
+    uint32_t index_count,
+    const float* mvp_matrix,
+    const float* model_matrix,
+    const float* light_dir,
+    float ambient
 );
 
 #ifdef __cplusplus

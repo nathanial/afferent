@@ -10,6 +10,8 @@ import Afferent.Core.Paint
 -- Rendering
 import Afferent.Render.Tessellation
 import Afferent.Render.Dynamic
+import Afferent.Render.Matrix4
+import Afferent.Render.Mesh
 
 -- Canvas API
 import Afferent.Canvas.State
