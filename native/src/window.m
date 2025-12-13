@@ -3,6 +3,10 @@
 #import <QuartzCore/CAMetalLayer.h>
 #include "afferent.h"
 
+#ifndef AFFERENT_CLICK_CAP
+#define AFFERENT_CLICK_CAP 256
+#endif
+
 // Forward declarations
 @class AfferentView;
 @class AfferentWindowDelegate;
@@ -24,13 +28,31 @@ struct AfferentWindow {
     float scrollDeltaY;
     bool mouseInWindow;
     uint16_t modifiers;         // Bitmask: shift=1, ctrl=2, alt=4, cmd=8
-    // Click event (poll-based like keyboard)
-    bool mouseClicked;
-    uint8_t clickButton;        // 0=left, 1=right, 2=middle
-    float clickX;
-    float clickY;
-    uint16_t clickModifiers;
+    // Click events (poll-based like keyboard). Use a small ring buffer so multiple clicks
+    // between frames don't overwrite each other.
+    uint16_t clickHead;
+    uint16_t clickCount;
+    uint8_t clickButton[AFFERENT_CLICK_CAP];    // 0=left, 1=right, 2=middle
+    float clickX[AFFERENT_CLICK_CAP];
+    float clickY[AFFERENT_CLICK_CAP];
+    uint16_t clickModifiers[AFFERENT_CLICK_CAP];
 };
+
+static inline void afferent_window_push_click(struct AfferentWindow *w, uint8_t button, float x, float y, uint16_t modifiers) {
+    if (!w) return;
+    const uint16_t cap = AFFERENT_CLICK_CAP;
+    // If full, drop the oldest click.
+    if (w->clickCount >= cap) {
+        w->clickHead = (uint16_t)((w->clickHead + 1) % cap);
+        w->clickCount--;
+    }
+    uint16_t idx = (uint16_t)((w->clickHead + w->clickCount) % cap);
+    w->clickButton[idx] = button;
+    w->clickX[idx] = x;
+    w->clickY[idx] = y;
+    w->clickModifiers[idx] = modifiers;
+    w->clickCount++;
+}
 
 // Metal-backed view
 @interface AfferentView : NSView
@@ -161,12 +183,8 @@ struct AfferentWindow {
         self.windowHandle->mouseX = p.x;
         self.windowHandle->mouseY = p.y;
         self.windowHandle->mouseButtons |= 1;  // Left button
-        self.windowHandle->mouseClicked = true;
-        self.windowHandle->clickButton = 0;  // Left
-        self.windowHandle->clickX = p.x;
-        self.windowHandle->clickY = p.y;
         [self updateModifiers:event];
-        self.windowHandle->clickModifiers = self.windowHandle->modifiers;
+        afferent_window_push_click(self.windowHandle, 0, p.x, p.y, self.windowHandle->modifiers);
     }
 }
 
@@ -183,12 +201,8 @@ struct AfferentWindow {
         self.windowHandle->mouseX = p.x;
         self.windowHandle->mouseY = p.y;
         self.windowHandle->mouseButtons |= 2;  // Right button
-        self.windowHandle->mouseClicked = true;
-        self.windowHandle->clickButton = 1;  // Right
-        self.windowHandle->clickX = p.x;
-        self.windowHandle->clickY = p.y;
         [self updateModifiers:event];
-        self.windowHandle->clickModifiers = self.windowHandle->modifiers;
+        afferent_window_push_click(self.windowHandle, 1, p.x, p.y, self.windowHandle->modifiers);
     }
 }
 
@@ -205,12 +219,8 @@ struct AfferentWindow {
         self.windowHandle->mouseX = p.x;
         self.windowHandle->mouseY = p.y;
         self.windowHandle->mouseButtons |= 4;  // Middle button
-        self.windowHandle->mouseClicked = true;
-        self.windowHandle->clickButton = 2;  // Middle
-        self.windowHandle->clickX = p.x;
-        self.windowHandle->clickY = p.y;
         [self updateModifiers:event];
-        self.windowHandle->clickModifiers = self.windowHandle->modifiers;
+        afferent_window_push_click(self.windowHandle, 2, p.x, p.y, self.windowHandle->modifiers);
     }
 }
 
@@ -388,11 +398,8 @@ AfferentResult afferent_window_create(
         handle->scrollDeltaY = 0;
         handle->mouseInWindow = false;
         handle->modifiers = 0;
-        handle->mouseClicked = false;
-        handle->clickButton = 0;
-        handle->clickX = 0;
-        handle->clickY = 0;
-        handle->clickModifiers = 0;
+        handle->clickHead = 0;
+        handle->clickCount = 0;
 
         // Set back-reference so view can store key events
         view.windowHandle = handle;
@@ -511,11 +518,12 @@ bool afferent_window_mouse_in_window(AfferentWindowRef window) {
 
 // Get pending click event. Returns true if click available.
 bool afferent_window_get_click(AfferentWindowRef window, uint8_t* button, float* x, float* y, uint16_t* modifiers) {
-    if (window && window->mouseClicked) {
-        *button = window->clickButton;
-        *x = window->clickX;
-        *y = window->clickY;
-        *modifiers = window->clickModifiers;
+    if (window && window->clickCount > 0) {
+        uint16_t idx = window->clickHead;
+        *button = window->clickButton[idx];
+        *x = window->clickX[idx];
+        *y = window->clickY[idx];
+        *modifiers = window->clickModifiers[idx];
         return true;
     }
     return false;
@@ -523,6 +531,10 @@ bool afferent_window_get_click(AfferentWindowRef window, uint8_t* button, float*
 
 void afferent_window_clear_click(AfferentWindowRef window) {
     if (window) {
-        window->mouseClicked = false;
+        if (window->clickCount > 0) {
+            const uint16_t cap = AFFERENT_CLICK_CAP;
+            window->clickHead = (uint16_t)((window->clickHead + 1) % cap);
+            window->clickCount--;
+        }
     }
 }

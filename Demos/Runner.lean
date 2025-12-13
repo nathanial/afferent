@@ -234,29 +234,25 @@ def unifiedDemo : IO Unit := do
         -- Interactive demo with event handling
         -- Collect input for this frame
         let input ← Widget.InputState.collect c.ctx.window
-        -- Get current view and prepare layout (used for hit-testing + event dispatch)
-        let interactiveBefore ← interactiveRunner.getView
-        let preparedBefore ← Widget.prepareUI interactiveBefore.widget physWidthF physHeightF
-        -- Process events (clicks, etc.)
-        let msgs ← interactiveRunner.processInput
-          preparedBefore.widget preparedBefore.layoutResult interactiveBefore.handlers input
+        -- Process events (clicks, etc.). This re-prepares layout as needed so multiple clicks
+        -- in one frame stay aligned with the updated UI.
+        let msgs ← interactiveRunner.processInput physWidthF physHeightF input
         lastInteractiveMsgs := msgs
 
-        -- Capture debug info before clearing input
-        lastHoverHit := Widget.hitTestId preparedBefore.widget preparedBefore.layoutResult input.mousePos.1 input.mousePos.2
-        if let some ce := input.click then
+        -- Capture debug info before clearing input (use latest view/layout)
+        let interactiveAfter ← interactiveRunner.getView
+        let preparedAfter ← Widget.prepareUI interactiveAfter.widget physWidthF physHeightF
+        lastHoverHit := Widget.hitTestId preparedAfter.widget preparedAfter.layoutResult input.mousePos.1 input.mousePos.2
+        if let some ce := input.clicks.back? then
           lastClick := some ce
-          lastClickHit := Widget.hitTestId preparedBefore.widget preparedBefore.layoutResult ce.x ce.y
+          lastClickHit := Widget.hitTestId preparedAfter.widget preparedAfter.layoutResult ce.x ce.y
           let hitStr := match lastClickHit with
             | some wid => toString wid
             | none => "none"
-          IO.println s!"[interactive] click button={ce.button} x={ce.x} y={ce.y} hit={hitStr} msgs={toString (repr msgs)}"
+          IO.println s!"[interactive] clicks={input.clicks.size} btn={ce.button} x={ce.x} y={ce.y} hit={hitStr} msgs={toString (repr msgs)}"
         -- Clear consumed input
         Widget.InputState.clear c.ctx.window
 
-        -- Re-render with the latest model (so clicks reflect immediately even in event-driven loops).
-        let interactiveAfter ← interactiveRunner.getView
-        let preparedAfter ← Widget.prepareUI interactiveAfter.widget physWidthF physHeightF
         -- Render
         c ← run' (c.resetTransform) do
           Widget.renderPreparedUI preparedAfter
@@ -276,16 +272,18 @@ def unifiedDemo : IO Unit := do
           let hoverStr := s!"hover hit: {showOptNat lastHoverHit}"
           let clickHitStr := s!"click hit: {showOptNat lastClickHit}"
           let mouseStr := s!"mouse: x={input.mousePos.1.toUInt32} y={input.mousePos.2.toUInt32} buttons={input.mouseButtons} inWindow={input.mouseInWindow}"
+          let clickCountStr := s!"clicks: {input.clicks.size}"
           let msgStr := s!"msgs: {toString (repr lastInteractiveMsgs)}"
 
           setFillColor (Color.hsva 0.0 0.0 0.0 0.6)
-          fillRectXYWH (10 * screenScale) (40 * screenScale) (physWidthF - 20 * screenScale) (110 * screenScale)
+          fillRectXYWH (10 * screenScale) (40 * screenScale) (physWidthF - 20 * screenScale) (130 * screenScale)
           setFillColor Color.white
           fillTextXY mouseStr (20 * screenScale) (65 * screenScale) fontSmall
           fillTextXY clickStr (20 * screenScale) (85 * screenScale) fontSmall
           fillTextXY hoverStr (20 * screenScale) (105 * screenScale) fontSmall
           fillTextXY clickHitStr (20 * screenScale) (125 * screenScale) fontSmall
-          fillTextXY msgStr (20 * screenScale) (145 * screenScale) fontSmall
+          fillTextXY clickCountStr (20 * screenScale) (145 * screenScale) fontSmall
+          fillTextXY msgStr (20 * screenScale) (165 * screenScale) fontSmall
       else
         -- Normal demo mode: grid of demos using CanvasM for proper state threading
         c ← run' (c.resetTransform) do

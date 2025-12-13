@@ -5,6 +5,7 @@
 import Afferent.Widget.Core
 import Afferent.Widget.Event
 import Afferent.Widget.HitTest
+import Afferent.Widget.UI
 import Afferent.Layout.Result
 import Afferent.FFI.Metal
 
@@ -108,7 +109,7 @@ structure InputState where
   mousePos : Float × Float
   mouseButtons : UInt8
   modifiers : UInt16
-  click : Option FFI.ClickEvent
+  clicks : Array FFI.ClickEvent
   scrollDelta : Float × Float
   mouseInWindow : Bool
   keyCode : UInt16
@@ -121,15 +122,25 @@ def collect (window : FFI.Window) : IO InputState := do
   let mousePos ← FFI.Window.getMousePos window
   let mouseButtons ← FFI.Window.getMouseButtons window
   let modifiers ← FFI.Window.getModifiers window
-  let click ← FFI.Window.getClick window
+  -- Drain all pending click events (ring buffer on native side).
+  -- Hard cap to avoid infinite loops if the native backend misbehaves.
+  let mut clicks : Array FFI.ClickEvent := #[]
+  for _ in [:512] do
+    let c ← FFI.Window.getClick window
+    match c with
+    | some ce =>
+      clicks := clicks.push ce
+      FFI.Window.clearClick window
+    | none =>
+      break
   let scrollDelta ← FFI.Window.getScrollDelta window
   let mouseInWindow ← FFI.Window.mouseInWindow window
   let keyCode ← FFI.Window.getKeyCode window
-  pure { mousePos, mouseButtons, modifiers, click, scrollDelta, mouseInWindow, keyCode }
+  pure { mousePos, mouseButtons, modifiers, clicks, scrollDelta, mouseInWindow, keyCode }
 
 /-- Clear consumed input state. -/
 def clear (window : FFI.Window) : IO Unit := do
-  FFI.Window.clearClick window
+  -- Clicks are drained (and cleared) in `collect`.
   FFI.Window.clearScroll window
   FFI.Window.clearKey window
 
@@ -170,23 +181,16 @@ def getView (runner : AppRunner Model Msg) : IO (InteractiveWidget Msg) := do
 /-- Process input events and update model.
     Returns the messages that were processed. -/
 def processInput (runner : AppRunner Model Msg)
-    (widget : Widget) (layouts : Layout.LayoutResult)
-    (handlers : EventHandlers Msg) (input : InputState) : IO (Array Msg) := do
-  let state ← runner.stateRef.get
-  let mods := Modifiers.fromBitmask input.modifiers
+    (availWidth availHeight : Float) (input : InputState) : IO (Array Msg) := do
+  let state0 ← runner.stateRef.get
+  let prevButtons := state0.mouseButtons
   let mut allMessages : Array Msg := #[]
-  let mut newHovered := state.hoveredWidget
-  let prevButtons := state.mouseButtons
 
-  -- Process click event
+  -- Click events: prefer native `getClick` queue; fall back to edge-triggered button state.
   let mut clickEvents : Array FFI.ClickEvent := #[]
-
-  -- Prefer native click event if available
-  if let some c := input.click then
-    clickEvents := clickEvents.push c
+  if !input.clicks.isEmpty then
+    clickEvents := input.clicks
   else
-    -- Fallback: synthesize a click on rising edges of mouseButtons.
-    -- Some platforms/backends may not populate `getClick`, but do provide button state.
     let mkSynthetic (buttonCode : UInt8) : FFI.ClickEvent := {
       button := buttonCode
       x := input.mousePos.1
@@ -205,18 +209,43 @@ def processInput (runner : AppRunner Model Msg)
     if middleNew then
       clickEvents := clickEvents.push (mkSynthetic 2)
 
+  -- Dispatch click events one-by-one against the *current* view/layout.
+  -- This avoids "missed" clicks when the model update changes layout (e.g. count text width),
+  -- and multiple clicks arrive in a single frame.
   for c in clickEvents do
+    let interactive ← runner.getView
+    let prepared ← prepareUI interactive.widget availWidth availHeight
+
+    let hasHandlerInPath (handlers : EventHandlers Msg) (path : Array WidgetId) : Bool :=
+      path.any (handlers.hasHandler ·)
+
+    let clickPath := hitTestPath prepared.widget prepared.layoutResult c.x c.y
+    let (cx, cy, path) :=
+      if hasHandlerInPath interactive.handlers clickPath then
+        (c.x, c.y, clickPath)
+      else
+        let mx := input.mousePos.1
+        let my := input.mousePos.2
+        (mx, my, hitTestPath prepared.widget prepared.layoutResult mx my)
+
     let clickEvent : MouseEvent := {
-      x := c.x
-      y := c.y
+      x := cx
+      y := cy
       button := MouseButton.fromCode c.button
       modifiers := Modifiers.fromBitmask c.modifiers
     }
-    let path := hitTestPath widget layouts c.x c.y
-    let result := processEvent handlers (.mouseClick clickEvent) path
+    let result := processEvent interactive.handlers (.mouseClick clickEvent) path
     allMessages := allMessages ++ result.messages
+    for msg in result.messages do
+      runner.sendMessage msg
 
-  -- Process scroll event
+  -- Process scroll/hover/key against the latest view/layout.
+  let interactive ← runner.getView
+  let prepared ← prepareUI interactive.widget availWidth availHeight
+  let handlers := interactive.handlers
+  let mods := Modifiers.fromBitmask input.modifiers
+
+  -- Scroll
   if input.scrollDelta.1 != 0 || input.scrollDelta.2 != 0 then
     let scrollEvent : ScrollEvent := {
       x := input.mousePos.1
@@ -225,57 +254,50 @@ def processInput (runner : AppRunner Model Msg)
       deltaY := input.scrollDelta.2
       modifiers := mods
     }
-    let path := hitTestPath widget layouts input.mousePos.1 input.mousePos.2
+    let path := hitTestPath prepared.widget prepared.layoutResult input.mousePos.1 input.mousePos.2
     let result := processEvent handlers (.scroll scrollEvent) path
     allMessages := allMessages ++ result.messages
+    for msg in result.messages do
+      runner.sendMessage msg
 
-  -- Process hover state changes (mouseEnter/Leave)
-  let currentHover := hitTestId widget layouts input.mousePos.1 input.mousePos.2
-  if currentHover != state.hoveredWidget then
+  -- Hover enter/leave (also after layout changes from clicks)
+  let state1 ← runner.stateRef.get
+  let currentHover := hitTestId prepared.widget prepared.layoutResult input.mousePos.1 input.mousePos.2
+  if currentHover != state1.hoveredWidget then
     let hoverEvent : MouseEvent := {
       x := input.mousePos.1
       y := input.mousePos.2
       modifiers := mods
     }
 
-    -- Mouse leave old widget
-    if let some oldId := state.hoveredWidget then
+    if let some oldId := state1.hoveredWidget then
       if let some handler := handlers.get oldId then
         if let some msg := handler (.mouseLeave hoverEvent) then
           allMessages := allMessages.push msg
+          runner.sendMessage msg
 
-    -- Mouse enter new widget
     if let some newId := currentHover then
       if let some handler := handlers.get newId then
         if let some msg := handler (.mouseEnter hoverEvent) then
           allMessages := allMessages.push msg
+          runner.sendMessage msg
 
-    newHovered := currentHover
+    runner.stateRef.modify fun s => { s with hoveredWidget := currentHover }
 
-  -- Process keyboard events
+  -- Keyboard
   if input.keyCode != 0 then
     let keyEvent : KeyEvent := {
       key := Key.fromKeyCode input.keyCode
       modifiers := mods
       isPress := true
     }
-    -- Keyboard events go to focused widget (not implemented yet) or broadcast
-    -- For now, just include in messages if any handler wants it
     let result := processEvent handlers (.keyPress keyEvent) #[]
     allMessages := allMessages ++ result.messages
+    for msg in result.messages do
+      runner.sendMessage msg
 
-  -- Apply all messages to model
-  for msg in allMessages do
-    let currentState ← runner.stateRef.get
-    let newModel := runner.app.update msg currentState.model
-    runner.stateRef.set { currentState with model := newModel }
-
-  -- Update hover state
-  runner.stateRef.modify fun s => {
-    s with hoveredWidget := newHovered
-           mouseButtons := input.mouseButtons
-  }
-
+  -- Remember button state for click fallback next frame.
+  runner.stateRef.modify fun s => { s with mouseButtons := input.mouseButtons }
   pure allMessages
 
 end AppRunner
