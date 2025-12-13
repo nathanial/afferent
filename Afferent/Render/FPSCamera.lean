@@ -42,7 +42,7 @@ def update (cam : FPSCamera) (dt : Float)
     (forward back left right up down : Bool)
     (mouseDeltaX mouseDeltaY : Float) : FPSCamera :=
   -- Update look direction from mouse
-  let yaw := cam.yaw - mouseDeltaX * cam.lookSensitivity
+  let yaw := cam.yaw + mouseDeltaX * cam.lookSensitivity
   let pitch := clamp (cam.pitch - mouseDeltaY * cam.lookSensitivity) (-pi/2 * 0.99) (pi/2 * 0.99)
 
   -- Calculate forward and right vectors (in XZ plane for movement)
