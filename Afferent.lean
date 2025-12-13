@@ -18,8 +18,8 @@ import Afferent.Canvas.Context
 -- Text
 import Afferent.Text.Font
 
--- FFI
-import Afferent.FFI.Metal
+-- FFI (modular: Types, Window, Renderer, Text, FloatBuffer, Texture)
+import Afferent.FFI
 
 -- Layout
 import Afferent.Layout

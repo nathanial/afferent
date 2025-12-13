@@ -13,7 +13,7 @@
   - Triangle: [x, y, hue, halfSize, rotation] × count (5 floats)
 -/
 
-import Afferent.FFI.Metal
+import Afferent.FFI
 import Init.Data.FloatArray
 
 namespace Afferent.Render.Dynamic

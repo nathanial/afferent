@@ -64,9 +64,10 @@ lean_exe afferent_tests where
   ]
 
 -- Native code targets
+-- Metal-specific native code (macOS only)
 target window_o pkg : FilePath := do
   let oFile := pkg.buildDir / "native" / "window.o"
-  let srcFile := pkg.dir / "native" / "src" / "window.m"
+  let srcFile := pkg.dir / "native" / "src" / "metal" / "window.m"
   let includeDir := pkg.dir / "native" / "include"
   buildO oFile (← inputTextFile srcFile) #[
     "-I", includeDir.toString,
@@ -77,7 +78,7 @@ target window_o pkg : FilePath := do
 
 target metal_render_o pkg : FilePath := do
   let oFile := pkg.buildDir / "native" / "metal_render.o"
-  let srcFile := pkg.dir / "native" / "src" / "metal_render.m"
+  let srcFile := pkg.dir / "native" / "src" / "metal" / "render.m"
   let includeDir := pkg.dir / "native" / "include"
   buildO oFile (← inputTextFile srcFile) #[
     "-I", includeDir.toString,
@@ -86,9 +87,10 @@ target metal_render_o pkg : FilePath := do
     "-O2"
   ] #[] "clang"
 
+-- Cross-platform native code
 target text_render_o pkg : FilePath := do
   let oFile := pkg.buildDir / "native" / "text_render.o"
-  let srcFile := pkg.dir / "native" / "src" / "text_render.c"
+  let srcFile := pkg.dir / "native" / "src" / "common" / "text_render.c"
   let includeDir := pkg.dir / "native" / "include"
   buildO oFile (← inputTextFile srcFile) #[
     "-I", includeDir.toString,
@@ -111,7 +113,7 @@ target lean_bridge_o pkg : FilePath := do
 
 target float_buffer_o pkg : FilePath := do
   let oFile := pkg.buildDir / "native" / "float_buffer.o"
-  let srcFile := pkg.dir / "native" / "src" / "float_buffer.c"
+  let srcFile := pkg.dir / "native" / "src" / "common" / "float_buffer.c"
   let includeDir := pkg.dir / "native" / "include"
   buildO oFile (← inputTextFile srcFile) #[
     "-I", includeDir.toString,

@@ -2,7 +2,7 @@
   Hello Triangle - Minimal example proving Metal + FFI pipeline works.
   Renders a colored triangle in a window.
 -/
-import Afferent.FFI.Metal
+import Afferent.FFI
 
 open Afferent.FFI
 

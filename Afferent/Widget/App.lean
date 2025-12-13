@@ -7,7 +7,7 @@ import Afferent.Widget.Event
 import Afferent.Widget.HitTest
 import Afferent.Widget.UI
 import Afferent.Layout.Result
-import Afferent.FFI.Metal
+import Afferent.FFI
 
 namespace Afferent.Widget
 

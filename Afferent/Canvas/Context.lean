@@ -9,7 +9,7 @@ import Afferent.Core.Paint
 import Afferent.Canvas.State
 import Afferent.Render.Tessellation
 import Afferent.Text.Font
-import Afferent.FFI.Metal
+import Afferent.FFI
 
 namespace Afferent
 

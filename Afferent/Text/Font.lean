@@ -3,7 +3,7 @@
   High-level font loading and text rendering API.
 -/
 import Afferent.Core.Types
-import Afferent.FFI.Metal
+import Afferent.FFI
 
 namespace Afferent
 
