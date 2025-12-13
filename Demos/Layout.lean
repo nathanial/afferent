@@ -162,8 +162,30 @@ def demoComplex : CanvasM Unit := do
   let result := layout tree 350 250
   drawLayoutResult result 50 500
 
-/-- Draw all layout demos -/
-def renderLayoutM (font : Font) : CanvasM Unit := do
+/-- Labels (text, x, y) in layout-canvas coordinates. -/
+def layoutLabels : Array (String × Float × Float) := #[
+  ("Row: 3 items left-aligned with 10px gap", 50, 38),
+  ("Expected: [80px][10][100px][10][70px] touching left edge", 50, 135),
+  ("Row + justify:center", 50, 148),
+  ("Expected: 3 equal boxes (60px) centered horizontally", 50, 225),
+  ("Row + justify:space-between", 50, 248),
+  ("Expected: 3 boxes (50px) - first at left, last at right, middle centered", 50, 325),
+  ("Row + flex-grow (1:2:1 ratio)", 50, 348),
+  ("Expected: 3 boxes filling width, middle is 2x wider than sides", 50, 425),
+  ("Column: 3 items", 450, 38),
+  ("stacked vertically", 450, 52),
+  ("with 10px gap", 450, 66),
+  ("Row + align:center (cross-axis)", 450, 268),
+  ("Expected: different heights, vertically centered", 450, 355),
+  ("Nested: row containing column", 450, 378),
+  ("Expected: [fixed][column expands][fixed]", 450, 495),
+  ("Complex: header + (sidebar | main)", 50, 488),
+  ("Expected: full-width header on top,", 50, 745),
+  ("sidebar (3 items) left, main expands right", 200, 745)
+]
+
+/-- Draw the layout demo shapes (background, bars, and layout results). -/
+def renderLayoutShapesM : CanvasM Unit := do
   -- Background
   setFillColor (Color.mk 0.1 0.1 0.15 1.0)
   fillRectXYWH 0 0 1000 800
@@ -179,43 +201,6 @@ def renderLayoutM (font : Font) : CanvasM Unit := do
   fillRectXYWH 440 380 320 120 -- Nested
   fillRectXYWH 40 490 370 270  -- Complex
 
-  -- Section labels with descriptions
-  setFillColor Color.white
-
-  -- Row 1: Basic flex row
-  fillTextXY "Row: 3 items left-aligned with 10px gap" 50 38 font
-  fillTextXY "Expected: [80px][10][100px][10][70px] touching left edge" 50 135 font
-
-  -- Row 2: Centered
-  fillTextXY "Row + justify:center" 50 148 font
-  fillTextXY "Expected: 3 equal boxes (60px) centered horizontally" 50 225 font
-
-  -- Row 3: Space-between
-  fillTextXY "Row + justify:space-between" 50 248 font
-  fillTextXY "Expected: 3 boxes (50px) - first at left, last at right, middle centered" 50 325 font
-
-  -- Row 4: Flex grow
-  fillTextXY "Row + flex-grow (1:2:1 ratio)" 50 348 font
-  fillTextXY "Expected: 3 boxes filling width, middle is 2x wider than sides" 50 425 font
-
-  -- Column
-  fillTextXY "Column: 3 items" 450 38 font
-  fillTextXY "stacked vertically" 450 52 font
-  fillTextXY "with 10px gap" 450 66 font
-
-  -- Align items
-  fillTextXY "Row + align:center (cross-axis)" 450 268 font
-  fillTextXY "Expected: different heights, vertically centered" 450 355 font
-
-  -- Nested
-  fillTextXY "Nested: row containing column" 450 378 font
-  fillTextXY "Expected: [fixed][column expands][fixed]" 450 495 font
-
-  -- Complex layout
-  fillTextXY "Complex: header + (sidebar | main)" 50 488 font
-  fillTextXY "Expected: full-width header on top," 50 745 font
-  fillTextXY "sidebar (3 items) left, main expands right" 200 745 font
-
   -- Run demos
   demoFlexRow
   demoFlexRowCenter
@@ -225,5 +210,22 @@ def renderLayoutM (font : Font) : CanvasM Unit := do
   demoAlignItems
   demoNested
   demoComplex
+
+/-- Draw layout demo labels in layout-canvas coordinates (affected by current transform). -/
+def renderLayoutLabelsM (font : Font) : CanvasM Unit := do
+  setFillColor Color.white
+  for (text, x, y) in layoutLabels do
+    fillTextXY text x y font
+
+/-- Draw layout demo labels in screen coordinates, mapping from layout-canvas space. -/
+def renderLayoutLabelsMappedM (font : Font) (offsetX offsetY scale : Float) : CanvasM Unit := do
+  setFillColor Color.white
+  for (text, x, y) in layoutLabels do
+    fillTextXY text (offsetX + x * scale) (offsetY + y * scale) font
+
+/-- Draw all layout demos (shapes + labels). -/
+def renderLayoutM (font : Font) : CanvasM Unit := do
+  renderLayoutShapesM
+  renderLayoutLabelsM font
 
 end Demos

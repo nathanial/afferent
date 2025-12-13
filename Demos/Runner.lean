@@ -79,6 +79,16 @@ def unifiedDemo : IO Unit := do
   let physWidthF := baseWidth * screenScale
   let physHeightF := baseHeight * screenScale
 
+  -- Precompute layout-demo fit so mode 5 can scale uniformly and keep text readable.
+  let layoutW : Float := 1000.0
+  let layoutH : Float := 800.0
+  let layoutPadTop : Float := 60.0 * screenScale
+  let layoutAvailW : Float := physWidthF
+  let layoutAvailH : Float := max 1.0 (physHeightF - layoutPadTop)
+  let layoutScale : Float := min (layoutAvailW / layoutW) (layoutAvailH / layoutH)
+  let layoutOffsetX : Float := (layoutAvailW - layoutW * layoutScale) / 2.0
+  let layoutOffsetY : Float := layoutPadTop + (layoutAvailH - layoutH * layoutScale) / 2.0
+
   -- Grid particles (316x316 ≈ 100k grid of spinning squares/triangles)
   let gridCols := 316 * 3
   let gridRows := 316 * 2
@@ -100,6 +110,11 @@ def unifiedDemo : IO Unit := do
 
   -- No GPU upload needed! Dynamic module sends positions each frame.
   IO.println "Using unified Dynamic rendering - CPU positions, GPU color/NDC."
+
+  -- Layout demo labels are drawn in screen pixels (not scaled with the demo), so size is stable.
+  let layoutLabelPt : Float := 12.0
+  let layoutFontPx : UInt32 := (max 8.0 (layoutLabelPt * screenScale)).toUInt32
+  let layoutFont ← Font.load "/System/Library/Fonts/Monaco.ttf" layoutFontPx
 
   -- Display modes: 0 = demo, 1 = grid squares, 2 = triangles, 3 = circles, 4 = sprites
   let startTime ← IO.monoMsNow
@@ -175,19 +190,12 @@ def unifiedDemo : IO Unit := do
         -- Full-size Layout demo
         c ← run' (c.resetTransform) do
           save
-          -- Fit the 1000x800 layout demo into the current viewport without distortion.
-          let layoutW : Float := 1000.0
-          let layoutH : Float := 800.0
-          let padTop : Float := 60.0 * screenScale
-          let availW : Float := physWidthF
-          let availH : Float := max 1.0 (physHeightF - padTop)
-          let s : Float := min (availW / layoutW) (availH / layoutH)
-          let offsetX : Float := (availW - layoutW * s) / 2.0
-          let offsetY : Float := padTop + (availH - layoutH * s) / 2.0
-          translate offsetX offsetY
-          scale s s
-          renderLayoutM fontSmall
+          translate layoutOffsetX layoutOffsetY
+          scale layoutScale layoutScale
+          renderLayoutShapesM
           restore
+          -- Draw labels in screen space to avoid texture upscaling artifacts.
+          renderLayoutLabelsMappedM layoutFont layoutOffsetX layoutOffsetY layoutScale
           setFillColor Color.white
           fillTextXY "CSS Flexbox Layout Demo (Space to advance)" (20 * screenScale) (30 * screenScale) fontMedium
       else
@@ -293,6 +301,7 @@ def unifiedDemo : IO Unit := do
   fontMedium.destroy
   fontLarge.destroy
   fontHuge.destroy
+  layoutFont.destroy
   canvas.destroy
 
 /-- Main entry point - runs all demos -/
