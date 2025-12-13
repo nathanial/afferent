@@ -185,12 +185,17 @@ LEAN_EXPORT lean_obj_res lean_afferent_window_get_click(lean_obj_arg window_obj,
     uint16_t modifiers;
 
     if (afferent_window_get_click(window, &button, &x, &y, &modifiers)) {
-        // Construct ClickEvent structure (4 fields)
-        lean_object* click = lean_alloc_ctor(0, 4, 0);
-        lean_ctor_set(click, 0, lean_box(button));
-        lean_ctor_set(click, 1, lean_box_float((double)x));
-        lean_ctor_set(click, 2, lean_box_float((double)y));
-        lean_ctor_set(click, 3, lean_box(modifiers));
+        // Construct ClickEvent as an unboxed-scalar structure.
+        // The Lean compiler represents this struct with 0 object fields and 19 bytes of scalar data:
+        //   offset 0  : Float (x)
+        //   offset 8  : Float (y)
+        //   offset 16 : UInt16 (modifiers)
+        //   offset 18 : UInt8 (button)
+        lean_object* click = lean_alloc_ctor(0, 0, 19);
+        lean_ctor_set_float(click, 0, (double)x);
+        lean_ctor_set_float(click, 8, (double)y);
+        lean_ctor_set_uint16(click, 16, modifiers);
+        lean_ctor_set_uint8(click, 18, button);
 
         // Wrap in Option.some (constructor 1)
         lean_object* some = lean_alloc_ctor(1, 1, 0);

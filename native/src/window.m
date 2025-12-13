@@ -103,8 +103,23 @@ struct AfferentWindow {
 // Helper: Convert macOS view coordinates (Y-up) to canvas coordinates (Y-down)
 - (CGPoint)canvasPointFromEvent:(NSEvent *)event {
     NSPoint viewPoint = [self convertPoint:[event locationInWindow] fromView:nil];
-    CGFloat canvasY = self.fixedDrawableSize.height - viewPoint.y * self.metalLayer.contentsScale;
-    CGFloat canvasX = viewPoint.x * self.metalLayer.contentsScale;
+    // Map from view "points" to drawable "pixels" using the current bounds ↔ drawableSize ratio.
+    // This stays correct across window resizes, backing-scale changes, and any drawableSize overrides.
+    CGSize boundsSize = self.bounds.size;
+    CGSize drawableSize = self.metalLayer.drawableSize;
+
+    CGFloat sx = boundsSize.width > 0 ? (drawableSize.width / boundsSize.width) : 1.0;
+    CGFloat sy = boundsSize.height > 0 ? (drawableSize.height / boundsSize.height) : 1.0;
+
+    CGFloat canvasX = viewPoint.x * sx;
+    CGFloat canvasY;
+    if (self.isFlipped) {
+        // Flipped views already use a Y-down coordinate system.
+        canvasY = viewPoint.y * sy;
+    } else {
+        // Default NSView is Y-up; convert to Y-down.
+        canvasY = drawableSize.height - viewPoint.y * sy;
+    }
     return CGPointMake(canvasX, canvasY);
 }
 
@@ -143,6 +158,8 @@ struct AfferentWindow {
 - (void)mouseDown:(NSEvent *)event {
     if (self.windowHandle) {
         CGPoint p = [self canvasPointFromEvent:event];
+        self.windowHandle->mouseX = p.x;
+        self.windowHandle->mouseY = p.y;
         self.windowHandle->mouseButtons |= 1;  // Left button
         self.windowHandle->mouseClicked = true;
         self.windowHandle->clickButton = 0;  // Left
@@ -163,6 +180,8 @@ struct AfferentWindow {
 - (void)rightMouseDown:(NSEvent *)event {
     if (self.windowHandle) {
         CGPoint p = [self canvasPointFromEvent:event];
+        self.windowHandle->mouseX = p.x;
+        self.windowHandle->mouseY = p.y;
         self.windowHandle->mouseButtons |= 2;  // Right button
         self.windowHandle->mouseClicked = true;
         self.windowHandle->clickButton = 1;  // Right
@@ -183,6 +202,8 @@ struct AfferentWindow {
 - (void)otherMouseDown:(NSEvent *)event {
     if (self.windowHandle) {
         CGPoint p = [self canvasPointFromEvent:event];
+        self.windowHandle->mouseX = p.x;
+        self.windowHandle->mouseY = p.y;
         self.windowHandle->mouseButtons |= 4;  // Middle button
         self.windowHandle->mouseClicked = true;
         self.windowHandle->clickButton = 2;  // Middle

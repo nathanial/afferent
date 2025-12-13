@@ -90,6 +90,8 @@ structure AppState (Model Msg : Type) where
   model : Model
   /-- Currently hovered widget (for mouseEnter/Leave). -/
   hoveredWidget : Option WidgetId := none
+  /-- Previous mouse button bitmask (for edge-triggered click fallback). -/
+  mouseButtons : UInt8 := 0
 deriving Inhabited
 
 /-- Application definition (like Elm's Browser.element). -/
@@ -145,6 +147,7 @@ def create (app : App Model Msg) : IO (AppRunner Model Msg) := do
   let stateRef ← IO.mkRef {
     model := app.init
     hoveredWidget := none
+    mouseButtons := 0
   }
   pure { app, stateRef }
 
@@ -173,9 +176,36 @@ def processInput (runner : AppRunner Model Msg)
   let mods := Modifiers.fromBitmask input.modifiers
   let mut allMessages : Array Msg := #[]
   let mut newHovered := state.hoveredWidget
+  let prevButtons := state.mouseButtons
 
   -- Process click event
+  let mut clickEvents : Array FFI.ClickEvent := #[]
+
+  -- Prefer native click event if available
   if let some c := input.click then
+    clickEvents := clickEvents.push c
+  else
+    -- Fallback: synthesize a click on rising edges of mouseButtons.
+    -- Some platforms/backends may not populate `getClick`, but do provide button state.
+    let mkSynthetic (buttonCode : UInt8) : FFI.ClickEvent := {
+      button := buttonCode
+      x := input.mousePos.1
+      y := input.mousePos.2
+      modifiers := input.modifiers
+    }
+
+    let leftNew := (input.mouseButtons &&& 1) != 0 && (prevButtons &&& 1) == 0
+    let rightNew := (input.mouseButtons &&& 2) != 0 && (prevButtons &&& 2) == 0
+    let middleNew := (input.mouseButtons &&& 4) != 0 && (prevButtons &&& 4) == 0
+
+    if leftNew then
+      clickEvents := clickEvents.push (mkSynthetic 0)
+    if rightNew then
+      clickEvents := clickEvents.push (mkSynthetic 1)
+    if middleNew then
+      clickEvents := clickEvents.push (mkSynthetic 2)
+
+  for c in clickEvents do
     let clickEvent : MouseEvent := {
       x := c.x
       y := c.y
@@ -241,7 +271,10 @@ def processInput (runner : AppRunner Model Msg)
     runner.stateRef.set { currentState with model := newModel }
 
   -- Update hover state
-  runner.stateRef.modify fun s => { s with hoveredWidget := newHovered }
+  runner.stateRef.modify fun s => {
+    s with hoveredWidget := newHovered
+           mouseButtons := input.mouseButtons
+  }
 
   pure allMessages
 

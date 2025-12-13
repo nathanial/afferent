@@ -134,6 +134,11 @@ def unifiedDemo : IO Unit := do
   let mut frameCount : Nat := 0
   let mut fpsAccumulator : Float := 0.0
   let mut displayFps : Float := 0.0
+  -- Interactive demo debug state (persist last event so it stays visible)
+  let mut lastClick : Option FFI.ClickEvent := none
+  let mut lastClickHit : Option Widget.WidgetId := none
+  let mut lastHoverHit : Option Widget.WidgetId := none
+  let mut lastInteractiveMsgs : Array CounterMsg := #[]
 
   while !(← c.shouldClose) do
     c.pollEvents
@@ -229,18 +234,58 @@ def unifiedDemo : IO Unit := do
         -- Interactive demo with event handling
         -- Collect input for this frame
         let input ← Widget.InputState.collect c.ctx.window
-        -- Get current view and prepare layout
-        let interactive ← interactiveRunner.getView
-        let prepared ← Widget.prepareUI interactive.widget physWidthF physHeightF
+        -- Get current view and prepare layout (used for hit-testing + event dispatch)
+        let interactiveBefore ← interactiveRunner.getView
+        let preparedBefore ← Widget.prepareUI interactiveBefore.widget physWidthF physHeightF
         -- Process events (clicks, etc.)
-        let _ ← interactiveRunner.processInput prepared.widget prepared.layoutResult interactive.handlers input
+        let msgs ← interactiveRunner.processInput
+          preparedBefore.widget preparedBefore.layoutResult interactiveBefore.handlers input
+        lastInteractiveMsgs := msgs
+
+        -- Capture debug info before clearing input
+        lastHoverHit := Widget.hitTestId preparedBefore.widget preparedBefore.layoutResult input.mousePos.1 input.mousePos.2
+        if let some ce := input.click then
+          lastClick := some ce
+          lastClickHit := Widget.hitTestId preparedBefore.widget preparedBefore.layoutResult ce.x ce.y
+          let hitStr := match lastClickHit with
+            | some wid => toString wid
+            | none => "none"
+          IO.println s!"[interactive] click button={ce.button} x={ce.x} y={ce.y} hit={hitStr} msgs={toString (repr msgs)}"
         -- Clear consumed input
         Widget.InputState.clear c.ctx.window
+
+        -- Re-render with the latest model (so clicks reflect immediately even in event-driven loops).
+        let interactiveAfter ← interactiveRunner.getView
+        let preparedAfter ← Widget.prepareUI interactiveAfter.widget physWidthF physHeightF
         -- Render
         c ← run' (c.resetTransform) do
-          Widget.renderPreparedUI prepared
+          Widget.renderPreparedUI preparedAfter
           setFillColor Color.white
           fillTextXY "Interactive Demo - Click the buttons! (Space to advance)" (20 * screenScale) (30 * screenScale) fontMedium
+
+          -- Debug overlay (top-left)
+          let showOptNat : Option Nat → String
+            | some n => toString n
+            | none => "none"
+
+          let clickStr :=
+            match lastClick with
+            | some ce => s!"click: btn={ce.button} x={ce.x.toUInt32} y={ce.y.toUInt32} mods={ce.modifiers}"
+            | none => "click: none"
+
+          let hoverStr := s!"hover hit: {showOptNat lastHoverHit}"
+          let clickHitStr := s!"click hit: {showOptNat lastClickHit}"
+          let mouseStr := s!"mouse: x={input.mousePos.1.toUInt32} y={input.mousePos.2.toUInt32} buttons={input.mouseButtons} inWindow={input.mouseInWindow}"
+          let msgStr := s!"msgs: {toString (repr lastInteractiveMsgs)}"
+
+          setFillColor (Color.hsva 0.0 0.0 0.0 0.6)
+          fillRectXYWH (10 * screenScale) (40 * screenScale) (physWidthF - 20 * screenScale) (110 * screenScale)
+          setFillColor Color.white
+          fillTextXY mouseStr (20 * screenScale) (65 * screenScale) fontSmall
+          fillTextXY clickStr (20 * screenScale) (85 * screenScale) fontSmall
+          fillTextXY hoverStr (20 * screenScale) (105 * screenScale) fontSmall
+          fillTextXY clickHitStr (20 * screenScale) (125 * screenScale) fontSmall
+          fillTextXY msgStr (20 * screenScale) (145 * screenScale) fontSmall
       else
         -- Normal demo mode: grid of demos using CanvasM for proper state threading
         c ← run' (c.resetTransform) do
