@@ -216,25 +216,14 @@ def processInput (runner : AppRunner Model Msg)
     let interactive ← runner.getView
     let prepared ← prepareUI interactive.widget availWidth availHeight
 
-    let hasHandlerInPath (handlers : EventHandlers Msg) (path : Array WidgetId) : Bool :=
-      path.any (handlers.hasHandler ·)
-
     let clickPath := hitTestPath prepared.widget prepared.layoutResult c.x c.y
-    let (cx, cy, path) :=
-      if hasHandlerInPath interactive.handlers clickPath then
-        (c.x, c.y, clickPath)
-      else
-        let mx := input.mousePos.1
-        let my := input.mousePos.2
-        (mx, my, hitTestPath prepared.widget prepared.layoutResult mx my)
-
     let clickEvent : MouseEvent := {
-      x := cx
-      y := cy
+      x := c.x
+      y := c.y
       button := MouseButton.fromCode c.button
       modifiers := Modifiers.fromBitmask c.modifiers
     }
-    let result := processEvent interactive.handlers (.mouseClick clickEvent) path
+    let result := processEvent interactive.handlers (.mouseClick clickEvent) clickPath
     allMessages := allMessages ++ result.messages
     for msg in result.messages do
       runner.sendMessage msg
