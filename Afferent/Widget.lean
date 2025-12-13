@@ -32,6 +32,11 @@ import Afferent.Widget.Render
 import Afferent.Widget.Scroll
 import Afferent.Widget.DSL
 import Afferent.Widget.UI
+-- Event system
+import Afferent.Widget.Event
+import Afferent.Widget.HitTest
+import Afferent.Widget.App
+import Afferent.Widget.Interactive
 
 -- All types and functions are available in the Afferent.Widget namespace
 -- after importing this module

@@ -51,6 +51,16 @@ void afferent_window_get_size(AfferentWindowRef window, uint32_t* width, uint32_
 uint16_t afferent_window_get_key_code(AfferentWindowRef window);
 void afferent_window_clear_key(AfferentWindowRef window);
 
+// Mouse input
+void afferent_window_get_mouse_pos(AfferentWindowRef window, float* x, float* y);
+uint8_t afferent_window_get_mouse_buttons(AfferentWindowRef window);
+uint16_t afferent_window_get_modifiers(AfferentWindowRef window);
+void afferent_window_get_scroll_delta(AfferentWindowRef window, float* dx, float* dy);
+void afferent_window_clear_scroll(AfferentWindowRef window);
+bool afferent_window_mouse_in_window(AfferentWindowRef window);
+bool afferent_window_get_click(AfferentWindowRef window, uint8_t* button, float* x, float* y, uint16_t* modifiers);
+void afferent_window_clear_click(AfferentWindowRef window);
+
 // Get the main screen's backing scale factor (e.g., 2.0 for Retina, 1.5 for 150% scaling)
 float afferent_get_screen_scale(void);
 

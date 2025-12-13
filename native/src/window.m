@@ -16,6 +16,20 @@ struct AfferentWindow {
     // Keyboard state
     uint16_t lastKeyCode;
     bool keyPressed;
+    // Mouse state
+    float mouseX;               // Canvas coordinates (Y-down)
+    float mouseY;
+    uint8_t mouseButtons;       // Bitmask: left=1, right=2, middle=4
+    float scrollDeltaX;
+    float scrollDeltaY;
+    bool mouseInWindow;
+    uint16_t modifiers;         // Bitmask: shift=1, ctrl=2, alt=4, cmd=8
+    // Click event (poll-based like keyboard)
+    bool mouseClicked;
+    uint8_t clickButton;        // 0=left, 1=right, 2=middle
+    float clickX;
+    float clickY;
+    uint16_t clickModifiers;
 };
 
 // Metal-backed view
@@ -84,6 +98,152 @@ struct AfferentWindow {
 - (void)keyUp:(NSEvent *)event {
     // Don't clear on key up - let the app poll and clear explicitly
     // This ensures key presses aren't missed between frames
+}
+
+// Helper: Convert macOS view coordinates (Y-up) to canvas coordinates (Y-down)
+- (CGPoint)canvasPointFromEvent:(NSEvent *)event {
+    NSPoint viewPoint = [self convertPoint:[event locationInWindow] fromView:nil];
+    CGFloat canvasY = self.fixedDrawableSize.height - viewPoint.y * self.metalLayer.contentsScale;
+    CGFloat canvasX = viewPoint.x * self.metalLayer.contentsScale;
+    return CGPointMake(canvasX, canvasY);
+}
+
+// Helper: Update modifier key state from event
+- (void)updateModifiers:(NSEvent *)event {
+    NSEventModifierFlags flags = [event modifierFlags];
+    uint16_t mods = 0;
+    if (flags & NSEventModifierFlagShift) mods |= 1;
+    if (flags & NSEventModifierFlagControl) mods |= 2;
+    if (flags & NSEventModifierFlagOption) mods |= 4;  // Alt/Option
+    if (flags & NSEventModifierFlagCommand) mods |= 8;
+    self.windowHandle->modifiers = mods;
+}
+
+- (void)mouseMoved:(NSEvent *)event {
+    if (self.windowHandle) {
+        CGPoint p = [self canvasPointFromEvent:event];
+        self.windowHandle->mouseX = p.x;
+        self.windowHandle->mouseY = p.y;
+        [self updateModifiers:event];
+    }
+}
+
+- (void)mouseDragged:(NSEvent *)event {
+    [self mouseMoved:event];
+}
+
+- (void)rightMouseDragged:(NSEvent *)event {
+    [self mouseMoved:event];
+}
+
+- (void)otherMouseDragged:(NSEvent *)event {
+    [self mouseMoved:event];
+}
+
+- (void)mouseDown:(NSEvent *)event {
+    if (self.windowHandle) {
+        CGPoint p = [self canvasPointFromEvent:event];
+        self.windowHandle->mouseButtons |= 1;  // Left button
+        self.windowHandle->mouseClicked = true;
+        self.windowHandle->clickButton = 0;  // Left
+        self.windowHandle->clickX = p.x;
+        self.windowHandle->clickY = p.y;
+        [self updateModifiers:event];
+        self.windowHandle->clickModifiers = self.windowHandle->modifiers;
+    }
+}
+
+- (void)mouseUp:(NSEvent *)event {
+    if (self.windowHandle) {
+        self.windowHandle->mouseButtons &= ~1;  // Clear left button
+        [self updateModifiers:event];
+    }
+}
+
+- (void)rightMouseDown:(NSEvent *)event {
+    if (self.windowHandle) {
+        CGPoint p = [self canvasPointFromEvent:event];
+        self.windowHandle->mouseButtons |= 2;  // Right button
+        self.windowHandle->mouseClicked = true;
+        self.windowHandle->clickButton = 1;  // Right
+        self.windowHandle->clickX = p.x;
+        self.windowHandle->clickY = p.y;
+        [self updateModifiers:event];
+        self.windowHandle->clickModifiers = self.windowHandle->modifiers;
+    }
+}
+
+- (void)rightMouseUp:(NSEvent *)event {
+    if (self.windowHandle) {
+        self.windowHandle->mouseButtons &= ~2;  // Clear right button
+        [self updateModifiers:event];
+    }
+}
+
+- (void)otherMouseDown:(NSEvent *)event {
+    if (self.windowHandle) {
+        CGPoint p = [self canvasPointFromEvent:event];
+        self.windowHandle->mouseButtons |= 4;  // Middle button
+        self.windowHandle->mouseClicked = true;
+        self.windowHandle->clickButton = 2;  // Middle
+        self.windowHandle->clickX = p.x;
+        self.windowHandle->clickY = p.y;
+        [self updateModifiers:event];
+        self.windowHandle->clickModifiers = self.windowHandle->modifiers;
+    }
+}
+
+- (void)otherMouseUp:(NSEvent *)event {
+    if (self.windowHandle) {
+        self.windowHandle->mouseButtons &= ~4;  // Clear middle button
+        [self updateModifiers:event];
+    }
+}
+
+- (void)scrollWheel:(NSEvent *)event {
+    if (self.windowHandle) {
+        CGPoint p = [self canvasPointFromEvent:event];
+        self.windowHandle->mouseX = p.x;
+        self.windowHandle->mouseY = p.y;
+        self.windowHandle->scrollDeltaX += [event scrollingDeltaX];
+        self.windowHandle->scrollDeltaY += [event scrollingDeltaY];
+        [self updateModifiers:event];
+    }
+}
+
+- (void)mouseEntered:(NSEvent *)event {
+    if (self.windowHandle) {
+        self.windowHandle->mouseInWindow = true;
+    }
+}
+
+- (void)mouseExited:(NSEvent *)event {
+    if (self.windowHandle) {
+        self.windowHandle->mouseInWindow = false;
+    }
+}
+
+- (void)flagsChanged:(NSEvent *)event {
+    [self updateModifiers:event];
+}
+
+// Enable mouse tracking for mouseMoved, mouseEntered, mouseExited
+- (void)updateTrackingAreas {
+    [super updateTrackingAreas];
+    // Remove old tracking areas
+    for (NSTrackingArea *area in self.trackingAreas) {
+        [self removeTrackingArea:area];
+    }
+    // Add new tracking area covering the entire view
+    NSTrackingAreaOptions options = NSTrackingMouseMoved |
+                                    NSTrackingMouseEnteredAndExited |
+                                    NSTrackingActiveInActiveApp |
+                                    NSTrackingInVisibleRect;
+    NSTrackingArea *area = [[NSTrackingArea alloc] initWithRect:self.bounds
+                                                        options:options
+                                                          owner:self
+                                                       userInfo:nil];
+    [self addTrackingArea:area];
 }
 
 @end
@@ -199,6 +359,19 @@ AfferentResult afferent_window_create(
         handle->device = device;
         handle->lastKeyCode = 0;
         handle->keyPressed = false;
+        // Initialize mouse state
+        handle->mouseX = 0;
+        handle->mouseY = 0;
+        handle->mouseButtons = 0;
+        handle->scrollDeltaX = 0;
+        handle->scrollDeltaY = 0;
+        handle->mouseInWindow = false;
+        handle->modifiers = 0;
+        handle->mouseClicked = false;
+        handle->clickButton = 0;
+        handle->clickX = 0;
+        handle->clickY = 0;
+        handle->clickModifiers = 0;
 
         // Set back-reference so view can store key events
         view.windowHandle = handle;
@@ -272,5 +445,63 @@ void afferent_window_clear_key(AfferentWindowRef window) {
 float afferent_get_screen_scale(void) {
     @autoreleasepool {
         return (float)[NSScreen mainScreen].backingScaleFactor;
+    }
+}
+
+// Mouse input functions
+void afferent_window_get_mouse_pos(AfferentWindowRef window, float* x, float* y) {
+    if (window) {
+        *x = window->mouseX;
+        *y = window->mouseY;
+    } else {
+        *x = 0;
+        *y = 0;
+    }
+}
+
+uint8_t afferent_window_get_mouse_buttons(AfferentWindowRef window) {
+    return window ? window->mouseButtons : 0;
+}
+
+uint16_t afferent_window_get_modifiers(AfferentWindowRef window) {
+    return window ? window->modifiers : 0;
+}
+
+void afferent_window_get_scroll_delta(AfferentWindowRef window, float* dx, float* dy) {
+    if (window) {
+        *dx = window->scrollDeltaX;
+        *dy = window->scrollDeltaY;
+    } else {
+        *dx = 0;
+        *dy = 0;
+    }
+}
+
+void afferent_window_clear_scroll(AfferentWindowRef window) {
+    if (window) {
+        window->scrollDeltaX = 0;
+        window->scrollDeltaY = 0;
+    }
+}
+
+bool afferent_window_mouse_in_window(AfferentWindowRef window) {
+    return window ? window->mouseInWindow : false;
+}
+
+// Get pending click event. Returns true if click available.
+bool afferent_window_get_click(AfferentWindowRef window, uint8_t* button, float* x, float* y, uint16_t* modifiers) {
+    if (window && window->mouseClicked) {
+        *button = window->clickButton;
+        *x = window->clickX;
+        *y = window->clickY;
+        *modifiers = window->clickModifiers;
+        return true;
+    }
+    return false;
+}
+
+void afferent_window_clear_click(AfferentWindowRef window) {
+    if (window) {
+        window->mouseClicked = false;
     }
 }

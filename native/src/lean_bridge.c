@@ -126,6 +126,89 @@ LEAN_EXPORT lean_obj_res lean_afferent_get_screen_scale(lean_obj_arg world) {
     return lean_io_result_mk_ok(lean_box_float((double)scale));
 }
 
+// Mouse position - returns (Float, Float) tuple
+LEAN_EXPORT lean_obj_res lean_afferent_window_get_mouse_pos(lean_obj_arg window_obj, lean_obj_arg world) {
+    AfferentWindowRef window = (AfferentWindowRef)lean_get_external_data(window_obj);
+    float x = 0, y = 0;
+    afferent_window_get_mouse_pos(window, &x, &y);
+    lean_object* tuple = lean_alloc_ctor(0, 2, 0);
+    lean_ctor_set(tuple, 0, lean_box_float((double)x));
+    lean_ctor_set(tuple, 1, lean_box_float((double)y));
+    return lean_io_result_mk_ok(tuple);
+}
+
+// Mouse buttons - returns UInt8 bitmask
+LEAN_EXPORT lean_obj_res lean_afferent_window_get_mouse_buttons(lean_obj_arg window_obj, lean_obj_arg world) {
+    AfferentWindowRef window = (AfferentWindowRef)lean_get_external_data(window_obj);
+    uint8_t buttons = afferent_window_get_mouse_buttons(window);
+    return lean_io_result_mk_ok(lean_box(buttons));
+}
+
+// Modifier keys - returns UInt16 bitmask
+LEAN_EXPORT lean_obj_res lean_afferent_window_get_modifiers(lean_obj_arg window_obj, lean_obj_arg world) {
+    AfferentWindowRef window = (AfferentWindowRef)lean_get_external_data(window_obj);
+    uint16_t mods = afferent_window_get_modifiers(window);
+    return lean_io_result_mk_ok(lean_box(mods));
+}
+
+// Scroll delta - returns (Float, Float) tuple
+LEAN_EXPORT lean_obj_res lean_afferent_window_get_scroll_delta(lean_obj_arg window_obj, lean_obj_arg world) {
+    AfferentWindowRef window = (AfferentWindowRef)lean_get_external_data(window_obj);
+    float dx = 0, dy = 0;
+    afferent_window_get_scroll_delta(window, &dx, &dy);
+    lean_object* tuple = lean_alloc_ctor(0, 2, 0);
+    lean_ctor_set(tuple, 0, lean_box_float((double)dx));
+    lean_ctor_set(tuple, 1, lean_box_float((double)dy));
+    return lean_io_result_mk_ok(tuple);
+}
+
+// Clear scroll delta
+LEAN_EXPORT lean_obj_res lean_afferent_window_clear_scroll(lean_obj_arg window_obj, lean_obj_arg world) {
+    AfferentWindowRef window = (AfferentWindowRef)lean_get_external_data(window_obj);
+    afferent_window_clear_scroll(window);
+    return lean_io_result_mk_ok(lean_box(0));
+}
+
+// Mouse in window - returns Bool
+LEAN_EXPORT lean_obj_res lean_afferent_window_mouse_in_window(lean_obj_arg window_obj, lean_obj_arg world) {
+    AfferentWindowRef window = (AfferentWindowRef)lean_get_external_data(window_obj);
+    bool inWindow = afferent_window_mouse_in_window(window);
+    return lean_io_result_mk_ok(lean_box(inWindow ? 1 : 0));
+}
+
+// Get click event - returns Option ClickEvent
+// ClickEvent structure: { button: UInt8, x: Float, y: Float, modifiers: UInt16 }
+LEAN_EXPORT lean_obj_res lean_afferent_window_get_click(lean_obj_arg window_obj, lean_obj_arg world) {
+    AfferentWindowRef window = (AfferentWindowRef)lean_get_external_data(window_obj);
+    uint8_t button;
+    float x, y;
+    uint16_t modifiers;
+
+    if (afferent_window_get_click(window, &button, &x, &y, &modifiers)) {
+        // Construct ClickEvent structure (4 fields)
+        lean_object* click = lean_alloc_ctor(0, 4, 0);
+        lean_ctor_set(click, 0, lean_box(button));
+        lean_ctor_set(click, 1, lean_box_float((double)x));
+        lean_ctor_set(click, 2, lean_box_float((double)y));
+        lean_ctor_set(click, 3, lean_box(modifiers));
+
+        // Wrap in Option.some (constructor 1)
+        lean_object* some = lean_alloc_ctor(1, 1, 0);
+        lean_ctor_set(some, 0, click);
+        return lean_io_result_mk_ok(some);
+    } else {
+        // Return Option.none (constructor 0, no fields)
+        return lean_io_result_mk_ok(lean_box(0));
+    }
+}
+
+// Clear click event
+LEAN_EXPORT lean_obj_res lean_afferent_window_clear_click(lean_obj_arg window_obj, lean_obj_arg world) {
+    AfferentWindowRef window = (AfferentWindowRef)lean_get_external_data(window_obj);
+    afferent_window_clear_click(window);
+    return lean_io_result_mk_ok(lean_box(0));
+}
+
 // Renderer creation
 LEAN_EXPORT lean_obj_res lean_afferent_renderer_create(lean_obj_arg window_obj, lean_obj_arg world) {
     AfferentWindowRef window = (AfferentWindowRef)lean_get_external_data(window_obj);

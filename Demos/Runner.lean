@@ -16,6 +16,7 @@ import Demos.TrianglesPerf
 import Demos.CirclesPerf
 import Demos.SpritesPerf
 import Demos.Widgets
+import Demos.Interactive
 
 set_option maxRecDepth 1024
 
@@ -118,6 +119,9 @@ def unifiedDemo : IO Unit := do
   let layoutFontPx : UInt32 := (max 8.0 (layoutLabelPt * screenScale)).toUInt32
   let layoutFont ← Font.load "/System/Library/Fonts/Monaco.ttf" layoutFontPx
 
+  -- Create interactive demo runner
+  let interactiveRunner ← Widget.AppRunner.create (counterApp fontMedium)
+
   -- Display modes: 0 = demo, 1 = grid squares, 2 = triangles, 3 = circles, 4 = sprites
   let startTime ← IO.monoMsNow
   let mut c := canvas
@@ -137,7 +141,7 @@ def unifiedDemo : IO Unit := do
     -- Check for Space key (key code 49) to cycle through modes
     let keyCode ← c.getKeyCode
     if keyCode == 49 then  -- Space bar
-      displayMode := (displayMode + 1) % 8
+      displayMode := (displayMode + 1) % 9
       c.clearKey
       -- Disable MSAA only for sprite benchmark mode to maximize throughput.
       -- Keep Retina/native drawable scaling enabled.
@@ -151,7 +155,8 @@ def unifiedDemo : IO Unit := do
       | 4 => IO.println "Switched to SPRITES (Bunnymark) performance test"
       | 5 => IO.println "Switched to LAYOUT demo (full-size)"
       | 6 => IO.println "Switched to CSS GRID demo (full-size)"
-      | _ => IO.println "Switched to WIDGET demo (full-size)"
+      | 7 => IO.println "Switched to WIDGET demo (full-size)"
+      | _ => IO.println "Switched to INTERACTIVE demo (click the buttons!)"
 
     let ok ← c.beginFrame Color.darkGray
     if ok then
@@ -220,6 +225,22 @@ def unifiedDemo : IO Unit := do
           renderWidgetShapesDebugM fontMedium fontSmall physWidthF physHeightF screenScale
           setFillColor Color.white
           fillTextXY "Widget System Demo (Space to advance)" (20 * screenScale) (30 * screenScale) fontMedium
+      else if displayMode == 8 then
+        -- Interactive demo with event handling
+        -- Collect input for this frame
+        let input ← Widget.InputState.collect c.ctx.window
+        -- Get current view and prepare layout
+        let interactive ← interactiveRunner.getView
+        let prepared ← Widget.prepareUI interactive.widget physWidthF physHeightF
+        -- Process events (clicks, etc.)
+        let _ ← interactiveRunner.processInput prepared.widget prepared.layoutResult interactive.handlers input
+        -- Clear consumed input
+        Widget.InputState.clear c.ctx.window
+        -- Render
+        c ← run' (c.resetTransform) do
+          Widget.renderPreparedUI prepared
+          setFillColor Color.white
+          fillTextXY "Interactive Demo - Click the buttons! (Space to advance)" (20 * screenScale) (30 * screenScale) fontMedium
       else
         -- Normal demo mode: grid of demos using CanvasM for proper state threading
         c ← run' (c.resetTransform) do
