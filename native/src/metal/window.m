@@ -69,6 +69,14 @@ static inline void afferent_window_push_click(struct AfferentWindow *w, uint8_t 
 
 @implementation AfferentView
 
+- (BOOL)acceptsFirstMouse:(NSEvent *)event {
+    // If the app/window is not active yet, macOS normally uses the first click to activate the window
+    // and does not deliver it to the view. This can make UI buttons feel like they need multiple clicks
+    // on startup. Accept the first mouse click so widgets receive it reliably.
+    (void)event;
+    return YES;
+}
+
 - (instancetype)initWithFrame:(NSRect)frameRect
                        device:(id<MTLDevice>)device
                  drawableSize:(CGSize)drawableSize
