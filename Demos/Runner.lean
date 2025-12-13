@@ -9,6 +9,7 @@ import Demos.Gradients
 import Demos.Text
 import Demos.Animations
 import Demos.Layout
+import Demos.Grid
 import Demos.Collimator
 import Demos.GridPerf
 import Demos.TrianglesPerf
@@ -135,7 +136,7 @@ def unifiedDemo : IO Unit := do
     -- Check for Space key (key code 49) to cycle through modes
     let keyCode ← c.getKeyCode
     if keyCode == 49 then  -- Space bar
-      displayMode := (displayMode + 1) % 6
+      displayMode := (displayMode + 1) % 7
       c.clearKey
       -- Disable MSAA only for sprite benchmark mode to maximize throughput.
       -- Keep Retina/native drawable scaling enabled.
@@ -147,7 +148,8 @@ def unifiedDemo : IO Unit := do
       | 2 => IO.println "Switched to TRIANGLES performance test"
       | 3 => IO.println "Switched to CIRCLES (bouncing) performance test"
       | 4 => IO.println "Switched to SPRITES (Bunnymark) performance test"
-      | _ => IO.println "Switched to LAYOUT demo (full-size)"
+      | 5 => IO.println "Switched to LAYOUT demo (full-size)"
+      | _ => IO.println "Switched to CSS GRID demo (full-size)"
 
     let ok ← c.beginFrame Color.darkGray
     if ok then
@@ -198,6 +200,18 @@ def unifiedDemo : IO Unit := do
           renderLayoutLabelsMappedM layoutFont layoutOffsetX layoutOffsetY layoutScale
           setFillColor Color.white
           fillTextXY "CSS Flexbox Layout Demo (Space to advance)" (20 * screenScale) (30 * screenScale) fontMedium
+      else if displayMode == 6 then
+        -- Full-size CSS Grid demo
+        c ← run' (c.resetTransform) do
+          save
+          translate layoutOffsetX layoutOffsetY
+          scale layoutScale layoutScale
+          renderGridShapesM
+          restore
+          -- Draw labels in screen space to avoid texture upscaling artifacts.
+          renderGridLabelsMappedM layoutFont layoutOffsetX layoutOffsetY layoutScale
+          setFillColor Color.white
+          fillTextXY "CSS Grid Layout Demo (Space to advance)" (20 * screenScale) (30 * screenScale) fontMedium
       else
         -- Normal demo mode: grid of demos using CanvasM for proper state threading
         c ← run' (c.resetTransform) do
