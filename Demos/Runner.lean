@@ -277,11 +277,11 @@ def unifiedDemo : IO Unit := do
           setFillColor bg12
           fillRect cellRect12
           setFillColor (Color.hsva 0.0 0.0 1.0 0.5)
-          fillTextXY "Cell: 1,2 - Layout" (cellWidth + 10 * screenScale) (cellHeight * 2 + 20 * screenScale) fontSmall
+          fillTextXY "Cell: 1,2 - Animations" (cellWidth + 10 * screenScale) (cellHeight * 2 + 20 * screenScale) fontSmall
           save
           translate cellWidth (cellHeight * 2)
           scale (0.45 * screenScale) (0.45 * screenScale)
-          renderLayoutM fontSmall
+          renderAnimationsM t
           restore
           unclip
 
