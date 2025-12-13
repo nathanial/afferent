@@ -175,7 +175,17 @@ def unifiedDemo : IO Unit := do
         -- Full-size Layout demo
         c ← run' (c.resetTransform) do
           save
-          scale (2.0 * screenScale) (1.3 * screenScale)
+          -- Fit the 1000x800 layout demo into the current viewport without distortion.
+          let layoutW : Float := 1000.0
+          let layoutH : Float := 800.0
+          let padTop : Float := 60.0 * screenScale
+          let availW : Float := physWidthF
+          let availH : Float := max 1.0 (physHeightF - padTop)
+          let s : Float := min (availW / layoutW) (availH / layoutH)
+          let offsetX : Float := (availW - layoutW * s) / 2.0
+          let offsetY : Float := padTop + (availH - layoutH * s) / 2.0
+          translate offsetX offsetY
+          scale s s
           renderLayoutM fontSmall
           restore
           setFillColor Color.white
