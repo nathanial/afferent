@@ -176,6 +176,16 @@ Lean 4 Application
    Metal GPU
 ```
 
+## FFI Notes (Struct Layout)
+
+When you add or change a Lean `structure` that crosses the C FFI boundary, be careful about how it’s represented on the C side.
+
+- `structure`s with only scalar fields (`UInt8`/`UInt16`/`Float`/etc.) may be compiled as an **unboxed-scalar** layout (0 object fields + a byte blob of scalars at fixed offsets).
+- In that case, you must construct the value with `lean_alloc_ctor(tag, 0, <bytes>)` and set fields using `lean_ctor_set_float/uint16/uint8` at the correct offsets.
+- Do **not** assume you can allocate “4 boxed fields” and use `lean_ctor_set(..., lean_box(...))`—that will produce garbage values.
+
+To confirm the layout, inspect the generated C for the defining module (e.g. `.lake/build/ir/Afferent/FFI/Metal.c`) and mirror the offsets used by the `Inhabited` default initializer.
+
 ## Project Structure
 
 ```
