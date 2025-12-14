@@ -4,6 +4,8 @@
 -/
 import Afferent.Tests.Framework
 import Afferent.FFI.Asset
+import Afferent.FFI.Init
+import Demos.Seascape
 
 namespace Afferent.Tests
 
@@ -34,6 +36,13 @@ private def cases : List TestCase :=
           catch _ =>
             pure true
         ensure ok "expected loadAsset to throw on missing file"
+    }
+  , { name := "Demos.loadFrigate caches without crashing"
+      run := do
+        -- This exercises the Seascape caching path (IO.Ref.set with a cached Texture).
+        Afferent.FFI.init
+        let _ ← Demos.loadFrigate
+        let _ ← Demos.loadFrigate
     }
   , { name := "loadAsset loads fictional frigate"
       run := do

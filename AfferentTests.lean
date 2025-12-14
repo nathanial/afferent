@@ -7,6 +7,7 @@ import Afferent.Tests.LayoutTests
 import Afferent.Tests.WidgetTests
 import Afferent.Tests.FFISafetyTests
 import Afferent.Tests.AssetLoadingTests
+import Afferent.Tests.SeascapeSmokeTests
 
 open Afferent.Tests
 
@@ -36,6 +37,10 @@ def main : IO UInt32 := do
   -- Run asset loading tests
   let assetResult ← AssetLoadingTests.runAllTests
   if assetResult != 0 then exitCode := 1
+
+  -- Run Seascape smoke tests (skipped unless AFFERENT_RUN_GPU_TESTS=1)
+  let seascapeResult ← SeascapeSmokeTests.runAllTests
+  if seascapeResult != 0 then exitCode := 1
 
   -- Summary
   IO.println ""

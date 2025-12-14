@@ -362,8 +362,12 @@ void afferent_renderer_draw_mesh_3d_textured(
         memcpy(vertexBuffer.contents, vertices, vertex_size);
 
         // Acquire temporary index buffer (pooled)
-        size_t total_index_count = index_offset + index_count;
-        size_t index_size = total_index_count * sizeof(uint32_t);
+        //
+        // IMPORTANT: `index_offset` is an offset into the *input* `indices` array.
+        // We should only upload `index_count` indices for this draw, not the whole
+        // prefix up to `index_offset + index_count` (which can be enormous for
+        // multi-submesh assets like the frigate).
+        size_t index_size = (size_t)index_count * sizeof(uint32_t);
         id<MTLBuffer> indexBuffer = pool_acquire_buffer(
             renderer->device,
             g_buffer_pool.index_pool,
@@ -375,7 +379,7 @@ void afferent_renderer_draw_mesh_3d_textured(
             NSLog(@"Failed to create 3D textured index buffer");
             return;
         }
-        memcpy(indexBuffer.contents, indices, index_size);
+        memcpy(indexBuffer.contents, indices + index_offset, index_size);
 
         // Set up uniforms with fog and UV parameters
         Scene3DTexturedUniforms uniforms;
@@ -404,12 +408,12 @@ void afferent_renderer_draw_mesh_3d_textured(
         [renderer->currentEncoder setFragmentTexture:metalTex atIndex:0];
         [renderer->currentEncoder setFragmentSamplerState:renderer->texturedMeshSampler atIndex:0];
 
-        // Draw indexed triangles with offset
+        // Draw indexed triangles (we uploaded the slice starting at `index_offset`)
         [renderer->currentEncoder drawIndexedPrimitives:MTLPrimitiveTypeTriangle
                                              indexCount:index_count
                                               indexType:MTLIndexTypeUInt32
                                             indexBuffer:indexBuffer
-                                      indexBufferOffset:index_offset * sizeof(uint32_t)];
+                                      indexBufferOffset:0];
 
         // Restore default pipeline
         [renderer->currentEncoder setRenderPipelineState:renderer->pipelineState];

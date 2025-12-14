@@ -44,6 +44,14 @@ static void window_finalizer(void* ptr) {
     // In production, you'd want reference counting
 }
 
+// External objects in this project do not reference Lean heap objects, so the
+// GC "foreach" callback is always a no-op. Some Lean runtimes may still call
+// the callback unconditionally, so it must not be NULL.
+static void afferent_external_foreach(void* ptr, b_lean_obj_arg f) {
+    (void)ptr;
+    (void)f;
+}
+
 static void renderer_finalizer(void* ptr) {
     // Same as above
 }
@@ -67,12 +75,12 @@ static void texture_finalizer(void* ptr) {
 static void afferent_ensure_initialized(void) {
     if (g_afferent_initialized) return;
 
-    g_window_class = lean_register_external_class(window_finalizer, NULL);
-    g_renderer_class = lean_register_external_class(renderer_finalizer, NULL);
-    g_buffer_class = lean_register_external_class(buffer_finalizer, NULL);
-    g_font_class = lean_register_external_class(font_finalizer, NULL);
-    g_float_buffer_class = lean_register_external_class(float_buffer_finalizer, NULL);
-    g_texture_class = lean_register_external_class(texture_finalizer, NULL);
+    g_window_class = lean_register_external_class(window_finalizer, afferent_external_foreach);
+    g_renderer_class = lean_register_external_class(renderer_finalizer, afferent_external_foreach);
+    g_buffer_class = lean_register_external_class(buffer_finalizer, afferent_external_foreach);
+    g_font_class = lean_register_external_class(font_finalizer, afferent_external_foreach);
+    g_float_buffer_class = lean_register_external_class(float_buffer_finalizer, afferent_external_foreach);
+    g_texture_class = lean_register_external_class(texture_finalizer, afferent_external_foreach);
 
     // Initialize text subsystem
     afferent_text_init();
