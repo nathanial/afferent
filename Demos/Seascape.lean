@@ -679,7 +679,7 @@ def renderSeascape (renderer : Renderer) (t : Float)
     fovY
     aspect
     800.0  -- maxDistance
-    2.0    -- snapSize
+    0.0    -- snapSize (disable snapping to avoid visible "pops" while moving)
     0.25   -- overscanNdc
     0.05   -- horizonMargin
     camera.yaw
