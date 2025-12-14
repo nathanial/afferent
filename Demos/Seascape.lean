@@ -121,14 +121,14 @@ def OceanMesh.create (gridSize : Nat) (extent : Float) : OceanMesh :=
   { gridSize, extent, basePositions, vertices, indices }
 
 /-- Create an annular (ring-shaped) ocean mesh for LOD.
-    innerExtent: inner radius (hole in the ring)
-    outerExtent: outer radius -/
-def OceanMesh.createRing (gridSize : Nat) (innerExtent outerExtent : Float) : OceanMesh :=
+    `radialSteps`: number of samples from inner → outer radius
+    `angularSteps`: number of samples around the circle
+    `innerExtent`: inner radius (hole in the ring)
+    `outerExtent`: outer radius -/
+def OceanMesh.createRing (radialSteps angularSteps : Nat) (innerExtent outerExtent : Float) : OceanMesh :=
   -- For a ring, we create a grid where radius varies from inner to outer
-  -- and angle varies around the full circle
-  let numVertices := gridSize * gridSize
-  let radialSteps := gridSize
-  let angularSteps := gridSize
+  -- and angle varies around the full circle.
+  let numVertices := radialSteps * angularSteps
 
   -- Generate base positions and initial vertices
   let (basePositions, vertices) := Id.run do
@@ -187,99 +187,115 @@ def OceanMesh.createRing (gridSize : Nat) (innerExtent outerExtent : Float) : Oc
 
     return indices
 
-  { gridSize, extent := outerExtent, basePositions, vertices, indices }
+  { gridSize := radialSteps, extent := outerExtent, basePositions, vertices, indices }
 
 /-- Apply Gerstner waves to the ocean mesh and recompute normals. -/
 def OceanMesh.applyWaves (mesh : OceanMesh) (waves : Array GerstnerWave) (t : Float) : OceanMesh :=
-  let gridSize := mesh.gridSize
+  let numVertices := mesh.basePositions.size / 2
 
-  -- First pass: compute displaced positions
+  -- First pass: compute displaced positions (x,y,z) for every base (x,z).
   let displacedPositions := Id.run do
-    let mut displacedPositions := Array.mkEmpty (gridSize * gridSize * 3)
-
-    for i in [:(gridSize * gridSize)] do
+    let mut displacedPositions := Array.mkEmpty (numVertices * 3)
+    for i in [:numVertices] do
       let baseX := mesh.basePositions.getD (i * 2) 0.0
       let baseZ := mesh.basePositions.getD (i * 2 + 1) 0.0
-
       let (dx, dy, dz) := gerstnerDisplacement waves baseX baseZ t
-
-      let newX := baseX + dx
-      let newY := dy
-      let newZ := baseZ + dz
-
-      displacedPositions := displacedPositions.push newX
-      displacedPositions := displacedPositions.push newY
-      displacedPositions := displacedPositions.push newZ
-
+      displacedPositions := displacedPositions.push (baseX + dx)
+      displacedPositions := displacedPositions.push dy
+      displacedPositions := displacedPositions.push (baseZ + dz)
     return displacedPositions
 
-  -- Second pass: compute normals using finite differences and update vertices
+  -- Second pass: accumulate normals from triangles (works for any topology / LOD layout).
+  let normalSums := Id.run do
+    let mut normalSums := Array.replicate (numVertices * 3) 0.0
+    let triCount := mesh.indices.size / 3
+    for triIdx in [:triCount] do
+      let i0 := (mesh.indices.getD (triIdx * 3) (0 : UInt32)).toNat
+      let i1 := (mesh.indices.getD (triIdx * 3 + 1) (0 : UInt32)).toNat
+      let i2 := (mesh.indices.getD (triIdx * 3 + 2) (0 : UInt32)).toNat
+
+      let p0x := displacedPositions.getD (i0 * 3) 0.0
+      let p0y := displacedPositions.getD (i0 * 3 + 1) 0.0
+      let p0z := displacedPositions.getD (i0 * 3 + 2) 0.0
+
+      let p1x := displacedPositions.getD (i1 * 3) 0.0
+      let p1y := displacedPositions.getD (i1 * 3 + 1) 0.0
+      let p1z := displacedPositions.getD (i1 * 3 + 2) 0.0
+
+      let p2x := displacedPositions.getD (i2 * 3) 0.0
+      let p2y := displacedPositions.getD (i2 * 3 + 1) 0.0
+      let p2z := displacedPositions.getD (i2 * 3 + 2) 0.0
+
+      let e1x := p1x - p0x
+      let e1y := p1y - p0y
+      let e1z := p1z - p0z
+
+      let e2x := p2x - p0x
+      let e2y := p2y - p0y
+      let e2z := p2z - p0z
+
+      -- Face normal (e1 x e2)
+      let nx := e1y * e2z - e1z * e2y
+      let ny := e1z * e2x - e1x * e2z
+      let nz := e1x * e2y - e1y * e2x
+
+      let o0 := i0 * 3
+      let o1 := i1 * 3
+      let o2 := i2 * 3
+
+      normalSums := normalSums.set! o0 (normalSums.getD o0 0.0 + nx)
+      normalSums := normalSums.set! (o0 + 1) (normalSums.getD (o0 + 1) 0.0 + ny)
+      normalSums := normalSums.set! (o0 + 2) (normalSums.getD (o0 + 2) 0.0 + nz)
+
+      normalSums := normalSums.set! o1 (normalSums.getD o1 0.0 + nx)
+      normalSums := normalSums.set! (o1 + 1) (normalSums.getD (o1 + 1) 0.0 + ny)
+      normalSums := normalSums.set! (o1 + 2) (normalSums.getD (o1 + 2) 0.0 + nz)
+
+      normalSums := normalSums.set! o2 (normalSums.getD o2 0.0 + nx)
+      normalSums := normalSums.set! (o2 + 1) (normalSums.getD (o2 + 1) 0.0 + ny)
+      normalSums := normalSums.set! (o2 + 2) (normalSums.getD (o2 + 2) 0.0 + nz)
+
+    return normalSums
+
+  -- Third pass: normalize normals and update vertex buffer (position, normal, color).
   let vertices := Id.run do
     let mut vertices := mesh.vertices
+    for i in [:numVertices] do
+      let vertexOffset := i * 10
 
-    for row in [:gridSize] do
-      for col in [:gridSize] do
-        let i := row * gridSize + col
-        let vertexOffset := i * 10
+      let x := displacedPositions.getD (i * 3) 0.0
+      let y := displacedPositions.getD (i * 3 + 1) 0.0
+      let z := displacedPositions.getD (i * 3 + 2) 0.0
 
-        let x := displacedPositions.getD (i * 3) 0.0
-        let y := displacedPositions.getD (i * 3 + 1) 0.0
-        let z := displacedPositions.getD (i * 3 + 2) 0.0
+      let nx0 := normalSums.getD (i * 3) 0.0
+      let ny0 := normalSums.getD (i * 3 + 1) 0.0
+      let nz0 := normalSums.getD (i * 3 + 2) 0.0
 
-        -- Get neighbors for normal computation
-        let rightIdx := if col + 1 < gridSize then i + 1 else i
-        let forwardIdx := if row + 1 < gridSize then i + gridSize else i
+      let nLen := Float.sqrt (nx0 * nx0 + ny0 * ny0 + nz0 * nz0)
+      let (nx, ny, nz) :=
+        if nLen < 0.0001 then
+          (0.0, 1.0, 0.0)
+        else
+          (nx0 / nLen, ny0 / nLen, nz0 / nLen)
 
-        let rightX := displacedPositions.getD (rightIdx * 3) x
-        let rightY := displacedPositions.getD (rightIdx * 3 + 1) y
-        let rightZ := displacedPositions.getD (rightIdx * 3 + 2) z
+      -- Color based on wave height (y displacement)
+      let heightFactor := (y + 2.0) / 4.0
+      let heightFactor :=
+        if heightFactor < 0.0 then 0.0 else if heightFactor > 1.0 then 1.0 else heightFactor
 
-        let forwardX := displacedPositions.getD (forwardIdx * 3) x
-        let forwardY := displacedPositions.getD (forwardIdx * 3 + 1) y
-        let forwardZ := displacedPositions.getD (forwardIdx * 3 + 2) z
+      let r := 0.15 + heightFactor * 0.35
+      let g := 0.25 + heightFactor * 0.30
+      let b := 0.30 + heightFactor * 0.30
 
-        -- Tangent vectors
-        let tx := rightX - x
-        let ty := rightY - y
-        let tz := rightZ - z
-
-        let bx := forwardX - x
-        let by_ := forwardY - y
-        let bz := forwardZ - z
-
-        -- Cross product for normal (tangent x bitangent)
-        let nx := ty * bz - tz * by_
-        let ny := tz * bx - tx * bz
-        let nz := tx * by_ - ty * bx
-
-        -- Normalize
-        let len := Float.sqrt (nx * nx + ny * ny + nz * nz)
-        let len := if len < 0.0001 then 1.0 else len
-        let nx := nx / len
-        let ny := ny / len
-        let nz := nz / len
-
-        -- Color based on wave height (y displacement)
-        -- Map from approximately -2 to +2 to color range
-        let heightFactor := (y + 2.0) / 4.0  -- Normalize to 0-1
-        let heightFactor := if heightFactor < 0.0 then 0.0 else if heightFactor > 1.0 then 1.0 else heightFactor
-
-        -- Deep water to crest color interpolation
-        let r := 0.15 + heightFactor * 0.35  -- 0.15 to 0.50
-        let g := 0.25 + heightFactor * 0.30  -- 0.25 to 0.55
-        let b := 0.30 + heightFactor * 0.30  -- 0.30 to 0.60
-
-        -- Update vertex data
-        vertices := vertices.set! vertexOffset x
-        vertices := vertices.set! (vertexOffset + 1) y
-        vertices := vertices.set! (vertexOffset + 2) z
-        vertices := vertices.set! (vertexOffset + 3) nx
-        vertices := vertices.set! (vertexOffset + 4) ny
-        vertices := vertices.set! (vertexOffset + 5) nz
-        vertices := vertices.set! (vertexOffset + 6) r
-        vertices := vertices.set! (vertexOffset + 7) g
-        vertices := vertices.set! (vertexOffset + 8) b
-        -- Alpha stays at 1.0
+      vertices := vertices.set! vertexOffset x
+      vertices := vertices.set! (vertexOffset + 1) y
+      vertices := vertices.set! (vertexOffset + 2) z
+      vertices := vertices.set! (vertexOffset + 3) nx
+      vertices := vertices.set! (vertexOffset + 4) ny
+      vertices := vertices.set! (vertexOffset + 5) nz
+      vertices := vertices.set! (vertexOffset + 6) r
+      vertices := vertices.set! (vertexOffset + 7) g
+      vertices := vertices.set! (vertexOffset + 8) b
 
     return vertices
 
@@ -490,8 +506,8 @@ def renderSeascape (renderer : Renderer) (t : Float)
   let model := Matrix4.identity
   let mvp := Matrix4.multiply proj (Matrix4.multiply view model)
 
-  -- Near ocean mesh (high detail, 64x64, extent 50)
-  let nearMesh := OceanMesh.create 64 50.0
+  -- Near ocean mesh (high detail disc, matches ring seam at radius 50)
+  let nearMesh := OceanMesh.createRing 64 64 0.0 50.0
   let nearMesh := nearMesh.applyWaves defaultWaves t
   Renderer.drawMesh3DWithFog renderer
     nearMesh.vertices
@@ -505,8 +521,8 @@ def renderSeascape (renderer : Renderer) (t : Float)
     fog.start
     fog.endDist
 
-  -- Mid ring (medium detail, 32x32, extent 50-150)
-  let midMesh := OceanMesh.createRing 32 50.0 150.0
+  -- Mid ring (medium detail: fewer radial steps, same angular steps for crack-free seam)
+  let midMesh := OceanMesh.createRing 32 64 50.0 150.0
   let midMesh := midMesh.applyWaves defaultWaves t
   Renderer.drawMesh3DWithFog renderer
     midMesh.vertices
@@ -520,8 +536,8 @@ def renderSeascape (renderer : Renderer) (t : Float)
     fog.start
     fog.endDist
 
-  -- Far ring (low detail, 16x16, extent 150-500)
-  let farMesh := OceanMesh.createRing 16 150.0 500.0
+  -- Far ring (low detail: even fewer radial steps, same angular steps for crack-free seam)
+  let farMesh := OceanMesh.createRing 16 64 150.0 500.0
   let farMesh := farMesh.applyWaves defaultWaves t
   Renderer.drawMesh3DWithFog renderer
     farMesh.vertices
