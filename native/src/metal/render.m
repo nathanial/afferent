@@ -863,6 +863,152 @@ vertex Vertex3DOut vertex_main_3d(
     return out;
 }
 
+// Projected-grid ocean uniforms: scene + parameters + 4 Gerstner waves.
+// params0: (time, fovY, aspect, maxDistance)
+// params1: (snapSize, overscanNdc, horizonMargin, yaw)
+// params2: (pitch, gridSize, 0, 0)
+// waveA[i]: (dirX, dirZ, k, omegaSpeed)
+// waveB[i]: (amplitude, ak, 0, 0)
+struct OceanProjectedUniforms {
+    Scene3DUniforms scene;
+    float4 params0;
+    float4 params1;
+    float4 params2;
+    float4 waveA[4];
+    float4 waveB[4];
+};
+
+static inline void ocean_gerstner(
+    float2 xz,
+    constant OceanProjectedUniforms& u,
+    thread float3& displacedPos,
+    thread float3& normalOut
+) {
+    float dx = 0.0;
+    float dy = 0.0;
+    float dz = 0.0;
+    float sx = 0.0;
+    float sz = 0.0;
+    float sxx = 0.0;
+    float szz = 0.0;
+    float sxz = 0.0;
+
+    for (uint i = 0; i < 4; i++) {
+        float2 dir = u.waveA[i].xy;
+        float k = u.waveA[i].z;
+        float omegaSpeed = u.waveA[i].w;
+        float amplitude = u.waveB[i].x;
+        float ak = u.waveB[i].y;
+
+        float phase = k * (dir.x * xz.x + dir.y * xz.y) - omegaSpeed * u.params0.x;
+        float c = cos(phase);
+        float s = sin(phase);
+
+        dx += amplitude * dir.x * c;
+        dy += amplitude * s;
+        dz += amplitude * dir.y * c;
+
+        sx += ak * dir.x * c;
+        sz += ak * dir.y * c;
+        sxx += ak * dir.x * dir.x * s;
+        szz += ak * dir.y * dir.y * s;
+        sxz += ak * dir.x * dir.y * s;
+    }
+
+    displacedPos = float3(xz.x + dx, dy, xz.y + dz);
+
+    float3 dPdx = float3(1.0 - sxx, sx, -sxz);
+    float3 dPdz = float3(-sxz, sz, 1.0 - szz);
+    normalOut = normalize(cross(dPdz, dPdx));
+}
+
+vertex Vertex3DOut vertex_ocean_projected_waves(
+    uint vid [[vertex_id]],
+    constant OceanProjectedUniforms& u [[buffer(1)]]
+) {
+    Vertex3DOut out;
+
+    float time = u.params0.x;
+    (void)time;
+    float fovY = u.params0.y;
+    float aspect = u.params0.z;
+    float maxDistance = u.params0.w;
+    float snapSize = u.params1.x;
+    float overscanNdc = u.params1.y;
+    float horizonMargin = u.params1.z;
+    float yaw = u.params1.w;
+    float pitch = u.params2.x;
+    uint gridSize = (uint)u.params2.y;
+    uint gridSizeMinus1 = (gridSize > 0) ? (gridSize - 1) : 0;
+    uint row = (gridSize > 0) ? (vid / gridSize) : 0;
+    uint col = (gridSize > 0) ? (vid - row * gridSize) : 0;
+    float u01 = (gridSizeMinus1 > 0) ? ((float)col / (float)gridSizeMinus1) : 0.0;
+    float v01 = (gridSizeMinus1 > 0) ? ((float)row / (float)gridSizeMinus1) : 0.0;
+
+    // Camera basis (matches Lean FPSCamera).
+    float cosPitch = cos(pitch);
+    float sinPitch = sin(pitch);
+    float cosYaw = cos(yaw);
+    float sinYaw = sin(yaw);
+    float3 fwd = float3(cosPitch * sinYaw, sinPitch, -cosPitch * cosYaw);
+    float3 right = normalize(cross(fwd, float3(0.0, 1.0, 0.0)));
+    float3 up = normalize(cross(right, fwd));
+
+    float3 camPos = float3(u.scene.cameraPos);
+
+    // Grid snapping (world XZ).
+    float originX = camPos.x;
+    float originZ = camPos.z;
+    if (snapSize > 0.00001) {
+        originX = floor(originX / snapSize) * snapSize;
+        originZ = floor(originZ / snapSize) * snapSize;
+    }
+
+    float tanHalfFovY = tan(fovY * 0.5);
+    float tanHalfFovX = tanHalfFovY * aspect;
+
+    // Horizon cutoff in NDC (same logic as CPU path).
+    float eps = 0.00001;
+    float horizonSy = (abs(up.y) < eps) ? 0.0 : (-fwd.y) / up.y;
+    float horizonNdcY = horizonSy / tanHalfFovY;
+    float ndcBottom = -1.0 - overscanNdc;
+    float ndcTop0 = horizonNdcY - horizonMargin;
+    float ndcTop = clamp(ndcTop0, ndcBottom, 1.0);
+    float ndcLeft = -1.0 - overscanNdc;
+    float ndcRight = 1.0 + overscanNdc;
+
+    float ndcX = mix(ndcLeft, ndcRight, u01);
+    float ndcY = mix(ndcTop, ndcBottom, v01);
+
+    float sx = ndcX * tanHalfFovX;
+    float sy = ndcY * tanHalfFovY;
+    float3 dir = right * sx + up * sy + fwd;
+
+    float tHit = (abs(dir.y) < eps) ? maxDistance : (-camPos.y) / dir.y;
+    tHit = (tHit < 0.0) ? maxDistance : ((tHit > maxDistance) ? maxDistance : tHit);
+
+    float baseX = originX + dir.x * tHit;
+    float baseZ = originZ + dir.z * tHit;
+
+    float3 displacedPos;
+    float3 localNormal;
+    ocean_gerstner(float2(baseX, baseZ), u, displacedPos, localNormal);
+
+    out.position = u.scene.modelViewProj * float4(displacedPos, 1.0);
+    out.worldPos = (u.scene.modelMatrix * float4(displacedPos, 1.0)).xyz;
+    out.worldNormal = (u.scene.modelMatrix * float4(localNormal, 0.0)).xyz;
+
+    // Color based on wave height (matches CPU color mapping).
+    float heightFactor = clamp((displacedPos.y + 2.0) / 4.0, 0.0, 1.0);
+    float3 water = float3(
+        0.15 + heightFactor * 0.35,
+        0.25 + heightFactor * 0.30,
+        0.30 + heightFactor * 0.30
+    );
+    out.color = float4(water, 1.0);
+    return out;
+}
+
 fragment float4 fragment_main_3d(
     Vertex3DOut in [[stage_in]],
     constant Scene3DUniforms& uniforms [[buffer(0)]]
@@ -1016,6 +1162,15 @@ typedef struct {
     float fogEnd;             // Fog end distance (4 bytes)
 } Scene3DUniforms;  // Total: 176 bytes
 
+typedef struct {
+    Scene3DUniforms scene;
+    float params0[4];  // (time, fovY, aspect, maxDistance)
+    float params1[4];  // (snapSize, overscanNdc, horizonMargin, yaw)
+    float params2[4];  // (pitch, gridSize, 0, 0)
+    float waveA[4][4]; // (dirX, dirZ, k, omegaSpeed)
+    float waveB[4][4]; // (amplitude, ak, 0, 0)
+} OceanProjectedUniforms;
+
 // Internal renderer structure
 struct AfferentRenderer {
     AfferentWindowRef window;
@@ -1058,7 +1213,15 @@ struct AfferentRenderer {
     id<MTLTexture> msaaDepthTexture;       // Depth buffer (MSAA)
     id<MTLDepthStencilState> depthState;   // Depth test state (enabled)
     id<MTLDepthStencilState> depthStateDisabled; // Depth test disabled for 2D after 3D
-    id<MTLRenderPipelineState> pipeline3D; // 3D rendering pipeline
+    id<MTLRenderPipelineState> pipeline3D;       // Active 3D rendering pipeline
+    id<MTLRenderPipelineState> pipeline3DMSAA;   // 3D pipeline (4x MSAA)
+    id<MTLRenderPipelineState> pipeline3DNoMSAA; // 3D pipeline (no MSAA)
+    id<MTLRenderPipelineState> pipeline3DOcean;       // Active ocean projected-grid pipeline
+    id<MTLRenderPipelineState> pipeline3DOceanMSAA;   // Ocean pipeline (4x MSAA)
+    id<MTLRenderPipelineState> pipeline3DOceanNoMSAA; // Ocean pipeline (no MSAA)
+    id<MTLBuffer> oceanIndexBuffer;
+    uint32_t oceanIndexCount;
+    uint32_t oceanGridSize;
     NSUInteger depthWidth;                 // Track depth texture size
     NSUInteger depthHeight;
     MTLClearColor clearColor;
@@ -1797,9 +1960,10 @@ AfferentResult afferent_renderer_create(
         }
 
         id<MTLFunction> vertex3DFunction = [library3D newFunctionWithName:@"vertex_main_3d"];
+        id<MTLFunction> vertexOceanFunction = [library3D newFunctionWithName:@"vertex_ocean_projected_waves"];
         id<MTLFunction> fragment3DFunction = [library3D newFunctionWithName:@"fragment_main_3d"];
 
-        if (!vertex3DFunction || !fragment3DFunction) {
+        if (!vertex3DFunction || !vertexOceanFunction || !fragment3DFunction) {
             NSLog(@"Failed to find 3D shader functions");
             free(renderer);
             return AFFERENT_ERROR_PIPELINE_FAILED;
@@ -1833,7 +1997,6 @@ AfferentResult afferent_renderer_create(
         pipeline3DDesc.vertexDescriptor = vertex3DDescriptor;
         pipeline3DDesc.colorAttachments[0].pixelFormat = MTLPixelFormatBGRA8Unorm;
         pipeline3DDesc.depthAttachmentPixelFormat = MTLPixelFormatDepth32Float;
-        pipeline3DDesc.rasterSampleCount = 4;  // Match MSAA
 
         // Enable blending for transparency
         pipeline3DDesc.colorAttachments[0].blendingEnabled = YES;
@@ -1842,13 +2005,64 @@ AfferentResult afferent_renderer_create(
         pipeline3DDesc.colorAttachments[0].sourceAlphaBlendFactor = MTLBlendFactorOne;
         pipeline3DDesc.colorAttachments[0].destinationAlphaBlendFactor = MTLBlendFactorOneMinusSourceAlpha;
 
-        renderer->pipeline3D = [renderer->device newRenderPipelineStateWithDescriptor:pipeline3DDesc
-                                                                                error:&error];
-        if (!renderer->pipeline3D) {
-            NSLog(@"3D pipeline creation failed: %@", error);
+        pipeline3DDesc.rasterSampleCount = 4;  // MSAA
+        renderer->pipeline3DMSAA = [renderer->device newRenderPipelineStateWithDescriptor:pipeline3DDesc
+                                                                                    error:&error];
+        if (!renderer->pipeline3DMSAA) {
+            NSLog(@"3D pipeline creation failed (MSAA): %@", error);
             free(renderer);
             return AFFERENT_ERROR_PIPELINE_FAILED;
         }
+
+        pipeline3DDesc.rasterSampleCount = 1;  // No MSAA
+        renderer->pipeline3DNoMSAA = [renderer->device newRenderPipelineStateWithDescriptor:pipeline3DDesc
+                                                                                      error:&error];
+        if (!renderer->pipeline3DNoMSAA) {
+            NSLog(@"3D pipeline creation failed (no MSAA): %@", error);
+            free(renderer);
+            return AFFERENT_ERROR_PIPELINE_FAILED;
+        }
+
+        renderer->pipeline3D = renderer->pipeline3DMSAA;
+
+        // ====================================================================
+        // Create projected-grid ocean pipeline (procedural vertices via vertex_id)
+        // ====================================================================
+        MTLRenderPipelineDescriptor *pipelineOceanDesc = [[MTLRenderPipelineDescriptor alloc] init];
+        pipelineOceanDesc.vertexFunction = vertexOceanFunction;
+        pipelineOceanDesc.fragmentFunction = fragment3DFunction;
+        pipelineOceanDesc.vertexDescriptor = nil;
+        pipelineOceanDesc.colorAttachments[0].pixelFormat = MTLPixelFormatBGRA8Unorm;
+        pipelineOceanDesc.depthAttachmentPixelFormat = MTLPixelFormatDepth32Float;
+
+        pipelineOceanDesc.colorAttachments[0].blendingEnabled = YES;
+        pipelineOceanDesc.colorAttachments[0].sourceRGBBlendFactor = MTLBlendFactorSourceAlpha;
+        pipelineOceanDesc.colorAttachments[0].destinationRGBBlendFactor = MTLBlendFactorOneMinusSourceAlpha;
+        pipelineOceanDesc.colorAttachments[0].sourceAlphaBlendFactor = MTLBlendFactorOne;
+        pipelineOceanDesc.colorAttachments[0].destinationAlphaBlendFactor = MTLBlendFactorOneMinusSourceAlpha;
+
+        pipelineOceanDesc.rasterSampleCount = 4;  // MSAA
+        renderer->pipeline3DOceanMSAA = [renderer->device newRenderPipelineStateWithDescriptor:pipelineOceanDesc
+                                                                                         error:&error];
+        if (!renderer->pipeline3DOceanMSAA) {
+            NSLog(@"Ocean pipeline creation failed (MSAA): %@", error);
+            free(renderer);
+            return AFFERENT_ERROR_PIPELINE_FAILED;
+        }
+
+        pipelineOceanDesc.rasterSampleCount = 1;  // No MSAA
+        renderer->pipeline3DOceanNoMSAA = [renderer->device newRenderPipelineStateWithDescriptor:pipelineOceanDesc
+                                                                                           error:&error];
+        if (!renderer->pipeline3DOceanNoMSAA) {
+            NSLog(@"Ocean pipeline creation failed (no MSAA): %@", error);
+            free(renderer);
+            return AFFERENT_ERROR_PIPELINE_FAILED;
+        }
+
+        renderer->pipeline3DOcean = renderer->pipeline3DOceanMSAA;
+        renderer->oceanIndexBuffer = nil;
+        renderer->oceanIndexCount = 0;
+        renderer->oceanGridSize = 0;
 
         // Initialize depth texture pointers
         renderer->depthTexture = nil;
@@ -1887,6 +2101,8 @@ void afferent_renderer_set_msaa_enabled(AfferentRendererRef renderer, bool enabl
     renderer->pipelineState = enabled ? renderer->pipelineStateMSAA : renderer->pipelineStateNoMSAA;
     renderer->textPipelineState = enabled ? renderer->textPipelineStateMSAA : renderer->textPipelineStateNoMSAA;
     renderer->spritePipelineState = enabled ? renderer->spritePipelineStateMSAA : renderer->spritePipelineStateNoMSAA;
+    renderer->pipeline3D = enabled ? renderer->pipeline3DMSAA : renderer->pipeline3DNoMSAA;
+    renderer->pipeline3DOcean = enabled ? renderer->pipeline3DOceanMSAA : renderer->pipeline3DOceanNoMSAA;
 }
 
 // Enable a drawable scale override (typically 1.0 to disable Retina).
@@ -3142,6 +3358,137 @@ void afferent_renderer_draw_sprites_buffer(
 // ============================================================================
 // 3D Mesh Rendering
 // ============================================================================
+static void ensure_ocean_index_buffer(AfferentRendererRef renderer, uint32_t gridSize) {
+    if (!renderer || gridSize < 2) return;
+    if (renderer->oceanIndexBuffer && renderer->oceanGridSize == gridSize) return;
+
+    uint32_t quadsPerRow = gridSize - 1;
+    uint32_t quadCount = quadsPerRow * quadsPerRow;
+    uint32_t indexCount = quadCount * 6;
+    size_t indexSize = (size_t)indexCount * sizeof(uint32_t);
+
+    uint32_t* indices = (uint32_t*)malloc(indexSize);
+    if (!indices) {
+        NSLog(@"Failed to allocate ocean index buffer");
+        return;
+    }
+
+    uint32_t w = gridSize;
+    uint32_t idx = 0;
+    for (uint32_t row = 0; row < gridSize - 1; row++) {
+        for (uint32_t col = 0; col < gridSize - 1; col++) {
+            uint32_t topLeft = row * w + col;
+            uint32_t topRight = topLeft + 1;
+            uint32_t bottomLeft = (row + 1) * w + col;
+            uint32_t bottomRight = bottomLeft + 1;
+
+            indices[idx++] = topLeft;
+            indices[idx++] = bottomLeft;
+            indices[idx++] = topRight;
+
+            indices[idx++] = topRight;
+            indices[idx++] = bottomLeft;
+            indices[idx++] = bottomRight;
+        }
+    }
+
+    id<MTLBuffer> indexBuffer = [renderer->device newBufferWithBytes:indices
+                                                              length:indexSize
+                                                             options:MTLResourceStorageModeShared];
+    free(indices);
+    if (!indexBuffer) {
+        NSLog(@"Failed to create ocean index MTLBuffer");
+        return;
+    }
+
+    renderer->oceanIndexBuffer = indexBuffer;
+    renderer->oceanIndexCount = indexCount;
+    renderer->oceanGridSize = gridSize;
+}
+
+void afferent_renderer_draw_ocean_projected_grid_with_fog(
+    AfferentRendererRef renderer,
+    uint32_t grid_size,
+    const float* mvp_matrix,
+    const float* model_matrix,
+    const float* light_dir,
+    float ambient,
+    const float* camera_pos,
+    const float* fog_color,
+    float fog_start,
+    float fog_end,
+    float time,
+    float fovY,
+    float aspect,
+    float maxDistance,
+    float snapSize,
+    float overscanNdc,
+    float horizonMargin,
+    float yaw,
+    float pitch,
+    const float* wave_params,
+    uint32_t wave_param_count
+) {
+    if (!renderer || !renderer->currentEncoder || !mvp_matrix || !model_matrix ||
+        !light_dir || !camera_pos || !fog_color || grid_size < 2) {
+        return;
+    }
+
+    ensure_ocean_index_buffer(renderer, grid_size);
+    if (!renderer->oceanIndexBuffer || renderer->oceanIndexCount == 0) return;
+
+    @autoreleasepool {
+        OceanProjectedUniforms uniforms;
+        memset(&uniforms, 0, sizeof(uniforms));
+
+        memcpy(uniforms.scene.modelViewProj, mvp_matrix, 64);
+        memcpy(uniforms.scene.modelMatrix, model_matrix, 64);
+        memcpy(uniforms.scene.lightDir, light_dir, 12);
+        uniforms.scene.ambient = ambient;
+        memcpy(uniforms.scene.cameraPos, camera_pos, 12);
+        uniforms.scene.fogStart = fog_start;
+        memcpy(uniforms.scene.fogColor, fog_color, 12);
+        uniforms.scene.fogEnd = fog_end;
+
+        uniforms.params0[0] = time;
+        uniforms.params0[1] = fovY;
+        uniforms.params0[2] = aspect;
+        uniforms.params0[3] = maxDistance;
+
+        uniforms.params1[0] = snapSize;
+        uniforms.params1[1] = overscanNdc;
+        uniforms.params1[2] = horizonMargin;
+        uniforms.params1[3] = yaw;
+
+        uniforms.params2[0] = pitch;
+        uniforms.params2[1] = (float)grid_size;
+        uniforms.params2[2] = 0.0f;
+        uniforms.params2[3] = 0.0f;
+
+        if (wave_params && wave_param_count >= 32) {
+            for (uint32_t i = 0; i < 4; i++) {
+                for (uint32_t j = 0; j < 4; j++) {
+                    uniforms.waveA[i][j] = wave_params[i * 4 + j];
+                    uniforms.waveB[i][j] = wave_params[16 + i * 4 + j];
+                }
+            }
+        }
+
+        [renderer->currentEncoder setRenderPipelineState:renderer->pipeline3DOcean];
+        [renderer->currentEncoder setDepthStencilState:renderer->depthState];
+        [renderer->currentEncoder setVertexBytes:&uniforms length:sizeof(uniforms) atIndex:1];
+        [renderer->currentEncoder setFragmentBytes:&uniforms.scene length:sizeof(uniforms.scene) atIndex:0];
+
+        [renderer->currentEncoder drawIndexedPrimitives:MTLPrimitiveTypeTriangle
+                                             indexCount:renderer->oceanIndexCount
+                                              indexType:MTLIndexTypeUInt32
+                                            indexBuffer:renderer->oceanIndexBuffer
+                                      indexBufferOffset:0];
+
+        [renderer->currentEncoder setRenderPipelineState:renderer->pipelineState];
+    }
+}
+
 void afferent_renderer_draw_mesh_3d(
     AfferentRendererRef renderer,
     const AfferentVertex3D* vertices,
@@ -3159,25 +3506,35 @@ void afferent_renderer_draw_mesh_3d(
     }
 
     @autoreleasepool {
-        // Create temporary vertex buffer
+        // Acquire temporary vertex buffer (pooled)
         size_t vertex_size = vertex_count * sizeof(AfferentVertex3D);
-        id<MTLBuffer> vertexBuffer = [renderer->device newBufferWithBytes:vertices
-                                                                   length:vertex_size
-                                                                  options:MTLResourceStorageModeShared];
+        id<MTLBuffer> vertexBuffer = pool_acquire_buffer(
+            renderer->device,
+            g_buffer_pool.vertex_pool,
+            &g_buffer_pool.vertex_pool_count,
+            vertex_size,
+            true
+        );
         if (!vertexBuffer) {
             NSLog(@"Failed to create 3D vertex buffer");
             return;
         }
+        memcpy(vertexBuffer.contents, vertices, vertex_size);
 
-        // Create temporary index buffer
+        // Acquire temporary index buffer (pooled)
         size_t index_size = index_count * sizeof(uint32_t);
-        id<MTLBuffer> indexBuffer = [renderer->device newBufferWithBytes:indices
-                                                                  length:index_size
-                                                                 options:MTLResourceStorageModeShared];
+        id<MTLBuffer> indexBuffer = pool_acquire_buffer(
+            renderer->device,
+            g_buffer_pool.index_pool,
+            &g_buffer_pool.index_pool_count,
+            index_size,
+            false
+        );
         if (!indexBuffer) {
             NSLog(@"Failed to create 3D index buffer");
             return;
         }
+        memcpy(indexBuffer.contents, indices, index_size);
 
         // Set up uniforms
         Scene3DUniforms uniforms;
@@ -3236,25 +3593,35 @@ void afferent_renderer_draw_mesh_3d_with_fog(
     }
 
     @autoreleasepool {
-        // Create temporary vertex buffer
+        // Acquire temporary vertex buffer (pooled)
         size_t vertex_size = vertex_count * sizeof(AfferentVertex3D);
-        id<MTLBuffer> vertexBuffer = [renderer->device newBufferWithBytes:vertices
-                                                                   length:vertex_size
-                                                                  options:MTLResourceStorageModeShared];
+        id<MTLBuffer> vertexBuffer = pool_acquire_buffer(
+            renderer->device,
+            g_buffer_pool.vertex_pool,
+            &g_buffer_pool.vertex_pool_count,
+            vertex_size,
+            true
+        );
         if (!vertexBuffer) {
             NSLog(@"Failed to create 3D vertex buffer (fog)");
             return;
         }
+        memcpy(vertexBuffer.contents, vertices, vertex_size);
 
-        // Create temporary index buffer
+        // Acquire temporary index buffer (pooled)
         size_t index_size = index_count * sizeof(uint32_t);
-        id<MTLBuffer> indexBuffer = [renderer->device newBufferWithBytes:indices
-                                                                  length:index_size
-                                                                 options:MTLResourceStorageModeShared];
+        id<MTLBuffer> indexBuffer = pool_acquire_buffer(
+            renderer->device,
+            g_buffer_pool.index_pool,
+            &g_buffer_pool.index_pool_count,
+            index_size,
+            false
+        );
         if (!indexBuffer) {
             NSLog(@"Failed to create 3D index buffer (fog)");
             return;
         }
+        memcpy(indexBuffer.contents, indices, index_size);
 
         // Set up uniforms with fog parameters
         Scene3DUniforms uniforms;

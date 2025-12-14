@@ -1622,3 +1622,96 @@ LEAN_EXPORT lean_obj_res lean_afferent_renderer_draw_mesh_3d_with_fog(
 
     return lean_io_result_mk_ok(lean_box(0));
 }
+
+// =============================================================================
+// Projected-grid ocean rendering (GPU waves + fog)
+// =============================================================================
+LEAN_EXPORT lean_obj_res lean_afferent_renderer_draw_ocean_projected_grid_with_fog(
+    lean_obj_arg renderer_obj,
+    uint32_t grid_size,
+    lean_obj_arg mvp_matrix,
+    lean_obj_arg model_matrix,
+    lean_obj_arg light_dir,
+    double ambient,
+    lean_obj_arg camera_pos_arr,
+    lean_obj_arg fog_color_arr,
+    double fog_start,
+    double fog_end,
+    double time,
+    double fovY,
+    double aspect,
+    double maxDistance,
+    double snapSize,
+    double overscanNdc,
+    double horizonMargin,
+    double yaw,
+    double pitch,
+    lean_obj_arg wave_params_arr,
+    lean_obj_arg world
+) {
+    AfferentRendererRef renderer = (AfferentRendererRef)lean_get_external_data(renderer_obj);
+
+    // Convert MVP matrix (16 floats)
+    float mvp[16];
+    for (size_t i = 0; i < 16; i++) {
+        mvp[i] = (float)lean_unbox_float(lean_array_get_core(mvp_matrix, i));
+    }
+
+    // Convert model matrix (16 floats)
+    float model[16];
+    for (size_t i = 0; i < 16; i++) {
+        model[i] = (float)lean_unbox_float(lean_array_get_core(model_matrix, i));
+    }
+
+    // Convert light direction (3 floats)
+    float light[3];
+    for (size_t i = 0; i < 3; i++) {
+        light[i] = (float)lean_unbox_float(lean_array_get_core(light_dir, i));
+    }
+
+    // Convert camera position (3 floats)
+    float camera_pos[3];
+    for (size_t i = 0; i < 3; i++) {
+        camera_pos[i] = (float)lean_unbox_float(lean_array_get_core(camera_pos_arr, i));
+    }
+
+    // Convert fog color (3 floats)
+    float fog_color[3];
+    for (size_t i = 0; i < 3; i++) {
+        fog_color[i] = (float)lean_unbox_float(lean_array_get_core(fog_color_arr, i));
+    }
+
+    // Convert wave params (expect 32 floats, but accept shorter)
+    float wave_params[32] = {0};
+    uint32_t wave_count = (uint32_t)lean_array_size(wave_params_arr);
+    if (wave_count > 32) wave_count = 32;
+    for (uint32_t i = 0; i < wave_count; i++) {
+        wave_params[i] = (float)lean_unbox_float(lean_array_get_core(wave_params_arr, i));
+    }
+
+    afferent_renderer_draw_ocean_projected_grid_with_fog(
+        renderer,
+        grid_size,
+        mvp,
+        model,
+        light,
+        (float)ambient,
+        camera_pos,
+        fog_color,
+        (float)fog_start,
+        (float)fog_end,
+        (float)time,
+        (float)fovY,
+        (float)aspect,
+        (float)maxDistance,
+        (float)snapSize,
+        (float)overscanNdc,
+        (float)horizonMargin,
+        (float)yaw,
+        (float)pitch,
+        wave_params,
+        wave_count
+    );
+
+    return lean_io_result_mk_ok(lean_box(0));
+}

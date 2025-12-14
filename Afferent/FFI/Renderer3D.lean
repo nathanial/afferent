@@ -42,4 +42,26 @@ opaque Renderer.drawMesh3DWithFog
   (fogColor : @& Array Float)
   (fogStart fogEnd : Float) : IO Unit
 
+/-- Draw an infinite-feeling ocean using a projected grid + Gerstner waves on the GPU.
+    This avoids per-frame large vertex array marshaling from Lean.
+    `waveParams` layout (Float array, length ≥ 32):
+    - first 16 floats: 4x `waveA` = (dirX, dirZ, k, omegaSpeed)
+    - next 16 floats: 4x `waveB` = (amplitude, ak, 0, 0) -/
+@[extern "lean_afferent_renderer_draw_ocean_projected_grid_with_fog"]
+opaque Renderer.drawOceanProjectedGridWithFog
+  (renderer : @& Renderer)
+  (gridSize : UInt32)
+  (mvpMatrix : @& Array Float)
+  (modelMatrix : @& Array Float)
+  (lightDir : @& Array Float)
+  (ambient : Float)
+  (cameraPos : @& Array Float)
+  (fogColor : @& Array Float)
+  (fogStart fogEnd : Float)
+  (time : Float)
+  (fovY aspect : Float)
+  (maxDistance snapSize overscanNdc horizonMargin : Float)
+  (yaw pitch : Float)
+  (waveParams : @& Array Float) : IO Unit
+
 end Afferent.FFI

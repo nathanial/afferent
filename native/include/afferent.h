@@ -433,6 +433,34 @@ void afferent_renderer_draw_mesh_3d_with_fog(
     float fog_end
 );
 
+// Projected-grid ocean rendering with GPU Gerstner waves + fog.
+// Uses a fixed 4-wave set provided via `wave_params`:
+// - wave_params[0..15]  : 4x waveA = (dirX, dirZ, k, omegaSpeed)
+// - wave_params[16..31] : 4x waveB = (amplitude, ak, 0, 0)
+void afferent_renderer_draw_ocean_projected_grid_with_fog(
+    AfferentRendererRef renderer,
+    uint32_t grid_size,
+    const float* mvp_matrix,
+    const float* model_matrix,
+    const float* light_dir,
+    float ambient,
+    const float* camera_pos,
+    const float* fog_color,
+    float fog_start,
+    float fog_end,
+    float time,
+    float fovY,
+    float aspect,
+    float maxDistance,
+    float snapSize,
+    float overscanNdc,
+    float horizonMargin,
+    float yaw,
+    float pitch,
+    const float* wave_params,
+    uint32_t wave_param_count
+);
+
 #ifdef __cplusplus
 }
 #endif

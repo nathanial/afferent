@@ -61,6 +61,25 @@ private def prepareWaves (waves : Array GerstnerWave) : Array PreparedWave :=
       omegaSpeed := omega * w.speed
       ak := w.amplitude * k }
 
+private def defaultWavesGpuParams : Array Float :=
+  let prepared := prepareWaves defaultWaves
+  Id.run do
+    let mut a := Array.mkEmpty (4 * 4)
+    let mut b := Array.mkEmpty (4 * 4)
+    for i in [:4] do
+      let w := prepared.getD i default
+      -- waveA: (dirX, dirZ, k, omegaSpeed)
+      a := a.push w.dirX
+      a := a.push w.dirZ
+      a := a.push w.k
+      a := a.push w.omegaSpeed
+      -- waveB: (amplitude, ak, 0, 0)
+      b := b.push w.amplitude
+      b := b.push w.ak
+      b := b.push 0.0
+      b := b.push 0.0
+    return a ++ b
+
 /-- Compute Gerstner wave displacement for a single point.
     Returns (dx, dy, dz) displacement. -/
 def gerstnerDisplacement (waves : Array GerstnerWave) (x z t : Float) : Float × Float × Float :=
@@ -644,16 +663,10 @@ def renderSeascape (renderer : Renderer) (t : Float)
   let model := Matrix4.identity
   let mvp := Matrix4.multiply proj (Matrix4.multiply view model)
 
-  -- Ocean surface via projected grid (infinite-feeling without chunk streaming).
+  -- Ocean via GPU projected grid + GPU Gerstner waves (fast path).
   -- `maxDistance` should extend past fog end distance so the edge stays hidden.
-  -- Overscan extends slightly beyond the view frustum so horizontal Gerstner displacement
-  -- doesn't pull the border inward and reveal the mesh edge.
-  let oceanIndices ← getProjectedGridIndices 128
-  let oceanMesh := OceanMesh.createProjectedGrid 128 fovY aspect camera 800.0 2.0 0.25 oceanIndices
-  let oceanMesh := oceanMesh.applyWaves defaultWaves t
-  Renderer.drawMesh3DWithFog renderer
-    oceanMesh.vertices
-    oceanIndices
+  Renderer.drawOceanProjectedGridWithFog renderer
+    128
     mvp.toArray
     model.toArray
     lightDir
@@ -662,6 +675,16 @@ def renderSeascape (renderer : Renderer) (t : Float)
     fog.color
     fog.start
     fog.endDist
+    t
+    fovY
+    aspect
+    800.0  -- maxDistance
+    2.0    -- snapSize
+    0.25   -- overscanNdc
+    0.05   -- horizonMargin
+    camera.yaw
+    camera.pitch
+    defaultWavesGpuParams
 
 /-- Create initial FPS camera for seascape viewing.
     Positioned above and behind the ocean, looking forward. -/
