@@ -939,6 +939,8 @@ vertex Vertex3DOut vertex_ocean_projected_waves(
     float yaw = u.params1.w;
     float pitch = u.params2.x;
     uint gridSize = (uint)u.params2.y;
+    float nearExtent = u.params2.z;
+    float mode = u.params2.w; // 0 = projected grid, 1 = local camera-centered patch
     uint gridSizeMinus1 = (gridSize > 0) ? (gridSize - 1) : 0;
     uint row = (gridSize > 0) ? (vid / gridSize) : 0;
     uint col = (gridSize > 0) ? (vid - row * gridSize) : 0;
@@ -975,50 +977,81 @@ vertex Vertex3DOut vertex_ocean_projected_waves(
         maxWaveAmp += u.waveB[i].x;
     }
 
-    // Horizon cutoff in NDC (same logic as CPU path).
     float eps = 0.00001;
-    float horizonSy = (abs(up.y) < eps) ? 0.0 : (-fwd.y) / up.y;
-    float horizonNdcY = horizonSy / tanHalfFovY;
-    float ndcBottom = -1.0 - overscanNdc;
-    float ndcTop0 = horizonNdcY - horizonMargin;
-    // Allow overscan above the top of the screen when the horizon is above the frustum (e.g. looking down),
-    // but keep the horizon cutoff when it lies within the frustum to avoid a hard cap.
-    float ndcTop = clamp(ndcTop0, ndcBottom, 1.0 + overscanNdc);
-    float ndcLeft = -1.0 - overscanNdc;
-    float ndcRight = 1.0 + overscanNdc;
+    float baseX = originX;
+    float baseZ = originZ;
 
-    float ndcX = mix(ndcLeft, ndcRight, u01);
-    float ndcY = mix(ndcTop, ndcBottom, v01);
+    if (mode > 0.5) {
+        // Local camera-centered patch (extends behind/around the camera in world XZ).
+        // This fills cases where the frustum-projected grid can expose an edge at very close heights.
+        float localX = (u01 * 2.0 - 1.0) * nearExtent;
+        float localZ = (v01 * 2.0 - 1.0) * nearExtent;
+        baseX = originX + localX;
+        baseZ = originZ + localZ;
+    } else {
+        // Horizon cutoff in NDC (same logic as CPU path).
+        float horizonSy = (abs(up.y) < eps) ? 0.0 : (-fwd.y) / up.y;
+        float horizonNdcY = horizonSy / tanHalfFovY;
 
-    float sx = ndcX * tanHalfFovX;
-    float sy = ndcY * tanHalfFovY;
-    float3 dir = right * sx + up * sy + fwd;
+        // When the camera gets close to the surface, displacement makes a frustum-aligned projected grid show
+        // edges (especially at the bottom/foreground). Add adaptive overscan based on wave amplitude vs height.
+        float camHeight = max(camPos.y, 0.10);
+        float extraAllNdc = clamp((maxWaveAmp / camHeight) * 0.25, 0.0, 1.50);
+        float overscanEff = overscanNdc + extraAllNdc;
+        float extraBottomNdc = clamp((maxWaveAmp / camHeight) * 1.20, 0.0, 10.0);
 
-    // Intersect against a slightly lowered plane to ensure the projected grid still covers the viewport
-    // when waves displace upward/downward near the camera.
-    float planeY = -maxWaveAmp;
-    float tHit = (abs(dir.y) < eps) ? maxDistance : ((planeY - camPos.y) / dir.y);
-    tHit = (tHit < 0.0) ? maxDistance : ((tHit > maxDistance) ? maxDistance : tHit);
+        float ndcBottom = -1.0 - overscanEff - extraBottomNdc;
+        float ndcTop0 = horizonNdcY - horizonMargin;
+        // Allow overscan above the top of the screen when the horizon is above the frustum (e.g. looking down),
+        // but keep the horizon cutoff when it lies within the frustum to avoid a hard cap.
+        float ndcTop = clamp(ndcTop0, ndcBottom, 1.0 + overscanEff);
+        float ndcLeft = -1.0 - overscanEff;
+        float ndcRight = 1.0 + overscanEff;
 
-    float baseX = originX + dir.x * tHit;
-    float baseZ = originZ + dir.z * tHit;
+        float ndcX = mix(ndcLeft, ndcRight, u01);
+        float ndcY = mix(ndcTop, ndcBottom, v01);
 
-    // Extra overscan in world space near the screen edges to account for horizontal Gerstner displacement
-    // pulling geometry inward (most visible when the camera is close to the surface and pitched downward).
-    float denomX = max(1.0 + overscanNdc, eps);
-    float denomY = max(1.0 + overscanNdc, eps);
-    float edge01 = max(abs(ndcX) / denomX, abs(ndcY) / denomY);
-    float edgeWeight = smoothstep(0.75, 1.0, edge01);
-    float expandMeters = (maxWaveAmp * 1.25 + 0.25) * edgeWeight;
+        float sx = ndcX * tanHalfFovX;
+        float sy = ndcY * tanHalfFovY;
+        float3 dir = right * sx + up * sy + fwd;
 
-    if (expandMeters > 0.0) {
-        float2 centerXZ = float2(originX, originZ);
-        float2 baseXZ = float2(baseX, baseZ);
-        float2 v = baseXZ - centerXZ;
-        float lenV = length(v);
-        float2 dirXZ = (lenV > eps) ? (v / lenV) : normalize(float2(dir.x, dir.z));
-        baseX += dirXZ.x * expandMeters;
-        baseZ += dirXZ.y * expandMeters;
+        // Projected grid: intersect the view ray against the nominal ocean plane (y=0).
+        float tHit = (abs(dir.y) < eps) ? maxDistance : (-camPos.y) / dir.y;
+        tHit = (tHit < 0.0) ? maxDistance : ((tHit > maxDistance) ? maxDistance : tHit);
+
+        baseX = originX + dir.x * tHit;
+        baseZ = originZ + dir.z * tHit;
+
+        // Avoid overlapping the local patch: push projected points outward to form a "donut hole"
+        // that the local patch fills. This also makes the mesh extend around the camera, not just forward.
+        if (nearExtent > 0.0) {
+            float2 v = float2(baseX - originX, baseZ - originZ);
+            float lenV = length(v);
+            if (lenV < nearExtent) {
+                float2 dirXZ = (lenV > eps) ? (v / lenV) : normalize(float2(dir.x, dir.z));
+                baseX = originX + dirXZ.x * nearExtent;
+                baseZ = originZ + dirXZ.y * nearExtent;
+            }
+        }
+
+        // Extra overscan in world space near the screen edges to account for horizontal Gerstner displacement
+        // pulling geometry inward.
+        float ndcAbsMaxX = 1.0 + overscanEff;
+        float ndcAbsMaxY = max(abs(ndcBottom), abs(ndcTop));
+        float edge01X = abs(ndcX) / max(ndcAbsMaxX, eps);
+        float edge01Y = abs(ndcY) / max(ndcAbsMaxY, eps);
+        float edgeWeightX = smoothstep(0.75, 1.0, edge01X);
+        float edgeWeightY = smoothstep(0.75, 1.0, edge01Y);
+        float edgeWeight = max(edgeWeightX, edgeWeightY);
+        float expandMeters = (maxWaveAmp * 1.75 + 0.75) * edgeWeight;
+
+        if (expandMeters > 0.0) {
+            float2 v = float2(baseX - originX, baseZ - originZ);
+            float lenV = length(v);
+            float2 dirXZ = (lenV > eps) ? (v / lenV) : normalize(float2(dir.x, dir.z));
+            baseX += dirXZ.x * expandMeters;
+            baseZ += dirXZ.y * expandMeters;
+        }
     }
 
     float3 displacedPos;
@@ -3493,8 +3526,13 @@ void afferent_renderer_draw_ocean_projected_grid_with_fog(
 
         uniforms.params2[0] = pitch;
         uniforms.params2[1] = (float)grid_size;
-        uniforms.params2[2] = 0.0f;
-        uniforms.params2[3] = 0.0f;
+        // Local patch extent (in meters). We draw a camera-centered patch first so the ocean extends
+        // behind/around the camera (fixes near-surface edge reveals), then draw the projected grid beyond it.
+        float nearExtent = (snapSize > 0.00001f) ? (snapSize * ((float)grid_size * 0.5f)) : ((float)grid_size * 1.0f);
+        if (nearExtent < 40.0f) nearExtent = 40.0f;
+        if (nearExtent > 250.0f) nearExtent = 250.0f;
+        uniforms.params2[2] = nearExtent;
+        uniforms.params2[3] = 0.0f; // mode (0 projected, 1 local)
 
         if (wave_params && wave_param_count >= 32) {
             for (uint32_t i = 0; i < 4; i++) {
@@ -3507,9 +3545,20 @@ void afferent_renderer_draw_ocean_projected_grid_with_fog(
 
         [renderer->currentEncoder setRenderPipelineState:renderer->pipeline3DOcean];
         [renderer->currentEncoder setDepthStencilState:renderer->depthState];
-        [renderer->currentEncoder setVertexBytes:&uniforms length:sizeof(uniforms) atIndex:1];
         [renderer->currentEncoder setFragmentBytes:&uniforms.scene length:sizeof(uniforms.scene) atIndex:0];
 
+        // Pass 1: local patch (extends behind/around camera).
+        uniforms.params2[3] = 1.0f;
+        [renderer->currentEncoder setVertexBytes:&uniforms length:sizeof(uniforms) atIndex:1];
+        [renderer->currentEncoder drawIndexedPrimitives:MTLPrimitiveTypeTriangle
+                                             indexCount:renderer->oceanIndexCount
+                                              indexType:MTLIndexTypeUInt32
+                                            indexBuffer:renderer->oceanIndexBuffer
+                                      indexBufferOffset:0];
+
+        // Pass 2: projected grid "donut" beyond the local patch.
+        uniforms.params2[3] = 0.0f;
+        [renderer->currentEncoder setVertexBytes:&uniforms length:sizeof(uniforms) atIndex:1];
         [renderer->currentEncoder drawIndexedPrimitives:MTLPrimitiveTypeTriangle
                                              indexCount:renderer->oceanIndexCount
                                               indexType:MTLIndexTypeUInt32

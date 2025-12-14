@@ -381,6 +381,10 @@ def unifiedDemo : IO Unit := do
             fillTextXY "Seascape - WASD+Q/E to move, mouse to look, Escape to release (Space to advance)" (20 * screenScale) (30 * screenScale) fontMedium
           else
             fillTextXY "Seascape - WASD+Q/E to move, click or Escape to capture mouse (Space to advance)" (20 * screenScale) (30 * screenScale) fontMedium
+
+          fillTextXY
+            (s!"pos=({seascapeCamera.x},{seascapeCamera.y},{seascapeCamera.z}) yaw={seascapeCamera.yaw} pitch={seascapeCamera.pitch}")
+            (20 * screenScale) (55 * screenScale) fontSmall
       else
         -- Normal demo mode: grid of demos using CanvasM for proper state threading
         c ← run' (c.resetTransform) do
