@@ -942,7 +942,6 @@ vertex Vertex3DOut vertex_ocean_projected_waves(
     float pitch = u.params2.x;
     uint gridSize = (uint)u.params2.y;
     float nearExtent = u.params2.z;
-    float mode = u.params2.w; // 0 = projected grid, 1 = local camera-centered patch
     uint gridSizeMinus1 = (gridSize > 0) ? (gridSize - 1) : 0;
     uint row = (gridSize > 0) ? (vid / gridSize) : 0;
     uint col = (gridSize > 0) ? (vid - row * gridSize) : 0;
@@ -983,72 +982,56 @@ vertex Vertex3DOut vertex_ocean_projected_waves(
     float baseX = originX;
     float baseZ = originZ;
 
-    float seamWidth = max(2.0, maxWaveAmp * 2.0);
-    float donutRadius = nearExtent + seamWidth;
+    (void)nearExtent;
 
-    if (mode > 0.5) {
-        // Local camera-centered patch (extends behind/around the camera in world XZ).
-        // This fills cases where the frustum-projected grid can expose an edge at very close heights.
-        float localX = (u01 * 2.0 - 1.0) * nearExtent;
-        float localZ = (v01 * 2.0 - 1.0) * nearExtent;
-        baseX = originX + localX;
-        baseZ = originZ + localZ;
-    } else {
-        // Horizon cutoff in NDC (same logic as CPU path).
-        float horizonSy = (abs(up.y) < eps) ? 0.0 : (-fwd.y) / up.y;
-        float horizonNdcY = horizonSy / tanHalfFovY;
+    // Projected grid only: generate the ocean surface by intersecting view rays with the ocean plane.
+    // Horizon cutoff in NDC (same logic as CPU path).
+    float horizonSy = (abs(up.y) < eps) ? 0.0 : (-fwd.y) / up.y;
+    float horizonNdcY = horizonSy / tanHalfFovY;
 
-        // When the camera gets close to the surface, displacement makes a frustum-aligned projected grid show
-        // edges (especially at the bottom/foreground). Add adaptive overscan based on wave amplitude vs height.
-        float camHeight = max(camPos.y, 0.10);
-        float extraAllNdc = clamp((maxWaveAmp / camHeight) * 0.25, 0.0, 1.50);
-        float overscanEff = overscanNdc + extraAllNdc;
-        float extraBottomNdc = clamp((maxWaveAmp / camHeight) * 1.20, 0.0, 10.0);
+    // Aggressive adaptive overscan near the surface.
+    float camHeight = max(camPos.y, 0.10);
+    float extraAllNdc = clamp((maxWaveAmp / camHeight) * 0.25, 0.0, 1.50);
+    float overscanEff = overscanNdc + extraAllNdc;
+    float extraBottomNdc = clamp((maxWaveAmp / camHeight) * 1.20, 0.0, 10.0);
 
-        float ndcBottom = -1.0 - overscanEff - extraBottomNdc;
-        float ndcTop0 = horizonNdcY - horizonMargin;
-        // Allow overscan above the top of the screen when the horizon is above the frustum (e.g. looking down),
-        // but keep the horizon cutoff when it lies within the frustum to avoid a hard cap.
-        float ndcTop = clamp(ndcTop0, ndcBottom, 1.0 + overscanEff);
-        float ndcLeft = -1.0 - overscanEff;
-        float ndcRight = 1.0 + overscanEff;
+    float ndcBottom = -1.0 - overscanEff - extraBottomNdc;
+    float ndcTop0 = horizonNdcY - horizonMargin;
+    float ndcTop = clamp(ndcTop0, ndcBottom, 1.0 + overscanEff);
+    float ndcLeft = -1.0 - overscanEff;
+    float ndcRight = 1.0 + overscanEff;
 
-        float ndcX = mix(ndcLeft, ndcRight, u01);
-        float ndcY = mix(ndcTop, ndcBottom, v01);
+    float ndcX = mix(ndcLeft, ndcRight, u01);
+    float ndcY = mix(ndcTop, ndcBottom, v01);
 
-        float sx = ndcX * tanHalfFovX;
-        float sy = ndcY * tanHalfFovY;
-        float3 dir = right * sx + up * sy + fwd;
+    float sx = ndcX * tanHalfFovX;
+    float sy = ndcY * tanHalfFovY;
+    float3 dir = right * sx + up * sy + fwd;
 
-        // Projected grid: intersect the view ray against the nominal ocean plane (y=0).
-        float tHit = (abs(dir.y) < eps) ? maxDistance : (-camPos.y) / dir.y;
-        tHit = (tHit < 0.0) ? maxDistance : ((tHit > maxDistance) ? maxDistance : tHit);
+    float tHit = (abs(dir.y) < eps) ? maxDistance : (-camPos.y) / dir.y;
+    tHit = (tHit < 0.0) ? maxDistance : ((tHit > maxDistance) ? maxDistance : tHit);
 
-        baseX = originX + dir.x * tHit;
-        baseZ = originZ + dir.z * tHit;
+    float baseProjX = originX + dir.x * tHit;
+    float baseProjZ = originZ + dir.z * tHit;
 
-        // Note: we don't warp/clamp the projected grid to the donut radius.
-        // The fragment shader clips the two passes using the undisplaced XZ to avoid overlap.
-
-        // Extra overscan in world space near the screen edges to account for horizontal Gerstner displacement
-        // pulling geometry inward.
-        float ndcAbsMaxX = 1.0 + overscanEff;
-        float ndcAbsMaxY = max(abs(ndcBottom), abs(ndcTop));
-        float edge01X = abs(ndcX) / max(ndcAbsMaxX, eps);
-        float edge01Y = abs(ndcY) / max(ndcAbsMaxY, eps);
-        float edgeWeightX = smoothstep(0.75, 1.0, edge01X);
-        float edgeWeightY = smoothstep(0.75, 1.0, edge01Y);
-        float edgeWeight = max(edgeWeightX, edgeWeightY);
-        float expandMeters = (maxWaveAmp * 1.75 + 0.75) * edgeWeight;
-
-        if (expandMeters > 0.0) {
-            float2 v = float2(baseX - originX, baseZ - originZ);
-            float lenV = length(v);
-            float2 dirXZ = (lenV > eps) ? (v / lenV) : normalize(float2(dir.x, dir.z));
-            baseX += dirXZ.x * expandMeters;
-            baseZ += dirXZ.y * expandMeters;
-        }
+    float ndcAbsMaxX = 1.0 + overscanEff;
+    float ndcAbsMaxY = max(abs(ndcBottom), abs(ndcTop));
+    float edge01X = abs(ndcX) / max(ndcAbsMaxX, eps);
+    float edge01Y = abs(ndcY) / max(ndcAbsMaxY, eps);
+    float edgeWeightX = smoothstep(0.75, 1.0, edge01X);
+    float edgeWeightY = smoothstep(0.75, 1.0, edge01Y);
+    float edgeWeight = max(edgeWeightX, edgeWeightY);
+    float expandMeters = (maxWaveAmp * 1.75 + 0.75) * edgeWeight;
+    if (expandMeters > 0.0) {
+        float2 v = float2(baseProjX - originX, baseProjZ - originZ);
+        float lenV = length(v);
+        float2 dirXZ = (lenV > eps) ? (v / lenV) : normalize(float2(dir.x, dir.z));
+        baseProjX += dirXZ.x * expandMeters;
+        baseProjZ += dirXZ.y * expandMeters;
     }
+
+    baseX = baseProjX;
+    baseZ = baseProjZ;
 
     float3 displacedPos;
     float3 localNormal;
@@ -2061,11 +2044,7 @@ AfferentResult afferent_renderer_create(
         depthDisabledDesc.depthWriteEnabled = NO;
         renderer->depthStateDisabled = [renderer->device newDepthStencilStateWithDescriptor:depthDisabledDesc];
 
-        // Create ocean depth state: depth test enabled but do not write depth (so multi-pass blending works).
-        MTLDepthStencilDescriptor *depthOceanDesc = [[MTLDepthStencilDescriptor alloc] init];
-        depthOceanDesc.depthCompareFunction = MTLCompareFunctionLessEqual;
-        depthOceanDesc.depthWriteEnabled = NO;
-        renderer->depthStateOcean = [renderer->device newDepthStencilStateWithDescriptor:depthOceanDesc];
+        renderer->depthStateOcean = nil;
 
         // ====================================================================
         // Create 3D rendering pipeline
@@ -2082,9 +2061,8 @@ AfferentResult afferent_renderer_create(
         id<MTLFunction> vertex3DFunction = [library3D newFunctionWithName:@"vertex_main_3d"];
         id<MTLFunction> vertexOceanFunction = [library3D newFunctionWithName:@"vertex_ocean_projected_waves"];
         id<MTLFunction> fragment3DFunction = [library3D newFunctionWithName:@"fragment_main_3d"];
-        id<MTLFunction> fragmentOceanFunction = [library3D newFunctionWithName:@"fragment_ocean_3d"];
 
-        if (!vertex3DFunction || !vertexOceanFunction || !fragment3DFunction || !fragmentOceanFunction) {
+        if (!vertex3DFunction || !vertexOceanFunction || !fragment3DFunction) {
             NSLog(@"Failed to find 3D shader functions");
             free(renderer);
             return AFFERENT_ERROR_PIPELINE_FAILED;
@@ -2151,7 +2129,7 @@ AfferentResult afferent_renderer_create(
         // ====================================================================
         MTLRenderPipelineDescriptor *pipelineOceanDesc = [[MTLRenderPipelineDescriptor alloc] init];
         pipelineOceanDesc.vertexFunction = vertexOceanFunction;
-        pipelineOceanDesc.fragmentFunction = fragmentOceanFunction;
+        pipelineOceanDesc.fragmentFunction = fragment3DFunction;
         pipelineOceanDesc.vertexDescriptor = nil;
         pipelineOceanDesc.colorAttachments[0].pixelFormat = MTLPixelFormatBGRA8Unorm;
         pipelineOceanDesc.depthAttachmentPixelFormat = MTLPixelFormatDepth32Float;
@@ -3583,13 +3561,9 @@ void afferent_renderer_draw_ocean_projected_grid_with_fog(
 
         uniforms.params2[0] = pitch;
         uniforms.params2[1] = (float)grid_size;
-        // Local patch extent (in meters). We draw a camera-centered patch first so the ocean extends
-        // behind/around the camera (fixes near-surface edge reveals), then draw the projected grid beyond it.
-        float nearExtent = (snapSize > 0.00001f) ? (snapSize * ((float)grid_size * 0.5f)) : ((float)grid_size * 1.0f);
-        if (nearExtent < 40.0f) nearExtent = 40.0f;
-        if (nearExtent > 250.0f) nearExtent = 250.0f;
-        uniforms.params2[2] = nearExtent;
-        uniforms.params2[3] = 0.0f; // mode (0 projected, 1 local)
+        // Reserved (was used for local patch). Keep 0 so shader stays in projected-grid-only mode.
+        uniforms.params2[2] = 0.0f;
+        uniforms.params2[3] = 0.0f;
 
         if (wave_params && wave_param_count >= 32) {
             for (uint32_t i = 0; i < 4; i++) {
@@ -3601,23 +3575,9 @@ void afferent_renderer_draw_ocean_projected_grid_with_fog(
         }
 
         [renderer->currentEncoder setRenderPipelineState:renderer->pipeline3DOcean];
-        [renderer->currentEncoder setDepthStencilState:(renderer->depthStateOcean ? renderer->depthStateOcean : renderer->depthStateDisabled)];
+        [renderer->currentEncoder setDepthStencilState:renderer->depthState];
         [renderer->currentEncoder setFragmentBytes:&uniforms.scene length:sizeof(uniforms.scene) atIndex:0];
-
-        // Pass 1: local patch (extends behind/around camera).
-        uniforms.params2[3] = 1.0f;
         [renderer->currentEncoder setVertexBytes:&uniforms length:sizeof(uniforms) atIndex:1];
-        [renderer->currentEncoder setFragmentBytes:&uniforms length:sizeof(uniforms) atIndex:1];
-        [renderer->currentEncoder drawIndexedPrimitives:MTLPrimitiveTypeTriangle
-                                             indexCount:renderer->oceanIndexCount
-                                              indexType:MTLIndexTypeUInt32
-                                            indexBuffer:renderer->oceanIndexBuffer
-                                      indexBufferOffset:0];
-
-        // Pass 2: projected grid "donut" beyond the local patch.
-        uniforms.params2[3] = 0.0f;
-        [renderer->currentEncoder setVertexBytes:&uniforms length:sizeof(uniforms) atIndex:1];
-        [renderer->currentEncoder setFragmentBytes:&uniforms length:sizeof(uniforms) atIndex:1];
         [renderer->currentEncoder drawIndexedPrimitives:MTLPrimitiveTypeTriangle
                                              indexCount:renderer->oceanIndexCount
                                               indexType:MTLIndexTypeUInt32
