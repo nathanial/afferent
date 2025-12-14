@@ -981,6 +981,9 @@ vertex Vertex3DOut vertex_ocean_projected_waves(
     float baseX = originX;
     float baseZ = originZ;
 
+    float seamWidth = max(2.0, maxWaveAmp * 2.0);
+    float donutRadius = nearExtent + seamWidth;
+
     if (mode > 0.5) {
         // Local camera-centered patch (extends behind/around the camera in world XZ).
         // This fills cases where the frustum-projected grid can expose an edge at very close heights.
@@ -1024,13 +1027,13 @@ vertex Vertex3DOut vertex_ocean_projected_waves(
 
         // Avoid overlapping the local patch: push projected points outward to form a "donut hole"
         // that the local patch fills. This also makes the mesh extend around the camera, not just forward.
-        if (nearExtent > 0.0) {
+        if (donutRadius > 0.0) {
             float2 v = float2(baseX - originX, baseZ - originZ);
             float lenV = length(v);
-            if (lenV < nearExtent) {
+            if (lenV < donutRadius) {
                 float2 dirXZ = (lenV > eps) ? (v / lenV) : normalize(float2(dir.x, dir.z));
-                baseX = originX + dirXZ.x * nearExtent;
-                baseZ = originZ + dirXZ.y * nearExtent;
+                baseX = originX + dirXZ.x * donutRadius;
+                baseZ = originZ + dirXZ.y * donutRadius;
             }
         }
 
@@ -1088,6 +1091,55 @@ fragment float4 fragment_main_3d(
     float fogRange = uniforms.fogEnd - uniforms.fogStart;
     float fogFactor = (fogRange > 0.0) ? clamp((uniforms.fogEnd - dist) / fogRange, 0.0, 1.0) : 1.0;
     float3 finalColor = mix(float3(uniforms.fogColor), litColor, fogFactor);
+
+    return float4(finalColor, in.color.a);
+}
+
+fragment float4 fragment_ocean_3d(
+    Vertex3DOut in [[stage_in]],
+    constant Scene3DUniforms& scene [[buffer(0)]],
+    constant OceanProjectedUniforms& u [[buffer(1)]]
+) {
+    // Avoid overlap/z-fighting between the two-pass ocean draw:
+    // - mode=1 local patch renders inside a donut radius
+    // - mode=0 projected grid renders outside that radius
+    float snapSize = u.params1.x;
+    float nearExtent = u.params2.z;
+    float mode = u.params2.w;
+
+    float maxWaveAmp = 0.0;
+    for (uint i = 0; i < 4; i++) {
+        maxWaveAmp += u.waveB[i].x;
+    }
+    float seamWidth = max(2.0, maxWaveAmp * 2.0);
+    float donutRadius = nearExtent + seamWidth;
+
+    float originX = scene.cameraPos[0];
+    float originZ = scene.cameraPos[2];
+    if (snapSize > 0.00001) {
+        originX = floor(originX / snapSize) * snapSize;
+        originZ = floor(originZ / snapSize) * snapSize;
+    }
+
+    float2 d = float2(in.worldPos.x - originX, in.worldPos.z - originZ);
+    float r = length(d);
+    if (donutRadius > 0.0) {
+        if (mode > 0.5) {
+            if (r > donutRadius) discard_fragment();
+        } else {
+            if (r <= donutRadius) discard_fragment();
+        }
+    }
+
+    float3 N = normalize(in.worldNormal);
+    float3 L = normalize(scene.lightDir);
+    float diffuse = max(0.0, dot(N, L));
+    float3 litColor = in.color.rgb * (scene.ambient + (1.0 - scene.ambient) * diffuse);
+
+    float dist = length(in.worldPos - float3(scene.cameraPos));
+    float fogRange = scene.fogEnd - scene.fogStart;
+    float fogFactor = (fogRange > 0.0) ? clamp((scene.fogEnd - dist) / fogRange, 0.0, 1.0) : 1.0;
+    float3 finalColor = mix(float3(scene.fogColor), litColor, fogFactor);
 
     return float4(finalColor, in.color.a);
 }
@@ -2026,8 +2078,9 @@ AfferentResult afferent_renderer_create(
         id<MTLFunction> vertex3DFunction = [library3D newFunctionWithName:@"vertex_main_3d"];
         id<MTLFunction> vertexOceanFunction = [library3D newFunctionWithName:@"vertex_ocean_projected_waves"];
         id<MTLFunction> fragment3DFunction = [library3D newFunctionWithName:@"fragment_main_3d"];
+        id<MTLFunction> fragmentOceanFunction = [library3D newFunctionWithName:@"fragment_ocean_3d"];
 
-        if (!vertex3DFunction || !vertexOceanFunction || !fragment3DFunction) {
+        if (!vertex3DFunction || !vertexOceanFunction || !fragment3DFunction || !fragmentOceanFunction) {
             NSLog(@"Failed to find 3D shader functions");
             free(renderer);
             return AFFERENT_ERROR_PIPELINE_FAILED;
@@ -2094,7 +2147,7 @@ AfferentResult afferent_renderer_create(
         // ====================================================================
         MTLRenderPipelineDescriptor *pipelineOceanDesc = [[MTLRenderPipelineDescriptor alloc] init];
         pipelineOceanDesc.vertexFunction = vertexOceanFunction;
-        pipelineOceanDesc.fragmentFunction = fragment3DFunction;
+        pipelineOceanDesc.fragmentFunction = fragmentOceanFunction;
         pipelineOceanDesc.vertexDescriptor = nil;
         pipelineOceanDesc.colorAttachments[0].pixelFormat = MTLPixelFormatBGRA8Unorm;
         pipelineOceanDesc.depthAttachmentPixelFormat = MTLPixelFormatDepth32Float;
@@ -3550,6 +3603,7 @@ void afferent_renderer_draw_ocean_projected_grid_with_fog(
         // Pass 1: local patch (extends behind/around camera).
         uniforms.params2[3] = 1.0f;
         [renderer->currentEncoder setVertexBytes:&uniforms length:sizeof(uniforms) atIndex:1];
+        [renderer->currentEncoder setFragmentBytes:&uniforms length:sizeof(uniforms) atIndex:1];
         [renderer->currentEncoder drawIndexedPrimitives:MTLPrimitiveTypeTriangle
                                              indexCount:renderer->oceanIndexCount
                                               indexType:MTLIndexTypeUInt32
@@ -3559,6 +3613,7 @@ void afferent_renderer_draw_ocean_projected_grid_with_fog(
         // Pass 2: projected grid "donut" beyond the local patch.
         uniforms.params2[3] = 0.0f;
         [renderer->currentEncoder setVertexBytes:&uniforms length:sizeof(uniforms) atIndex:1];
+        [renderer->currentEncoder setFragmentBytes:&uniforms length:sizeof(uniforms) atIndex:1];
         [renderer->currentEncoder drawIndexedPrimitives:MTLPrimitiveTypeTriangle
                                              indexCount:renderer->oceanIndexCount
                                               indexType:MTLIndexTypeUInt32
