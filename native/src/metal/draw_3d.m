@@ -296,3 +296,122 @@ void afferent_renderer_draw_mesh_3d_with_fog(
         [renderer->currentEncoder setRenderPipelineState:renderer->pipelineState];
     }
 }
+
+// 3D Textured Mesh Rendering with diffuse texture, lighting, and fog
+void afferent_renderer_draw_mesh_3d_textured(
+    AfferentRendererRef renderer,
+    const float* vertices,
+    uint32_t vertex_count,
+    const uint32_t* indices,
+    uint32_t index_offset,
+    uint32_t index_count,
+    const float* mvp_matrix,
+    const float* model_matrix,
+    const float* light_dir,
+    float ambient,
+    const float* camera_pos,
+    const float* fog_color,
+    float fog_start,
+    float fog_end,
+    AfferentTextureRef texture
+) {
+    if (!renderer || !renderer->currentEncoder || !vertices || !indices ||
+        vertex_count == 0 || index_count == 0 || !texture) {
+        return;
+    }
+
+    @autoreleasepool {
+        // Get or create Metal texture for this texture handle
+        id<MTLTexture> metalTex = (__bridge id<MTLTexture>)afferent_texture_get_metal_texture(texture);
+
+        if (!metalTex) {
+            // Create Metal texture from pixel data
+            const uint8_t* pixelData = afferent_texture_get_data(texture);
+            uint32_t texWidth, texHeight;
+            afferent_texture_get_size(texture, &texWidth, &texHeight);
+
+            if (!pixelData || texWidth == 0 || texHeight == 0) {
+                NSLog(@"Invalid texture data for 3D textured mesh");
+                return;
+            }
+
+            metalTex = createMetalTexture(renderer->device, pixelData, texWidth, texHeight);
+            if (!metalTex) {
+                NSLog(@"Failed to create Metal texture for 3D textured mesh");
+                return;
+            }
+
+            // Store the Metal texture in the texture handle (retain with __bridge_retained)
+            afferent_texture_set_metal_texture(texture, (__bridge_retained void*)metalTex);
+        }
+
+        // Acquire temporary vertex buffer (pooled)
+        // 12 floats per vertex: position(3) + normal(3) + uv(2) + color(4)
+        size_t vertex_size = vertex_count * 12 * sizeof(float);
+        id<MTLBuffer> vertexBuffer = pool_acquire_buffer(
+            renderer->device,
+            g_buffer_pool.vertex_pool,
+            &g_buffer_pool.vertex_pool_count,
+            vertex_size,
+            true
+        );
+        if (!vertexBuffer) {
+            NSLog(@"Failed to create 3D textured vertex buffer");
+            return;
+        }
+        memcpy(vertexBuffer.contents, vertices, vertex_size);
+
+        // Acquire temporary index buffer (pooled)
+        size_t total_index_count = index_offset + index_count;
+        size_t index_size = total_index_count * sizeof(uint32_t);
+        id<MTLBuffer> indexBuffer = pool_acquire_buffer(
+            renderer->device,
+            g_buffer_pool.index_pool,
+            &g_buffer_pool.index_pool_count,
+            index_size,
+            false
+        );
+        if (!indexBuffer) {
+            NSLog(@"Failed to create 3D textured index buffer");
+            return;
+        }
+        memcpy(indexBuffer.contents, indices, index_size);
+
+        // Set up uniforms with fog and UV parameters
+        Scene3DTexturedUniforms uniforms;
+        memcpy(uniforms.modelViewProj, mvp_matrix, 64);
+        memcpy(uniforms.modelMatrix, model_matrix, 64);
+        memcpy(uniforms.lightDir, light_dir, 12);
+        uniforms.ambient = ambient;
+        memcpy(uniforms.cameraPos, camera_pos, 12);
+        uniforms.fogStart = fog_start;
+        memcpy(uniforms.fogColor, fog_color, 12);
+        uniforms.fogEnd = fog_end;
+        // Default UV scale and offset (no tiling)
+        uniforms.uvScale[0] = 1.0f;
+        uniforms.uvScale[1] = 1.0f;
+        uniforms.uvOffset[0] = 0.0f;
+        uniforms.uvOffset[1] = 0.0f;
+
+        // Configure encoder for textured 3D rendering
+        [renderer->currentEncoder setRenderPipelineState:renderer->pipeline3DTextured];
+        [renderer->currentEncoder setDepthStencilState:renderer->depthState];
+        [renderer->currentEncoder setVertexBuffer:vertexBuffer offset:0 atIndex:0];
+        [renderer->currentEncoder setVertexBytes:&uniforms length:sizeof(uniforms) atIndex:1];
+        [renderer->currentEncoder setFragmentBytes:&uniforms length:sizeof(uniforms) atIndex:0];
+
+        // Bind texture and sampler
+        [renderer->currentEncoder setFragmentTexture:metalTex atIndex:0];
+        [renderer->currentEncoder setFragmentSamplerState:renderer->texturedMeshSampler atIndex:0];
+
+        // Draw indexed triangles with offset
+        [renderer->currentEncoder drawIndexedPrimitives:MTLPrimitiveTypeTriangle
+                                             indexCount:index_count
+                                              indexType:MTLIndexTypeUInt32
+                                            indexBuffer:indexBuffer
+                                      indexBufferOffset:index_offset * sizeof(uint32_t)];
+
+        // Restore default pipeline
+        [renderer->currentEncoder setRenderPipelineState:renderer->pipelineState];
+    }
+}

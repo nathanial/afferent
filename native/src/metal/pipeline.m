@@ -697,5 +697,93 @@ AfferentResult create_pipelines(struct AfferentRenderer* renderer) {
 
     renderer->pipeline3DOcean = renderer->pipeline3DOceanMSAA;
 
+    // ====================================================================
+    // Create textured 3D rendering pipeline (for loaded assets)
+    // ====================================================================
+    id<MTLLibrary> library3DTextured = [renderer->device newLibraryWithSource:shader3DTexturedSource
+                                                                       options:nil
+                                                                         error:&error];
+    if (!library3DTextured) {
+        NSLog(@"Textured 3D shader compilation failed: %@", error);
+        return AFFERENT_ERROR_PIPELINE_FAILED;
+    }
+
+    id<MTLFunction> vertex3DTexturedFunction = [library3DTextured newFunctionWithName:@"vertex_main_3d_textured"];
+    id<MTLFunction> fragment3DTexturedFunction = [library3DTextured newFunctionWithName:@"fragment_main_3d_textured"];
+
+    if (!vertex3DTexturedFunction || !fragment3DTexturedFunction) {
+        NSLog(@"Failed to find textured 3D shader functions");
+        return AFFERENT_ERROR_PIPELINE_FAILED;
+    }
+
+    // Create textured 3D vertex descriptor
+    // 12 floats per vertex: position(3) + normal(3) + uv(2) + color(4) = 48 bytes
+    MTLVertexDescriptor *vertex3DTexturedDescriptor = [[MTLVertexDescriptor alloc] init];
+
+    // Position: 3 floats at offset 0
+    vertex3DTexturedDescriptor.attributes[0].format = MTLVertexFormatFloat3;
+    vertex3DTexturedDescriptor.attributes[0].offset = 0;
+    vertex3DTexturedDescriptor.attributes[0].bufferIndex = 0;
+
+    // Normal: 3 floats at offset 12
+    vertex3DTexturedDescriptor.attributes[1].format = MTLVertexFormatFloat3;
+    vertex3DTexturedDescriptor.attributes[1].offset = 12;
+    vertex3DTexturedDescriptor.attributes[1].bufferIndex = 0;
+
+    // UV: 2 floats at offset 24
+    vertex3DTexturedDescriptor.attributes[2].format = MTLVertexFormatFloat2;
+    vertex3DTexturedDescriptor.attributes[2].offset = 24;
+    vertex3DTexturedDescriptor.attributes[2].bufferIndex = 0;
+
+    // Color: 4 floats at offset 32
+    vertex3DTexturedDescriptor.attributes[3].format = MTLVertexFormatFloat4;
+    vertex3DTexturedDescriptor.attributes[3].offset = 32;
+    vertex3DTexturedDescriptor.attributes[3].bufferIndex = 0;
+
+    // Layout: 48 bytes per vertex (3+3+2+4 floats = 12 floats)
+    vertex3DTexturedDescriptor.layouts[0].stride = 48;
+    vertex3DTexturedDescriptor.layouts[0].stepFunction = MTLVertexStepFunctionPerVertex;
+
+    MTLRenderPipelineDescriptor *pipeline3DTexturedDesc = [[MTLRenderPipelineDescriptor alloc] init];
+    pipeline3DTexturedDesc.vertexFunction = vertex3DTexturedFunction;
+    pipeline3DTexturedDesc.fragmentFunction = fragment3DTexturedFunction;
+    pipeline3DTexturedDesc.vertexDescriptor = vertex3DTexturedDescriptor;
+    pipeline3DTexturedDesc.colorAttachments[0].pixelFormat = MTLPixelFormatBGRA8Unorm;
+    pipeline3DTexturedDesc.depthAttachmentPixelFormat = MTLPixelFormatDepth32Float;
+
+    // Enable blending for transparency
+    pipeline3DTexturedDesc.colorAttachments[0].blendingEnabled = YES;
+    pipeline3DTexturedDesc.colorAttachments[0].sourceRGBBlendFactor = MTLBlendFactorSourceAlpha;
+    pipeline3DTexturedDesc.colorAttachments[0].destinationRGBBlendFactor = MTLBlendFactorOneMinusSourceAlpha;
+    pipeline3DTexturedDesc.colorAttachments[0].sourceAlphaBlendFactor = MTLBlendFactorOne;
+    pipeline3DTexturedDesc.colorAttachments[0].destinationAlphaBlendFactor = MTLBlendFactorOneMinusSourceAlpha;
+
+    pipeline3DTexturedDesc.rasterSampleCount = 4;  // MSAA
+    renderer->pipeline3DTexturedMSAA = [renderer->device newRenderPipelineStateWithDescriptor:pipeline3DTexturedDesc
+                                                                                         error:&error];
+    if (!renderer->pipeline3DTexturedMSAA) {
+        NSLog(@"Textured 3D pipeline creation failed (MSAA): %@", error);
+        return AFFERENT_ERROR_PIPELINE_FAILED;
+    }
+
+    pipeline3DTexturedDesc.rasterSampleCount = 1;  // No MSAA
+    renderer->pipeline3DTexturedNoMSAA = [renderer->device newRenderPipelineStateWithDescriptor:pipeline3DTexturedDesc
+                                                                                           error:&error];
+    if (!renderer->pipeline3DTexturedNoMSAA) {
+        NSLog(@"Textured 3D pipeline creation failed (no MSAA): %@", error);
+        return AFFERENT_ERROR_PIPELINE_FAILED;
+    }
+
+    renderer->pipeline3DTextured = renderer->pipeline3DTexturedMSAA;
+
+    // Create textured mesh sampler
+    MTLSamplerDescriptor *texturedMeshSamplerDesc = [[MTLSamplerDescriptor alloc] init];
+    texturedMeshSamplerDesc.minFilter = MTLSamplerMinMagFilterLinear;
+    texturedMeshSamplerDesc.magFilter = MTLSamplerMinMagFilterLinear;
+    texturedMeshSamplerDesc.mipFilter = MTLSamplerMipFilterNotMipmapped;
+    texturedMeshSamplerDesc.sAddressMode = MTLSamplerAddressModeRepeat;
+    texturedMeshSamplerDesc.tAddressMode = MTLSamplerAddressModeRepeat;
+    renderer->texturedMeshSampler = [renderer->device newSamplerStateWithDescriptor:texturedMeshSamplerDesc];
+
     return AFFERENT_OK;
 }

@@ -10,6 +10,7 @@ import Afferent.FFI.Renderer3D
 import Afferent.FFI.Text
 import Afferent.FFI.FloatBuffer
 import Afferent.FFI.Texture
+import Afferent.FFI.Asset
 
 namespace Afferent.FFI
 -- All types and functions are re-exported from submodules

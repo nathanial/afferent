@@ -42,6 +42,14 @@ typedef struct {
     float color[4];     // r, g, b, a
 } AfferentVertex3D;
 
+// 3D Vertex with UV coordinates (for textured 3D mesh rendering)
+typedef struct {
+    float position[3];  // x, y, z
+    float normal[3];    // nx, ny, nz
+    float uv[2];        // u, v texture coordinates
+    float color[4];     // r, g, b, a
+} AfferentVertex3DTextured;  // 12 floats = 48 bytes
+
 // Window management
 AfferentResult afferent_window_create(
     uint32_t width,
@@ -459,6 +467,69 @@ void afferent_renderer_draw_ocean_projected_grid_with_fog(
     float pitch,
     const float* wave_params,
     uint32_t wave_param_count
+);
+
+// ============================================================================
+// Asset Loading (Assimp integration)
+// Loads 3D models with vertices, indices, and texture paths.
+// ============================================================================
+
+// Load a 3D asset file (FBX, OBJ supported)
+// Returns all mesh data ready for rendering.
+// Vertex format: 12 floats per vertex (position[3], normal[3], uv[2], color[4])
+// Caller must free returned arrays using afferent_asset_free_*
+AfferentResult afferent_asset_load(
+    const char* file_path,
+    const char* base_path,
+    // Output vertex data (12 floats per vertex)
+    float** out_vertices,
+    uint32_t* out_vertex_count,
+    // Output index data
+    uint32_t** out_indices,
+    uint32_t* out_index_count,
+    // Sub-mesh info arrays (all same length = submesh_count)
+    uint32_t** out_submesh_index_offsets,
+    uint32_t** out_submesh_index_counts,
+    uint32_t** out_submesh_texture_indices,
+    uint32_t* out_submesh_count,
+    // Texture paths (null-terminated strings)
+    char*** out_texture_paths,
+    uint32_t* out_texture_count
+);
+
+// Free asset data
+void afferent_asset_free_vertices(float* vertices);
+void afferent_asset_free_indices(uint32_t* indices);
+void afferent_asset_free_submeshes(
+    uint32_t* index_offsets,
+    uint32_t* index_counts,
+    uint32_t* texture_indices
+);
+void afferent_asset_free_texture_paths(char** paths, uint32_t count);
+
+// ============================================================================
+// Textured 3D Mesh rendering
+// ============================================================================
+
+// Draw a textured 3D mesh with perspective projection, lighting, and fog.
+// vertices: array of floats (12 per vertex: pos[3], normal[3], uv[2], color[4])
+// Uses a sub-range of the index buffer specified by index_offset and index_count.
+void afferent_renderer_draw_mesh_3d_textured(
+    AfferentRendererRef renderer,
+    const float* vertices,
+    uint32_t vertex_count,
+    const uint32_t* indices,
+    uint32_t index_offset,
+    uint32_t index_count,
+    const float* mvp_matrix,
+    const float* model_matrix,
+    const float* light_dir,
+    float ambient,
+    const float* camera_pos,
+    const float* fog_color,
+    float fog_start,
+    float fog_end,
+    AfferentTextureRef texture
 );
 
 #ifdef __cplusplus

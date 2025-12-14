@@ -1715,3 +1715,185 @@ LEAN_EXPORT lean_obj_res lean_afferent_renderer_draw_ocean_projected_grid_with_f
 
     return lean_io_result_mk_ok(lean_box(0));
 }
+
+// =============================================================================
+// Asset Loading FFI (Assimp integration)
+// =============================================================================
+
+// Load a 3D asset file
+// Returns LoadedAsset structure:
+//   { vertices: Array Float, indices: Array UInt32, subMeshes: Array SubMesh, texturePaths: Array String }
+// SubMesh structure:
+//   { indexOffset: UInt32, indexCount: UInt32, textureIndex: UInt32 }
+LEAN_EXPORT lean_obj_res lean_afferent_asset_load(
+    lean_obj_arg file_path_obj,
+    lean_obj_arg base_path_obj,
+    lean_obj_arg world
+) {
+    const char* file_path = lean_string_cstr(file_path_obj);
+    const char* base_path = lean_string_cstr(base_path_obj);
+
+    float* vertices = NULL;
+    uint32_t vertex_count = 0;
+    uint32_t* indices = NULL;
+    uint32_t index_count = 0;
+    uint32_t* submesh_index_offsets = NULL;
+    uint32_t* submesh_index_counts = NULL;
+    uint32_t* submesh_texture_indices = NULL;
+    uint32_t submesh_count = 0;
+    char** texture_paths = NULL;
+    uint32_t texture_count = 0;
+
+    AfferentResult result = afferent_asset_load(
+        file_path, base_path,
+        &vertices, &vertex_count,
+        &indices, &index_count,
+        &submesh_index_offsets, &submesh_index_counts, &submesh_texture_indices, &submesh_count,
+        &texture_paths, &texture_count
+    );
+
+    if (result != AFFERENT_OK) {
+        return lean_io_result_mk_error(lean_mk_io_user_error(
+            lean_mk_string("Failed to load asset")));
+    }
+
+    // Build Lean Arrays
+
+    // 1. vertices: Array Float (12 floats per vertex)
+    size_t total_floats = (size_t)vertex_count * 12;
+    lean_object* vertices_arr = lean_alloc_array(total_floats, total_floats);
+    for (size_t i = 0; i < total_floats; i++) {
+        lean_array_set_core(vertices_arr, i, lean_box_float((double)vertices[i]));
+    }
+
+    // 2. indices: Array UInt32
+    lean_object* indices_arr = lean_alloc_array(index_count, index_count);
+    for (uint32_t i = 0; i < index_count; i++) {
+        lean_array_set_core(indices_arr, i, lean_box_uint32(indices[i]));
+    }
+
+    // 3. subMeshes: Array SubMesh
+    // SubMesh has 3 UInt32 fields, which is 12 bytes of scalars (unboxed representation)
+    // Layout: offset 0: indexOffset (4 bytes), offset 4: indexCount (4 bytes), offset 8: textureIndex (4 bytes)
+    lean_object* submeshes_arr = lean_alloc_array(submesh_count, submesh_count);
+    for (uint32_t i = 0; i < submesh_count; i++) {
+        // SubMesh with 3 UInt32 = 12 bytes of scalars, 0 object fields
+        lean_object* submesh = lean_alloc_ctor(0, 0, 12);
+        lean_ctor_set_uint32(submesh, 0, submesh_index_offsets[i]);
+        lean_ctor_set_uint32(submesh, 4, submesh_index_counts[i]);
+        lean_ctor_set_uint32(submesh, 8, submesh_texture_indices[i]);
+        lean_array_set_core(submeshes_arr, i, submesh);
+    }
+
+    // 4. texturePaths: Array String
+    lean_object* textures_arr = lean_alloc_array(texture_count, texture_count);
+    for (uint32_t i = 0; i < texture_count; i++) {
+        lean_array_set_core(textures_arr, i, lean_mk_string(texture_paths[i]));
+    }
+
+    // Build LoadedAsset structure
+    // LoadedAsset has 4 object fields: vertices, indices, subMeshes, texturePaths
+    lean_object* asset = lean_alloc_ctor(0, 4, 0);
+    lean_ctor_set(asset, 0, vertices_arr);
+    lean_ctor_set(asset, 1, indices_arr);
+    lean_ctor_set(asset, 2, submeshes_arr);
+    lean_ctor_set(asset, 3, textures_arr);
+
+    // Free C memory
+    afferent_asset_free_vertices(vertices);
+    afferent_asset_free_indices(indices);
+    afferent_asset_free_submeshes(submesh_index_offsets, submesh_index_counts, submesh_texture_indices);
+    afferent_asset_free_texture_paths(texture_paths, texture_count);
+
+    return lean_io_result_mk_ok(asset);
+}
+
+// =============================================================================
+// Textured 3D Mesh Rendering FFI
+// =============================================================================
+
+// Draw textured 3D mesh with fog
+// vertices_arr: Array Float (12 floats per vertex: pos[3], normal[3], uv[2], color[4])
+// indices_arr: Array UInt32
+// index_offset, index_count: sub-range of indices to draw
+LEAN_EXPORT lean_obj_res lean_afferent_renderer_draw_mesh_3d_textured(
+    lean_obj_arg renderer_obj,
+    lean_obj_arg vertices_arr,
+    lean_obj_arg indices_arr,
+    uint32_t index_offset,
+    uint32_t index_count,
+    lean_obj_arg mvp_matrix,
+    lean_obj_arg model_matrix,
+    lean_obj_arg light_dir,
+    double ambient,
+    lean_obj_arg camera_pos_arr,
+    lean_obj_arg fog_color_arr,
+    double fog_start,
+    double fog_end,
+    lean_obj_arg texture_obj,
+    lean_obj_arg world
+) {
+    AfferentRendererRef renderer = (AfferentRendererRef)lean_get_external_data(renderer_obj);
+    AfferentTextureRef texture = (AfferentTextureRef)lean_get_external_data(texture_obj);
+
+    // Convert vertex array (12 floats per vertex)
+    size_t vert_floats = lean_array_size(vertices_arr);
+    size_t vertex_count = vert_floats / 12;
+
+    if (vertex_count == 0 || index_count == 0) {
+        return lean_io_result_mk_ok(lean_box(0));
+    }
+
+    // Convert to flat float array (renderer expects raw floats)
+    float* vertices = malloc(vert_floats * sizeof(float));
+    if (!vertices) {
+        return lean_io_result_mk_error(lean_mk_io_user_error(
+            lean_mk_string("Failed to allocate vertex buffer")));
+    }
+
+    for (size_t i = 0; i < vert_floats; i++) {
+        vertices[i] = (float)lean_unbox_float(lean_array_get_core(vertices_arr, i));
+    }
+
+    // Convert index array
+    size_t total_indices = lean_array_size(indices_arr);
+    uint32_t* indices = malloc(total_indices * sizeof(uint32_t));
+    if (!indices) {
+        free(vertices);
+        return lean_io_result_mk_error(lean_mk_io_user_error(
+            lean_mk_string("Failed to allocate index buffer")));
+    }
+
+    for (size_t i = 0; i < total_indices; i++) {
+        indices[i] = lean_unbox_uint32(lean_array_get_core(indices_arr, i));
+    }
+
+    // Convert matrices and vectors
+    float mvp[16], model[16], light[3], camera_pos[3], fog_color[3];
+
+    for (size_t i = 0; i < 16; i++) {
+        mvp[i] = (float)lean_unbox_float(lean_array_get_core(mvp_matrix, i));
+        model[i] = (float)lean_unbox_float(lean_array_get_core(model_matrix, i));
+    }
+
+    for (size_t i = 0; i < 3; i++) {
+        light[i] = (float)lean_unbox_float(lean_array_get_core(light_dir, i));
+        camera_pos[i] = (float)lean_unbox_float(lean_array_get_core(camera_pos_arr, i));
+        fog_color[i] = (float)lean_unbox_float(lean_array_get_core(fog_color_arr, i));
+    }
+
+    // Draw the textured mesh
+    afferent_renderer_draw_mesh_3d_textured(
+        renderer,
+        vertices, (uint32_t)vertex_count,
+        indices, index_offset, index_count,
+        mvp, model, light, (float)ambient,
+        camera_pos, fog_color, (float)fog_start, (float)fog_end,
+        texture
+    );
+
+    free(vertices);
+    free(indices);
+
+    return lean_io_result_mk_ok(lean_box(0));
+}

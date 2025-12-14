@@ -13,6 +13,7 @@ NSString *dynamicRectShaderSource = nil;
 NSString *dynamicTriangleShaderSource = nil;
 NSString *spriteShaderSource = nil;
 NSString *shader3DSource = nil;
+NSString *shader3DTexturedSource = nil;
 
 // Cached shader directory path
 static NSString *g_shaderDir = nil;
@@ -140,6 +141,9 @@ BOOL afferent_init_shaders(void) {
 
     shader3DSource = afferent_load_shader("mesh3d");
     if (!shader3DSource) return NO;
+
+    shader3DTexturedSource = afferent_load_shader("mesh3d_textured");
+    if (!shader3DTexturedSource) return NO;
 
     NSLog(@"All shaders loaded successfully");
     return YES;

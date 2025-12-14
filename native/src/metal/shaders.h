@@ -42,4 +42,7 @@ extern NSString *spriteShaderSource;
 // 3D mesh shader with lighting and fog
 extern NSString *shader3DSource;
 
+// 3D textured mesh shader (for loaded assets with diffuse textures)
+extern NSString *shader3DTexturedSource;
+
 #endif // AFFERENT_METAL_SHADERS_H

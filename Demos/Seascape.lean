@@ -559,6 +559,37 @@ private def getSeascapeSkyDome : IO SkyDome := do
       seascapeSkyDomeCache.set (some dome)
       return dome
 
+/-! ## Frigate Ship Asset -/
+
+/-- Cached frigate asset data (loaded once). -/
+private structure FrigateCache where
+  asset : LoadedAsset
+  texture : Texture
+
+private initialize seascapeFrigateCache : IO.Ref (Option FrigateCache) ← IO.mkRef none
+
+/-- Load the frigate ship asset (cached). -/
+def loadFrigate : IO FrigateCache := do
+  match (← seascapeFrigateCache.get) with
+  | some cache => return cache
+  | none =>
+      -- Load the FBX model
+      let asset ← loadAsset
+        "assets/fictional-frigate/source/frigateUn1.fbx"
+        "assets/fictional-frigate/textures"
+
+      -- Load the base color texture
+      let texturePath := if h : 0 < asset.texturePaths.size then
+          s!"assets/fictional-frigate/textures/{asset.texturePaths[0]}"
+        else
+          "assets/fictional-frigate/textures/frigate6_lambert2_BaseColor.png"
+      let texture ← Texture.load texturePath
+
+      let cache := { asset, texture }
+      seascapeFrigateCache.set (some cache)
+      IO.println s!"Frigate loaded: {asset.vertices.size / 12} vertices, {asset.indices.size / 3} triangles"
+      return cache
+
 /-! ## Seascape Rendering -/
 
 /-- Fog parameters for the seascape. -/
@@ -685,6 +716,44 @@ def renderSeascape (renderer : Renderer) (t : Float)
     camera.yaw
     camera.pitch
     defaultWavesGpuParams
+
+  -- Render the frigate ship, bobbing with the waves
+  let frigate ← loadFrigate
+
+  -- Frigate base position (in front of the starting camera)
+  let frigateBaseX := 0.0
+  let frigateBaseZ := -30.0  -- In front of camera (camera faces -Z)
+
+  -- Apply Gerstner wave displacement to make the ship bob with the ocean
+  let (dx, dy, dz) := gerstnerDisplacement defaultWaves frigateBaseX frigateBaseZ t
+
+  -- Build model matrix: translate to wave position, then scale
+  -- FBX models often need scaling (try different scales if needed)
+  let frigateScale := 0.02  -- Scale down the model (adjust as needed)
+  let frigateY := dy - 1.0  -- Offset to sit at water level (adjust based on model)
+
+  -- Model matrix: first scale, then translate
+  let scaleMatrix := Matrix4.scale frigateScale frigateScale frigateScale
+  let translateMatrix := Matrix4.translate (frigateBaseX + dx) frigateY (frigateBaseZ + dz)
+  let frigateModel := Matrix4.multiply translateMatrix scaleMatrix
+  let frigateMvp := Matrix4.multiply proj (Matrix4.multiply view frigateModel)
+
+  -- Draw each submesh of the frigate
+  for submesh in frigate.asset.subMeshes do
+    Renderer.drawMesh3DTextured renderer
+      frigate.asset.vertices
+      frigate.asset.indices
+      submesh.indexOffset
+      submesh.indexCount
+      frigateMvp.toArray
+      frigateModel.toArray
+      lightDir
+      ambient
+      cameraPos
+      fog.color
+      fog.start
+      fog.endDist
+      frigate.texture
 
 /-- Create initial FPS camera for seascape viewing.
     Positioned above and behind the ocean, looking forward. -/

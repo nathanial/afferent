@@ -29,7 +29,12 @@ lean_exe afferent where
     "-framework", "Foundation",
     "-lobjc",
     "-L/opt/homebrew/lib",
-    "-lfreetype"
+    "-lfreetype",
+    -- Assimp and C++ runtime
+    "-Lthird_party/assimp/build/lib",
+    "-lassimp",
+    "-lz",
+    "-lc++"
   ]
 
 -- Example executable
@@ -44,7 +49,11 @@ lean_exe hello_triangle where
     "-framework", "Foundation",
     "-lobjc",
     "-L/opt/homebrew/lib",
-    "-lfreetype"
+    "-lfreetype",
+    "-Lthird_party/assimp/build/lib",
+    "-lassimp",
+    "-lz",
+    "-lc++"
   ]
 
 -- 3D Spinning Cubes demo
@@ -59,7 +68,11 @@ lean_exe spinning_cubes where
     "-framework", "Foundation",
     "-lobjc",
     "-L/opt/homebrew/lib",
-    "-lfreetype"
+    "-lfreetype",
+    "-Lthird_party/assimp/build/lib",
+    "-lassimp",
+    "-lz",
+    "-lc++"
   ]
 
 -- Test executable
@@ -75,7 +88,11 @@ lean_exe afferent_tests where
     "-framework", "Foundation",
     "-lobjc",
     "-L/opt/homebrew/lib",
-    "-lfreetype"
+    "-lfreetype",
+    "-Lthird_party/assimp/build/lib",
+    "-lassimp",
+    "-lz",
+    "-lc++"
   ]
 
 -- Native code targets
@@ -148,6 +165,22 @@ target texture_o pkg : FilePath := do
     "-O2"
   ] #[] "cc"
 
+-- Assimp loader (C++ code for 3D model loading)
+target assimp_loader_o pkg : FilePath := do
+  let oFile := pkg.buildDir / "native" / "assimp_loader.o"
+  let srcFile := pkg.dir / "native" / "src" / "common" / "assimp_loader.cpp"
+  let includeDir := pkg.dir / "native" / "include"
+  let assimpIncludeDir := pkg.dir / "third_party" / "assimp" / "include"
+  let assimpBuildIncludeDir := pkg.dir / "third_party" / "assimp" / "build" / "include"
+  buildO oFile (← inputTextFile srcFile) #[
+    "-I", includeDir.toString,
+    "-I", assimpIncludeDir.toString,
+    "-I", assimpBuildIncludeDir.toString,
+    "-std=c++17",
+    "-fPIC",
+    "-O2"
+  ] #[] "clang++"
+
 extern_lib libafferent_native pkg := do
   let name := nameToStaticLib "afferent_native"
   let windowO ← window_o.fetch
@@ -156,4 +189,5 @@ extern_lib libafferent_native pkg := do
   let bridgeO ← lean_bridge_o.fetch
   let floatBufferO ← float_buffer_o.fetch
   let textureO ← texture_o.fetch
-  buildStaticLib (pkg.staticLibDir / name) #[windowO, metalO, textO, bridgeO, floatBufferO, textureO]
+  let assimpLoaderO ← assimp_loader_o.fetch
+  buildStaticLib (pkg.staticLibDir / name) #[windowO, metalO, textO, bridgeO, floatBufferO, textureO, assimpLoaderO]

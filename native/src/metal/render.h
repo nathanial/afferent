@@ -89,6 +89,11 @@ struct AfferentRenderer {
     id<MTLRenderPipelineState> pipeline3DOcean;       // Active ocean projected-grid pipeline
     id<MTLRenderPipelineState> pipeline3DOceanMSAA;   // Ocean pipeline (4x MSAA)
     id<MTLRenderPipelineState> pipeline3DOceanNoMSAA; // Ocean pipeline (no MSAA)
+    // Textured 3D rendering (for loaded assets with diffuse textures)
+    id<MTLRenderPipelineState> pipeline3DTextured;       // Active textured 3D pipeline
+    id<MTLRenderPipelineState> pipeline3DTexturedMSAA;   // Textured 3D pipeline (4x MSAA)
+    id<MTLRenderPipelineState> pipeline3DTexturedNoMSAA; // Textured 3D pipeline (no MSAA)
+    id<MTLSamplerState> texturedMeshSampler;             // Sampler for textured meshes
     id<MTLBuffer> oceanIndexBuffer;
     uint32_t oceanIndexCount;
     uint32_t oceanGridSize;
