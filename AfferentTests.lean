@@ -5,6 +5,8 @@
 import Afferent.Tests.TessellationTests
 import Afferent.Tests.LayoutTests
 import Afferent.Tests.WidgetTests
+import Afferent.Tests.FFISafetyTests
+import Afferent.Tests.AssetLoadingTests
 
 open Afferent.Tests
 
@@ -26,6 +28,14 @@ def main : IO UInt32 := do
   -- Run widget tests
   let widgetResult ← WidgetTests.runAllTests
   if widgetResult != 0 then exitCode := 1
+
+  -- Run FFI safety tests
+  let ffiResult ← FFISafetyTests.runAllTests
+  if ffiResult != 0 then exitCode := 1
+
+  -- Run asset loading tests
+  let assetResult ← AssetLoadingTests.runAllTests
+  if assetResult != 0 then exitCode := 1
 
   -- Summary
   IO.println ""

@@ -12,7 +12,7 @@ namespace Afferent.FFI
 structure SubMesh where
   indexOffset : UInt32    -- Offset into combined index buffer
   indexCount : UInt32     -- Number of indices for this submesh
-  textureIndex : UInt32   -- Index into texturePaths array (UInt32.max if no texture)
+  textureIndex : UInt32   -- Index into texturePaths array (`UInt32.size - 1` if no texture)
   deriving Repr, Inhabited
 
 /-- A loaded 3D asset containing geometry and material references.

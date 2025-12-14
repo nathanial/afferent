@@ -121,7 +121,22 @@ def unifiedDemo : IO Unit := do
   -- Display modes: 0 = demo, 1 = grid squares, 2 = triangles, 3 = circles, 4 = sprites
   let startTime ← IO.monoMsNow
   let mut c := canvas
-  let mut displayMode : Nat := 0
+  let startMode :=
+    match (← IO.getEnv "AFFERENT_START_MODE") with
+    | some s =>
+        match s.toNat? with
+        | some n => n
+        | none => 0
+    | none => 0
+  let exitAfterFrames :=
+    match (← IO.getEnv "AFFERENT_EXIT_AFTER_FRAMES") with
+    | some s =>
+        match s.toNat? with
+        | some n => n
+        | none => 0
+    | none => 0
+
+  let mut displayMode : Nat := startMode % 11
   let mut msaaEnabled : Bool := true
   let mut lastTime := startTime
   let mut bouncingState := bouncingParticles
@@ -139,6 +154,7 @@ def unifiedDemo : IO Unit := do
   let mut fpsCamera : Render.FPSCamera := default
   -- Seascape camera (mode 10)
   let mut seascapeCamera : Render.FPSCamera := Demos.seascapeCamera
+  let mut framesLeft : Nat := exitAfterFrames
 
   while !(← c.shouldClose) do
     c.pollEvents
@@ -400,6 +416,10 @@ def unifiedDemo : IO Unit := do
         fillTextXY fpsText (physWidthF - textWidth - 12 * screenScale) (22 * screenScale) fontSmall
 
       c ← c.endFrame
+      if framesLeft != 0 then
+        framesLeft := framesLeft - 1
+        if framesLeft == 0 then
+          break
 
   IO.println "Cleaning up..."
   fontSmall.destroy

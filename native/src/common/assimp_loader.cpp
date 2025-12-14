@@ -52,6 +52,8 @@ AfferentResult afferent_asset_load(
         aiProcess_FlipUVs |
         aiProcess_CalcTangentSpace |
         aiProcess_JoinIdenticalVertices |
+        aiProcess_OptimizeMeshes |
+        aiProcess_OptimizeGraph |
         aiProcess_SortByPType
     );
 

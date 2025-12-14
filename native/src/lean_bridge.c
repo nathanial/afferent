@@ -36,6 +36,7 @@ static lean_external_class* g_buffer_class = NULL;
 static lean_external_class* g_font_class = NULL;
 static lean_external_class* g_float_buffer_class = NULL;
 static lean_external_class* g_texture_class = NULL;
+static uint8_t g_afferent_initialized = 0;
 
 // Weak reference so we don't double-free if Lean GC happens after explicit destroy
 static void window_finalizer(void* ptr) {
@@ -63,8 +64,9 @@ static void texture_finalizer(void* ptr) {
     // Same as above
 }
 
-// Module initialization
-LEAN_EXPORT lean_obj_res afferent_initialize(uint8_t builtin, lean_obj_arg world) {
+static void afferent_ensure_initialized(void) {
+    if (g_afferent_initialized) return;
+
     g_window_class = lean_register_external_class(window_finalizer, NULL);
     g_renderer_class = lean_register_external_class(renderer_finalizer, NULL);
     g_buffer_class = lean_register_external_class(buffer_finalizer, NULL);
@@ -74,6 +76,15 @@ LEAN_EXPORT lean_obj_res afferent_initialize(uint8_t builtin, lean_obj_arg world
 
     // Initialize text subsystem
     afferent_text_init();
+
+    g_afferent_initialized = 1;
+}
+
+// Module initialization
+LEAN_EXPORT lean_obj_res afferent_initialize(uint8_t builtin, lean_obj_arg world) {
+    (void)builtin;
+    (void)world;
+    afferent_ensure_initialized();
 
     return lean_io_result_mk_ok(lean_box(0));
 }
@@ -85,6 +96,7 @@ LEAN_EXPORT lean_obj_res lean_afferent_window_create(
     lean_obj_arg title,
     lean_obj_arg world
 ) {
+    afferent_ensure_initialized();
     const char* title_str = lean_string_cstr(title);
     AfferentWindowRef window = NULL;
     AfferentResult result = afferent_window_create(width, height, title_str, &window);
@@ -275,6 +287,7 @@ LEAN_EXPORT lean_obj_res lean_afferent_window_is_key_down(lean_obj_arg window_ob
 
 // Renderer creation
 LEAN_EXPORT lean_obj_res lean_afferent_renderer_create(lean_obj_arg window_obj, lean_obj_arg world) {
+    afferent_ensure_initialized();
     AfferentWindowRef window = (AfferentWindowRef)lean_get_external_data(window_obj);
     AfferentRendererRef renderer = NULL;
     AfferentResult result = afferent_renderer_create(window, &renderer);
@@ -346,6 +359,7 @@ LEAN_EXPORT lean_obj_res lean_afferent_buffer_create_vertex(
     lean_obj_arg vertices_arr,
     lean_obj_arg world
 ) {
+    afferent_ensure_initialized();
     AfferentRendererRef renderer = (AfferentRendererRef)lean_get_external_data(renderer_obj);
 
     size_t arr_size = lean_array_size(vertices_arr);
@@ -393,6 +407,7 @@ LEAN_EXPORT lean_obj_res lean_afferent_buffer_create_index(
     lean_obj_arg indices_arr,
     lean_obj_arg world
 ) {
+    afferent_ensure_initialized();
     AfferentRendererRef renderer = (AfferentRendererRef)lean_get_external_data(renderer_obj);
 
     size_t count = lean_array_size(indices_arr);
@@ -593,6 +608,7 @@ LEAN_EXPORT lean_obj_res lean_afferent_font_load(
     uint32_t size,
     lean_obj_arg world
 ) {
+    afferent_ensure_initialized();
     const char* path = lean_string_cstr(path_obj);
     AfferentFontRef font = NULL;
     AfferentResult result = afferent_font_load(path, size, &font);
@@ -704,6 +720,7 @@ LEAN_EXPORT lean_obj_res lean_afferent_text_render(
 // Avoids Lean's copy-on-write array semantics
 
 LEAN_EXPORT lean_obj_res lean_afferent_float_buffer_create(size_t capacity, lean_obj_arg world) {
+    afferent_ensure_initialized();
     AfferentFloatBufferRef buffer = NULL;
     AfferentResult result = afferent_float_buffer_create(capacity, &buffer);
 
@@ -1271,6 +1288,7 @@ LEAN_EXPORT lean_obj_res lean_afferent_texture_load(
     lean_obj_arg path_obj,
     lean_obj_arg world
 ) {
+    afferent_ensure_initialized();
     const char* path = lean_string_cstr(path_obj);
     AfferentTextureRef texture = NULL;
     AfferentResult result = afferent_texture_load(path, &texture);
@@ -1812,6 +1830,18 @@ LEAN_EXPORT lean_obj_res lean_afferent_asset_load(
 // Textured 3D Mesh Rendering FFI
 // =============================================================================
 
+// Cached CPU-side conversions for 3D mesh draws.
+// The Seascape frigate is drawn as many submeshes that all share the same
+// vertex/index arrays. Re-converting and malloc/free per submesh is extremely
+// expensive and can lead to memory pressure/crashes.
+static lean_object* g_cached_mesh_vertices_arr = NULL;
+static float* g_cached_mesh_vertices = NULL;
+static size_t g_cached_mesh_vertices_floats = 0;
+
+static lean_object* g_cached_mesh_indices_arr = NULL;
+static uint32_t* g_cached_mesh_indices = NULL;
+static size_t g_cached_mesh_indices_count = 0;
+
 // Draw textured 3D mesh with fog
 // vertices_arr: Array Float (12 floats per vertex: pos[3], normal[3], uv[2], color[4])
 // indices_arr: Array UInt32
@@ -1844,28 +1874,68 @@ LEAN_EXPORT lean_obj_res lean_afferent_renderer_draw_mesh_3d_textured(
         return lean_io_result_mk_ok(lean_box(0));
     }
 
-    // Convert to flat float array (renderer expects raw floats)
-    float* vertices = malloc(vert_floats * sizeof(float));
-    if (!vertices) {
-        return lean_io_result_mk_error(lean_mk_io_user_error(
-            lean_mk_string("Failed to allocate vertex buffer")));
+    // Convert/cached vertices
+    if (g_cached_mesh_vertices_arr != vertices_arr || g_cached_mesh_vertices_floats != vert_floats) {
+        if (g_cached_mesh_vertices_arr) {
+            lean_dec(g_cached_mesh_vertices_arr);
+            g_cached_mesh_vertices_arr = NULL;
+        }
+        if (g_cached_mesh_vertices) {
+            free(g_cached_mesh_vertices);
+            g_cached_mesh_vertices = NULL;
+        }
+
+        g_cached_mesh_vertices = malloc(vert_floats * sizeof(float));
+        if (!g_cached_mesh_vertices) {
+            return lean_io_result_mk_error(lean_mk_io_user_error(
+                lean_mk_string("Failed to allocate vertex buffer")));
+        }
+
+        for (size_t i = 0; i < vert_floats; i++) {
+            g_cached_mesh_vertices[i] = (float)lean_unbox_float(lean_array_get_core(vertices_arr, i));
+        }
+
+        g_cached_mesh_vertices_floats = vert_floats;
+        g_cached_mesh_vertices_arr = vertices_arr;
+        lean_inc(g_cached_mesh_vertices_arr);
     }
 
-    for (size_t i = 0; i < vert_floats; i++) {
-        vertices[i] = (float)lean_unbox_float(lean_array_get_core(vertices_arr, i));
-    }
-
-    // Convert index array
+    // Convert/cached indices
     size_t total_indices = lean_array_size(indices_arr);
-    uint32_t* indices = malloc(total_indices * sizeof(uint32_t));
-    if (!indices) {
-        free(vertices);
-        return lean_io_result_mk_error(lean_mk_io_user_error(
-            lean_mk_string("Failed to allocate index buffer")));
+    if (g_cached_mesh_indices_arr != indices_arr || g_cached_mesh_indices_count != total_indices) {
+        if (g_cached_mesh_indices_arr) {
+            lean_dec(g_cached_mesh_indices_arr);
+            g_cached_mesh_indices_arr = NULL;
+        }
+        if (g_cached_mesh_indices) {
+            free(g_cached_mesh_indices);
+            g_cached_mesh_indices = NULL;
+        }
+
+        g_cached_mesh_indices = malloc(total_indices * sizeof(uint32_t));
+        if (!g_cached_mesh_indices) {
+            return lean_io_result_mk_error(lean_mk_io_user_error(
+                lean_mk_string("Failed to allocate index buffer")));
+        }
+
+        for (size_t i = 0; i < total_indices; i++) {
+            g_cached_mesh_indices[i] = lean_unbox_uint32(lean_array_get_core(indices_arr, i));
+        }
+
+        g_cached_mesh_indices_count = total_indices;
+        g_cached_mesh_indices_arr = indices_arr;
+        lean_inc(g_cached_mesh_indices_arr);
     }
 
-    for (size_t i = 0; i < total_indices; i++) {
-        indices[i] = lean_unbox_uint32(lean_array_get_core(indices_arr, i));
+    // Clamp to valid range.
+    if (index_offset >= total_indices) {
+        return lean_io_result_mk_ok(lean_box(0));
+    }
+    if ((size_t)index_offset + (size_t)index_count > total_indices) {
+        index_count = (uint32_t)(total_indices - (size_t)index_offset);
+        if (index_count == 0) {
+            return lean_io_result_mk_ok(lean_box(0));
+        }
     }
 
     // Convert matrices and vectors
@@ -1885,15 +1955,12 @@ LEAN_EXPORT lean_obj_res lean_afferent_renderer_draw_mesh_3d_textured(
     // Draw the textured mesh
     afferent_renderer_draw_mesh_3d_textured(
         renderer,
-        vertices, (uint32_t)vertex_count,
-        indices, index_offset, index_count,
+        g_cached_mesh_vertices, (uint32_t)vertex_count,
+        g_cached_mesh_indices, index_offset, index_count,
         mvp, model, light, (float)ambient,
         camera_pos, fog_color, (float)fog_start, (float)fog_end,
         texture
     );
-
-    free(vertices);
-    free(indices);
 
     return lean_io_result_mk_ok(lean_box(0));
 }
