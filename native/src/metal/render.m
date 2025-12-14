@@ -1037,7 +1037,8 @@ struct AfferentRenderer {
     // 3D rendering support
     id<MTLTexture> depthTexture;           // Depth buffer (non-MSAA)
     id<MTLTexture> msaaDepthTexture;       // Depth buffer (MSAA)
-    id<MTLDepthStencilState> depthState;   // Depth test state
+    id<MTLDepthStencilState> depthState;   // Depth test state (enabled)
+    id<MTLDepthStencilState> depthStateDisabled; // Depth test disabled for 2D after 3D
     id<MTLRenderPipelineState> pipeline3D; // 3D rendering pipeline
     NSUInteger depthWidth;                 // Track depth texture size
     NSUInteger depthHeight;
@@ -1758,6 +1759,12 @@ AfferentResult afferent_renderer_create(
         depthStateDesc.depthWriteEnabled = YES;
         renderer->depthState = [renderer->device newDepthStencilStateWithDescriptor:depthStateDesc];
 
+        // Create depth stencil state with depth testing disabled (for 2D after 3D)
+        MTLDepthStencilDescriptor *depthDisabledDesc = [[MTLDepthStencilDescriptor alloc] init];
+        depthDisabledDesc.depthCompareFunction = MTLCompareFunctionAlways;
+        depthDisabledDesc.depthWriteEnabled = NO;
+        renderer->depthStateDisabled = [renderer->device newDepthStencilStateWithDescriptor:depthDisabledDesc];
+
         // ====================================================================
         // Create 3D rendering pipeline
         // ====================================================================
@@ -2473,8 +2480,9 @@ AfferentResult afferent_text_render(
             return AFFERENT_ERROR_TEXT_FAILED;
         }
 
-        // Switch to text pipeline
+        // Switch to text pipeline and disable depth testing for 2D text
         [renderer->currentEncoder setRenderPipelineState:renderer->textPipelineState];
+        [renderer->currentEncoder setDepthStencilState:renderer->depthStateDisabled];
 
         // Set texture and sampler
         [renderer->currentEncoder setFragmentTexture:fontTexture atIndex:0];
