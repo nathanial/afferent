@@ -990,16 +990,24 @@ vertex Vertex3DOut vertex_ocean_projected_waves(
     float horizonNdcY = horizonSy / tanHalfFovY;
 
     // Aggressive adaptive overscan near the surface.
-    float camHeight = max(camPos.y, 0.10);
-    float extraAllNdc = clamp((maxWaveAmp / camHeight) * 0.25, 0.0, 1.50);
+    // The projected-grid is view-frustum aligned, so when the camera is close to the surface and pitched down,
+    // wave displacement can expose the mesh boundary unless we overscan significantly (especially at the bottom).
+    float camHeight = max(camPos.y, 0.05);
+    float ampOverHeight = (camHeight > eps) ? (maxWaveAmp / camHeight) : 0.0;
+    float pitchDown = clamp(-pitch, 0.0, 1.2); // pitch is negative when looking down
+
+    float extraAllNdc = clamp(ampOverHeight * 0.45, 0.0, 4.0);
     float overscanEff = overscanNdc + extraAllNdc;
-    float extraBottomNdc = clamp((maxWaveAmp / camHeight) * 1.20, 0.0, 10.0);
+
+    float extraBottomNdc = clamp(ampOverHeight * (2.8 + 3.0 * pitchDown), 0.0, 30.0);
+    float extraSideNdc = clamp(ampOverHeight * (1.2 + 1.5 * pitchDown), 0.0, 12.0);
+    float extraTopNdc = clamp(ampOverHeight * (0.8 + 0.8 * pitchDown), 0.0, 8.0);
 
     float ndcBottom = -1.0 - overscanEff - extraBottomNdc;
     float ndcTop0 = horizonNdcY - horizonMargin;
-    float ndcTop = clamp(ndcTop0, ndcBottom, 1.0 + overscanEff);
-    float ndcLeft = -1.0 - overscanEff;
-    float ndcRight = 1.0 + overscanEff;
+    float ndcTop = clamp(ndcTop0, ndcBottom, 1.0 + overscanEff + extraTopNdc);
+    float ndcLeft = -1.0 - overscanEff - extraSideNdc;
+    float ndcRight = 1.0 + overscanEff + extraSideNdc;
 
     float ndcX = mix(ndcLeft, ndcRight, u01);
     float ndcY = mix(ndcTop, ndcBottom, v01);
@@ -1014,14 +1022,16 @@ vertex Vertex3DOut vertex_ocean_projected_waves(
     float baseProjX = originX + dir.x * tHit;
     float baseProjZ = originZ + dir.z * tHit;
 
-    float ndcAbsMaxX = 1.0 + overscanEff;
+    float ndcAbsMaxX = 1.0 + overscanEff + extraSideNdc;
     float ndcAbsMaxY = max(abs(ndcBottom), abs(ndcTop));
     float edge01X = abs(ndcX) / max(ndcAbsMaxX, eps);
     float edge01Y = abs(ndcY) / max(ndcAbsMaxY, eps);
     float edgeWeightX = smoothstep(0.75, 1.0, edge01X);
     float edgeWeightY = smoothstep(0.75, 1.0, edge01Y);
     float edgeWeight = max(edgeWeightX, edgeWeightY);
-    float expandMeters = (maxWaveAmp * 1.75 + 0.75) * edgeWeight;
+    float ampHeightFactor = clamp(ampOverHeight, 0.0, 10.0);
+    float expandScale = 2.0 + 3.0 * pitchDown + 0.35 * ampHeightFactor;
+    float expandMeters = (maxWaveAmp * expandScale + 2.0) * edgeWeight;
     if (expandMeters > 0.0) {
         float2 v = float2(baseProjX - originX, baseProjZ - originZ);
         float lenV = length(v);
