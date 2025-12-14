@@ -43,6 +43,13 @@ AfferentResult afferent_renderer_create(
             return AFFERENT_ERROR_INIT_FAILED;
         }
 
+        // Load shaders from external files
+        if (!afferent_init_shaders()) {
+            NSLog(@"Failed to load shaders");
+            free(renderer);
+            return AFFERENT_ERROR_INIT_FAILED;
+        }
+
         // Create all pipelines
         AfferentResult pipelineResult = create_pipelines(renderer);
         if (pipelineResult != AFFERENT_OK) {
