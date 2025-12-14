@@ -18,6 +18,8 @@ import Demos.SpritesPerf
 import Demos.Widgets
 import Demos.Interactive
 import Demos.SpinningCubes
+import Demos.DemoGrid
+import Demos.Seascape
 
 set_option maxRecDepth 1024
 
@@ -65,13 +67,6 @@ def unifiedDemo : IO Unit := do
   -- Grid layout: 2x3, cell dimensions scaled for physical resolution
   let cellWidth : Float := 960 * screenScale
   let cellHeight : Float := 360 * screenScale
-
-  -- Background colors for each cell (animated versions will vary with time)
-  let bg00 := Color.hsva 0.667 0.25 0.20 1.0  -- Dark blue-gray
-  let bg10 := Color.hsva 0.0 0.25 0.20 1.0    -- Dark red-gray
-  let bg01 := Color.hsva 0.333 0.25 0.20 1.0  -- Dark green-gray
-  let bg11 := Color.hsva 0.125 0.4 0.20 1.0   -- Dark warm gray
-  let bg02 := Color.hsva 0.767 0.25 0.20 1.0  -- Dark purple-gray
 
   -- Pre-compute particle data ONCE at startup using unified Dynamic module
   -- Sizes scaled for physical resolution
@@ -142,6 +137,8 @@ def unifiedDemo : IO Unit := do
   let mut lastInteractiveMsgs : Array CounterMsg := #[]
   -- FPS camera for 3D demo (mode 9)
   let mut fpsCamera : Render.FPSCamera := default
+  -- Seascape camera (mode 10)
+  let mut seascapeCamera : Render.FPSCamera := Demos.seascapeCamera
 
   while !(← c.shouldClose) do
     c.pollEvents
@@ -149,10 +146,10 @@ def unifiedDemo : IO Unit := do
     -- Check for Space key (key code 49) to cycle through modes
     let keyCode ← c.getKeyCode
     if keyCode == 49 then  -- Space bar
-      -- Release pointer lock when leaving mode 9
-      if displayMode == 9 then
+      -- Release pointer lock when leaving mode 9 or 10
+      if displayMode == 9 || displayMode == 10 then
         FFI.Window.setPointerLock c.ctx.window false
-      displayMode := (displayMode + 1) % 10
+      displayMode := (displayMode + 1) % 11
       c.clearKey
       -- Disable MSAA only for sprite benchmark mode to maximize throughput.
       -- Keep Retina/native drawable scaling enabled.
@@ -168,7 +165,8 @@ def unifiedDemo : IO Unit := do
       | 6 => IO.println "Switched to CSS GRID demo (full-size)"
       | 7 => IO.println "Switched to WIDGET demo (full-size)"
       | 8 => IO.println "Switched to INTERACTIVE demo (click the buttons!)"
-      | _ => IO.println "Switched to 3D SPINNING CUBES demo"
+      | 9 => IO.println "Switched to 3D SPINNING CUBES demo"
+      | _ => IO.println "Switched to SEASCAPE demo (Gerstner waves)"
 
     let ok ← c.beginFrame Color.darkGray
     if ok then
@@ -341,92 +339,52 @@ def unifiedDemo : IO Unit := do
 
           -- Debug line (helps confirm input is arriving)
           fillTextXY s!"lock={locked} dt={dt} w={wDown} a={aDown} s={sDown} d={dDown} q={qDown} e={eDown} dx={dx} dy={dy} pos=({fpsCamera.x},{fpsCamera.y},{fpsCamera.z}) yaw={fpsCamera.yaw} pitch={fpsCamera.pitch}" (20 * screenScale) (55 * screenScale) fontSmall
+      else if displayMode == 10 then
+        -- Seascape demo with Gerstner waves and FPS camera
+        let mut locked ← FFI.Window.getPointerLock c.ctx.window
+        if keyCode == 53 then  -- Escape
+          FFI.Window.setPointerLock c.ctx.window (!locked)
+          locked := !locked
+          c.clearKey
+        else if !locked then
+          let click ← FFI.Window.getClick c.ctx.window
+          match click with
+          | some ce =>
+            FFI.Window.clearClick c.ctx.window
+            if ce.button == 0 then
+              FFI.Window.setPointerLock c.ctx.window true
+              locked := true
+          | none => pure ()
+
+        -- Check movement keys (WASD + Q/E)
+        let wDown ← FFI.Window.isKeyDown c.ctx.window 13  -- W
+        let aDown ← FFI.Window.isKeyDown c.ctx.window 0   -- A
+        let sDown ← FFI.Window.isKeyDown c.ctx.window 1   -- S
+        let dDown ← FFI.Window.isKeyDown c.ctx.window 2   -- D
+        let qDown ← FFI.Window.isKeyDown c.ctx.window 12  -- Q
+        let eDown ← FFI.Window.isKeyDown c.ctx.window 14  -- E
+
+        let (dx, dy) ←
+          if locked then
+            FFI.Window.getMouseDelta c.ctx.window
+          else
+            pure (0.0, 0.0)
+
+        -- Update seascape camera
+        seascapeCamera := seascapeCamera.update dt wDown sDown aDown dDown eDown qDown dx dy
+
+        -- Render seascape
+        renderSeascape c.ctx.renderer t physWidthF physHeightF seascapeCamera
+        c ← run' (c.resetTransform) do
+          setFillColor Color.white
+          if locked then
+            fillTextXY "Seascape - WASD+Q/E to move, mouse to look, Escape to release (Space to advance)" (20 * screenScale) (30 * screenScale) fontMedium
+          else
+            fillTextXY "Seascape - WASD+Q/E to move, click or Escape to capture mouse (Space to advance)" (20 * screenScale) (30 * screenScale) fontMedium
       else
         -- Normal demo mode: grid of demos using CanvasM for proper state threading
         c ← run' (c.resetTransform) do
-          -- Cell 0,0: Shapes demo (top-left)
-          let cellRect00 := Rect.mk' 0 0 cellWidth cellHeight
-          clip cellRect00
-          setFillColor bg00
-          fillRect cellRect00
-          setFillColor (Color.hsva 0.0 0.0 1.0 0.5)
-          fillTextXY "Cell: 0,0 - Shapes" (10 * screenScale) (20 * screenScale) fontSmall
-          save
-          scale (0.45 * screenScale) (0.45 * screenScale)
-          renderShapesM
-          restore
-          unclip
-
-          -- Cell 1,0: Transforms demo (top-right)
-          let cellRect10 := Rect.mk' cellWidth 0 cellWidth cellHeight
-          clip cellRect10
-          setFillColor bg10
-          fillRect cellRect10
-          setFillColor (Color.hsva 0.0 0.0 1.0 0.5)
-          fillTextXY "Cell: 1,0 - Transforms" (cellWidth + 10 * screenScale) (20 * screenScale) fontSmall
-          save
-          translate cellWidth 0
-          scale (0.6 * screenScale) (0.6 * screenScale)
-          renderTransformsM
-          restore
-          unclip
-
-          -- Cell 0,1: Strokes demo (middle-left)
-          let cellRect01 := Rect.mk' 0 cellHeight cellWidth cellHeight
-          clip cellRect01
-          setFillColor bg01
-          fillRect cellRect01
-          setFillColor (Color.hsva 0.0 0.0 1.0 0.5)
-          fillTextXY "Cell: 0,1 - Strokes" (10 * screenScale) (cellHeight + 20 * screenScale) fontSmall
-          save
-          translate 0 cellHeight
-          scale (0.51 * screenScale) (0.51 * screenScale)
-          renderStrokesM
-          restore
-          unclip
-
-          -- Cell 1,1: Gradients demo (middle-right)
-          let cellRect11 := Rect.mk' cellWidth cellHeight cellWidth cellHeight
-          clip cellRect11
-          setFillColor bg11
-          fillRect cellRect11
-          setFillColor (Color.hsva 0.0 0.0 1.0 0.5)
-          fillTextXY "Cell: 1,1 - Gradients" (cellWidth + 10 * screenScale) (cellHeight + 20 * screenScale) fontSmall
-          save
-          translate cellWidth cellHeight
-          scale (0.51 * screenScale) (0.51 * screenScale)
-          renderGradientsM
-          restore
-          unclip
-
-          -- Cell 0,2: Text demo (bottom-left)
-          let cellRect02 := Rect.mk' 0 (cellHeight * 2) cellWidth cellHeight
-          clip cellRect02
-          setFillColor bg02
-          fillRect cellRect02
-          setFillColor (Color.hsva 0.0 0.0 1.0 0.5)
-          fillTextXY "Cell: 0,2 - Text" (10 * screenScale) (cellHeight * 2 + 20 * screenScale) fontSmall
-          save
-          translate 0 (cellHeight * 2)
-          scale (0.51 * screenScale) (0.51 * screenScale)
-          renderTextM fonts
-          restore
-          unclip
-
-          -- Cell 1,2: Layout demo (bottom-right)
-          let cellRect12 := Rect.mk' cellWidth (cellHeight * 2) cellWidth cellHeight
-          clip cellRect12
-          let bg12 := Color.hsva 0.75 0.25 0.20 1.0  -- Dark purple-gray
-          setFillColor bg12
-          fillRect cellRect12
-          setFillColor (Color.hsva 0.0 0.0 1.0 0.5)
-          fillTextXY "Cell: 1,2 - Animations" (cellWidth + 10 * screenScale) (cellHeight * 2 + 20 * screenScale) fontSmall
-          save
-          translate cellWidth (cellHeight * 2)
-          scale (0.45 * screenScale) (0.45 * screenScale)
-          renderAnimationsM t
-          restore
-          unclip
+          renderDemoGridM screenScale cellWidth cellHeight fontSmall fonts t
 
       -- Render FPS counter in top-right corner (after all other rendering)
       let fpsText := s!"{displayFps.toUInt32} FPS"
