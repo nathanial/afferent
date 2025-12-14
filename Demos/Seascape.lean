@@ -362,7 +362,7 @@ def OceanMesh.createProjectedGrid (gridSize : Nat) (fovY aspect : Float)
   let ndcTop0 := horizonNdcY - horizonMargin
   let ndcTop :=
     if ndcTop0 < ndcBottom then ndcBottom
-    else if ndcTop0 > 1.0 then 1.0
+    else if ndcTop0 > 1.0 + overscanNdc then 1.0 + overscanNdc
     else ndcTop0
   let ndcLeft := -1.0 - overscanNdc
   let ndcRight := 1.0 + overscanNdc

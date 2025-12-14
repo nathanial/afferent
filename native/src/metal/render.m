@@ -967,13 +967,23 @@ vertex Vertex3DOut vertex_ocean_projected_waves(
     float tanHalfFovY = tan(fovY * 0.5);
     float tanHalfFovX = tanHalfFovY * aspect;
 
+    // Conservative wave bounds for overscan:
+    // - Vertical displacement is bounded by sum(amplitude).
+    // - Horizontal displacement in our Gerstner implementation is also bounded by sum(amplitude).
+    float maxWaveAmp = 0.0;
+    for (uint i = 0; i < 4; i++) {
+        maxWaveAmp += u.waveB[i].x;
+    }
+
     // Horizon cutoff in NDC (same logic as CPU path).
     float eps = 0.00001;
     float horizonSy = (abs(up.y) < eps) ? 0.0 : (-fwd.y) / up.y;
     float horizonNdcY = horizonSy / tanHalfFovY;
     float ndcBottom = -1.0 - overscanNdc;
     float ndcTop0 = horizonNdcY - horizonMargin;
-    float ndcTop = clamp(ndcTop0, ndcBottom, 1.0);
+    // Allow overscan above the top of the screen when the horizon is above the frustum (e.g. looking down),
+    // but keep the horizon cutoff when it lies within the frustum to avoid a hard cap.
+    float ndcTop = clamp(ndcTop0, ndcBottom, 1.0 + overscanNdc);
     float ndcLeft = -1.0 - overscanNdc;
     float ndcRight = 1.0 + overscanNdc;
 
@@ -984,11 +994,32 @@ vertex Vertex3DOut vertex_ocean_projected_waves(
     float sy = ndcY * tanHalfFovY;
     float3 dir = right * sx + up * sy + fwd;
 
-    float tHit = (abs(dir.y) < eps) ? maxDistance : (-camPos.y) / dir.y;
+    // Intersect against a slightly lowered plane to ensure the projected grid still covers the viewport
+    // when waves displace upward/downward near the camera.
+    float planeY = -maxWaveAmp;
+    float tHit = (abs(dir.y) < eps) ? maxDistance : ((planeY - camPos.y) / dir.y);
     tHit = (tHit < 0.0) ? maxDistance : ((tHit > maxDistance) ? maxDistance : tHit);
 
     float baseX = originX + dir.x * tHit;
     float baseZ = originZ + dir.z * tHit;
+
+    // Extra overscan in world space near the screen edges to account for horizontal Gerstner displacement
+    // pulling geometry inward (most visible when the camera is close to the surface and pitched downward).
+    float denomX = max(1.0 + overscanNdc, eps);
+    float denomY = max(1.0 + overscanNdc, eps);
+    float edge01 = max(abs(ndcX) / denomX, abs(ndcY) / denomY);
+    float edgeWeight = smoothstep(0.75, 1.0, edge01);
+    float expandMeters = (maxWaveAmp * 1.25 + 0.25) * edgeWeight;
+
+    if (expandMeters > 0.0) {
+        float2 centerXZ = float2(originX, originZ);
+        float2 baseXZ = float2(baseX, baseZ);
+        float2 v = baseXZ - centerXZ;
+        float lenV = length(v);
+        float2 dirXZ = (lenV > eps) ? (v / lenV) : normalize(float2(dir.x, dir.z));
+        baseX += dirXZ.x * expandMeters;
+        baseZ += dirXZ.y * expandMeters;
+    }
 
     float3 displacedPos;
     float3 localNormal;
