@@ -996,12 +996,36 @@ vertex Vertex3DOut vertex_ocean_projected_waves(
     float ampOverHeight = (camHeight > eps) ? (maxWaveAmp / camHeight) : 0.0;
     float pitchDown = clamp(-pitch, 0.0, 1.2); // pitch is negative when looking down
 
+    // Make overscan sensitive to wave direction relative to camera.
+    // If waves are aligned with camera forward, horizontal displacement tends to pull/push geometry along
+    // the view direction, which most strongly reveals gaps near the bottom/foreground when looking down.
+    float2 fwdXZ0 = float2(fwd.x, fwd.z);
+    float2 rightXZ0 = float2(right.x, right.z);
+    float fwdXZLen = length(fwdXZ0);
+    float rightXZLen = length(rightXZ0);
+    float2 fwdXZ = (fwdXZLen > eps) ? (fwdXZ0 / fwdXZLen) : float2(0.0, -1.0);
+    float2 rightXZ = (rightXZLen > eps) ? (rightXZ0 / rightXZLen) : float2(1.0, 0.0);
+
+    float forwardDisp = 0.0;
+    float sideDisp = 0.0;
+    for (uint i = 0; i < 4; i++) {
+        float2 wdir = float2(u.waveA[i].x, u.waveA[i].y);
+        float amplitude = u.waveB[i].x;
+        forwardDisp += amplitude * abs(dot(wdir, fwdXZ));
+        sideDisp += amplitude * abs(dot(wdir, rightXZ));
+    }
+    float forwardAlign = (maxWaveAmp > eps) ? clamp(forwardDisp / maxWaveAmp, 0.0, 1.0) : 0.0;
+    float sideAlign = (maxWaveAmp > eps) ? clamp(sideDisp / maxWaveAmp, 0.0, 1.0) : 0.0;
+
     float extraAllNdc = clamp(ampOverHeight * 0.45, 0.0, 4.0);
+    extraAllNdc *= (1.0 + 0.35 * forwardAlign);
     float overscanEff = overscanNdc + extraAllNdc;
 
     float extraBottomNdc = clamp(ampOverHeight * (2.8 + 3.0 * pitchDown), 0.0, 30.0);
     float extraSideNdc = clamp(ampOverHeight * (1.2 + 1.5 * pitchDown), 0.0, 12.0);
     float extraTopNdc = clamp(ampOverHeight * (0.8 + 0.8 * pitchDown), 0.0, 8.0);
+    extraBottomNdc *= (1.0 + 2.5 * forwardAlign);
+    extraSideNdc *= (1.0 + 1.5 * sideAlign);
 
     float ndcBottom = -1.0 - overscanEff - extraBottomNdc;
     float ndcTop0 = horizonNdcY - horizonMargin;
@@ -1030,7 +1054,7 @@ vertex Vertex3DOut vertex_ocean_projected_waves(
     float edgeWeightY = smoothstep(0.75, 1.0, edge01Y);
     float edgeWeight = max(edgeWeightX, edgeWeightY);
     float ampHeightFactor = clamp(ampOverHeight, 0.0, 10.0);
-    float expandScale = 2.0 + 3.0 * pitchDown + 0.35 * ampHeightFactor;
+    float expandScale = 2.0 + 3.0 * pitchDown + 0.35 * ampHeightFactor + 1.5 * forwardAlign + 0.75 * sideAlign;
     float expandMeters = (maxWaveAmp * expandScale + 2.0) * edgeWeight;
     if (expandMeters > 0.0) {
         float2 v = float2(baseProjX - originX, baseProjZ - originZ);
