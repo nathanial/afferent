@@ -301,6 +301,133 @@ def OceanMesh.applyWaves (mesh : OceanMesh) (waves : Array GerstnerWave) (t : Fl
 
   { mesh with vertices }
 
+/-! ## Projected Grid Ocean -/
+
+private def v3cross (ax ay az bx by_ bz : Float) : Float × Float × Float :=
+  (ay * bz - az * by_, az * bx - ax * bz, ax * by_ - ay * bx)
+
+private def v3normalize (x y z : Float) : Float × Float × Float :=
+  let len := Float.sqrt (x * x + y * y + z * z)
+  if len < 0.000001 then (0.0, 0.0, 0.0) else (x / len, y / len, z / len)
+
+/-- Create an ocean mesh using a projected grid (screen-space grid projected onto y=0 plane).
+    This keeps vertex density high near the camera and low toward the horizon. -/
+def OceanMesh.createProjectedGrid (gridSize : Nat) (fovY aspect : Float)
+    (camera : FPSCamera) (maxDistance snapSize overscanNdc : Float) : OceanMesh :=
+  let numVertices := gridSize * gridSize
+  let numQuads := (gridSize - 1) * (gridSize - 1)
+  let numIndices := (numQuads * 2 * 3)
+
+  let overscanNdc := if overscanNdc < 0.0 then 0.0 else overscanNdc
+
+  -- Snap the grid in world XZ to reduce "swimming" as the camera translates.
+  let snapEps := 0.00001
+  let useSnap := snapSize > snapEps
+  let originX := if useSnap then Float.floor (camera.x / snapSize) * snapSize else camera.x
+  let originZ := if useSnap then Float.floor (camera.z / snapSize) * snapSize else camera.z
+
+  -- Camera basis (world space)
+  let cosPitch := Float.cos camera.pitch
+  let sinPitch := Float.sin camera.pitch
+  let cosYaw := Float.cos camera.yaw
+  let sinYaw := Float.sin camera.yaw
+
+  let fwdX := cosPitch * sinYaw
+  let fwdY := sinPitch
+  let fwdZ := -cosPitch * cosYaw
+
+  let (rx0, ry0, rz0) := v3cross fwdX fwdY fwdZ 0.0 1.0 0.0
+  let (rightX, rightY, rightZ) := v3normalize rx0 ry0 rz0
+  let (ux0, uy0, uz0) := v3cross rightX rightY rightZ fwdX fwdY fwdZ
+  let (upX, upY, upZ) := v3normalize ux0 uy0 uz0
+
+  -- Projection parameters (camera-space rays)
+  let tanHalfFovY := Float.tan (fovY / 2.0)
+  let tanHalfFovX := tanHalfFovY * aspect
+
+  -- Restrict the grid to below the horizon so we don't generate a hard "cap" at `maxDistance`
+  -- near the upper corners of the viewport.
+  let eps := 0.00001
+  let horizonSy := if Float.abs upY < eps then 0.0 else (-fwdY) / upY
+  let horizonNdcY := horizonSy / tanHalfFovY
+  let horizonMargin := 0.05
+  let ndcBottom := -1.0 - overscanNdc
+  let ndcTop0 := horizonNdcY - horizonMargin
+  let ndcTop :=
+    if ndcTop0 < ndcBottom then ndcBottom
+    else if ndcTop0 > 1.0 then 1.0
+    else ndcTop0
+  let ndcLeft := -1.0 - overscanNdc
+  let ndcRight := 1.0 + overscanNdc
+
+  let (basePositions, vertices) := Id.run do
+    let mut basePositions := Array.mkEmpty (numVertices * 2)
+    let mut vertices := Array.mkEmpty (numVertices * 10)
+
+    let denom := (gridSize - 1).toFloat
+    for row in [:gridSize] do
+      for col in [:gridSize] do
+        -- NDC coordinates [-1, 1]
+        let ndcX := ndcLeft + (col.toFloat / denom) * (ndcRight - ndcLeft)
+        let ndcY := ndcTop - (row.toFloat / denom) * (ndcTop - ndcBottom)
+
+        -- World ray direction through this screen sample
+        let sx := ndcX * tanHalfFovX
+        let sy := ndcY * tanHalfFovY
+        let dirX0 := rightX * sx + upX * sy + fwdX
+        let dirY0 := rightY * sx + upY * sy + fwdY
+        let dirZ0 := rightZ * sx + upZ * sy + fwdZ
+        let (dirX, dirY, dirZ) := v3normalize dirX0 dirY0 dirZ0
+
+        -- Intersect ray with ocean plane y=0. Clamp to a max distance for stability.
+        let t :=
+          if Float.abs dirY < eps then
+            maxDistance
+          else
+            (-camera.y) / dirY
+        let t :=
+          if t < 0.0 then maxDistance else if t > maxDistance then maxDistance else t
+
+        let x := originX + dirX * t
+        let z := originZ + dirZ * t
+
+        basePositions := basePositions.push x
+        basePositions := basePositions.push z
+
+        -- Initial vertex: position(3) + normal(3) + color(4)
+        vertices := vertices.push x
+        vertices := vertices.push 0.0
+        vertices := vertices.push z
+        vertices := vertices.push 0.0
+        vertices := vertices.push 1.0
+        vertices := vertices.push 0.0
+        vertices := vertices.push 0.20
+        vertices := vertices.push 0.35
+        vertices := vertices.push 0.40
+        vertices := vertices.push 1.0
+
+    return (basePositions, vertices)
+
+  let indices := Id.run do
+    let mut indices := Array.mkEmpty numIndices
+    for row in [:(gridSize - 1)] do
+      for col in [:(gridSize - 1)] do
+        let topLeft := (row * gridSize + col).toUInt32
+        let topRight := topLeft + 1
+        let bottomLeft := ((row + 1) * gridSize + col).toUInt32
+        let bottomRight := bottomLeft + 1
+
+        indices := indices.push topLeft
+        indices := indices.push bottomLeft
+        indices := indices.push topRight
+
+        indices := indices.push topRight
+        indices := indices.push bottomLeft
+        indices := indices.push bottomRight
+    return indices
+
+  { gridSize, extent := maxDistance, basePositions, vertices, indices }
+
 /-! ## Sky Dome -/
 
 /-- Sky dome mesh for procedural overcast sky. -/
@@ -506,42 +633,15 @@ def renderSeascape (renderer : Renderer) (t : Float)
   let model := Matrix4.identity
   let mvp := Matrix4.multiply proj (Matrix4.multiply view model)
 
-  -- Near ocean mesh (high detail disc, matches ring seam at radius 50)
-  let nearMesh := OceanMesh.createRing 64 64 0.0 50.0
-  let nearMesh := nearMesh.applyWaves defaultWaves t
+  -- Ocean surface via projected grid (infinite-feeling without chunk streaming).
+  -- `maxDistance` should extend past fog end distance so the edge stays hidden.
+  -- Overscan extends slightly beyond the view frustum so horizontal Gerstner displacement
+  -- doesn't pull the border inward and reveal the mesh edge.
+  let oceanMesh := OceanMesh.createProjectedGrid 128 fovY aspect camera 800.0 2.0 0.25
+  let oceanMesh := oceanMesh.applyWaves defaultWaves t
   Renderer.drawMesh3DWithFog renderer
-    nearMesh.vertices
-    nearMesh.indices
-    mvp.toArray
-    model.toArray
-    lightDir
-    ambient
-    cameraPos
-    fog.color
-    fog.start
-    fog.endDist
-
-  -- Mid ring (medium detail: fewer radial steps, same angular steps for crack-free seam)
-  let midMesh := OceanMesh.createRing 32 64 50.0 150.0
-  let midMesh := midMesh.applyWaves defaultWaves t
-  Renderer.drawMesh3DWithFog renderer
-    midMesh.vertices
-    midMesh.indices
-    mvp.toArray
-    model.toArray
-    lightDir
-    ambient
-    cameraPos
-    fog.color
-    fog.start
-    fog.endDist
-
-  -- Far ring (low detail: even fewer radial steps, same angular steps for crack-free seam)
-  let farMesh := OceanMesh.createRing 16 64 150.0 500.0
-  let farMesh := farMesh.applyWaves defaultWaves t
-  Renderer.drawMesh3DWithFog renderer
-    farMesh.vertices
-    farMesh.indices
+    oceanMesh.vertices
+    oceanMesh.indices
     mvp.toArray
     model.toArray
     lightDir
