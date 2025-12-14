@@ -12,6 +12,13 @@ namespace Demos
 /-- Pi constant for wave calculations. -/
 private def pi : Float := 3.14159265358979
 
+private def v3cross (ax ay az bx by_ bz : Float) : Float × Float × Float :=
+  (ay * bz - az * by_, az * bx - ax * bz, ax * by_ - ay * bx)
+
+private def v3normalize (x y z : Float) : Float × Float × Float :=
+  let len := Float.sqrt (x * x + y * y + z * z)
+  if len < 0.000001 then (0.0, 0.0, 0.0) else (x / len, y / len, z / len)
+
 /-! ## Gerstner Wave Parameters -/
 
 /-- A single Gerstner wave component. -/
@@ -29,6 +36,30 @@ def defaultWaves : Array GerstnerWave := #[
   { amplitude := 0.3, wavelength := 10.0, direction := -pi / 6.0, speed := 1.2 },
   { amplitude := 0.2, wavelength := 7.0, direction := pi * 0.39, speed := 1.5 }
 ]
+
+/-- Precomputed wave constants to reduce per-vertex work. -/
+private structure PreparedWave where
+  amplitude : Float
+  dirX : Float
+  dirZ : Float
+  k : Float
+  omegaSpeed : Float
+  ak : Float
+  deriving Inhabited
+
+private def prepareWaves (waves : Array GerstnerWave) : Array PreparedWave :=
+  let gravity := 9.8
+  waves.map fun w =>
+    let k := 2.0 * pi / w.wavelength
+    let omega := Float.sqrt (gravity * k)
+    let dirX := Float.cos w.direction
+    let dirZ := Float.sin w.direction
+    { amplitude := w.amplitude
+      dirX
+      dirZ
+      k
+      omegaSpeed := omega * w.speed
+      ak := w.amplitude * k }
 
 /-- Compute Gerstner wave displacement for a single point.
     Returns (dx, dy, dz) displacement. -/
@@ -191,89 +222,54 @@ def OceanMesh.createRing (radialSteps angularSteps : Nat) (innerExtent outerExte
 
 /-- Apply Gerstner waves to the ocean mesh and recompute normals. -/
 def OceanMesh.applyWaves (mesh : OceanMesh) (waves : Array GerstnerWave) (t : Float) : OceanMesh :=
+  let prepared := prepareWaves waves
   let numVertices := mesh.basePositions.size / 2
+  let vertices := Id.run do
+    let mut vertices := Array.mkEmpty (numVertices * 10)
 
-  -- First pass: compute displaced positions (x,y,z) for every base (x,z).
-  let displacedPositions := Id.run do
-    let mut displacedPositions := Array.mkEmpty (numVertices * 3)
     for i in [:numVertices] do
       let baseX := mesh.basePositions.getD (i * 2) 0.0
       let baseZ := mesh.basePositions.getD (i * 2 + 1) 0.0
-      let (dx, dy, dz) := gerstnerDisplacement waves baseX baseZ t
-      displacedPositions := displacedPositions.push (baseX + dx)
-      displacedPositions := displacedPositions.push dy
-      displacedPositions := displacedPositions.push (baseZ + dz)
-    return displacedPositions
 
-  -- Second pass: accumulate normals from triangles (works for any topology / LOD layout).
-  let normalSums := Id.run do
-    let mut normalSums := Array.replicate (numVertices * 3) 0.0
-    let triCount := mesh.indices.size / 3
-    for triIdx in [:triCount] do
-      let i0 := (mesh.indices.getD (triIdx * 3) (0 : UInt32)).toNat
-      let i1 := (mesh.indices.getD (triIdx * 3 + 1) (0 : UInt32)).toNat
-      let i2 := (mesh.indices.getD (triIdx * 3 + 2) (0 : UInt32)).toNat
+      -- Displacement + partials for analytic normal (no per-triangle accumulation).
+      let mut dx := 0.0
+      let mut dy := 0.0
+      let mut dz := 0.0
+      let mut sx := 0.0
+      let mut sz := 0.0
+      let mut sxx := 0.0
+      let mut szz := 0.0
+      let mut sxz := 0.0
+      for w in prepared do
+        let phase := w.k * (w.dirX * baseX + w.dirZ * baseZ) - w.omegaSpeed * t
+        let cosPhase := Float.cos phase
+        let sinPhase := Float.sin phase
+        dx := dx + w.amplitude * w.dirX * cosPhase
+        dy := dy + w.amplitude * sinPhase
+        dz := dz + w.amplitude * w.dirZ * cosPhase
 
-      let p0x := displacedPositions.getD (i0 * 3) 0.0
-      let p0y := displacedPositions.getD (i0 * 3 + 1) 0.0
-      let p0z := displacedPositions.getD (i0 * 3 + 2) 0.0
+        sx := sx + w.ak * w.dirX * cosPhase
+        sz := sz + w.ak * w.dirZ * cosPhase
+        sxx := sxx + w.ak * w.dirX * w.dirX * sinPhase
+        szz := szz + w.ak * w.dirZ * w.dirZ * sinPhase
+        sxz := sxz + w.ak * w.dirX * w.dirZ * sinPhase
 
-      let p1x := displacedPositions.getD (i1 * 3) 0.0
-      let p1y := displacedPositions.getD (i1 * 3 + 1) 0.0
-      let p1z := displacedPositions.getD (i1 * 3 + 2) 0.0
+      let x := baseX + dx
+      let y := dy
+      let z := baseZ + dz
 
-      let p2x := displacedPositions.getD (i2 * 3) 0.0
-      let p2y := displacedPositions.getD (i2 * 3 + 1) 0.0
-      let p2z := displacedPositions.getD (i2 * 3 + 2) 0.0
+      let dPdxX := 1.0 - sxx
+      let dPdxY := sx
+      let dPdxZ := -sxz
 
-      let e1x := p1x - p0x
-      let e1y := p1y - p0y
-      let e1z := p1z - p0z
+      let dPdzX := -sxz
+      let dPdzY := sz
+      let dPdzZ := 1.0 - szz
 
-      let e2x := p2x - p0x
-      let e2y := p2y - p0y
-      let e2z := p2z - p0z
-
-      -- Face normal (e1 x e2)
-      let nx := e1y * e2z - e1z * e2y
-      let ny := e1z * e2x - e1x * e2z
-      let nz := e1x * e2y - e1y * e2x
-
-      let o0 := i0 * 3
-      let o1 := i1 * 3
-      let o2 := i2 * 3
-
-      normalSums := normalSums.set! o0 (normalSums.getD o0 0.0 + nx)
-      normalSums := normalSums.set! (o0 + 1) (normalSums.getD (o0 + 1) 0.0 + ny)
-      normalSums := normalSums.set! (o0 + 2) (normalSums.getD (o0 + 2) 0.0 + nz)
-
-      normalSums := normalSums.set! o1 (normalSums.getD o1 0.0 + nx)
-      normalSums := normalSums.set! (o1 + 1) (normalSums.getD (o1 + 1) 0.0 + ny)
-      normalSums := normalSums.set! (o1 + 2) (normalSums.getD (o1 + 2) 0.0 + nz)
-
-      normalSums := normalSums.set! o2 (normalSums.getD o2 0.0 + nx)
-      normalSums := normalSums.set! (o2 + 1) (normalSums.getD (o2 + 1) 0.0 + ny)
-      normalSums := normalSums.set! (o2 + 2) (normalSums.getD (o2 + 2) 0.0 + nz)
-
-    return normalSums
-
-  -- Third pass: normalize normals and update vertex buffer (position, normal, color).
-  let vertices := Id.run do
-    let mut vertices := mesh.vertices
-    for i in [:numVertices] do
-      let vertexOffset := i * 10
-
-      let x := displacedPositions.getD (i * 3) 0.0
-      let y := displacedPositions.getD (i * 3 + 1) 0.0
-      let z := displacedPositions.getD (i * 3 + 2) 0.0
-
-      let nx0 := normalSums.getD (i * 3) 0.0
-      let ny0 := normalSums.getD (i * 3 + 1) 0.0
-      let nz0 := normalSums.getD (i * 3 + 2) 0.0
-
+      let (nx0, ny0, nz0) := v3cross dPdzX dPdzY dPdzZ dPdxX dPdxY dPdxZ
       let nLen := Float.sqrt (nx0 * nx0 + ny0 * ny0 + nz0 * nz0)
       let (nx, ny, nz) :=
-        if nLen < 0.0001 then
+        if nLen < 0.000001 then
           (0.0, 1.0, 0.0)
         else
           (nx0 / nLen, ny0 / nLen, nz0 / nLen)
@@ -287,15 +283,16 @@ def OceanMesh.applyWaves (mesh : OceanMesh) (waves : Array GerstnerWave) (t : Fl
       let g := 0.25 + heightFactor * 0.30
       let b := 0.30 + heightFactor * 0.30
 
-      vertices := vertices.set! vertexOffset x
-      vertices := vertices.set! (vertexOffset + 1) y
-      vertices := vertices.set! (vertexOffset + 2) z
-      vertices := vertices.set! (vertexOffset + 3) nx
-      vertices := vertices.set! (vertexOffset + 4) ny
-      vertices := vertices.set! (vertexOffset + 5) nz
-      vertices := vertices.set! (vertexOffset + 6) r
-      vertices := vertices.set! (vertexOffset + 7) g
-      vertices := vertices.set! (vertexOffset + 8) b
+      vertices := vertices.push x
+      vertices := vertices.push y
+      vertices := vertices.push z
+      vertices := vertices.push nx
+      vertices := vertices.push ny
+      vertices := vertices.push nz
+      vertices := vertices.push r
+      vertices := vertices.push g
+      vertices := vertices.push b
+      vertices := vertices.push 1.0
 
     return vertices
 
@@ -303,20 +300,11 @@ def OceanMesh.applyWaves (mesh : OceanMesh) (waves : Array GerstnerWave) (t : Fl
 
 /-! ## Projected Grid Ocean -/
 
-private def v3cross (ax ay az bx by_ bz : Float) : Float × Float × Float :=
-  (ay * bz - az * by_, az * bx - ax * bz, ax * by_ - ay * bx)
-
-private def v3normalize (x y z : Float) : Float × Float × Float :=
-  let len := Float.sqrt (x * x + y * y + z * z)
-  if len < 0.000001 then (0.0, 0.0, 0.0) else (x / len, y / len, z / len)
-
 /-- Create an ocean mesh using a projected grid (screen-space grid projected onto y=0 plane).
     This keeps vertex density high near the camera and low toward the horizon. -/
 def OceanMesh.createProjectedGrid (gridSize : Nat) (fovY aspect : Float)
-    (camera : FPSCamera) (maxDistance snapSize overscanNdc : Float) : OceanMesh :=
+    (camera : FPSCamera) (maxDistance snapSize overscanNdc : Float) (indices : Array UInt32) : OceanMesh :=
   let numVertices := gridSize * gridSize
-  let numQuads := (gridSize - 1) * (gridSize - 1)
-  let numIndices := (numQuads * 2 * 3)
 
   let overscanNdc := if overscanNdc < 0.0 then 0.0 else overscanNdc
 
@@ -360,9 +348,8 @@ def OceanMesh.createProjectedGrid (gridSize : Nat) (fovY aspect : Float)
   let ndcLeft := -1.0 - overscanNdc
   let ndcRight := 1.0 + overscanNdc
 
-  let (basePositions, vertices) := Id.run do
+  let basePositions := Id.run do
     let mut basePositions := Array.mkEmpty (numVertices * 2)
-    let mut vertices := Array.mkEmpty (numVertices * 10)
 
     let denom := (gridSize - 1).toFloat
     for row in [:gridSize] do
@@ -377,7 +364,10 @@ def OceanMesh.createProjectedGrid (gridSize : Nat) (fovY aspect : Float)
         let dirX0 := rightX * sx + upX * sy + fwdX
         let dirY0 := rightY * sx + upY * sy + fwdY
         let dirZ0 := rightZ * sx + upZ * sy + fwdZ
-        let (dirX, dirY, dirZ) := v3normalize dirX0 dirY0 dirZ0
+        -- No need to normalize: plane intersection uses the ray parameter t = -originY/dirY.
+        let dirX := dirX0
+        let dirY := dirY0
+        let dirZ := dirZ0
 
         -- Intersect ray with ocean plane y=0. Clamp to a max distance for stability.
         let t :=
@@ -393,40 +383,9 @@ def OceanMesh.createProjectedGrid (gridSize : Nat) (fovY aspect : Float)
 
         basePositions := basePositions.push x
         basePositions := basePositions.push z
+    return basePositions
 
-        -- Initial vertex: position(3) + normal(3) + color(4)
-        vertices := vertices.push x
-        vertices := vertices.push 0.0
-        vertices := vertices.push z
-        vertices := vertices.push 0.0
-        vertices := vertices.push 1.0
-        vertices := vertices.push 0.0
-        vertices := vertices.push 0.20
-        vertices := vertices.push 0.35
-        vertices := vertices.push 0.40
-        vertices := vertices.push 1.0
-
-    return (basePositions, vertices)
-
-  let indices := Id.run do
-    let mut indices := Array.mkEmpty numIndices
-    for row in [:(gridSize - 1)] do
-      for col in [:(gridSize - 1)] do
-        let topLeft := (row * gridSize + col).toUInt32
-        let topRight := topLeft + 1
-        let bottomLeft := ((row + 1) * gridSize + col).toUInt32
-        let bottomRight := bottomLeft + 1
-
-        indices := indices.push topLeft
-        indices := indices.push bottomLeft
-        indices := indices.push topRight
-
-        indices := indices.push topRight
-        indices := indices.push bottomLeft
-        indices := indices.push bottomRight
-    return indices
-
-  { gridSize, extent := maxDistance, basePositions, vertices, indices }
+  { gridSize, extent := maxDistance, basePositions, vertices := #[], indices }
 
 /-! ## Sky Dome -/
 
@@ -571,6 +530,16 @@ def SkyDome.create (radius : Float) (segments : Nat) (rings : Nat) : SkyDome :=
 
   { vertices, indices }
 
+private initialize seascapeSkyDomeCache : IO.Ref (Option SkyDome) ← IO.mkRef none
+
+private def getSeascapeSkyDome : IO SkyDome := do
+  match (← seascapeSkyDomeCache.get) with
+  | some dome => return dome
+  | none =>
+      let dome := SkyDome.create 600.0 32 16
+      seascapeSkyDomeCache.set (some dome)
+      return dome
+
 /-! ## Seascape Rendering -/
 
 /-- Fog parameters for the seascape. -/
@@ -579,6 +548,48 @@ structure FogParams where
   start : Float           -- Distance where fog begins
   endDist : Float         -- Distance where fog is fully opaque
   deriving Inhabited
+
+private structure ProjectedGridIndexCache where
+  gridSize : Nat
+  indices : Array UInt32
+  deriving Inhabited
+
+private initialize seascapeProjectedGridIndexCache : IO.Ref (Option ProjectedGridIndexCache) ← IO.mkRef none
+
+private def buildGridIndices (gridSize : Nat) : Array UInt32 :=
+  let numQuads := (gridSize - 1) * (gridSize - 1)
+  let numIndices := (numQuads * 2 * 3)
+  Id.run do
+    let mut indices := Array.mkEmpty numIndices
+    for row in [:(gridSize - 1)] do
+      for col in [:(gridSize - 1)] do
+        let topLeft := (row * gridSize + col).toUInt32
+        let topRight := topLeft + 1
+        let bottomLeft := ((row + 1) * gridSize + col).toUInt32
+        let bottomRight := bottomLeft + 1
+
+        indices := indices.push topLeft
+        indices := indices.push bottomLeft
+        indices := indices.push topRight
+
+        indices := indices.push topRight
+        indices := indices.push bottomLeft
+        indices := indices.push bottomRight
+    return indices
+
+private def getProjectedGridIndices (gridSize : Nat) : IO (Array UInt32) := do
+  match (← seascapeProjectedGridIndexCache.get) with
+  | some cached =>
+      if cached.gridSize == gridSize then
+        return cached.indices
+      else
+        let indices := buildGridIndices gridSize
+        seascapeProjectedGridIndexCache.set (some { gridSize, indices })
+        return indices
+  | none =>
+      let indices := buildGridIndices gridSize
+      seascapeProjectedGridIndexCache.set (some { gridSize, indices })
+      return indices
 
 /-- Default fog parameters for infinite ocean effect.
     Fog color exactly matches sky horizon for seamless blend. -/
@@ -613,8 +624,8 @@ def renderSeascape (renderer : Renderer) (t : Float)
   -- Fog parameters
   let fog := defaultFog
 
-  -- Create and render sky dome (large, centered on camera)
-  let skyDome := SkyDome.create 600.0 32 16
+  -- Create and render sky dome (cached; large, centered on camera)
+  let skyDome ← getSeascapeSkyDome
 
   -- Sky model matrix - translate to camera position
   let skyModel := Matrix4.translate camera.x camera.y camera.z
@@ -637,11 +648,12 @@ def renderSeascape (renderer : Renderer) (t : Float)
   -- `maxDistance` should extend past fog end distance so the edge stays hidden.
   -- Overscan extends slightly beyond the view frustum so horizontal Gerstner displacement
   -- doesn't pull the border inward and reveal the mesh edge.
-  let oceanMesh := OceanMesh.createProjectedGrid 128 fovY aspect camera 800.0 2.0 0.25
+  let oceanIndices ← getProjectedGridIndices 128
+  let oceanMesh := OceanMesh.createProjectedGrid 128 fovY aspect camera 800.0 2.0 0.25 oceanIndices
   let oceanMesh := oceanMesh.applyWaves defaultWaves t
   Renderer.drawMesh3DWithFog renderer
     oceanMesh.vertices
-    oceanMesh.indices
+    oceanIndices
     mvp.toArray
     model.toArray
     lightDir

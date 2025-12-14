@@ -151,9 +151,9 @@ def unifiedDemo : IO Unit := do
         FFI.Window.setPointerLock c.ctx.window false
       displayMode := (displayMode + 1) % 11
       c.clearKey
-      -- Disable MSAA only for sprite benchmark mode to maximize throughput.
-      -- Keep Retina/native drawable scaling enabled.
-      msaaEnabled := displayMode != 4
+      -- Disable MSAA for throughput-heavy benchmarks and the seascape demo.
+      -- (Seascape is usually fill-rate bound; MSAA can be a big hit at Retina resolutions.)
+      msaaEnabled := displayMode != 4 && displayMode != 10
       FFI.Renderer.setMSAAEnabled c.ctx.renderer msaaEnabled
       match displayMode with
       | 0 => IO.println "Switched to DEMO mode"
