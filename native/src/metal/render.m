@@ -833,6 +833,7 @@ struct Vertex3DOut {
     float4 position [[position]];
     float3 worldNormal;
     float3 worldPos;    // World position for fog calculation
+    float2 oceanBaseXZ; // Undisplaced ocean XZ (world), for stable seam clipping
     float4 color;
 };
 
@@ -859,6 +860,7 @@ vertex Vertex3DOut vertex_main_3d(
     out.worldNormal = (uniforms.modelMatrix * float4(in.normal, 0.0)).xyz;
     // Pass world position for fog calculation
     out.worldPos = (uniforms.modelMatrix * float4(in.position, 1.0)).xyz;
+    out.oceanBaseXZ = float2(0.0, 0.0);
     out.color = in.color;
     return out;
 }
@@ -1025,17 +1027,8 @@ vertex Vertex3DOut vertex_ocean_projected_waves(
         baseX = originX + dir.x * tHit;
         baseZ = originZ + dir.z * tHit;
 
-        // Avoid overlapping the local patch: push projected points outward to form a "donut hole"
-        // that the local patch fills. This also makes the mesh extend around the camera, not just forward.
-        if (donutRadius > 0.0) {
-            float2 v = float2(baseX - originX, baseZ - originZ);
-            float lenV = length(v);
-            if (lenV < donutRadius) {
-                float2 dirXZ = (lenV > eps) ? (v / lenV) : normalize(float2(dir.x, dir.z));
-                baseX = originX + dirXZ.x * donutRadius;
-                baseZ = originZ + dirXZ.y * donutRadius;
-            }
-        }
+        // Note: we don't warp/clamp the projected grid to the donut radius.
+        // The fragment shader clips the two passes using the undisplaced XZ to avoid overlap.
 
         // Extra overscan in world space near the screen edges to account for horizontal Gerstner displacement
         // pulling geometry inward.
@@ -1064,6 +1057,8 @@ vertex Vertex3DOut vertex_ocean_projected_waves(
     out.position = u.scene.modelViewProj * float4(displacedPos, 1.0);
     out.worldPos = (u.scene.modelMatrix * float4(displacedPos, 1.0)).xyz;
     out.worldNormal = (u.scene.modelMatrix * float4(localNormal, 0.0)).xyz;
+    float3 baseWorld = (u.scene.modelMatrix * float4(baseX, 0.0, baseZ, 1.0)).xyz;
+    out.oceanBaseXZ = baseWorld.xz;
 
     // Color based on wave height (matches CPU color mapping).
     float heightFactor = clamp((displacedPos.y + 2.0) / 4.0, 0.0, 1.0);
@@ -1100,9 +1095,8 @@ fragment float4 fragment_ocean_3d(
     constant Scene3DUniforms& scene [[buffer(0)]],
     constant OceanProjectedUniforms& u [[buffer(1)]]
 ) {
-    // Avoid overlap/z-fighting between the two-pass ocean draw:
-    // - mode=1 local patch renders inside a donut radius
-    // - mode=0 projected grid renders outside that radius
+    // Seam handling between the two-pass ocean draw (local patch + projected grid):
+    // Instead of hard clipping (which can leave cracks), we cross-fade in a small radial band.
     float snapSize = u.params1.x;
     float nearExtent = u.params2.z;
     float mode = u.params2.w;
@@ -1113,6 +1107,7 @@ fragment float4 fragment_ocean_3d(
     }
     float seamWidth = max(2.0, maxWaveAmp * 2.0);
     float donutRadius = nearExtent + seamWidth;
+    float blendWidth = max(6.0, maxWaveAmp * 6.0);
 
     float originX = scene.cameraPos[0];
     float originZ = scene.cameraPos[2];
@@ -1121,14 +1116,16 @@ fragment float4 fragment_ocean_3d(
         originZ = floor(originZ / snapSize) * snapSize;
     }
 
-    float2 d = float2(in.worldPos.x - originX, in.worldPos.z - originZ);
+    // Use undisplaced XZ so waves can't "push" fragments across the boundary and cause shimmering seams.
+    float2 d = float2(in.oceanBaseXZ.x - originX, in.oceanBaseXZ.y - originZ);
     float r = length(d);
-    if (donutRadius > 0.0) {
-        if (mode > 0.5) {
-            if (r > donutRadius) discard_fragment();
-        } else {
-            if (r <= donutRadius) discard_fragment();
-        }
+    float alpha = 1.0;
+    if (donutRadius > 0.0 && blendWidth > 0.0) {
+        float r0 = donutRadius - blendWidth;
+        float r1 = donutRadius + blendWidth;
+        float t = (r1 > r0) ? clamp((r - r0) / (r1 - r0), 0.0, 1.0) : 0.5;
+        alpha = (mode > 0.5) ? (1.0 - t) : t;
+        if (alpha < 0.001) discard_fragment();
     }
 
     float3 N = normalize(in.worldNormal);
@@ -1141,7 +1138,7 @@ fragment float4 fragment_ocean_3d(
     float fogFactor = (fogRange > 0.0) ? clamp((scene.fogEnd - dist) / fogRange, 0.0, 1.0) : 1.0;
     float3 finalColor = mix(float3(scene.fogColor), litColor, fogFactor);
 
-    return float4(finalColor, in.color.a);
+    return float4(finalColor, alpha);
 }
 )";
 
@@ -1329,6 +1326,7 @@ struct AfferentRenderer {
     id<MTLTexture> msaaDepthTexture;       // Depth buffer (MSAA)
     id<MTLDepthStencilState> depthState;   // Depth test state (enabled)
     id<MTLDepthStencilState> depthStateDisabled; // Depth test disabled for 2D after 3D
+    id<MTLDepthStencilState> depthStateOcean;    // Ocean depth state (test on, no writes)
     id<MTLRenderPipelineState> pipeline3D;       // Active 3D rendering pipeline
     id<MTLRenderPipelineState> pipeline3DMSAA;   // 3D pipeline (4x MSAA)
     id<MTLRenderPipelineState> pipeline3DNoMSAA; // 3D pipeline (no MSAA)
@@ -2062,6 +2060,12 @@ AfferentResult afferent_renderer_create(
         depthDisabledDesc.depthCompareFunction = MTLCompareFunctionAlways;
         depthDisabledDesc.depthWriteEnabled = NO;
         renderer->depthStateDisabled = [renderer->device newDepthStencilStateWithDescriptor:depthDisabledDesc];
+
+        // Create ocean depth state: depth test enabled but do not write depth (so multi-pass blending works).
+        MTLDepthStencilDescriptor *depthOceanDesc = [[MTLDepthStencilDescriptor alloc] init];
+        depthOceanDesc.depthCompareFunction = MTLCompareFunctionLessEqual;
+        depthOceanDesc.depthWriteEnabled = NO;
+        renderer->depthStateOcean = [renderer->device newDepthStencilStateWithDescriptor:depthOceanDesc];
 
         // ====================================================================
         // Create 3D rendering pipeline
@@ -3597,7 +3601,7 @@ void afferent_renderer_draw_ocean_projected_grid_with_fog(
         }
 
         [renderer->currentEncoder setRenderPipelineState:renderer->pipeline3DOcean];
-        [renderer->currentEncoder setDepthStencilState:renderer->depthState];
+        [renderer->currentEncoder setDepthStencilState:(renderer->depthStateOcean ? renderer->depthStateOcean : renderer->depthStateDisabled)];
         [renderer->currentEncoder setFragmentBytes:&uniforms.scene length:sizeof(uniforms.scene) atIndex:0];
 
         // Pass 1: local patch (extends behind/around camera).
