@@ -832,6 +832,7 @@ struct Vertex3DIn {
 struct Vertex3DOut {
     float4 position [[position]];
     float3 worldNormal;
+    float3 worldPos;    // World position for fog calculation
     float4 color;
 };
 
@@ -842,6 +843,10 @@ struct Scene3DUniforms {
     float4x4 modelMatrix;     // Model matrix for normal transformation
     packed_float3 lightDir;   // Light direction (12 bytes, packed to match C)
     float ambient;            // Ambient light factor
+    packed_float3 cameraPos;  // Camera position for fog distance
+    float fogStart;           // Distance where fog begins
+    packed_float3 fogColor;   // Fog color (RGB)
+    float fogEnd;             // Distance where fog is fully opaque
 };
 
 vertex Vertex3DOut vertex_main_3d(
@@ -852,6 +857,8 @@ vertex Vertex3DOut vertex_main_3d(
     out.position = uniforms.modelViewProj * float4(in.position, 1.0);
     // Transform normal to world space (using upper-left 3x3 of model matrix)
     out.worldNormal = (uniforms.modelMatrix * float4(in.normal, 0.0)).xyz;
+    // Pass world position for fog calculation
+    out.worldPos = (uniforms.modelMatrix * float4(in.position, 1.0)).xyz;
     out.color = in.color;
     return out;
 }
@@ -863,8 +870,16 @@ fragment float4 fragment_main_3d(
     float3 N = normalize(in.worldNormal);
     float3 L = normalize(uniforms.lightDir);
     float diffuse = max(0.0, dot(N, L));
-    float3 color = in.color.rgb * (uniforms.ambient + (1.0 - uniforms.ambient) * diffuse);
-    return float4(color, in.color.a);
+    float3 litColor = in.color.rgb * (uniforms.ambient + (1.0 - uniforms.ambient) * diffuse);
+
+    // Linear fog based on distance from camera
+    // When fogEnd <= fogStart, fog is disabled (fogFactor = 1.0 means no fog)
+    float dist = length(in.worldPos - float3(uniforms.cameraPos));
+    float fogRange = uniforms.fogEnd - uniforms.fogStart;
+    float fogFactor = (fogRange > 0.0) ? clamp((uniforms.fogEnd - dist) / fogRange, 0.0, 1.0) : 1.0;
+    float3 finalColor = mix(float3(uniforms.fogColor), litColor, fogFactor);
+
+    return float4(finalColor, in.color.a);
 }
 )";
 
@@ -995,7 +1010,11 @@ typedef struct {
     float modelMatrix[16];    // Model matrix (64 bytes)
     float lightDir[3];        // Light direction (12 bytes)
     float ambient;            // Ambient factor (4 bytes)
-} Scene3DUniforms;  // Total: 144 bytes
+    float cameraPos[3];       // Camera position for fog (12 bytes)
+    float fogStart;           // Fog start distance (4 bytes)
+    float fogColor[3];        // Fog color RGB (12 bytes)
+    float fogEnd;             // Fog end distance (4 bytes)
+} Scene3DUniforms;  // Total: 176 bytes
 
 // Internal renderer structure
 struct AfferentRenderer {
@@ -3166,6 +3185,87 @@ void afferent_renderer_draw_mesh_3d(
         memcpy(uniforms.modelMatrix, model_matrix, 64);
         memcpy(uniforms.lightDir, light_dir, 12);
         uniforms.ambient = ambient;
+        // Default: no fog (start=end=0 disables fog in shader)
+        uniforms.cameraPos[0] = 0.0f;
+        uniforms.cameraPos[1] = 0.0f;
+        uniforms.cameraPos[2] = 0.0f;
+        uniforms.fogStart = 0.0f;
+        uniforms.fogEnd = 0.0f;
+        uniforms.fogColor[0] = 0.5f;
+        uniforms.fogColor[1] = 0.5f;
+        uniforms.fogColor[2] = 0.5f;
+
+        // Configure encoder for 3D rendering
+        [renderer->currentEncoder setRenderPipelineState:renderer->pipeline3D];
+        [renderer->currentEncoder setDepthStencilState:renderer->depthState];
+        [renderer->currentEncoder setVertexBuffer:vertexBuffer offset:0 atIndex:0];
+        [renderer->currentEncoder setVertexBytes:&uniforms length:sizeof(uniforms) atIndex:1];
+        [renderer->currentEncoder setFragmentBytes:&uniforms length:sizeof(uniforms) atIndex:0];
+
+        // Draw indexed triangles
+        [renderer->currentEncoder drawIndexedPrimitives:MTLPrimitiveTypeTriangle
+                                             indexCount:index_count
+                                              indexType:MTLIndexTypeUInt32
+                                            indexBuffer:indexBuffer
+                                      indexBufferOffset:0];
+
+        // Restore default pipeline
+        [renderer->currentEncoder setRenderPipelineState:renderer->pipelineState];
+    }
+}
+
+// 3D Mesh Rendering with fog parameters
+void afferent_renderer_draw_mesh_3d_with_fog(
+    AfferentRendererRef renderer,
+    const AfferentVertex3D* vertices,
+    uint32_t vertex_count,
+    const uint32_t* indices,
+    uint32_t index_count,
+    const float* mvp_matrix,
+    const float* model_matrix,
+    const float* light_dir,
+    float ambient,
+    const float* camera_pos,
+    const float* fog_color,
+    float fog_start,
+    float fog_end
+) {
+    if (!renderer || !renderer->currentEncoder || !vertices || !indices ||
+        vertex_count == 0 || index_count == 0) {
+        return;
+    }
+
+    @autoreleasepool {
+        // Create temporary vertex buffer
+        size_t vertex_size = vertex_count * sizeof(AfferentVertex3D);
+        id<MTLBuffer> vertexBuffer = [renderer->device newBufferWithBytes:vertices
+                                                                   length:vertex_size
+                                                                  options:MTLResourceStorageModeShared];
+        if (!vertexBuffer) {
+            NSLog(@"Failed to create 3D vertex buffer (fog)");
+            return;
+        }
+
+        // Create temporary index buffer
+        size_t index_size = index_count * sizeof(uint32_t);
+        id<MTLBuffer> indexBuffer = [renderer->device newBufferWithBytes:indices
+                                                                  length:index_size
+                                                                 options:MTLResourceStorageModeShared];
+        if (!indexBuffer) {
+            NSLog(@"Failed to create 3D index buffer (fog)");
+            return;
+        }
+
+        // Set up uniforms with fog parameters
+        Scene3DUniforms uniforms;
+        memcpy(uniforms.modelViewProj, mvp_matrix, 64);
+        memcpy(uniforms.modelMatrix, model_matrix, 64);
+        memcpy(uniforms.lightDir, light_dir, 12);
+        uniforms.ambient = ambient;
+        memcpy(uniforms.cameraPos, camera_pos, 12);
+        uniforms.fogStart = fog_start;
+        memcpy(uniforms.fogColor, fog_color, 12);
+        uniforms.fogEnd = fog_end;
 
         // Configure encoder for 3D rendering
         [renderer->currentEncoder setRenderPipelineState:renderer->pipeline3D];

@@ -120,6 +120,75 @@ def OceanMesh.create (gridSize : Nat) (extent : Float) : OceanMesh :=
 
   { gridSize, extent, basePositions, vertices, indices }
 
+/-- Create an annular (ring-shaped) ocean mesh for LOD.
+    innerExtent: inner radius (hole in the ring)
+    outerExtent: outer radius -/
+def OceanMesh.createRing (gridSize : Nat) (innerExtent outerExtent : Float) : OceanMesh :=
+  -- For a ring, we create a grid where radius varies from inner to outer
+  -- and angle varies around the full circle
+  let numVertices := gridSize * gridSize
+  let radialSteps := gridSize
+  let angularSteps := gridSize
+
+  -- Generate base positions and initial vertices
+  let (basePositions, vertices) := Id.run do
+    let mut basePositions := Array.mkEmpty (numVertices * 2)
+    let mut vertices := Array.mkEmpty (numVertices * 10)
+
+    for radialIdx in [:radialSteps] do
+      -- Radius from inner to outer
+      let t := radialIdx.toFloat / (radialSteps - 1).toFloat
+      let radius := innerExtent + t * (outerExtent - innerExtent)
+
+      for angularIdx in [:angularSteps] do
+        let angle := 2.0 * pi * angularIdx.toFloat / angularSteps.toFloat
+        let x := radius * Float.cos angle
+        let z := radius * Float.sin angle
+
+        -- Store base position
+        basePositions := basePositions.push x
+        basePositions := basePositions.push z
+
+        -- Initial vertex
+        vertices := vertices.push x
+        vertices := vertices.push 0.0
+        vertices := vertices.push z
+        -- Normal (pointing up)
+        vertices := vertices.push 0.0
+        vertices := vertices.push 1.0
+        vertices := vertices.push 0.0
+        -- Color (ocean base color)
+        vertices := vertices.push 0.20
+        vertices := vertices.push 0.35
+        vertices := vertices.push 0.40
+        vertices := vertices.push 1.0
+
+    return (basePositions, vertices)
+
+  -- Generate indices for the ring
+  let indices := Id.run do
+    let mut indices := Array.mkEmpty ((radialSteps - 1) * angularSteps * 6)
+    for radialIdx in [:(radialSteps - 1)] do
+      for angularIdx in [:angularSteps] do
+        let nextAngular := (angularIdx + 1) % angularSteps
+        let topLeft := (radialIdx * angularSteps + angularIdx).toUInt32
+        let topRight := (radialIdx * angularSteps + nextAngular).toUInt32
+        let bottomLeft := ((radialIdx + 1) * angularSteps + angularIdx).toUInt32
+        let bottomRight := ((radialIdx + 1) * angularSteps + nextAngular).toUInt32
+
+        -- Two triangles per quad
+        indices := indices.push topLeft
+        indices := indices.push bottomLeft
+        indices := indices.push topRight
+
+        indices := indices.push topRight
+        indices := indices.push bottomLeft
+        indices := indices.push bottomRight
+
+    return indices
+
+  { gridSize, extent := outerExtent, basePositions, vertices, indices }
+
 /-- Apply Gerstner waves to the ocean mesh and recompute normals. -/
 def OceanMesh.applyWaves (mesh : OceanMesh) (waves : Array GerstnerWave) (t : Float) : OceanMesh :=
   let gridSize := mesh.gridSize
@@ -224,18 +293,22 @@ structure SkyDome where
   indices : Array UInt32
   deriving Inhabited
 
-/-- Create a hemisphere sky dome with gradient coloring. -/
+/-- Create a full sky sphere with gradient coloring.
+    Upper hemisphere: gradient from zenith to horizon.
+    Lower hemisphere: constant horizon color (matches fog). -/
 def SkyDome.create (radius : Float) (segments : Nat) (rings : Nat) : SkyDome :=
+  -- Total rings: upper hemisphere (rings) + lower hemisphere (rings/2)
+  let lowerRings := rings / 2
+  let totalRings := rings + lowerRings
   let (vertices, indices) := Id.run do
-    let mut vertices := Array.mkEmpty ((segments * rings + 1) * 10)
-    let mut indices := Array.mkEmpty (segments * rings * 6)
+    let mut vertices := Array.mkEmpty ((segments * totalRings + 2) * 10)
+    let mut indices := Array.mkEmpty (segments * totalRings * 6)
 
     -- Zenith vertex (top of dome)
-    -- Position
     vertices := vertices.push 0.0
     vertices := vertices.push radius
     vertices := vertices.push 0.0
-    -- Normal (pointing inward for inside rendering)
+    -- Normal (pointing inward)
     vertices := vertices.push 0.0
     vertices := vertices.push (-1.0)
     vertices := vertices.push 0.0
@@ -245,14 +318,14 @@ def SkyDome.create (radius : Float) (segments : Nat) (rings : Nat) : SkyDome :=
     vertices := vertices.push 0.42
     vertices := vertices.push 1.0
 
-    -- Generate rings from top to horizon
+    -- Generate upper hemisphere rings (zenith to horizon)
     for ring in [:rings] do
-      let phi := (pi / 2.0) * (1.0 - (ring + 1).toFloat / rings.toFloat)  -- From top (pi/2) toward horizon (0)
+      let phi := (pi / 2.0) * (1.0 - (ring + 1).toFloat / rings.toFloat)
       let y := radius * Float.sin phi
       let ringRadius := radius * Float.cos phi
 
-      -- Color gradient based on height (phi)
-      let t := (ring + 1).toFloat / rings.toFloat  -- 0 at top, 1 at horizon
+      -- Color gradient from zenith to horizon
+      let t := (ring + 1).toFloat / rings.toFloat
       let r := 0.35 + t * 0.20  -- 0.35 to 0.55
       let g := 0.38 + t * 0.20  -- 0.38 to 0.58
       let b := 0.42 + t * 0.20  -- 0.42 to 0.62
@@ -262,31 +335,70 @@ def SkyDome.create (radius : Float) (segments : Nat) (rings : Nat) : SkyDome :=
         let x := ringRadius * Float.cos theta
         let z := ringRadius * Float.sin theta
 
-        -- Position
         vertices := vertices.push x
         vertices := vertices.push y
         vertices := vertices.push z
-        -- Normal (pointing inward)
         let len := Float.sqrt (x * x + y * y + z * z)
         vertices := vertices.push (-x / len)
         vertices := vertices.push (-y / len)
         vertices := vertices.push (-z / len)
-        -- Color
         vertices := vertices.push r
         vertices := vertices.push g
         vertices := vertices.push b
         vertices := vertices.push 1.0
 
+    -- Generate lower hemisphere rings (horizon downward, constant color)
+    for ring in [:lowerRings] do
+      let phi := -(pi / 2.0) * (ring + 1).toFloat / lowerRings.toFloat  -- 0 to -pi/2
+      let y := radius * Float.sin phi
+      let ringRadius := radius * Float.cos phi
+
+      -- Constant horizon color (matches fog)
+      let r := 0.55
+      let g := 0.58
+      let b := 0.62
+
+      for seg in [:segments] do
+        let theta := 2.0 * pi * seg.toFloat / segments.toFloat
+        let x := ringRadius * Float.cos theta
+        let z := ringRadius * Float.sin theta
+
+        vertices := vertices.push x
+        vertices := vertices.push y
+        vertices := vertices.push z
+        let len := Float.sqrt (x * x + y * y + z * z)
+        vertices := vertices.push (-x / len)
+        vertices := vertices.push (-y / len)
+        vertices := vertices.push (-z / len)
+        vertices := vertices.push r
+        vertices := vertices.push g
+        vertices := vertices.push b
+        vertices := vertices.push 1.0
+
+    -- Nadir vertex (bottom of sphere)
+    vertices := vertices.push 0.0
+    vertices := vertices.push (-radius)
+    vertices := vertices.push 0.0
+    vertices := vertices.push 0.0
+    vertices := vertices.push 1.0
+    vertices := vertices.push 0.0
+    vertices := vertices.push 0.55
+    vertices := vertices.push 0.58
+    vertices := vertices.push 0.62
+    vertices := vertices.push 1.0
+
+    let nadirIdx := (1 + totalRings * segments).toUInt32
+
     -- Generate indices
     -- Connect zenith to first ring
     for seg in [:segments] do
       let next := (seg + 1) % segments
-      indices := indices.push 0  -- Zenith
+      indices := indices.push 0
       indices := indices.push (seg + 1).toUInt32
       indices := indices.push (next + 1).toUInt32
 
-    -- Connect remaining rings
-    for ring in [:(rings - 1)] do
+    -- Connect all rings (upper + lower)
+    for ring in [:(totalRings - 1)] do
       let ringStart := 1 + ring * segments
       let nextRingStart := ringStart + segments
       for seg in [:segments] do
@@ -304,11 +416,33 @@ def SkyDome.create (radius : Float) (segments : Nat) (rings : Nat) : SkyDome :=
         indices := indices.push bl
         indices := indices.push br
 
+    -- Connect last ring to nadir
+    let lastRingStart := 1 + (totalRings - 1) * segments
+    for seg in [:segments] do
+      let next := (seg + 1) % segments
+      indices := indices.push (lastRingStart + seg).toUInt32
+      indices := indices.push nadirIdx
+      indices := indices.push (lastRingStart + next).toUInt32
+
     return (vertices, indices)
 
   { vertices, indices }
 
 /-! ## Seascape Rendering -/
+
+/-- Fog parameters for the seascape. -/
+structure FogParams where
+  color : Array Float     -- RGB color (3 floats)
+  start : Float           -- Distance where fog begins
+  endDist : Float         -- Distance where fog is fully opaque
+  deriving Inhabited
+
+/-- Default fog parameters for infinite ocean effect.
+    Fog color exactly matches sky horizon for seamless blend. -/
+def defaultFog : FogParams :=
+  { color := #[0.55, 0.58, 0.62]  -- Exactly match sky horizon color
+  , start := 80.0                  -- Fog begins at moderate distance
+  , endDist := 350.0 }             -- Fully fogged before mesh edge at 500
 
 /-- Render the seascape with the given camera.
     t: elapsed time in seconds
@@ -319,7 +453,7 @@ def renderSeascape (renderer : Renderer) (t : Float)
     (screenWidth screenHeight : Float) (camera : FPSCamera) : IO Unit := do
   let aspect := screenWidth / screenHeight
   let fovY := pi / 3.0  -- 60 degrees for wide ocean vista
-  let proj := Matrix4.perspective fovY aspect 0.1 500.0
+  let proj := Matrix4.perspective fovY aspect 0.1 1000.0
   let view := camera.viewMatrix
 
   -- Light direction (from above-left, softer for overcast)
@@ -330,14 +464,20 @@ def renderSeascape (renderer : Renderer) (t : Float)
   let lightDir := #[lx / len, ly / len, lz / len]
   let ambient := 0.5  -- Higher ambient for overcast lighting
 
+  -- Camera position for fog calculation
+  let cameraPos := #[camera.x, camera.y, camera.z]
+
+  -- Fog parameters
+  let fog := defaultFog
+
   -- Create and render sky dome (large, centered on camera)
-  let skyDome := SkyDome.create 200.0 32 16
+  let skyDome := SkyDome.create 600.0 32 16
 
   -- Sky model matrix - translate to camera position
   let skyModel := Matrix4.translate camera.x camera.y camera.z
   let skyMvp := Matrix4.multiply proj (Matrix4.multiply view skyModel)
 
-  -- Render sky first (it's at far distance)
+  -- Render sky first (it's at far distance) - no fog for sky
   Renderer.drawMesh3D renderer
     skyDome.vertices
     skyDome.indices
@@ -346,22 +486,54 @@ def renderSeascape (renderer : Renderer) (t : Float)
     lightDir
     1.0  -- Full ambient for sky (no directional lighting)
 
-  -- Create ocean mesh and apply waves
-  let oceanMesh := OceanMesh.create 64 50.0
-  let oceanMesh := oceanMesh.applyWaves defaultWaves t
-
   -- Ocean model matrix (identity - ocean is at world origin)
   let model := Matrix4.identity
   let mvp := Matrix4.multiply proj (Matrix4.multiply view model)
 
-  -- Render ocean
-  Renderer.drawMesh3D renderer
-    oceanMesh.vertices
-    oceanMesh.indices
+  -- Near ocean mesh (high detail, 64x64, extent 50)
+  let nearMesh := OceanMesh.create 64 50.0
+  let nearMesh := nearMesh.applyWaves defaultWaves t
+  Renderer.drawMesh3DWithFog renderer
+    nearMesh.vertices
+    nearMesh.indices
     mvp.toArray
     model.toArray
     lightDir
     ambient
+    cameraPos
+    fog.color
+    fog.start
+    fog.endDist
+
+  -- Mid ring (medium detail, 32x32, extent 50-150)
+  let midMesh := OceanMesh.createRing 32 50.0 150.0
+  let midMesh := midMesh.applyWaves defaultWaves t
+  Renderer.drawMesh3DWithFog renderer
+    midMesh.vertices
+    midMesh.indices
+    mvp.toArray
+    model.toArray
+    lightDir
+    ambient
+    cameraPos
+    fog.color
+    fog.start
+    fog.endDist
+
+  -- Far ring (low detail, 16x16, extent 150-500)
+  let farMesh := OceanMesh.createRing 16 150.0 500.0
+  let farMesh := farMesh.applyWaves defaultWaves t
+  Renderer.drawMesh3DWithFog renderer
+    farMesh.vertices
+    farMesh.indices
+    mvp.toArray
+    model.toArray
+    lightDir
+    ambient
+    cameraPos
+    fog.color
+    fog.start
+    fog.endDist
 
 /-- Create initial FPS camera for seascape viewing.
     Positioned above and behind the ocean, looking forward. -/

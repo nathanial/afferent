@@ -23,4 +23,23 @@ opaque Renderer.drawMesh3D
   (lightDir : @& Array Float)
   (ambient : Float) : IO Unit
 
+/-- Draw a 3D mesh with perspective projection, lighting, and fog.
+    Same as drawMesh3D, plus:
+    cameraPos: Camera position for fog distance calculation (3 floats)
+    fogColor: Fog color RGB (3 floats)
+    fogStart: Distance where fog begins
+    fogEnd: Distance where fog is fully opaque -/
+@[extern "lean_afferent_renderer_draw_mesh_3d_with_fog"]
+opaque Renderer.drawMesh3DWithFog
+  (renderer : @& Renderer)
+  (vertices : @& Array Float)
+  (indices : @& Array UInt32)
+  (mvpMatrix : @& Array Float)
+  (modelMatrix : @& Array Float)
+  (lightDir : @& Array Float)
+  (ambient : Float)
+  (cameraPos : @& Array Float)
+  (fogColor : @& Array Float)
+  (fogStart fogEnd : Float) : IO Unit
+
 end Afferent.FFI

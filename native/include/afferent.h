@@ -411,6 +411,28 @@ void afferent_renderer_draw_mesh_3d(
     float ambient
 );
 
+// 3D Mesh rendering with fog
+// Same as above, plus:
+// camera_pos: camera position for fog distance calculation (3 floats)
+// fog_color: fog color RGB (3 floats)
+// fog_start: distance where fog begins
+// fog_end: distance where fog is fully opaque
+void afferent_renderer_draw_mesh_3d_with_fog(
+    AfferentRendererRef renderer,
+    const AfferentVertex3D* vertices,
+    uint32_t vertex_count,
+    const uint32_t* indices,
+    uint32_t index_count,
+    const float* mvp_matrix,
+    const float* model_matrix,
+    const float* light_dir,
+    float ambient,
+    const float* camera_pos,
+    const float* fog_color,
+    float fog_start,
+    float fog_end
+);
+
 #ifdef __cplusplus
 }
 #endif

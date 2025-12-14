@@ -1512,3 +1512,113 @@ LEAN_EXPORT lean_obj_res lean_afferent_renderer_draw_mesh_3d(
 
     return lean_io_result_mk_ok(lean_box(0));
 }
+
+// Draw 3D mesh with fog
+// Same as above, plus:
+// camera_pos: Array Float (3 floats)
+// fog_color: Array Float (3 floats)
+// fog_start: Float
+// fog_end: Float
+LEAN_EXPORT lean_obj_res lean_afferent_renderer_draw_mesh_3d_with_fog(
+    lean_obj_arg renderer_obj,
+    lean_obj_arg vertices_arr,
+    lean_obj_arg indices_arr,
+    lean_obj_arg mvp_matrix,
+    lean_obj_arg model_matrix,
+    lean_obj_arg light_dir,
+    double ambient,
+    lean_obj_arg camera_pos_arr,
+    lean_obj_arg fog_color_arr,
+    double fog_start,
+    double fog_end,
+    lean_obj_arg world
+) {
+    AfferentRendererRef renderer = (AfferentRendererRef)lean_get_external_data(renderer_obj);
+
+    // Convert vertex array (10 floats per vertex)
+    size_t vert_floats = lean_array_size(vertices_arr);
+    size_t vertex_count = vert_floats / 10;
+
+    if (vertex_count == 0) {
+        return lean_io_result_mk_ok(lean_box(0));
+    }
+
+    AfferentVertex3D* vertices = malloc(vertex_count * sizeof(AfferentVertex3D));
+    if (!vertices) {
+        return lean_io_result_mk_error(lean_mk_io_user_error(
+            lean_mk_string("Failed to allocate vertex buffer")));
+    }
+
+    for (size_t i = 0; i < vertex_count; i++) {
+        size_t base = i * 10;
+        // Position
+        vertices[i].position[0] = (float)lean_unbox_float(lean_array_get_core(vertices_arr, base + 0));
+        vertices[i].position[1] = (float)lean_unbox_float(lean_array_get_core(vertices_arr, base + 1));
+        vertices[i].position[2] = (float)lean_unbox_float(lean_array_get_core(vertices_arr, base + 2));
+        // Normal
+        vertices[i].normal[0] = (float)lean_unbox_float(lean_array_get_core(vertices_arr, base + 3));
+        vertices[i].normal[1] = (float)lean_unbox_float(lean_array_get_core(vertices_arr, base + 4));
+        vertices[i].normal[2] = (float)lean_unbox_float(lean_array_get_core(vertices_arr, base + 5));
+        // Color
+        vertices[i].color[0] = (float)lean_unbox_float(lean_array_get_core(vertices_arr, base + 6));
+        vertices[i].color[1] = (float)lean_unbox_float(lean_array_get_core(vertices_arr, base + 7));
+        vertices[i].color[2] = (float)lean_unbox_float(lean_array_get_core(vertices_arr, base + 8));
+        vertices[i].color[3] = (float)lean_unbox_float(lean_array_get_core(vertices_arr, base + 9));
+    }
+
+    // Convert index array
+    size_t index_count = lean_array_size(indices_arr);
+    uint32_t* indices = malloc(index_count * sizeof(uint32_t));
+    if (!indices) {
+        free(vertices);
+        return lean_io_result_mk_error(lean_mk_io_user_error(
+            lean_mk_string("Failed to allocate index buffer")));
+    }
+
+    for (size_t i = 0; i < index_count; i++) {
+        indices[i] = lean_unbox_uint32(lean_array_get_core(indices_arr, i));
+    }
+
+    // Convert MVP matrix (16 floats)
+    float mvp[16];
+    for (size_t i = 0; i < 16; i++) {
+        mvp[i] = (float)lean_unbox_float(lean_array_get_core(mvp_matrix, i));
+    }
+
+    // Convert model matrix (16 floats)
+    float model[16];
+    for (size_t i = 0; i < 16; i++) {
+        model[i] = (float)lean_unbox_float(lean_array_get_core(model_matrix, i));
+    }
+
+    // Convert light direction (3 floats)
+    float light[3];
+    for (size_t i = 0; i < 3; i++) {
+        light[i] = (float)lean_unbox_float(lean_array_get_core(light_dir, i));
+    }
+
+    // Convert camera position (3 floats)
+    float camera_pos[3];
+    for (size_t i = 0; i < 3; i++) {
+        camera_pos[i] = (float)lean_unbox_float(lean_array_get_core(camera_pos_arr, i));
+    }
+
+    // Convert fog color (3 floats)
+    float fog_color[3];
+    for (size_t i = 0; i < 3; i++) {
+        fog_color[i] = (float)lean_unbox_float(lean_array_get_core(fog_color_arr, i));
+    }
+
+    // Draw the mesh with fog
+    afferent_renderer_draw_mesh_3d_with_fog(
+        renderer, vertices, (uint32_t)vertex_count,
+        indices, (uint32_t)index_count,
+        mvp, model, light, (float)ambient,
+        camera_pos, fog_color, (float)fog_start, (float)fog_end
+    );
+
+    free(vertices);
+    free(indices);
+
+    return lean_io_result_mk_ok(lean_box(0));
+}
