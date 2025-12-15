@@ -164,7 +164,7 @@ def processCompletedFetches (state : MapState) : IO MapState := do
       -- Create texture from PNG data
       try
         let texture ← Afferent.FFI.Texture.loadFromMemory pngData
-        cache := cache.insert res.coord (.loaded texture)
+        cache := cache.insert res.coord (.loaded texture pngData)
       catch e =>
         -- Texture creation failure, mark exhausted immediately
         let rs := RetryState.initialFailure tau s!"Texture load failed: {e}"
@@ -220,9 +220,10 @@ def unloadDistantTiles (state : MapState) (keepSet : Std.HashSet TileCoord) : IO
   -- Unload GPU textures outside buffer, but keep PNG data in RAM as cached
   let toUnload := state.cache.tilesToUnload keepSet
   let mut cache := state.cache
-  for (coord, _texture) in toUnload do
-    -- Note: Afferent handles texture cleanup automatically
-    cache := cache.insert coord (.cached ByteArray.empty frameCount)
+  for (coord, texture, pngData) in toUnload do
+    -- Match heavenly-host behavior: free GPU memory but keep data in RAM for fast reload.
+    Afferent.FFI.Texture.destroy texture
+    cache := cache.insert coord (.cached pngData frameCount)
 
   -- Remove stale non-loaded entries (pending/failed/retrying/exhausted outside buffer)
   let stale := cache.staleTiles keepSet
@@ -253,7 +254,7 @@ def reloadCachedTiles (state : MapState) : IO MapState := do
     if pngData.size > 0 then
       try
         let texture ← Afferent.FFI.Texture.loadFromMemory pngData
-        cache := cache.insert coord (.loaded texture)
+        cache := cache.insert coord (.loaded texture pngData)
       catch _ =>
         -- Texture load failed, keep as cached (will retry next frame)
         pure ()
@@ -365,7 +366,7 @@ where
       else
         let parent := c.parentTile
         match cache.get parent with
-        | some (.loaded tex) => some (parent, tex, delta)
+        | some (.loaded tex _) => some (parent, tex, delta)
         | _ => go parent (delta + 1) remaining'
 
 /-- Compute source rectangle within ancestor tile for rendering a descendant -/
@@ -409,7 +410,7 @@ def renderTiles (renderer : Renderer) (state : MapState) : IO Unit := do
     let parentTileSize := scaledTileSize * 2.0
     for parentCoord in parentSet.toList do
       match state.cache.get parentCoord with
-      | some (.loaded texture) =>
+      | some (.loaded texture _) =>
         let (px, py) := tileScreenPosFrac state.viewport parentCoord state.displayZoom
         Renderer.drawTexturedRect renderer texture
           0.0 0.0 textureSize textureSize  -- Source (full texture)
@@ -422,7 +423,7 @@ def renderTiles (renderer : Renderer) (state : MapState) : IO Unit := do
   for coord in visible do
     let (x, y) := tileScreenPosFrac state.viewport coord state.displayZoom
     match state.cache.get coord with
-    | some (.loaded texture) =>
+    | some (.loaded texture _) =>
       Renderer.drawTexturedRect renderer texture
         0.0 0.0 textureSize textureSize  -- Source
         x y scaledTileSize scaledTileSize  -- Destination

@@ -20,7 +20,7 @@ open Afferent.Map.RetryLogic (RetryConfig RetryState)
     since Afferent's texture loading is handled differently -/
 inductive TileState where
   | pending : TileState                         -- Initial fetch in flight
-  | loaded : Texture → TileState                -- Successfully loaded (GPU texture)
+  | loaded : Texture → ByteArray → TileState    -- Loaded on GPU + raw PNG bytes for later reload
   | cached : ByteArray → Nat → TileState        -- Unloaded from GPU, raw PNG in RAM (Nat = lastAccess frame)
   | failed : RetryState → TileState             -- Failed, can be retried
   | retrying : RetryState → TileState           -- Retry fetch in flight
@@ -68,7 +68,7 @@ def contains (cache : TileCache) (coord : TileCoord) : Bool :=
 def getLoadedTextures (cache : TileCache) : List Texture :=
   cache.tiles.toList.filterMap fun (_, state) =>
     match state with
-    | .loaded tex => some tex
+    | .loaded tex _ => some tex
     | _ => none
 
 /-- Count of all tiles in cache -/
@@ -79,23 +79,23 @@ def size (cache : TileCache) : Nat :=
 def stateCounts (cache : TileCache) : (Nat × Nat × Nat) :=
   cache.tiles.toList.foldl (fun (gpu, ram, other) (_, state) =>
     match state with
-    | .loaded _ => (gpu + 1, ram, other)
+    | .loaded _ _ => (gpu + 1, ram, other)
     | .cached _ _ => (gpu, ram + 1, other)
     | _ => (gpu, ram, other + 1)
   ) (0, 0, 0)
 
-/-- Identify loaded tiles outside the keep zone, returning coord and texture -/
-def tilesToUnload (cache : TileCache) (keepSet : Std.HashSet TileCoord) : List (TileCoord × Texture) :=
+/-- Identify loaded tiles outside the keep zone, returning coord, texture, and PNG bytes. -/
+def tilesToUnload (cache : TileCache) (keepSet : Std.HashSet TileCoord) : List (TileCoord × Texture × ByteArray) :=
   cache.tiles.toList.filterMap fun (coord, state) =>
     match state with
-    | .loaded tex => if keepSet.contains coord then none else some (coord, tex)
+    | .loaded tex pngData => if keepSet.contains coord then none else some (coord, tex, pngData)
     | _ => none
 
 /-- Identify non-loaded, non-cached tiles outside the keep zone (cheap to remove) -/
 def staleTiles (cache : TileCache) (keepSet : Std.HashSet TileCoord) : List TileCoord :=
   cache.tiles.toList.filterMap fun (coord, state) =>
     match state with
-    | .loaded _ => none    -- Handled by tilesToUnload
+    | .loaded _ _ => none  -- Handled by tilesToUnload
     | .cached _ _ => none  -- Keep cached images in RAM
     | _ => if keepSet.contains coord then none else some coord
 
@@ -139,7 +139,7 @@ def cachedImagesToEvict (cache : TileCache) (keepSet : Std.HashSet TileCoord) (m
 /-- Check if a tile is loaded on GPU -/
 def isLoaded (cache : TileCache) (coord : TileCoord) : Bool :=
   match cache.get coord with
-  | some (.loaded _) => true
+  | some (.loaded _ _) => true
   | _ => false
 
 /-- Get all loaded ancestors of a tile (walks up through ALL ancestors, collecting loaded ones).

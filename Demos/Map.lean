@@ -28,7 +28,8 @@ def MapDemoState.create (screenWidth screenHeight : Float) : IO MapDemoState := 
 
   -- Disk cache config - use a reasonable cache size and path
   let diskConfig : Afferent.DiskCache.DiskCacheConfig := {
-    cacheDir := "/tmp/afferent_map_cache"
+    cacheDir := "./tile_cache"
+    tilesetName := "carto-dark-2x"
     maxSizeBytes := 100 * 1024 * 1024  -- 100MB disk cache
   }
 
@@ -45,6 +46,9 @@ def MapDemoState.create (screenWidth screenHeight : Float) : IO MapDemoState := 
 
 /-- Clean up map demo resources -/
 def MapDemoState.cleanup (state : MapDemoState) : IO Unit := do
+  -- Match heavenly-host behavior: explicitly release GPU textures.
+  for tex in state.mapState.cache.getLoadedTextures do
+    Afferent.FFI.Texture.destroy tex
   if state.httpInitialized then
     Afferent.FFI.HTTP.globalCleanup
 
