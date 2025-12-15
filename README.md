@@ -1,29 +1,56 @@
 # Afferent
 
-A 2D vector graphics library for Lean 4, powered by Metal GPU rendering on macOS.
+A 2D/3D graphics and UI framework for Lean 4, powered by Metal GPU rendering on macOS.
 
 ## Features
 
+### 2D Graphics
 - **Hardware-accelerated rendering** via Metal with 4x MSAA anti-aliasing
 - **Canvas API** with save/restore state management (HTML5 Canvas-style)
 - **Basic shapes**: rectangles, circles, ellipses, rounded rectangles, polygons
 - **Paths**: lines, quadratic/cubic Bezier curves, arcs
-- **Stroke rendering**: configurable line width, line cap styles (butt, round, square), line join styles (miter, round, bevel)
+- **Stroke rendering**: configurable line width, caps (butt, round, square), joins (miter, round, bevel)
 - **Gradient fills**: linear and radial gradients with multiple color stops
 - **Text rendering**: FreeType-based font loading with glyph caching and texture atlas
 - **Transforms**: translate, rotate, scale with matrix composition
-- **Collimator integration**: proof-carrying coordinates via [collimator](https://github.com/lean-machines/collimator)
+
+### 3D Graphics
+- **Perspective projection** with configurable FOV, aspect ratio, near/far planes
+- **3D mesh rendering** with per-fragment lighting and depth testing
+- **Fog effects** with linear distance-based blending
+- **Procedural ocean** with Gerstner wave simulation (GPU-computed)
+- **FPS camera** controller with mouse look and WASD movement
+- **Asset loading** via Assimp (FBX, OBJ, COLLADA, and more)
+
+### Widget System
+- **Declarative widgets**: Text, Box, Row, Column, Grid, Scroll, Interactive
+- **Elm-style architecture** with message passing for interactive apps
+- **Event handling**: mouse events, keyboard input, hit testing, event bubbling
+- **Box styling**: background color, border, radius, padding, margin
+
+### Layout System
+- **CSS Flexbox**: direction, wrap, justify-content, align-items, align-content, gap
+- **CSS Grid**: columns, template areas, row/column sizing
+- **Dimension types**: auto, length, percent, min-content, max-content
+- **Box model**: padding, margin, border, corner radius
+
+### High-Performance Rendering
+- **Instanced rendering**: 50M+ shapes per frame via GPU instancing
+- **Dynamic rendering**: CPU positions with GPU color/coordinate conversion
+- **Animated rendering**: static GPU upload with per-frame time updates only
+- **Sprite system**: texture sprites with physics (Bunnymark-style benchmarks)
+- **FloatBuffer**: C-allocated mutable arrays for zero-copy GPU uploads
 
 ## Requirements
 
-- macOS with Metal support
+- macOS with Metal support (10.13+)
 - [Lean 4](https://lean-lang.org/) (v4.25.0+)
 - [Homebrew](https://brew.sh/) for dependencies
 
-### Dependencies (installed via Homebrew)
+### Dependencies
 
 ```bash
-brew install freetype
+brew install freetype assimp
 ```
 
 ## Building
@@ -42,42 +69,10 @@ cd afferent
 
 ## Usage
 
-### Basic Drawing
+### Canvas API (2D)
 
 ```lean
 import Afferent
-
-def main : IO Unit := do
-  -- Create window and renderer
-  let window ← Afferent.Window.create 800 600 "My App"
-  let renderer ← Afferent.Renderer.create window
-
-  -- Main loop
-  while not (← window.shouldClose) do
-    window.pollEvents
-    if ← renderer.beginFrame 0.1 0.1 0.1 1.0 then
-      -- Draw a red rectangle
-      let vertices := Afferent.Shapes.rectangle (-0.5) (-0.5) 1.0 1.0
-        |>.map (Afferent.Vertex.withColor 1.0 0.0 0.0 1.0)
-      let indices := #[0, 1, 2, 0, 2, 3]
-      let vb ← Afferent.Buffer.createVertex renderer vertices
-      let ib ← Afferent.Buffer.createIndex renderer indices
-      renderer.drawTriangles vb ib indices.size.toUInt32
-      vb.destroy
-      ib.destroy
-      renderer.endFrame
-
-  renderer.destroy
-  window.destroy
-```
-
-### Canvas API (Recommended)
-
-The Canvas monad provides a higher-level drawing API with state management:
-
-```lean
-import Afferent
-import Afferent.Canvas
 
 def myDrawing : Canvas Unit := do
   -- Set fill color and draw rectangle
@@ -92,128 +87,152 @@ def myDrawing : Canvas Unit := do
   Canvas.fillRect (-50) (-50) 100 100
   Canvas.restore
 
-  -- Draw a circle
-  Canvas.setFillColor (Color.hsva 0.396 1.0 0.8 0.8)  -- green with alpha
+  -- Draw a circle with gradient
+  let gradient := Gradient.radial (Point.mk 600 200) 80
+    #[GradientStop.mk 0.0 Color.white, GradientStop.mk 1.0 Color.blue]
+  Canvas.setFillStyle (FillStyle.gradient gradient)
   Canvas.fillCircle 600 200 80
-
-def main : IO Unit := do
-  Afferent.runApp 800 600 "Canvas Demo" fun renderer => do
-    Canvas.render renderer 800 600 myDrawing
 ```
 
-### Gradients
+### Widget System
 
 ```lean
--- Linear gradient
-let gradient := Gradient.linear
-  (Point.mk 0 0) (Point.mk 200 0)
-  #[GradientStop.mk 0.0 Color.red, GradientStop.mk 1.0 Color.blue]
-Canvas.setFillStyle (FillStyle.gradient gradient)
-Canvas.fillRect 50 50 200 100
+import Afferent.Widget
 
--- Radial gradient
-let radial := Gradient.radial
-  (Point.mk 100 100) 80
-  #[GradientStop.mk 0.0 Color.white, GradientStop.mk 1.0 Color.black]
-Canvas.setFillStyle (FillStyle.gradient radial)
-Canvas.fillCircle 100 100 80
+def myUI : Widget :=
+  Widget.column [
+    Widget.text "Hello, Afferent!" |>.withStyle { fontSize := 24 },
+    Widget.row [
+      Widget.box { background := Color.red, padding := EdgeInsets.all 10 }
+        (Widget.text "Button 1"),
+      Widget.box { background := Color.blue, padding := EdgeInsets.all 10 }
+        (Widget.text "Button 2")
+    ]
+  ]
 ```
 
-### Path Drawing
+### 3D Rendering
 
 ```lean
--- Custom path with curves
-Canvas.beginPath
-Canvas.moveTo 100 100
-Canvas.lineTo 200 100
-Canvas.quadraticCurveTo 250 150 200 200
-Canvas.bezierCurveTo 150 250 100 200 100 150
-Canvas.closePath
-Canvas.fill
+import Afferent.Render.Matrix4
+import Afferent.Render.FPSCamera
+
+-- Set up perspective projection
+let projection := Matrix4.perspective (Float.pi / 4) aspectRatio 0.1 1000.0
+let view := camera.viewMatrix
+let mvp := projection * view * modelMatrix
+
+-- Render 3D mesh with fog
+renderer.drawMesh3DWithFog meshBuffer indexBuffer indexCount mvp
+  modelMatrix cameraPos fogStart fogEnd fogColor ambientFactor
 ```
 
-### Stroke Rendering
+### Layout System
 
 ```lean
-Canvas.setStrokeColor Color.white
-Canvas.setLineWidth 4.0
-Canvas.setLineCap LineCap.round
-Canvas.setLineJoin LineJoin.round
-Canvas.beginPath
-Canvas.moveTo 100 100
-Canvas.lineTo 200 150
-Canvas.lineTo 150 250
-Canvas.stroke
-```
+import Afferent.Layout
 
-### Text Rendering
+-- Flexbox layout
+let container := LayoutNode.flex
+  { direction := .row, justify := .spaceBetween, gap := 10 }
+  [child1, child2, child3]
 
-```lean
--- Load a font
-let font ← Afferent.Font.load "/System/Library/Fonts/Helvetica.ttc" 24
-
--- Render text
-Canvas.setFillColor Color.white
-Canvas.fillText font "Hello, Afferent!" 100 100
-
--- Get text metrics
-let (width, height) ← font.measureText "Hello"
+-- Compute layout
+let result := Layout.compute container (BoxConstraints.tight 800 600)
 ```
 
 ## Architecture
 
 ```
-Lean 4 Application
-        |
-   Canvas Monad (state management, transforms)
-        |
-   Tessellation (paths -> triangles)
-        |
-   FFI Bridge (lean_bridge.c)
-        |
-   Native Layer (metal_render.m, text_render.c)
-        |
-   Metal GPU
+┌──────────────────────────────────────┐
+│   Lean 4 Application                 │
+│   (Main.lean, Demos/, Examples/)     │
+├──────────────────────────────────────┤
+│   High-Level APIs                    │
+│  ├─ Canvas Monad (HTML5 Canvas-style)│
+│  ├─ Widget System (declarative UI)   │
+│  ├─ Layout System (CSS Flexbox/Grid) │
+│  └─ 3D Rendering (perspective, fog)  │
+├──────────────────────────────────────┤
+│   Core Types & Rendering             │
+│  ├─ Point, Color, Rect, Size, Path   │
+│  ├─ Transform (2D), Matrix4 (3D)     │
+│  ├─ Tessellation (paths → triangles) │
+│  └─ FPSCamera, Mesh, Paint           │
+├──────────────────────────────────────┤
+│   FFI Layer (@[extern] bindings)     │
+│  ├─ Window, Renderer, Buffer         │
+│  ├─ FloatBuffer, Texture, Font       │
+│  └─ Asset loading (Assimp)           │
+├──────────────────────────────────────┤
+│   Native Code (C/Obj-C/C++)          │
+│  ├─ Metal rendering pipeline         │
+│  ├─ FreeType text rendering          │
+│  └─ Assimp model loading             │
+├──────────────────────────────────────┤
+│   Metal GPU (shaders)                │
+│  ├─ 2D/3D rendering with MSAA        │
+│  ├─ Instanced rendering              │
+│  └─ Procedural effects (ocean, etc)  │
+└──────────────────────────────────────┘
 ```
-
-## FFI Notes (Struct Layout)
-
-When you add or change a Lean `structure` that crosses the C FFI boundary, be careful about how it’s represented on the C side.
-
-- `structure`s with only scalar fields (`UInt8`/`UInt16`/`Float`/etc.) may be compiled as an **unboxed-scalar** layout (0 object fields + a byte blob of scalars at fixed offsets).
-- In that case, you must construct the value with `lean_alloc_ctor(tag, 0, <bytes>)` and set fields using `lean_ctor_set_float/uint16/uint8` at the correct offsets.
-- Do **not** assume you can allocate “4 boxed fields” and use `lean_ctor_set(..., lean_box(...))`—that will produce garbage values.
-
-To confirm the layout, inspect the generated C for the defining module (e.g. `.lake/build/ir/Afferent/FFI/Metal.c`) and mirror the offsets used by the `Inhabited` default initializer.
 
 ## Project Structure
 
 ```
 afferent/
 ├── Afferent/
-│   ├── Core/           # Point, Color, Vertex, Paint types
-│   ├── FFI/            # Lean FFI bindings to native code
-│   ├── Canvas/         # Canvas monad, state, context
-│   ├── Render/         # Tessellation, shapes
-│   └── Text/           # Font wrapper
+│   ├── Core/           # Point, Color, Rect, Path, Transform, Paint
+│   ├── Render/         # Tessellation, Matrix4, Mesh, FPSCamera, Dynamic
+│   ├── Canvas/         # Canvas monad, state management
+│   ├── Widget/         # Declarative UI system, events, hit testing
+│   ├── Layout/         # CSS Flexbox and Grid layout engine
+│   ├── Text/           # Font loading and text measurement
+│   └── FFI/            # Lean FFI bindings (Window, Renderer, Texture, Asset)
+├── Demos/              # 20+ demo applications
+│   ├── Runner.lean     # Multi-pane demo runner
+│   ├── Seascape.lean   # 3D ocean with Gerstner waves
+│   ├── Widgets.lean    # Widget system showcase
+│   ├── Layout.lean     # Layout algorithm demo
+│   └── ...             # Shapes, Gradients, Text, Animations, etc.
+├── Examples/
+│   ├── HelloTriangle.lean   # Minimal Metal example
+│   └── SpinningCubes.lean   # 3D cube rendering
 ├── native/
-│   ├── include/        # C headers (afferent.h)
-│   └── src/            # Metal renderer, FreeType text, FFI bridge
-├── Main.lean           # Demo application
-├── lakefile.lean       # Lake build configuration
-├── build.sh            # Build script
-└── run.sh              # Run script
+│   ├── src/metal/      # Metal renderer, shaders, pipeline
+│   ├── src/common/     # FreeType, FloatBuffer, Assimp loader
+│   └── include/        # C headers
+├── build.sh            # Build script (use instead of lake build)
+├── run.sh              # Build and run script
+└── test.sh             # Run test suite
 ```
 
-## Milestones
+## Demos
 
-- [x] **M1: Hello Triangle** - Metal FFI, basic rendering pipeline
-- [x] **M2: Basic Shapes** - Rectangles, circles, polygons, tessellation
-- [x] **M3: Bezier Curves** - Quadratic/cubic curves, arcs, complex paths
-- [x] **M4: Canvas State** - Save/restore, transforms, Canvas monad
-- [x] **M5: Stroke Rendering** - Path outlines, line width/cap/join
-- [x] **M6: Polish** - MSAA, gradients, text rendering
+Run demos with `./run.sh`:
+
+| Demo | Description |
+|------|-------------|
+| Seascape | 3D ocean with Gerstner waves and FPS camera |
+| SpinningCubes | Grid of rotating 3D cubes |
+| Widgets | Widget system showcase |
+| Layout | Flexbox and Grid layout demos |
+| Shapes | 2D shapes (rect, circle, polygon) |
+| Gradients | Linear and radial gradients |
+| Strokes | Stroke rendering styles |
+| Text | Text rendering at various sizes |
+| Transforms | Transform compositions |
+| Animations | GPU-side animation showcase |
+| CirclesPerf | 1M+ bouncing circles benchmark |
+
+## Testing
+
+```bash
+./test.sh
+```
+
+Tests cover tessellation, layout algorithms, widget measurement, asset loading, and FFI safety.
 
 ## License
 
-MIT
+MIT License - see [LICENSE](LICENSE) for details.
