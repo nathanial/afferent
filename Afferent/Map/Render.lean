@@ -401,7 +401,7 @@ def renderTiles (renderer : Renderer) (state : MapState) : IO Unit := do
   -- Compute scale factor for fractional zoom
   let tileZoom := state.viewport.zoom
   let scale := Float.pow 2.0 (state.displayZoom - intToFloat tileZoom)
-  let scaledTileSize := 256.0 * scale
+  let scaledTileSize := (intToFloat state.viewport.tileSize) * scale
 
   -- PASS 1: Render parent tiles as background layer (scaled up 2x)
   if state.viewport.zoom > 0 then

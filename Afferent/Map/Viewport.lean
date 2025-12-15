@@ -14,7 +14,7 @@ structure MapViewport where
   zoom : Int             -- 0-19
   screenWidth : Int
   screenHeight : Int
-  tileSize : Int := 256  -- OSM tiles are 256x256
+  tileSize : Int := 512  -- Rendering in physical pixels; @2x tiles are 512x512
   deriving Repr, Inhabited
 
 namespace MapViewport
