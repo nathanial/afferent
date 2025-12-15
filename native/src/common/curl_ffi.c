@@ -7,6 +7,7 @@
 #include <curl/curl.h>
 #include <string.h>
 #include <stdlib.h>
+#include <unistd.h>
 
 // Binary response buffer
 typedef struct {
@@ -29,6 +30,36 @@ static size_t write_binary_callback(void *contents, size_t size, size_t nmemb, v
     buf->size += realsize;
 
     return realsize;
+}
+
+static const char* afferent_find_ca_bundle(void) {
+    const char* envs[] = {
+        "AFFERENT_CURL_CA_BUNDLE",
+        "CURL_CA_BUNDLE",
+        "SSL_CERT_FILE"
+    };
+
+    for (size_t i = 0; i < sizeof(envs) / sizeof(envs[0]); i++) {
+        const char* val = getenv(envs[i]);
+        if (val && val[0] && access(val, R_OK) == 0) {
+            return val;
+        }
+    }
+
+    const char* candidates[] = {
+        "/etc/ssl/cert.pem",                    // macOS
+        "/etc/ssl/certs/ca-certificates.crt",   // Debian/Ubuntu
+        "/etc/pki/tls/certs/ca-bundle.crt",     // RHEL/CentOS/Fedora
+        "/etc/ssl/ca-bundle.pem"                // SLES/openSUSE (common)
+    };
+
+    for (size_t i = 0; i < sizeof(candidates) / sizeof(candidates[0]); i++) {
+        if (access(candidates[i], R_OK) == 0) {
+            return candidates[i];
+        }
+    }
+
+    return NULL;
 }
 
 // Initialize libcurl globally
@@ -68,6 +99,11 @@ LEAN_EXPORT lean_obj_res lean_curl_http_get_binary(b_lean_obj_arg url_obj, lean_
     curl_easy_setopt(curl, CURLOPT_FOLLOWLOCATION, 1L);
     curl_easy_setopt(curl, CURLOPT_TIMEOUT, 30L);
     curl_easy_setopt(curl, CURLOPT_USERAGENT, "Afferent/1.0 (Lean4 Graphics Framework)");
+
+    const char* ca_bundle = afferent_find_ca_bundle();
+    if (ca_bundle) {
+        curl_easy_setopt(curl, CURLOPT_CAINFO, ca_bundle);
+    }
 
     CURLcode res = curl_easy_perform(curl);
     lean_object *result;

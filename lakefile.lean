@@ -14,11 +14,15 @@ def commonLinkArgs : Array String := #[
   "-framework", "Cocoa",
   "-framework", "QuartzCore",
   "-framework", "Foundation",
-  "-framework", "Security",           -- For libcurl with SecureTransport
-  "-framework", "SystemConfiguration", -- For libcurl network configuration
+  "-framework", "Security",
+  "-framework", "SystemConfiguration",
   "-lobjc",
   "-L/opt/homebrew/lib",    -- Apple Silicon Homebrew
   "-L/usr/local/lib",        -- Intel Homebrew fallback
+  "-L/opt/homebrew/opt/openssl@3/lib", -- Homebrew OpenSSL (keg-only)
+  "-L/usr/local/opt/openssl@3/lib",    -- Intel Homebrew OpenSSL (keg-only)
+  "-lssl",
+  "-lcrypto",
   "-lfreetype",
   "-Lthird_party/assimp/build/lib",
   "-lassimp",
@@ -51,6 +55,11 @@ lean_exe hello_triangle where
 -- 3D Spinning Cubes demo
 lean_exe spinning_cubes where
   root := `Examples.SpinningCubes
+  moreLinkArgs := commonLinkArgs
+
+-- Headless map tile fetch/decode diagnostic
+lean_exe map_tile_fetch_test where
+  root := `Examples.MapTileFetchTest
   moreLinkArgs := commonLinkArgs
 
 -- Test executable
