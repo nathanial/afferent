@@ -29,7 +29,7 @@ inductive TileState where
 /-- Result from a background fetch task (contains raw PNG bytes) -/
 structure FetchResult where
   coord : TileCoord
-  result : Except String ByteArray             -- Raw PNG data
+  result : Except String (Texture × ByteArray) -- Decoded CPU texture + original PNG bytes
   wasRetry : Bool := false                     -- Track if this was a retry attempt
 
 /-- Default retry configuration: 3 retries with exponential backoff starting at 60 frames (1 sec) -/

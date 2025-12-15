@@ -141,9 +141,46 @@ def spawnFetchTask (coord : TileCoord) (queue : IO.Ref (Array FetchResult))
         | .error _ => pure ()  -- Disk write failed, continue anyway
     | .error _ => pure ()
 
+    -- Decode PNG bytes to a CPU texture on the background thread.
+    let result : Except String (Texture × ByteArray) ←
+      match pngData with
+      | .ok data =>
+        try
+          let texture ← Afferent.FFI.Texture.loadFromMemory data
+          pure (.ok (texture, data))
+        catch e =>
+          pure (.error s!"Texture load failed: {e}")
+      | .error msg => pure (.error msg)
+
+    -- If cancelled after decode, ensure we don't leak the texture.
+    if ← cancelFlag.get then
+      match result with
+      | .ok (texture, _) => Afferent.FFI.Texture.destroy texture
+      | .error _ => pure ()
+      return
+
     -- Only push result if not cancelled
     unless ← cancelFlag.get do
-      queue.modify fun arr => arr.push { coord := coord, result := pngData, wasRetry := wasRetry }
+      queue.modify fun arr => arr.push { coord := coord, result := result, wasRetry := wasRetry }
+  pure ()
+
+/-- Spawn a background task to decode cached PNG bytes into a CPU texture. -/
+def spawnDecodeTask (coord : TileCoord) (pngData : ByteArray) (queue : IO.Ref (Array FetchResult))
+    (cancelFlag : IO.Ref Bool) : IO Unit := do
+  let _ ← IO.asTask do
+    if ← cancelFlag.get then return
+    let result : Except String (Texture × ByteArray) ←
+      try
+        let texture ← Afferent.FFI.Texture.loadFromMemory pngData
+        pure (.ok (texture, pngData))
+      catch e =>
+        pure (.error s!"Texture load failed: {e}")
+    if ← cancelFlag.get then
+      match result with
+      | .ok (texture, _) => Afferent.FFI.Texture.destroy texture
+      | .error _ => pure ()
+      return
+    queue.modify fun arr => arr.push { coord := coord, result := result }
   pure ()
 
 /-- Process any completed fetch results (main thread) -/
@@ -160,15 +197,8 @@ def processCompletedFetches (state : MapState) : IO MapState := do
     state.activeTasks.modify fun m => m.erase res.coord
 
     match res.result with
-    | .ok pngData =>
-      -- Create texture from PNG data
-      try
-        let texture ← Afferent.FFI.Texture.loadFromMemory pngData
-        cache := cache.insert res.coord (.loaded texture pngData)
-      catch e =>
-        -- Texture creation failure, mark exhausted immediately
-        let rs := RetryState.initialFailure tau s!"Texture load failed: {e}"
-        cache := cache.insert res.coord (.exhausted rs)
+    | .ok (texture, pngData) =>
+      cache := cache.insert res.coord (.loaded texture pngData)
     | .error msg =>
       -- Network failure - handle based on whether this was a retry
       if res.wasRetry then
@@ -252,12 +282,13 @@ def reloadCachedTiles (state : MapState) : IO MapState := do
   let mut cache := state.cache
   for (coord, pngData) in toReload do
     if pngData.size > 0 then
-      try
-        let texture ← Afferent.FFI.Texture.loadFromMemory pngData
-        cache := cache.insert coord (.loaded texture pngData)
-      catch _ =>
-        -- Texture load failed, keep as cached (will retry next frame)
-        pure ()
+      let tasks ← state.activeTasks.get
+      unless tasks.contains coord do
+        -- Kick decoding to a background task; keep the tile in `.pending` while it runs.
+        cache := cache.insert coord .pending
+        let cancelFlag ← IO.mkRef false
+        state.activeTasks.modify fun m => m.insert coord cancelFlag
+        spawnDecodeTask coord pngData state.resultQueue cancelFlag
 
   pure { state with cache := cache }
 
@@ -294,6 +325,8 @@ def cancelStaleTasks (state : MapState) : IO Unit := do
   for (coord, cancelFlag) in tasks.toList do
     unless keepSet.contains coord do
       cancelFlag.set true
+      -- Drop bookkeeping immediately; task will observe cancelFlag and skip queueing.
+      state.activeTasks.modify fun m => m.erase coord
 
 /-- Update cache: spawn fetches for missing tiles and schedule retries (non-blocking) -/
 def updateTileCache (state : MapState) : IO MapState := do
