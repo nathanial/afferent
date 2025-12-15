@@ -73,10 +73,11 @@ def MapDemoState.getInfo (state : MapDemoState) : String :=
   let vp := state.mapState.viewport
   let lat := vp.centerLat
   let lon := vp.centerLon
-  let zoom := state.mapState.targetZoom
+  let vpZoom := vp.zoom  -- viewport.zoom (used for tile fetching)
+  let targetZoom := state.mapState.targetZoom
   let displayZoom := state.mapState.displayZoom
   let cacheCount := state.mapState.cache.tiles.size
-  s!"Map: lat={lat} lon={lon} zoom={zoom} display={displayZoom} tiles={cacheCount}"
+  s!"Map: lat={lat} lon={lon} vpZoom={vpZoom} target={targetZoom} display={displayZoom} tiles={cacheCount}"
 
 /-- Global map demo state (for integration with Runner) -/
 initialize mapDemoStateRef : IO.Ref (Option MapDemoState) ← IO.mkRef none

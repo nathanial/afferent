@@ -47,6 +47,7 @@ def init (lat lon : Float) (zoom : Int) (width height : Int)
   let diskIndex ← IO.mkRef (DiskCacheIndex.empty diskConfig)
   let activeTasks ← IO.mkRef {}
   let clampedZoom := clampZoom zoom
+  IO.println s!"[MapState.init] zoom={zoom} clampedZoom={clampedZoom} width={width} height={height}"
   pure {
     viewport := {
       centerLat := lat
