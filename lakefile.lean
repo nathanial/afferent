@@ -7,6 +7,23 @@ package afferent where
 
 require collimator from git "https://github.com/nathanial/collimator" @ "master"
 
+-- Common link arguments for all executables
+-- Includes both Homebrew paths for Apple Silicon (/opt/homebrew) and Intel (/usr/local)
+def commonLinkArgs : Array String := #[
+  "-framework", "Metal",
+  "-framework", "Cocoa",
+  "-framework", "QuartzCore",
+  "-framework", "Foundation",
+  "-lobjc",
+  "-L/opt/homebrew/lib",    -- Apple Silicon Homebrew
+  "-L/usr/local/lib",        -- Intel Homebrew fallback
+  "-lfreetype",
+  "-Lthird_party/assimp/build/lib",
+  "-lassimp",
+  "-lz",
+  "-lc++"
+]
+
 -- Native library compilation
 @[default_target]
 lean_lib Afferent where
@@ -20,80 +37,23 @@ lean_exe afferent where
   root := `Main
   -- Link against Metal and Cocoa frameworks on macOS
   -- NOTE: Build with LEAN_CC=/usr/bin/clang to use system linker
-  moreLinkArgs := #[
-    "-L/Users/nathanialhartman/.elan/toolchains/leanprover--lean4---v4.25.2/lib",
-    "-L/Users/nathanialhartman/.elan/toolchains/leanprover--lean4---v4.25.2/lib/libc",
-    "-framework", "Metal",
-    "-framework", "Cocoa",
-    "-framework", "QuartzCore",
-    "-framework", "Foundation",
-    "-lobjc",
-    "-L/opt/homebrew/lib",
-    "-lfreetype",
-    -- Assimp and C++ runtime
-    "-Lthird_party/assimp/build/lib",
-    "-lassimp",
-    "-lz",
-    "-lc++"
-  ]
+  moreLinkArgs := commonLinkArgs
 
 -- Example executable
 lean_exe hello_triangle where
   root := `Examples.HelloTriangle
-  moreLinkArgs := #[
-    "-L/Users/nathanialhartman/.elan/toolchains/leanprover--lean4---v4.25.2/lib",
-    "-L/Users/nathanialhartman/.elan/toolchains/leanprover--lean4---v4.25.2/lib/libc",
-    "-framework", "Metal",
-    "-framework", "Cocoa",
-    "-framework", "QuartzCore",
-    "-framework", "Foundation",
-    "-lobjc",
-    "-L/opt/homebrew/lib",
-    "-lfreetype",
-    "-Lthird_party/assimp/build/lib",
-    "-lassimp",
-    "-lz",
-    "-lc++"
-  ]
+  moreLinkArgs := commonLinkArgs
 
 -- 3D Spinning Cubes demo
 lean_exe spinning_cubes where
   root := `Examples.SpinningCubes
-  moreLinkArgs := #[
-    "-L/Users/nathanialhartman/.elan/toolchains/leanprover--lean4---v4.25.2/lib",
-    "-L/Users/nathanialhartman/.elan/toolchains/leanprover--lean4---v4.25.2/lib/libc",
-    "-framework", "Metal",
-    "-framework", "Cocoa",
-    "-framework", "QuartzCore",
-    "-framework", "Foundation",
-    "-lobjc",
-    "-L/opt/homebrew/lib",
-    "-lfreetype",
-    "-Lthird_party/assimp/build/lib",
-    "-lassimp",
-    "-lz",
-    "-lc++"
-  ]
+  moreLinkArgs := commonLinkArgs
 
 -- Test executable
 @[test_driver]
 lean_exe afferent_tests where
   root := `AfferentTests
-  moreLinkArgs := #[
-    "-L/Users/nathanialhartman/.elan/toolchains/leanprover--lean4---v4.25.2/lib",
-    "-L/Users/nathanialhartman/.elan/toolchains/leanprover--lean4---v4.25.2/lib/libc",
-    "-framework", "Metal",
-    "-framework", "Cocoa",
-    "-framework", "QuartzCore",
-    "-framework", "Foundation",
-    "-lobjc",
-    "-L/opt/homebrew/lib",
-    "-lfreetype",
-    "-Lthird_party/assimp/build/lib",
-    "-lassimp",
-    "-lz",
-    "-lc++"
-  ]
+  moreLinkArgs := commonLinkArgs
 
 -- Native code targets
 -- Metal-specific native code (macOS only)
@@ -127,6 +87,7 @@ target text_render_o pkg : FilePath := do
   buildO oFile (← inputTextFile srcFile) #[
     "-I", includeDir.toString,
     "-I/opt/homebrew/include/freetype2",
+    "-I/usr/local/include/freetype2",
     "-fPIC",
     "-O2"
   ] #[] "cc"

@@ -46,26 +46,36 @@ A 2D/3D graphics and UI framework for Lean 4, powered by Metal GPU rendering on 
 - macOS with Metal support (10.13+)
 - [Lean 4](https://lean-lang.org/) (v4.25.0+)
 - [Homebrew](https://brew.sh/) for dependencies
+- CMake (for building Assimp)
 
 ### Dependencies
 
 ```bash
-brew install freetype assimp
+brew install freetype cmake
 ```
+
+Note: Assimp is included as a git submodule and built from source automatically.
 
 ## Building
 
 ```bash
-# Clone and build
-git clone <repo-url>
+# Clone with submodules
+git clone --recurse-submodules <repo-url>
 cd afferent
+
+# Build (automatically initializes submodules and builds Assimp on first run)
 ./build.sh
 
 # Run the demo
 ./run.sh
 ```
 
-**Note**: Use `./build.sh` instead of `lake build` directly. The build script sets `LEAN_CC=/usr/bin/clang` which is required for proper macOS framework linking.
+If you've already cloned without `--recurse-submodules`, the build script will automatically initialize and build the Assimp submodule on first run.
+
+**Note**: Use `./build.sh` instead of `lake build` directly. The build script:
+- Sets `LEAN_CC=/usr/bin/clang` for proper macOS framework linking
+- Initializes git submodules if needed
+- Builds Assimp from source on first run
 
 ## Usage
 
