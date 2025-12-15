@@ -48,6 +48,8 @@ def handlePanInput (window : Window) (state : MapState) : IO MapState := do
 def handleZoomInput (window : Window) (state : MapState) : IO MapState := do
   let (_, wheelY) ← Window.getScrollDelta window
   if wheelY != 0.0 then
+    -- `getScrollDelta` reports accumulated scroll since last clear; consume it exactly once.
+    Window.clearScroll window
     let (mouseX, mouseY) ← Window.getMousePos window
     let delta := if wheelY > 0.0 then 1 else -1
     -- Accumulate: add delta to current target (not viewport.zoom)
