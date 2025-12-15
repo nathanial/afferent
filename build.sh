@@ -29,6 +29,34 @@ if [ ! -f "third_party/assimp/build/lib/libassimp.a" ] && [ ! -f "third_party/as
     echo "Assimp build complete!"
 fi
 
+# Build libcurl if not already built
+if [ ! -f "third_party/curl/build/lib/libcurl.a" ]; then
+    echo "Building libcurl (this may take a few minutes on first build)..."
+    mkdir -p third_party/curl/build
+    pushd third_party/curl/build > /dev/null
+    cmake .. \
+        -DCMAKE_BUILD_TYPE=Release \
+        -DBUILD_SHARED_LIBS=OFF \
+        -DBUILD_CURL_EXE=OFF \
+        -DCURL_USE_SECTRANSP=ON \
+        -DCURL_USE_OPENSSL=OFF \
+        -DCURL_DISABLE_LDAP=ON \
+        -DCURL_DISABLE_LDAPS=ON \
+        -DCURL_USE_LIBSSH2=OFF \
+        -DCURL_USE_LIBSSH=OFF \
+        -DBUILD_TESTING=OFF \
+        -DCURL_CA_BUNDLE=none \
+        -DCURL_CA_PATH=none \
+        -DCURL_USE_LIBPSL=OFF \
+        -DUSE_NGHTTP2=OFF \
+        -DUSE_LIBIDN2=OFF \
+        -DCURL_BROTLI=OFF \
+        -DCURL_ZSTD=OFF
+    cmake --build . --config Release -j$(sysctl -n hw.ncpu)
+    popd > /dev/null
+    echo "libcurl build complete!"
+fi
+
 # Build the specified target (default: afferent executable)
 TARGET="${1:-afferent}"
 

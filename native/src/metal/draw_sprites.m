@@ -183,6 +183,72 @@ void afferent_release_sprite_metal_texture(AfferentTextureRef texture) {
     }
 }
 
+// Draw a textured rectangle with source and destination rectangles
+// Used for map tile rendering with cropping and scaling
+void afferent_renderer_draw_textured_rect(
+    AfferentRendererRef renderer,
+    AfferentTextureRef texture,
+    float srcX, float srcY, float srcW, float srcH,
+    float dstX, float dstY, float dstW, float dstH,
+    float canvasWidth, float canvasHeight,
+    float alpha
+) {
+    if (!renderer || !renderer->currentEncoder || !texture) {
+        return;
+    }
+
+    @autoreleasepool {
+        // Get or create Metal texture
+        id<MTLTexture> metalTex = (__bridge id<MTLTexture>)afferent_texture_get_metal_texture(texture);
+
+        if (!metalTex) {
+            const uint8_t* pixelData = afferent_texture_get_data(texture);
+            uint32_t width, height;
+            afferent_texture_get_size(texture, &width, &height);
+
+            if (!pixelData || width == 0 || height == 0) {
+                return;
+            }
+
+            metalTex = createMetalTexture(renderer->device, pixelData, width, height);
+            if (!metalTex) {
+                return;
+            }
+
+            afferent_texture_set_metal_texture(texture, (__bridge_retained void*)metalTex);
+        }
+
+        // Get texture dimensions for UV conversion
+        uint32_t texWidth, texHeight;
+        afferent_texture_get_size(texture, &texWidth, &texHeight);
+
+        TexturedRectUniforms uniforms = {
+            .srcX = srcX,
+            .srcY = srcY,
+            .srcW = srcW,
+            .srcH = srcH,
+            .dstX = dstX,
+            .dstY = dstY,
+            .dstW = dstW,
+            .dstH = dstH,
+            .texWidth = (float)texWidth,
+            .texHeight = (float)texHeight,
+            .canvasWidth = canvasWidth,
+            .canvasHeight = canvasHeight,
+            .alpha = alpha
+        };
+
+        [renderer->currentEncoder setRenderPipelineState:renderer->texturedRectPipelineState];
+        [renderer->currentEncoder setVertexBytes:&uniforms length:sizeof(uniforms) atIndex:0];
+        [renderer->currentEncoder setFragmentTexture:metalTex atIndex:0];
+        [renderer->currentEncoder setFragmentSamplerState:renderer->spriteSampler atIndex:0];
+        [renderer->currentEncoder drawPrimitives:MTLPrimitiveTypeTriangleStrip
+                                     vertexStart:0
+                                     vertexCount:4];
+        [renderer->currentEncoder setRenderPipelineState:renderer->pipelineState];
+    }
+}
+
 // Draw sprites from FloatBuffer using physics layout.
 // Buffer layout: [x, y, vx, vy, rotation] per sprite (5 floats).
 // Converted on CPU into SpriteInstanceData with uniform halfSize and alpha=1.0.

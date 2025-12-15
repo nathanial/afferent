@@ -45,4 +45,7 @@ extern NSString *shader3DSource;
 // 3D textured mesh shader (for loaded assets with diffuse textures)
 extern NSString *shader3DTexturedSource;
 
+// Textured rectangle shader (for map tiles)
+extern NSString *texturedRectShaderSource;
+
 #endif // AFFERENT_METAL_SHADERS_H

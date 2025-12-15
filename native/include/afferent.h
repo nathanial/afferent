@@ -356,6 +356,13 @@ AfferentResult afferent_texture_load(
     AfferentTextureRef* out_texture
 );
 
+// Load a texture from memory (PNG/JPG data in buffer)
+AfferentResult afferent_texture_load_from_memory(
+    const uint8_t* buffer,
+    size_t buffer_size,
+    AfferentTextureRef* out_texture
+);
+
 // Destroy a loaded texture
 void afferent_texture_destroy(AfferentTextureRef texture);
 
@@ -398,6 +405,20 @@ void afferent_renderer_draw_sprites_buffer(
     float halfSize,
     float canvasWidth,
     float canvasHeight
+);
+
+// Draw a textured rectangle with source and destination rectangles
+// Used for map tile rendering with cropping and scaling
+// srcX/Y/W/H: source rectangle in texture pixels
+// dstX/Y/W/H: destination rectangle in screen pixels
+// alpha: transparency (0.0-1.0)
+void afferent_renderer_draw_textured_rect(
+    AfferentRendererRef renderer,
+    AfferentTextureRef texture,
+    float srcX, float srcY, float srcW, float srcH,
+    float dstX, float dstY, float dstW, float dstH,
+    float canvasWidth, float canvasHeight,
+    float alpha
 );
 
 // 3D Mesh rendering with perspective projection and lighting

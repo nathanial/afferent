@@ -574,6 +574,52 @@ AfferentResult create_pipelines(struct AfferentRenderer* renderer) {
     renderer->spritePipelineState = renderer->spritePipelineStateMSAA;
 
     // ====================================================================
+    // Create textured rectangle pipeline (for map tiles)
+    // ====================================================================
+    id<MTLLibrary> texturedRectLibrary = [renderer->device newLibraryWithSource:texturedRectShaderSource
+                                                                        options:nil
+                                                                          error:&error];
+    if (!texturedRectLibrary) {
+        NSLog(@"Textured rect shader compilation failed: %@", error);
+        return AFFERENT_ERROR_PIPELINE_FAILED;
+    }
+
+    id<MTLFunction> texturedRectVertexFunc = [texturedRectLibrary newFunctionWithName:@"textured_rect_vertex"];
+    id<MTLFunction> texturedRectFragmentFunc = [texturedRectLibrary newFunctionWithName:@"textured_rect_fragment"];
+    if (!texturedRectVertexFunc || !texturedRectFragmentFunc) {
+        NSLog(@"Failed to find textured rect shader functions");
+        return AFFERENT_ERROR_PIPELINE_FAILED;
+    }
+
+    MTLRenderPipelineDescriptor *texturedRectPipelineDesc = [[MTLRenderPipelineDescriptor alloc] init];
+    texturedRectPipelineDesc.vertexFunction = texturedRectVertexFunc;
+    texturedRectPipelineDesc.fragmentFunction = texturedRectFragmentFunc;
+    texturedRectPipelineDesc.colorAttachments[0].pixelFormat = MTLPixelFormatBGRA8Unorm;
+    texturedRectPipelineDesc.rasterSampleCount = 4;
+    texturedRectPipelineDesc.colorAttachments[0].blendingEnabled = YES;
+    texturedRectPipelineDesc.colorAttachments[0].sourceRGBBlendFactor = MTLBlendFactorSourceAlpha;
+    texturedRectPipelineDesc.colorAttachments[0].destinationRGBBlendFactor = MTLBlendFactorOneMinusSourceAlpha;
+    texturedRectPipelineDesc.colorAttachments[0].sourceAlphaBlendFactor = MTLBlendFactorOne;
+    texturedRectPipelineDesc.colorAttachments[0].destinationAlphaBlendFactor = MTLBlendFactorOneMinusSourceAlpha;
+
+    renderer->texturedRectPipelineStateMSAA = [renderer->device newRenderPipelineStateWithDescriptor:texturedRectPipelineDesc
+                                                                                               error:&error];
+    if (!renderer->texturedRectPipelineStateMSAA) {
+        NSLog(@"Textured rect pipeline creation failed (MSAA): %@", error);
+        return AFFERENT_ERROR_PIPELINE_FAILED;
+    }
+
+    texturedRectPipelineDesc.rasterSampleCount = 1;
+    renderer->texturedRectPipelineStateNoMSAA = [renderer->device newRenderPipelineStateWithDescriptor:texturedRectPipelineDesc
+                                                                                                 error:&error];
+    if (!renderer->texturedRectPipelineStateNoMSAA) {
+        NSLog(@"Textured rect pipeline creation failed (no MSAA): %@", error);
+        return AFFERENT_ERROR_PIPELINE_FAILED;
+    }
+
+    renderer->texturedRectPipelineState = renderer->texturedRectPipelineStateMSAA;
+
+    // ====================================================================
     // Create depth stencil state for 3D rendering
     // ====================================================================
     MTLDepthStencilDescriptor *depthStateDesc = [[MTLDepthStencilDescriptor alloc] init];

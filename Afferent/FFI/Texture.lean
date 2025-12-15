@@ -10,6 +10,10 @@ namespace Afferent.FFI
 @[extern "lean_afferent_texture_load"]
 opaque Texture.load (path : @& String) : IO Texture
 
+-- Load a texture from memory (PNG/JPG data in ByteArray)
+@[extern "lean_afferent_texture_load_from_memory"]
+opaque Texture.loadFromMemory (data : @& ByteArray) : IO Texture
+
 -- Destroy a texture
 @[extern "lean_afferent_texture_destroy"]
 opaque Texture.destroy (texture : @& Texture) : IO Unit

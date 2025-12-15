@@ -47,6 +47,36 @@ AfferentResult afferent_texture_load(const char* path, AfferentTextureRef* out_t
     return AFFERENT_OK;
 }
 
+// Load a texture from memory (PNG/JPG data in buffer)
+AfferentResult afferent_texture_load_from_memory(const uint8_t* buffer, size_t buffer_size, AfferentTextureRef* out_texture) {
+    if (!buffer || buffer_size == 0 || !out_texture) {
+        return AFFERENT_ERROR_INIT_FAILED;
+    }
+
+    // Load image from memory with stb_image (force RGBA)
+    int width, height, channels;
+    uint8_t* data = stbi_load_from_memory(buffer, (int)buffer_size, &width, &height, &channels, 4);
+
+    if (!data) {
+        return AFFERENT_ERROR_INIT_FAILED;
+    }
+
+    // Allocate texture structure
+    AfferentTextureRef texture = (AfferentTextureRef)malloc(sizeof(struct AfferentTexture));
+    if (!texture) {
+        stbi_image_free(data);
+        return AFFERENT_ERROR_INIT_FAILED;
+    }
+
+    texture->data = data;
+    texture->width = (uint32_t)width;
+    texture->height = (uint32_t)height;
+    texture->metal_texture = NULL;  // Created lazily by renderer
+
+    *out_texture = texture;
+    return AFFERENT_OK;
+}
+
 // External declaration from metal_render.m
 extern void afferent_release_sprite_metal_texture(AfferentTextureRef texture);
 

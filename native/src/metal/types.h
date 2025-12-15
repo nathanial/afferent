@@ -162,4 +162,22 @@ typedef struct {
     float uvOffset[2];        // UV offset (8 bytes) - default (0,0)
 } Scene3DTexturedUniforms;  // Total: 192 bytes
 
+// Textured rectangle uniforms structure (matches shader)
+// Used for map tile rendering with source/dest rectangles
+typedef struct {
+    float srcX;           // Source X in texture pixels
+    float srcY;           // Source Y in texture pixels
+    float srcW;           // Source width in texture pixels
+    float srcH;           // Source height in texture pixels
+    float dstX;           // Destination X in screen pixels
+    float dstY;           // Destination Y in screen pixels
+    float dstW;           // Destination width in screen pixels
+    float dstH;           // Destination height in screen pixels
+    float texWidth;       // Texture width for UV conversion
+    float texHeight;      // Texture height for UV conversion
+    float canvasWidth;    // Canvas width for NDC conversion
+    float canvasHeight;   // Canvas height for NDC conversion
+    float alpha;          // Alpha transparency 0-1
+} TexturedRectUniforms;  // Total: 52 bytes
+
 #endif // AFFERENT_METAL_TYPES_H

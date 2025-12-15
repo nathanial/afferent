@@ -208,4 +208,22 @@ opaque Renderer.drawDynamicTriangles
   (canvasWidth : Float)
   (canvasHeight : Float) : IO Unit
 
+-- ============================================================================
+-- TEXTURED RECTANGLE RENDERING - Map tile rendering with source/dest rects
+-- ============================================================================
+
+-- Draw a textured rectangle with source and destination rectangles
+-- Used for map tile rendering with cropping and scaling
+-- srcX/Y/W/H: source rectangle in texture pixels
+-- dstX/Y/W/H: destination rectangle in screen pixels
+-- alpha: transparency (0.0-1.0)
+@[extern "lean_afferent_renderer_draw_textured_rect"]
+opaque Renderer.drawTexturedRect
+  (renderer : @& Renderer)
+  (texture : @& Texture)
+  (srcX srcY srcW srcH : Float)   -- Source rectangle in texture pixels
+  (dstX dstY dstW dstH : Float)   -- Destination rectangle in screen pixels
+  (canvasWidth canvasHeight : Float) -- Canvas dimensions for NDC conversion
+  (alpha : Float) : IO Unit
+
 end Afferent.FFI

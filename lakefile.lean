@@ -14,12 +14,16 @@ def commonLinkArgs : Array String := #[
   "-framework", "Cocoa",
   "-framework", "QuartzCore",
   "-framework", "Foundation",
+  "-framework", "Security",           -- For libcurl with SecureTransport
+  "-framework", "SystemConfiguration", -- For libcurl network configuration
   "-lobjc",
   "-L/opt/homebrew/lib",    -- Apple Silicon Homebrew
   "-L/usr/local/lib",        -- Intel Homebrew fallback
   "-lfreetype",
   "-Lthird_party/assimp/build/lib",
   "-lassimp",
+  "-Lthird_party/curl/build/lib",
+  "-lcurl",
   "-lz",
   "-lc++"
 ]
@@ -142,6 +146,36 @@ target assimp_loader_o pkg : FilePath := do
     "-O2"
   ] #[] "clang++"
 
+-- CURL FFI (HTTP client)
+target curl_ffi_o pkg : FilePath := do
+  let oFile := pkg.buildDir / "native" / "curl_ffi.o"
+  let srcFile := pkg.dir / "native" / "src" / "common" / "curl_ffi.c"
+  let includeDir := pkg.dir / "native" / "include"
+  let curlIncludeDir := pkg.dir / "third_party" / "curl" / "include"
+  let curlBuildIncludeDir := pkg.dir / "third_party" / "curl" / "build" / "include"
+  let leanIncludeDir ← getLeanIncludeDir
+  buildO oFile (← inputTextFile srcFile) #[
+    "-I", leanIncludeDir.toString,
+    "-I", includeDir.toString,
+    "-I", curlIncludeDir.toString,
+    "-I", curlBuildIncludeDir.toString,
+    "-fPIC",
+    "-O2"
+  ] #[] "cc"
+
+-- Disk cache FFI (file I/O for tile caching)
+target disk_cache_ffi_o pkg : FilePath := do
+  let oFile := pkg.buildDir / "native" / "disk_cache_ffi.o"
+  let srcFile := pkg.dir / "native" / "src" / "common" / "disk_cache_ffi.c"
+  let includeDir := pkg.dir / "native" / "include"
+  let leanIncludeDir ← getLeanIncludeDir
+  buildO oFile (← inputTextFile srcFile) #[
+    "-I", leanIncludeDir.toString,
+    "-I", includeDir.toString,
+    "-fPIC",
+    "-O2"
+  ] #[] "cc"
+
 extern_lib libafferent_native pkg := do
   let name := nameToStaticLib "afferent_native"
   let windowO ← window_o.fetch
@@ -151,4 +185,6 @@ extern_lib libafferent_native pkg := do
   let floatBufferO ← float_buffer_o.fetch
   let textureO ← texture_o.fetch
   let assimpLoaderO ← assimp_loader_o.fetch
-  buildStaticLib (pkg.staticLibDir / name) #[windowO, metalO, textO, bridgeO, floatBufferO, textureO, assimpLoaderO]
+  let curlFfiO ← curl_ffi_o.fetch
+  let diskCacheFfiO ← disk_cache_ffi_o.fetch
+  buildStaticLib (pkg.staticLibDir / name) #[windowO, metalO, textO, bridgeO, floatBufferO, textureO, assimpLoaderO, curlFfiO, diskCacheFfiO]

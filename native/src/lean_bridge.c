@@ -1310,6 +1310,29 @@ LEAN_EXPORT lean_obj_res lean_afferent_texture_load(
     return lean_io_result_mk_ok(obj);
 }
 
+// Load texture from memory (ByteArray of PNG/JPG data)
+LEAN_EXPORT lean_obj_res lean_afferent_texture_load_from_memory(
+    lean_obj_arg data_obj,
+    lean_obj_arg world
+) {
+    afferent_ensure_initialized();
+
+    // Get ByteArray data
+    size_t size = lean_sarray_size(data_obj);
+    const uint8_t* data = lean_sarray_cptr(data_obj);
+
+    AfferentTextureRef texture = NULL;
+    AfferentResult result = afferent_texture_load_from_memory(data, size, &texture);
+
+    if (result != AFFERENT_OK) {
+        return lean_io_result_mk_error(lean_mk_io_user_error(
+            lean_mk_string("Failed to load texture from memory")));
+    }
+
+    lean_object* obj = lean_alloc_external(g_texture_class, texture);
+    return lean_io_result_mk_ok(obj);
+}
+
 // Destroy texture
 LEAN_EXPORT lean_obj_res lean_afferent_texture_destroy(
     lean_obj_arg texture_obj,
@@ -1438,6 +1461,31 @@ LEAN_EXPORT lean_obj_res lean_afferent_renderer_draw_sprites_instance_buffer(
         renderer, texture,
         afferent_float_buffer_data(buffer),
         count, (float)canvasWidth, (float)canvasHeight
+    );
+    return lean_io_result_mk_ok(lean_box(0));
+}
+
+// Draw a textured rectangle with source and destination rectangles
+// Used for map tile rendering with cropping and scaling
+LEAN_EXPORT lean_obj_res lean_afferent_renderer_draw_textured_rect(
+    lean_obj_arg renderer_obj,
+    lean_obj_arg texture_obj,
+    double srcX, double srcY, double srcW, double srcH,
+    double dstX, double dstY, double dstW, double dstH,
+    double canvasWidth, double canvasHeight,
+    double alpha,
+    lean_obj_arg world
+) {
+    afferent_ensure_initialized();
+    AfferentRendererRef renderer = (AfferentRendererRef)lean_get_external_data(renderer_obj);
+    AfferentTextureRef texture = (AfferentTextureRef)lean_get_external_data(texture_obj);
+
+    afferent_renderer_draw_textured_rect(
+        renderer, texture,
+        (float)srcX, (float)srcY, (float)srcW, (float)srcH,
+        (float)dstX, (float)dstY, (float)dstW, (float)dstH,
+        (float)canvasWidth, (float)canvasHeight,
+        (float)alpha
     );
     return lean_io_result_mk_ok(lean_box(0));
 }

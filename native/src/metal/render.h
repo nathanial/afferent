@@ -71,6 +71,10 @@ struct AfferentRenderer {
     id<MTLRenderPipelineState> dynamicTrianglePipelineState; // For dynamic position triangles
     id<MTLSamplerState> textSampler;                   // For text texture sampling
     id<MTLSamplerState> spriteSampler;                 // For sprite texture sampling
+    // Textured rectangle rendering (for map tiles)
+    id<MTLRenderPipelineState> texturedRectPipelineState;
+    id<MTLRenderPipelineState> texturedRectPipelineStateMSAA;
+    id<MTLRenderPipelineState> texturedRectPipelineStateNoMSAA;
     id<MTLCommandBuffer> currentCommandBuffer;
     id<MTLRenderCommandEncoder> currentEncoder;
     id<CAMetalDrawable> currentDrawable;
