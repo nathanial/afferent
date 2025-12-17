@@ -56,7 +56,7 @@ def fromSizes (sizes : Array TrackSize) : GridTemplate :=
 
 /-- Create a template with n equal fr columns/rows. -/
 def repeated (n : Nat) (size : TrackSize := .fr 1) : GridTemplate :=
-  { tracks := Array.mkArray n { size := size } }
+  { tracks := (List.replicate n { size := size }).toArray }
 
 /-- Create a template with specific pixel sizes. -/
 def pixels (sizes : Array Length) : GridTemplate :=

@@ -120,7 +120,7 @@ namespace OccupancyGrid
 
 /-- Create an empty occupancy grid. -/
 def create (rows cols : Nat) : OccupancyGrid :=
-  { cells := Array.mkArray rows (Array.mkArray cols false), rows, cols }
+  { cells := (List.replicate rows (List.replicate cols false).toArray).toArray, rows, cols }
 
 /-- Check if a cell is occupied. -/
 def isOccupied (grid : OccupancyGrid) (row col : Nat) : Bool :=
@@ -152,7 +152,7 @@ def extendRows (grid : OccupancyGrid) (newRows : Nat) : OccupancyGrid :=
   if newRows <= grid.rows then grid
   else
     let additionalRows := newRows - grid.rows
-    let newCells := grid.cells ++ Array.mkArray additionalRows (Array.mkArray grid.cols false)
+    let newCells := grid.cells ++ (List.replicate additionalRows (List.replicate grid.cols false).toArray).toArray
     { grid with cells := newCells, rows := newRows }
 
 end OccupancyGrid
