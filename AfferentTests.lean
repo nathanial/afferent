@@ -9,6 +9,7 @@ import Afferent.Tests.FFISafetyTests
 import Afferent.Tests.AssetLoadingTests
 import Afferent.Tests.SeascapeSmokeTests
 
+open Crucible
 open Afferent.Tests
 
 def main : IO UInt32 := do
@@ -19,28 +20,22 @@ def main : IO UInt32 := do
   let mut exitCode : UInt32 := 0
 
   -- Run tessellation tests
-  let tessResult ← TessellationTests.runAllTests
-  if tessResult != 0 then exitCode := 1
+  exitCode := exitCode + (← runTests "Tessellation Tests" TessellationTests.cases)
 
   -- Run layout tests
-  let layoutResult ← LayoutTests.runAllTests
-  if layoutResult != 0 then exitCode := 1
+  exitCode := exitCode + (← runTests "Layout Tests" LayoutTests.cases)
 
   -- Run widget tests
-  let widgetResult ← WidgetTests.runAllTests
-  if widgetResult != 0 then exitCode := 1
+  exitCode := exitCode + (← runTests "Widget Tests" WidgetTests.cases)
 
   -- Run FFI safety tests
-  let ffiResult ← FFISafetyTests.runAllTests
-  if ffiResult != 0 then exitCode := 1
+  exitCode := exitCode + (← runTests "FFI Safety Tests" FFISafetyTests.cases)
 
   -- Run asset loading tests
-  let assetResult ← AssetLoadingTests.runAllTests
-  if assetResult != 0 then exitCode := 1
+  exitCode := exitCode + (← runTests "Asset Loading Tests" AssetLoadingTests.cases)
 
   -- Run Seascape smoke tests (skipped unless AFFERENT_RUN_GPU_TESTS=1)
-  let seascapeResult ← SeascapeSmokeTests.runAllTests
-  if seascapeResult != 0 then exitCode := 1
+  exitCode := exitCode + (← runTests "Seascape Smoke Tests" SeascapeSmokeTests.cases)
 
   -- Summary
   IO.println ""
@@ -49,4 +44,4 @@ def main : IO UInt32 := do
   else
     IO.println "✗ Some tests failed"
 
-  return exitCode
+  return if exitCode > 0 then 1 else 0

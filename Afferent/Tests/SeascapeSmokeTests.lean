@@ -9,9 +9,10 @@ import Afferent.Tests.Framework
 import Afferent
 import Demos.Seascape
 
-namespace Afferent.Tests
+namespace Afferent.Tests.SeascapeSmokeTests
 
-namespace SeascapeSmokeTests
+open Crucible
+open Afferent.Tests
 
 private def gpuTestsEnabled : IO Bool := do
   match (← IO.getEnv "AFFERENT_RUN_GPU_TESTS") with
@@ -28,41 +29,34 @@ private def gpuTestFrames : IO Nat := do
       | none => pure 1
   | none => pure 1
 
-private def cases : List TestCase :=
-  [
-    { name := "renderSeascape (smoke)"
-      run := do
-        if !(← gpuTestsEnabled) then
-          return ()
+testSuite "Seascape Smoke Tests"
 
-        let w : UInt32 := 640
-        let h : UInt32 := 360
+test "renderSeascape (smoke)" := do
+  if !(← gpuTestsEnabled) then
+    return ()
 
-        -- Skip (rather than fail) on headless/CI machines without a Metal device.
-        let ctx? ← try
-          pure (some (← Afferent.DrawContext.create w h "Afferent Seascape Smoke Test"))
-        catch _ =>
-          pure none
+  let w : UInt32 := 640
+  let h : UInt32 := 360
 
-        match ctx? with
-        | none => return ()
-        | some ctx =>
-            let frames ← gpuTestFrames
-            for i in [:frames] do
-              let ok ← ctx.renderer.beginFrame 0.0 0.0 0.0 1.0
-              if ok then
-                let t := (i.toFloat / 60.0)
-                Demos.renderSeascape ctx.renderer t w.toFloat h.toFloat Demos.seascapeCamera
-                ctx.renderer.endFrame
+  -- Skip (rather than fail) on headless/CI machines without a Metal device.
+  let ctx? ← try
+    pure (some (← Afferent.DrawContext.create w h "Afferent Seascape Smoke Test"))
+  catch _ =>
+    pure none
 
-            ctx.destroy
+  match ctx? with
+  | none => return ()
+  | some ctx =>
+      let frames ← gpuTestFrames
+      for i in [:frames] do
+        let ok ← ctx.renderer.beginFrame 0.0 0.0 0.0 1.0
+        if ok then
+          let t := (i.toFloat / 60.0)
+          Demos.renderSeascape ctx.renderer t w.toFloat h.toFloat Demos.seascapeCamera
+          ctx.renderer.endFrame
 
-    }
-  ]
+      ctx.destroy
 
-def runAllTests : IO UInt32 :=
-  runTests "Seascape Smoke Tests" cases
+#generate_tests
 
-end SeascapeSmokeTests
-
-end Afferent.Tests
+end Afferent.Tests.SeascapeSmokeTests

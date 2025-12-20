@@ -6,6 +6,7 @@ package afferent where
   version := v!"0.1.0"
 
 require collimator from git "https://github.com/nathanial/collimator" @ "master"
+require crucible from git "https://github.com/nathanial/crucible" @ "master"
 
 -- Common link arguments for all executables
 -- Includes both Homebrew paths for Apple Silicon (/opt/homebrew) and Intel (/usr/local)
