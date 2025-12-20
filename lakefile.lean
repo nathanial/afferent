@@ -156,19 +156,6 @@ target assimp_loader_o pkg : FilePath := do
     "-O2"
   ] #[] "clang++"
 
--- Disk cache FFI (file I/O for tile caching)
-target disk_cache_ffi_o pkg : FilePath := do
-  let oFile := pkg.buildDir / "native" / "disk_cache_ffi.o"
-  let srcFile := pkg.dir / "native" / "src" / "common" / "disk_cache_ffi.c"
-  let includeDir := pkg.dir / "native" / "include"
-  let leanIncludeDir ← getLeanIncludeDir
-  buildO oFile (← inputTextFile srcFile) #[
-    "-I", leanIncludeDir.toString,
-    "-I", includeDir.toString,
-    "-fPIC",
-    "-O2"
-  ] #[] "cc"
-
 extern_lib libafferent_native pkg := do
   let name := nameToStaticLib "afferent_native"
   let windowO ← window_o.fetch
@@ -178,5 +165,4 @@ extern_lib libafferent_native pkg := do
   let floatBufferO ← float_buffer_o.fetch
   let textureO ← texture_o.fetch
   let assimpLoaderO ← assimp_loader_o.fetch
-  let diskCacheFfiO ← disk_cache_ffi_o.fetch
-  buildStaticLib (pkg.staticLibDir / name) #[windowO, metalO, textO, bridgeO, floatBufferO, textureO, assimpLoaderO, diskCacheFfiO]
+  buildStaticLib (pkg.staticLibDir / name) #[windowO, metalO, textO, bridgeO, floatBufferO, textureO, assimpLoaderO]

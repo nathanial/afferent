@@ -4,11 +4,7 @@
 -/
 import Afferent.DiskCache.Config
 import Afferent.DiskCache.LRU
+import Afferent.DiskCache.IO
 
-namespace Afferent.DiskCache
-
--- Re-export main types and functions
-export Config (DiskCacheConfig DiskCacheIndex TileCacheEntry tilePath)
-export LRU (selectEvictions addEntry removeEntries touchEntry)
-
-end Afferent.DiskCache
+-- All types and functions are already in Afferent.DiskCache namespace
+-- from the imported modules, so no re-export needed

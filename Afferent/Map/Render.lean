@@ -7,7 +7,7 @@ import Afferent.Map.State
 import Afferent.Map.Input
 import Afferent.Map.RetryLogic
 import Afferent.Map.Zoom
-import Afferent.FFI.DiskCache
+import Afferent.DiskCache
 import Wisp
 import Afferent.FFI.Texture
 import Afferent.FFI.Renderer
@@ -16,7 +16,7 @@ import Afferent.DiskCache.LRU
 
 namespace Afferent.Map
 
-open Afferent.FFI.DiskCache (fileExists readFile writeFile touchFile deleteFile nowMs)
+open Afferent.DiskCache (fileExists readFile writeFile deleteFile nowMs)
 open Afferent.FFI (Texture Renderer)
 open Afferent.Map.RetryLogic
 open Afferent.Map.Zoom (floatClamp centerForAnchor)
@@ -108,8 +108,7 @@ def spawnFetchTask (coord : TileCoord) (queue : IO.Ref (Array FetchResult))
       -- Disk cache hit
       match ← readFile cachePath with
       | .ok data =>
-        -- Update access time for LRU
-        touchFile cachePath
+        -- Update access time for LRU (in-memory tracking)
         let now ← nowMs
         diskIndex.modify fun idx => touchEntry idx coord now
         pure (Except.ok data)
