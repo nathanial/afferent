@@ -201,7 +201,7 @@ def gridLabels : Array (String × Float × Float) := #[
 /-- Draw the grid demo shapes (background and layout results). -/
 def renderGridShapesM : CanvasM Unit := do
   -- Background
-  setFillColor (Color.mk 0.1 0.1 0.15 1.0)
+  setFillColor (Color.rgba 0.1 0.1 0.15 1.0)
   fillRectXYWH 0 0 1000 800
 
   -- Draw section labels as colored bars

@@ -6,6 +6,7 @@ import Afferent.Tests.Framework
 import Afferent.Widget
 import Afferent.Layout
 
+
 namespace Afferent.Tests.WidgetTests
 
 open Crucible

@@ -8,6 +8,7 @@ import Afferent.Core.Transform
 import Afferent.Core.Paint
 import Collimator.Prelude
 
+
 namespace Afferent
 
 open Collimator

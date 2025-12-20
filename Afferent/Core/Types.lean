@@ -2,9 +2,20 @@
   Afferent Core Types
   Basic geometric primitives for 2D graphics.
 -/
-import Afferent.Core.Color
+import Tincture
+
+-- Re-export Color type and namespace so existing code using Color.black etc. works
+open Tincture (Color)
 
 namespace Afferent
+
+-- Re-export Color type
+export Tincture (Color)
+
+-- Re-export Color namespace members so Color.black, Color.rgb etc. work
+namespace Color
+  export Tincture.Color (black white red green blue yellow cyan magenta orange purple transparent gray darkGray lightGray rgba rgb hsv hsva withAlpha lerp premultiply unpremultiply)
+end Color
 
 /-- A 2D point with x and y coordinates. -/
 structure Point where

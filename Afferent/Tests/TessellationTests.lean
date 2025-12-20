@@ -8,6 +8,7 @@ import Afferent.Core.Path
 import Afferent.Core.Paint
 import Afferent.Render.Tessellation
 
+
 namespace Afferent.Tests.TessellationTests
 
 open Crucible

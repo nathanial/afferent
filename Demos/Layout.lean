@@ -187,7 +187,7 @@ def layoutLabels : Array (String × Float × Float) := #[
 /-- Draw the layout demo shapes (background, bars, and layout results). -/
 def renderLayoutShapesM : CanvasM Unit := do
   -- Background
-  setFillColor (Color.mk 0.1 0.1 0.15 1.0)
+  setFillColor (Color.rgba 0.1 0.1 0.15 1.0)
   fillRectXYWH 0 0 1000 800
 
   -- Draw section labels as colored bars

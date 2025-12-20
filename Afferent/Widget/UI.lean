@@ -7,6 +7,7 @@ import Afferent.Widget.Measure
 import Afferent.Widget.Render
 import Afferent.Widget.DSL
 
+
 namespace Afferent.Widget
 
 open Afferent CanvasM

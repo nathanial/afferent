@@ -7,6 +7,7 @@ import Afferent.Core.Path
 import Afferent.Core.Paint
 import Afferent.Core.Transform
 
+
 namespace Afferent
 
 /-- Result of tessellating a path into triangles. -/

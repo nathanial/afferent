@@ -4,6 +4,7 @@
 -/
 import Afferent.Core.Types
 
+
 namespace Afferent
 
 /-- Line cap style for stroke endpoints. -/
