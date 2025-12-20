@@ -28,7 +28,7 @@ def MapDemoState.create (screenWidth screenHeight : Float) : IO MapDemoState := 
   Wisp.FFI.globalInit
 
   -- Disk cache config - use a reasonable cache size and path
-  let diskConfig : Afferent.DiskCache.DiskCacheConfig := {
+  let diskConfig : Afferent.Map.TileDiskCacheConfig := {
     cacheDir := "./tile_cache"
     tilesetName := "carto-dark-2x"
     maxSizeBytes := 100 * 1024 * 1024  -- 100MB disk cache

@@ -3,14 +3,14 @@
   Ported from heavenly-host to Afferent
 -/
 import Afferent.Map.TileCache
+import Afferent.Map.TileDiskCache
 import Afferent.Map.Viewport
 import Afferent.Map.Zoom
-import Afferent.DiskCache.Config
 import Std.Data.HashMap
 
 namespace Afferent.Map
 
-open Afferent.DiskCache (DiskCacheConfig DiskCacheIndex)
+open Afferent.Map (TileDiskCacheConfig TileDiskCacheIndex)
 open Afferent.Map.Zoom (floatClamp)
 
 /-- Complete map state -/
@@ -33,8 +33,8 @@ structure MapState where
   zoomAnchorLon : Float := 0.0
   isAnimatingZoom : Bool := false            -- Whether animation is in progress
   -- Disk cache state
-  diskCacheConfig : DiskCacheConfig := {}
-  diskCacheIndex : IO.Ref DiskCacheIndex
+  diskCacheConfig : TileDiskCacheConfig := {}
+  diskCacheIndex : IO.Ref TileDiskCacheIndex
   -- Active task cancellation flags
   activeTasks : IO.Ref (Std.HashMap TileCoord (IO.Ref Bool))
 
@@ -42,9 +42,9 @@ namespace MapState
 
 /-- Initialize map state centered on a location -/
 def init (lat lon : Float) (zoom : Int) (width height : Int)
-    (diskConfig : DiskCacheConfig := {}) : IO MapState := do
+    (diskConfig : TileDiskCacheConfig := {}) : IO MapState := do
   let queue ← IO.mkRef #[]
-  let diskIndex ← IO.mkRef (DiskCacheIndex.empty diskConfig)
+  let diskIndex ← IO.mkRef (TileDiskCacheIndex.empty diskConfig)
   let activeTasks ← IO.mkRef {}
   let clampedZoom := clampZoom zoom
   IO.println s!"[MapState.init] zoom={zoom} clampedZoom={clampedZoom} width={width} height={height}"

@@ -1,27 +1,25 @@
 /-
   Tile Map Rendering and Async Loading
   Ported from heavenly-host to Afferent
-  Uses Afferent's drawTexturedRect and HTTP/DiskCache FFI
+  Uses Afferent's drawTexturedRect and Wisp HTTP
 -/
 import Afferent.Map.State
 import Afferent.Map.Input
 import Afferent.Map.RetryLogic
 import Afferent.Map.Zoom
-import Afferent.DiskCache
+import Afferent.Map.TileDiskCache
 import Wisp
 import Afferent.FFI.Texture
 import Afferent.FFI.Renderer
-import Afferent.DiskCache.Config
-import Afferent.DiskCache.LRU
 
 namespace Afferent.Map
 
-open Afferent.DiskCache (fileExists readFile writeFile deleteFile nowMs)
+open Afferent.Map (fileExists readFile writeFile deleteFile nowMs)
+open Afferent.Map (selectEvictions addEntry removeEntries touchEntry)
+open Afferent.Map (TileDiskCacheConfig TileDiskCacheIndex TileDiskCacheEntry tilePath)
 open Afferent.FFI (Texture Renderer)
 open Afferent.Map.RetryLogic
 open Afferent.Map.Zoom (floatClamp centerForAnchor)
-open Afferent.DiskCache (DiskCacheConfig DiskCacheIndex TileCacheEntry tilePath)
-open Afferent.DiskCache.LRU
 
 /-- HTTP GET request returning binary data using Wisp -/
 def httpGetBinary (url : String) : IO (Except String ByteArray) := do
@@ -94,7 +92,7 @@ def updateZoomAnimation (state : MapState) : MapState :=
 
 /-- Spawn a background task to fetch and decode a tile (checks disk cache first) -/
 def spawnFetchTask (coord : TileCoord) (queue : IO.Ref (Array FetchResult))
-    (diskConfig : DiskCacheConfig) (diskIndex : IO.Ref DiskCacheIndex)
+    (diskConfig : TileDiskCacheConfig) (diskIndex : IO.Ref TileDiskCacheIndex)
     (cancelFlag : IO.Ref Bool)
     (wasRetry : Bool := false) : IO Unit := do
   let _ ← IO.asTask do
@@ -138,8 +136,8 @@ def spawnFetchTask (coord : TileCoord) (queue : IO.Ref (Array FetchResult))
           let evictions ← diskIndex.modifyGet fun idx =>
             let evictions := selectEvictions idx fileSize
             let idx' := removeEntries idx evictions
-            let entry : TileCacheEntry := {
-              coord := coord
+            let entry : TileDiskCacheEntry := {
+              key := coord
               filePath := cachePath
               sizeBytes := fileSize
               lastAccessTime := now
