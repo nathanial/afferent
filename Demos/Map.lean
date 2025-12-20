@@ -10,6 +10,7 @@
 -/
 import Afferent
 import Afferent.Map
+import Wisp
 
 namespace Demos
 
@@ -23,8 +24,8 @@ structure MapDemoState where
 
 /-- Initialize map demo state centered on San Francisco -/
 def MapDemoState.create (screenWidth screenHeight : Float) : IO MapDemoState := do
-  -- Initialize HTTP (curl global state)
-  Afferent.FFI.HTTP.globalInit
+  -- Initialize HTTP (curl global state via Wisp)
+  Wisp.FFI.globalInit
 
   -- Disk cache config - use a reasonable cache size and path
   let diskConfig : Afferent.DiskCache.DiskCacheConfig := {
@@ -50,7 +51,7 @@ def MapDemoState.cleanup (state : MapDemoState) : IO Unit := do
   for tex in state.mapState.cache.getLoadedTextures do
     Afferent.FFI.Texture.destroy tex
   if state.httpInitialized then
-    Afferent.FFI.HTTP.globalCleanup
+    Wisp.FFI.globalCleanup
 
 /-- Update map demo state for one frame -/
 def MapDemoState.update (state : MapDemoState) (window : Window) : IO MapDemoState := do

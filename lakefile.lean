@@ -7,6 +7,7 @@ package afferent where
 
 require collimator from git "https://github.com/nathanial/collimator" @ "master"
 require crucible from git "https://github.com/nathanial/crucible" @ "master"
+require wisp from git "https://github.com/nathanial/wisp" @ "master"
 
 -- Common link arguments for all executables
 -- Includes both Homebrew paths for Apple Silicon (/opt/homebrew) and Intel (/usr/local)
@@ -27,9 +28,8 @@ def commonLinkArgs : Array String := #[
   "-lfreetype",
   "-Lthird_party/assimp/build/lib",
   "-lassimp",
-  "-Lthird_party/curl/build/lib",
-  "-lcurl",
   "-lz",
+  "-lcurl",  -- Required by wisp
   "-lc++"
 ]
 
@@ -156,23 +156,6 @@ target assimp_loader_o pkg : FilePath := do
     "-O2"
   ] #[] "clang++"
 
--- CURL FFI (HTTP client)
-target curl_ffi_o pkg : FilePath := do
-  let oFile := pkg.buildDir / "native" / "curl_ffi.o"
-  let srcFile := pkg.dir / "native" / "src" / "common" / "curl_ffi.c"
-  let includeDir := pkg.dir / "native" / "include"
-  let curlIncludeDir := pkg.dir / "third_party" / "curl" / "include"
-  let curlBuildIncludeDir := pkg.dir / "third_party" / "curl" / "build" / "include"
-  let leanIncludeDir ← getLeanIncludeDir
-  buildO oFile (← inputTextFile srcFile) #[
-    "-I", leanIncludeDir.toString,
-    "-I", includeDir.toString,
-    "-I", curlIncludeDir.toString,
-    "-I", curlBuildIncludeDir.toString,
-    "-fPIC",
-    "-O2"
-  ] #[] "cc"
-
 -- Disk cache FFI (file I/O for tile caching)
 target disk_cache_ffi_o pkg : FilePath := do
   let oFile := pkg.buildDir / "native" / "disk_cache_ffi.o"
@@ -195,6 +178,5 @@ extern_lib libafferent_native pkg := do
   let floatBufferO ← float_buffer_o.fetch
   let textureO ← texture_o.fetch
   let assimpLoaderO ← assimp_loader_o.fetch
-  let curlFfiO ← curl_ffi_o.fetch
   let diskCacheFfiO ← disk_cache_ffi_o.fetch
-  buildStaticLib (pkg.staticLibDir / name) #[windowO, metalO, textO, bridgeO, floatBufferO, textureO, assimpLoaderO, curlFfiO, diskCacheFfiO]
+  buildStaticLib (pkg.staticLibDir / name) #[windowO, metalO, textO, bridgeO, floatBufferO, textureO, assimpLoaderO, diskCacheFfiO]

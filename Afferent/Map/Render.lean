@@ -7,8 +7,8 @@ import Afferent.Map.State
 import Afferent.Map.Input
 import Afferent.Map.RetryLogic
 import Afferent.Map.Zoom
-import Afferent.FFI.HTTP
 import Afferent.FFI.DiskCache
+import Wisp
 import Afferent.FFI.Texture
 import Afferent.FFI.Renderer
 import Afferent.DiskCache.Config
@@ -16,13 +16,24 @@ import Afferent.DiskCache.LRU
 
 namespace Afferent.Map
 
-open Afferent.FFI.HTTP (httpGetBinary)
 open Afferent.FFI.DiskCache (fileExists readFile writeFile touchFile deleteFile nowMs)
 open Afferent.FFI (Texture Renderer)
 open Afferent.Map.RetryLogic
 open Afferent.Map.Zoom (floatClamp centerForAnchor)
 open Afferent.DiskCache (DiskCacheConfig DiskCacheIndex TileCacheEntry tilePath)
 open Afferent.DiskCache.LRU
+
+/-- HTTP GET request returning binary data using Wisp -/
+def httpGetBinary (url : String) : IO (Except String ByteArray) := do
+  let client := Wisp.HTTP.Client.new
+  let task ← client.get url
+  match task.get with
+  | .ok response =>
+    if response.isSuccess then
+      pure (.ok response.body)
+    else
+      pure (.error s!"HTTP error: {response.status}")
+  | .error e => pure (.error (toString e))
 
 /-- Lerp factor for zoom animation (per frame at 60fps) -/
 def zoomLerpFactor : Float := 0.15
