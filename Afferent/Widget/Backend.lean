@@ -17,6 +17,23 @@ open Arbor
 def toAfferentRect (r : Arbor.Rect) : Afferent.Rect :=
   Afferent.Rect.mk' r.origin.x r.origin.y r.size.width r.size.height
 
+/-- Convert Arbor Point to Afferent Point. -/
+def toAfferentPoint (p : Arbor.Point) : Afferent.Point :=
+  Afferent.Point.mk' p.x p.y
+
+/-- Convert a polygon to an Afferent Path. -/
+def polygonToPath (points : Array Arbor.Point) : Afferent.Path :=
+  Id.run do
+    if points.size > 0 then
+      let first := points[0]!
+      let mut path := (Afferent.Path.empty).moveTo (toAfferentPoint first)
+      for i in [1:points.size] do
+        let p := points[i]!
+        path := path.lineTo (toAfferentPoint p)
+      return path.closePath
+    else
+      return Afferent.Path.empty
+
 /-- Convert Arbor Color to Afferent Color.
     Arbor uses Tincture.Color which is the same as Afferent's Color. -/
 def toAfferentColor (c : Arbor.Color) : Afferent.Color := c
@@ -66,6 +83,23 @@ def executeCommand (reg : FontRegistry) (cmd : Arbor.RenderCommand) : CanvasM Un
         | .bottom => rect.origin.y + rect.size.height - font.descender
       CanvasM.fillTextColor text ⟨x, y⟩ font (toAfferentColor color)
     | none =>
+      pure ()
+
+  | .fillPolygon points color =>
+    if points.size >= 3 then
+      let path := polygonToPath points
+      CanvasM.setFillColor (toAfferentColor color)
+      CanvasM.fillPath path
+    else
+      pure ()
+
+  | .strokePolygon points color lineWidth =>
+    if points.size >= 3 then
+      let path := polygonToPath points
+      CanvasM.setStrokeColor (toAfferentColor color)
+      CanvasM.setLineWidth lineWidth
+      CanvasM.strokePath path
+    else
       pure ()
 
   | .pushClip rect =>
