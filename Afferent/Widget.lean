@@ -37,6 +37,8 @@ import Afferent.Widget.Event
 import Afferent.Widget.HitTest
 import Afferent.Widget.App
 import Afferent.Widget.Interactive
+-- Arbor backend
+import Afferent.Widget.Backend
 
 -- All types and functions are available in the Afferent.Widget namespace
 -- after importing this module

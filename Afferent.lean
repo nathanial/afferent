@@ -20,9 +20,13 @@ import Afferent.Canvas.Context
 
 -- Text
 import Afferent.Text.Font
+import Afferent.Text.Measurer
 
 -- FFI (modular: Types, Window, Renderer, Text, FloatBuffer, Texture)
 import Afferent.FFI
 
 -- Layout
 import Afferent.Layout
+
+-- Widget system
+import Afferent.Widget
