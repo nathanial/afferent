@@ -3,7 +3,6 @@
   Entry point for running all tests.
 -/
 import Afferent.Tests.TessellationTests
-import Afferent.Tests.WidgetTests
 import Afferent.Tests.FFISafetyTests
 import Afferent.Tests.AssetLoadingTests
 import Afferent.Tests.SeascapeSmokeTests
@@ -22,9 +21,7 @@ def main : IO UInt32 := do
   exitCode := exitCode + (← runTests "Tessellation Tests" TessellationTests.cases)
 
   -- Note: Layout tests are now in the Trellis library
-
-  -- Run widget tests
-  exitCode := exitCode + (← runTests "Widget Tests" WidgetTests.cases)
+  -- Note: Widget tests are now in the Arbor library
 
   -- Run FFI safety tests
   exitCode := exitCode + (← runTests "FFI Safety Tests" FFISafetyTests.cases)

@@ -116,8 +116,10 @@ def unifiedDemo : IO Unit := do
   let layoutFontPx : UInt32 := (max 8.0 (layoutLabelPt * screenScale)).toUInt32
   let layoutFont ← Font.load "/System/Library/Fonts/Monaco.ttf" layoutFontPx
 
-  -- Create interactive demo runner
-  let interactiveRunner ← Widget.AppRunner.create (counterApp fontMedium)
+  -- Create font registry for Arbor widget system
+  let (fontReg1, fontSmallId) := FontRegistry.empty.register fontSmall "small"
+  let (fontReg2, fontMediumId) := fontReg1.register fontMedium "medium"
+  let fontRegistry := fontReg2.setDefault fontMedium
 
   -- Initialize Map demo (HTTP + initial state)
   initMapDemo physWidthF physHeightF
@@ -149,16 +151,13 @@ def unifiedDemo : IO Unit := do
   let mut frameCount : Nat := 0
   let mut fpsAccumulator : Float := 0.0
   let mut displayFps : Float := 0.0
-  -- Interactive demo debug state (persist last event so it stays visible)
-  let mut lastClick : Option FFI.ClickEvent := none
-  let mut lastClickHit : Option Widget.WidgetId := none
-  let mut lastHoverHit : Option Widget.WidgetId := none
-  let mut lastInteractiveMsgs : Array CounterMsg := #[]
   -- FPS camera for 3D demo (mode 9)
   let mut fpsCamera : Render.FPSCamera := default
   -- Seascape camera (mode 10)
   let mut seascapeCamera : Render.FPSCamera := Demos.seascapeCamera
   let mut framesLeft : Nat := exitAfterFrames
+  -- Interactive counter demo state (mode 8)
+  let mut counterState : Demos.CounterState := Demos.CounterState.initial
 
   while !(← c.shouldClose) do
     c.pollEvents
@@ -251,65 +250,33 @@ def unifiedDemo : IO Unit := do
           setFillColor Color.white
           fillTextXY "CSS Grid Layout Demo (Space to advance)" (20 * screenScale) (30 * screenScale) fontMedium
       else if displayMode == 7 then
-        -- Widget system demo
+        -- Widget system demo (using Arbor)
         c ← run' (c.resetTransform) do
-          renderWidgetShapesDebugM fontMedium fontSmall physWidthF physHeightF screenScale
+          renderWidgetShapesDebugM fontRegistry fontMediumId fontSmallId physWidthF physHeightF screenScale
           setFillColor Color.white
           fillTextXY "Widget System Demo (Space to advance)" (20 * screenScale) (30 * screenScale) fontMedium
       else if displayMode == 8 then
-        -- Interactive demo with event handling
-        -- Collect input for this frame
-        let input ← Widget.InputState.collect c.ctx.window
-        -- Process events (clicks, etc.). This re-prepares layout as needed so multiple clicks
-        -- in one frame stay aligned with the updated UI.
-        let msgs ← interactiveRunner.processInput physWidthF physHeightF input
-        lastInteractiveMsgs := msgs
-
-        -- Capture debug info before clearing input (use latest view/layout)
-        let interactiveAfter ← interactiveRunner.getView
-        let preparedAfter ← Widget.prepareUI interactiveAfter.widget physWidthF physHeightF
-        lastHoverHit := Widget.hitTestId preparedAfter.widget preparedAfter.layoutResult input.mousePos.1 input.mousePos.2
-        if let some ce := input.clicks.back? then
-          lastClick := some ce
-          lastClickHit := Widget.hitTestId preparedAfter.widget preparedAfter.layoutResult ce.x ce.y
-          let hitStr := match lastClickHit with
-            | some wid => toString wid
-            | none => "none"
-          IO.println s!"[interactive] clicks={input.clicks.size} btn={ce.button} x={ce.x} y={ce.y} hit={hitStr} msgs={toString (repr msgs)}"
-        -- Clear consumed input
-        Widget.InputState.clear c.ctx.window
+        -- Interactive counter demo with click handling
+        -- Check for clicks
+        let click ← FFI.Window.getClick c.ctx.window
+        match click with
+        | some ce =>
+          FFI.Window.clearClick c.ctx.window
+          -- Prepare widget for hit testing
+          let (widget, layouts, ids, offsetX, offsetY) ←
+            Demos.prepareCounterForHitTest fontRegistry fontMediumId fontSmallId physWidthF physHeightF counterState screenScale
+          -- Hit test at click position
+          let hitId := Demos.hitTestCounter widget layouts offsetX offsetY ce.x ce.y
+          -- Update state with widget IDs and process click
+          counterState := { counterState with widgetIds := some ids }
+          counterState := Demos.processClick counterState hitId
+        | none => pure ()
 
         -- Render
         c ← run' (c.resetTransform) do
-          Widget.renderPreparedUI preparedAfter
+          renderInteractiveDebugM fontRegistry fontMediumId fontSmallId physWidthF physHeightF counterState screenScale
           setFillColor Color.white
-          fillTextXY "Interactive Demo - Click the buttons! (Space to advance)" (20 * screenScale) (30 * screenScale) fontMedium
-
-          -- Debug overlay (top-left)
-          let showOptNat : Option Nat → String
-            | some n => toString n
-            | none => "none"
-
-          let clickStr :=
-            match lastClick with
-            | some ce => s!"click: btn={ce.button} x={ce.x.toUInt32} y={ce.y.toUInt32} mods={ce.modifiers}"
-            | none => "click: none"
-
-          let hoverStr := s!"hover hit: {showOptNat lastHoverHit}"
-          let clickHitStr := s!"click hit: {showOptNat lastClickHit}"
-          let mouseStr := s!"mouse: x={input.mousePos.1.toUInt32} y={input.mousePos.2.toUInt32} buttons={input.mouseButtons} inWindow={input.mouseInWindow}"
-          let clickCountStr := s!"clicks: {input.clicks.size}"
-          let msgStr := s!"msgs: {toString (repr lastInteractiveMsgs)}"
-
-          setFillColor (Color.hsva 0.0 0.0 0.0 0.6)
-          fillRectXYWH (10 * screenScale) (40 * screenScale) (physWidthF - 20 * screenScale) (130 * screenScale)
-          setFillColor Color.white
-          fillTextXY mouseStr (20 * screenScale) (65 * screenScale) fontSmall
-          fillTextXY clickStr (20 * screenScale) (85 * screenScale) fontSmall
-          fillTextXY hoverStr (20 * screenScale) (105 * screenScale) fontSmall
-          fillTextXY clickHitStr (20 * screenScale) (125 * screenScale) fontSmall
-          fillTextXY clickCountStr (20 * screenScale) (145 * screenScale) fontSmall
-          fillTextXY msgStr (20 * screenScale) (165 * screenScale) fontSmall
+          fillTextXY "Interactive Counter Demo - Click the buttons! (Space to advance)" (20 * screenScale) (30 * screenScale) fontMedium
       else if displayMode == 9 then
         -- 3D Spinning Cubes demo with FPS camera controls
         -- Pointer lock controls:

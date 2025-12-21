@@ -123,4 +123,61 @@ def renderArborBuilder (reg : FontRegistry) (builder : Arbor.WidgetBuilder)
   let widget := Arbor.build builder
   renderArborWidget reg widget availWidth availHeight
 
+/-- Render an Arbor widget tree centered on screen.
+    Computes intrinsic size and offsets rendering to center the widget. -/
+def renderArborWidgetCentered (reg : FontRegistry) (widget : Arbor.Widget)
+    (screenWidth screenHeight : Float) : CanvasM Unit := do
+  -- Measure widget to get intrinsic size
+  let (intrinsicWidth, intrinsicHeight) ← runWithFonts reg (Arbor.intrinsicSize widget)
+
+  -- Measure widget for layout
+  let measureResult ← runWithFonts reg (Arbor.measureWidget widget intrinsicWidth intrinsicHeight)
+  let layoutNode := measureResult.node
+  let measuredWidget := measureResult.widget
+
+  -- Compute layout at intrinsic size
+  let layouts := Trellis.layout layoutNode intrinsicWidth intrinsicHeight
+
+  -- Calculate offset to center
+  let offsetX := (screenWidth - intrinsicWidth) / 2
+  let offsetY := (screenHeight - intrinsicHeight) / 2
+
+  -- Collect render commands
+  let commands := Arbor.collectCommands measuredWidget layouts
+
+  -- Save state, translate, render, restore
+  CanvasM.save
+  CanvasM.translate offsetX offsetY
+  executeCommands reg commands
+  CanvasM.restore
+
+/-- Render an Arbor widget tree centered with debug borders.
+    Shows colored borders around each layout cell for debugging. -/
+def renderArborWidgetDebug (reg : FontRegistry) (widget : Arbor.Widget)
+    (screenWidth screenHeight : Float)
+    (borderColor : Arbor.Color := ⟨0.5, 1.0, 0.5, 0.5⟩) : CanvasM Unit := do
+  -- Measure widget to get intrinsic size
+  let (intrinsicWidth, intrinsicHeight) ← runWithFonts reg (Arbor.intrinsicSize widget)
+
+  -- Measure widget for layout
+  let measureResult ← runWithFonts reg (Arbor.measureWidget widget intrinsicWidth intrinsicHeight)
+  let layoutNode := measureResult.node
+  let measuredWidget := measureResult.widget
+
+  -- Compute layout at intrinsic size
+  let layouts := Trellis.layout layoutNode intrinsicWidth intrinsicHeight
+
+  -- Calculate offset to center
+  let offsetX := (screenWidth - intrinsicWidth) / 2
+  let offsetY := (screenHeight - intrinsicHeight) / 2
+
+  -- Collect render commands with debug borders
+  let commands := Arbor.collectCommandsWithDebug measuredWidget layouts borderColor
+
+  -- Save state, translate, render, restore
+  CanvasM.save
+  CanvasM.translate offsetX offsetY
+  executeCommands reg commands
+  CanvasM.restore
+
 end Afferent.Widget

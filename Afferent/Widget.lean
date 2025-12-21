@@ -2,43 +2,41 @@
   Afferent Widget System
   Declarative, display-only widget system for building UIs.
 
+  This module re-exports Arbor (the renderer-agnostic widget library) and provides
+  the Afferent rendering backend that converts Arbor RenderCommands to Metal-backed
+  CanvasM drawing calls.
+
   Usage:
   ```lean
   import Afferent
   import Afferent.Widget
 
   open Afferent.Widget
+  open Arbor
 
-  def myUI (font : Font) : Widget := build do
-    column (gap := 16) (style := BoxStyle.card Color.darkGray 24) #[
-      text' "Hello, Widgets!" font Color.white .center,
+  def myUI (fontId : FontId) : Widget := build do
+    column (gap := 16) (style := { backgroundColor := some (Color.gray 0.2), padding := EdgeInsets.uniform 24 }) #[
+      text' "Hello, Widgets!" fontId Color.white .center,
       row (gap := 8) {} #[
         coloredBox Color.red 60 60,
         coloredBox Color.green 60 60,
         coloredBox Color.blue 60 60
-      ],
-      wrappedText "This text will wrap automatically." font 200 Color.gray
+      ]
     ]
 
-  def render : CanvasM Unit := do
-    let font ← ...
-    renderUI (myUI font) 800 600
+  def render (reg : FontRegistry) (fontId : FontId) : CanvasM Unit := do
+    renderArborWidget reg (myUI fontId) 800 600
   ```
 -/
-import Afferent.Widget.Core
-import Afferent.Widget.TextLayout
-import Afferent.Widget.Measure
-import Afferent.Widget.Render
-import Afferent.Widget.Scroll
-import Afferent.Widget.DSL
-import Afferent.Widget.UI
--- Event system
-import Afferent.Widget.Event
-import Afferent.Widget.HitTest
-import Afferent.Widget.App
-import Afferent.Widget.Interactive
--- Arbor backend
-import Afferent.Widget.Backend
 
--- All types and functions are available in the Afferent.Widget namespace
--- after importing this module
+-- Re-export Arbor widget system
+import Arbor
+
+-- Afferent-specific backend that renders Arbor widgets via CanvasM
+import Afferent.Widget.Backend
+import Afferent.Text.Measurer
+
+-- Note: After importing this module, you can use:
+-- - Arbor.* for widget types and DSL (Widget, build, row, column, etc.)
+-- - Afferent.FontRegistry, Afferent.runWithFonts for font management
+-- - Afferent.Widget.renderArborWidget for rendering
