@@ -30,3 +30,6 @@ import Afferent.Layout
 
 -- Widget system
 import Afferent.Widget
+
+-- App runtime helpers
+import Afferent.App.UIRunner
