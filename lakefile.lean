@@ -5,11 +5,11 @@ open System (FilePath)
 package afferent where
   version := v!"0.1.0"
 
-require collimator from git "https://github.com/nathanial/collimator" @ "master"
-require crucible from git "https://github.com/nathanial/crucible" @ "master"
-require wisp from git "https://github.com/nathanial/wisp" @ "master"
-require cellar from git "https://github.com/nathanial/cellar" @ "master"
-require tincture from git "https://github.com/nathanial/tincture" @ "master"
+require collimator from ".." / "collimator"
+require crucible from ".." / "crucible"
+require wisp from ".." / "wisp"
+require cellar from ".." / "cellar"
+require tincture from ".." / "tincture"
 require trellis from ".." / "trellis"
 require arbor from ".." / "arbor"
 
