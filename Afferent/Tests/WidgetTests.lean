@@ -4,7 +4,7 @@
 -/
 import Afferent.Tests.Framework
 import Afferent.Widget
-import Afferent.Layout
+import Trellis
 
 
 namespace Afferent.Tests.WidgetTests
@@ -12,7 +12,7 @@ namespace Afferent.Tests.WidgetTests
 open Crucible
 open Afferent.Tests
 open Afferent (Color)
-open Afferent.Layout (FlexContainer GridContainer EdgeInsets)
+open Trellis (FlexContainer GridContainer EdgeInsets)
 
 -- Explicitly alias the Widget type to avoid confusion with DSL functions
 abbrev W := Afferent.Widget.Widget

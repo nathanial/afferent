@@ -3,16 +3,18 @@
 -/
 import Afferent
 import Afferent.Widget
+import Trellis
 
 open Afferent CanvasM
 open Afferent.Widget
+open Trellis
 
 namespace Demos
 
 /-- Build a demo widget showcasing text, boxes, and layout. -/
 def widgetDemo (font : Font) (smallFont : Font) (screenScale : Float := 1.0) : Widget := build do
   let s := fun (v : Float) => v * screenScale
-  column (gap := s 20) (style := { backgroundColor := some (Color.gray 0.15), padding := Layout.EdgeInsets.uniform (s 30) }) #[
+  column (gap := s 20) (style := { backgroundColor := some (Color.gray 0.15), padding := EdgeInsets.uniform (s 30) }) #[
     -- Title
     text' "Widget System Demo" font Color.white .center,
 
@@ -75,14 +77,14 @@ def widgetDemo (font : Font) (smallFont : Font) (screenScale : Float := 1.0) : W
 /-- Simple scroll demo widget. -/
 def scrollDemoWidget (font : Font) (scrollY : Float) (screenScale : Float := 1.0) : Widget := build do
   let s := fun (v : Float) => v * screenScale
-  column (gap := s 16) (style := { backgroundColor := some (Color.gray 0.15), padding := Layout.EdgeInsets.uniform (s 20) }) #[
+  column (gap := s 16) (style := { backgroundColor := some (Color.gray 0.15), padding := EdgeInsets.uniform (s 20) }) #[
     text' "Scroll Container Demo" font Color.white .center,
 
     -- Scroll container with many items
     scroll (style := { backgroundColor := some (Color.gray 0.25), minWidth := some (s 300), minHeight := some (s 200) })
            (s 300) (s 500)  -- content size: 300x500
            { offsetY := scrollY } do
-      column (gap := s 8) (style := { padding := Layout.EdgeInsets.uniform (s 10) }) #[
+      column (gap := s 8) (style := { padding := EdgeInsets.uniform (s 10) }) #[
         text' "Item 1" font Color.white .left,
         coloredBox Color.red (s 280) (s 40),
         text' "Item 2" font Color.white .left,

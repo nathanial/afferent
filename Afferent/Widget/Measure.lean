@@ -4,11 +4,12 @@
 -/
 import Afferent.Widget.Core
 import Afferent.Widget.TextLayout
+import Trellis
 
 namespace Afferent.Widget
 
-/-- Convert BoxStyle to Layout.BoxConstraints. -/
-def styleToBoxConstraints (style : BoxStyle) : Layout.BoxConstraints :=
+/-- Convert BoxStyle to Trellis.BoxConstraints. -/
+def styleToBoxConstraints (style : BoxStyle) : Trellis.BoxConstraints :=
   { width := .auto
     height := .auto
     minWidth := style.minWidth.getD 0
@@ -20,12 +21,12 @@ def styleToBoxConstraints (style : BoxStyle) : Layout.BoxConstraints :=
 
 /-- Result of measuring a widget: the LayoutNode and the updated widget (with computed TextLayout). -/
 structure MeasureResult where
-  node : Layout.LayoutNode
+  node : Trellis.LayoutNode
   widget : Widget
 deriving Inhabited
 
 /-- Get the intrinsic content size stored on a layout node (0 if missing). -/
-def nodeContentSize (n : Layout.LayoutNode) : Float × Float :=
+def nodeContentSize (n : Trellis.LayoutNode) : Float × Float :=
   match n.content with
   | some cs => (cs.width, cs.height)
   | none => (0, 0)
@@ -46,8 +47,8 @@ partial def measureWidget (w : Widget) (availWidth availHeight : Float) : IO Mea
         else
           measureSingleLine font content
 
-    let contentSize := Layout.ContentSize.mk' textLayout.maxWidth textLayout.totalHeight
-    let node := Layout.LayoutNode.leaf id contentSize
+    let contentSize := Trellis.ContentSize.mk' textLayout.maxWidth textLayout.totalHeight
+    let node := Trellis.LayoutNode.leaf id contentSize
     let updatedWidget := Widget.text id content font color align maxWidthOpt (some textLayout)
     pure ⟨node, updatedWidget⟩
 
@@ -55,17 +56,17 @@ partial def measureWidget (w : Widget) (availWidth availHeight : Float) : IO Mea
     let box := styleToBoxConstraints style
     let contentW := style.minWidth.getD 0
     let contentH := style.minHeight.getD 0
-    let node := Layout.LayoutNode.leaf id ⟨contentW, contentH⟩ box
+    let node := Trellis.LayoutNode.leaf id ⟨contentW, contentH⟩ box
     pure ⟨node, w⟩
 
   | .spacer id width height =>
-    let node := Layout.LayoutNode.leaf id ⟨width, height⟩
+    let node := Trellis.LayoutNode.leaf id ⟨width, height⟩
     pure ⟨node, w⟩
 
   | .flex id props style children =>
     let box := styleToBoxConstraints style
     -- Recursively measure children
-    let mut childNodes : Array Layout.LayoutNode := #[]
+    let mut childNodes : Array Trellis.LayoutNode := #[]
     let mut updatedChildren : Array Widget := #[]
     for child in children do
       let result ← measureWidget child availWidth availHeight
@@ -90,14 +91,14 @@ partial def measureWidget (w : Widget) (availWidth availHeight : Float) : IO Mea
         (totalWidth + gaps + padding.horizontal, maxHeight + padding.vertical)
 
     let node :=
-      Layout.LayoutNode.mk id box (.flex props) .none (some (Layout.ContentSize.mk' contentW contentH)) childNodes
+      Trellis.LayoutNode.mk id box (.flex props) .none (some (Trellis.ContentSize.mk' contentW contentH)) childNodes
     let updatedWidget := Widget.flex id props style updatedChildren
     pure ⟨node, updatedWidget⟩
 
   | .grid id props style children =>
     let box := styleToBoxConstraints style
     -- Recursively measure children
-    let mut childNodes : Array Layout.LayoutNode := #[]
+    let mut childNodes : Array Trellis.LayoutNode := #[]
     let mut updatedChildren : Array Widget := #[]
     for child in children do
       let result ← measureWidget child availWidth availHeight
@@ -125,7 +126,7 @@ partial def measureWidget (w : Widget) (availWidth availHeight : Float) : IO Mea
     let contentH := totalHeight + padding.vertical
 
     let node :=
-      Layout.LayoutNode.mk id box (.grid props) .none (some (Layout.ContentSize.mk' contentW contentH)) childNodes
+      Trellis.LayoutNode.mk id box (.grid props) .none (some (Trellis.ContentSize.mk' contentW contentH)) childNodes
     let updatedWidget := Widget.grid id props style updatedChildren
     pure ⟨node, updatedWidget⟩
 
@@ -141,13 +142,13 @@ partial def measureWidget (w : Widget) (availWidth availHeight : Float) : IO Mea
     let viewportBorderW := viewportW + style.padding.horizontal
     let viewportBorderH := viewportH + style.padding.vertical
     let node :=
-      Layout.LayoutNode.mk id box (.flex Layout.FlexContainer.default) .none
-        (some (Layout.ContentSize.mk' viewportBorderW viewportBorderH)) #[childNode]
+      Trellis.LayoutNode.mk id box (.flex Trellis.FlexContainer.default) .none
+        (some (Trellis.ContentSize.mk' viewportBorderW viewportBorderH)) #[childNode]
     let updatedWidget := Widget.scroll id style scrollState contentW contentH childResult.widget
     pure ⟨node, updatedWidget⟩
 
 /-- Convenience function that just returns the LayoutNode. -/
-def toLayoutNode (w : Widget) (availWidth availHeight : Float) : IO Layout.LayoutNode := do
+def toLayoutNode (w : Widget) (availWidth availHeight : Float) : IO Trellis.LayoutNode := do
   let result ← measureWidget w availWidth availHeight
   pure result.node
 

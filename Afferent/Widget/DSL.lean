@@ -4,6 +4,7 @@
 -/
 import Afferent.Widget.Core
 import Afferent.Widget.Scroll
+import Trellis
 
 
 namespace Afferent.Widget
@@ -68,25 +69,25 @@ def vspacer (height : Float) : WidgetBuilder := spacer 0 height
 /-- Create a horizontal flex row. -/
 def row (gap : Float := 0) (style : BoxStyle := {}) (children : Array WidgetBuilder) : WidgetBuilder := do
   let wid ← freshId
-  let props := Layout.FlexContainer.row gap
+  let props := Trellis.FlexContainer.row gap
   let cs ← children.mapM fun b => b
   pure (.flex wid props style cs)
 
 /-- Create a vertical flex column. -/
 def column (gap : Float := 0) (style : BoxStyle := {}) (children : Array WidgetBuilder) : WidgetBuilder := do
   let wid ← freshId
-  let props := Layout.FlexContainer.column gap
+  let props := Trellis.FlexContainer.column gap
   let cs ← children.mapM fun b => b
   pure (.flex wid props style cs)
 
 /-- Create a row with custom flex properties. -/
-def flexRow (props : Layout.FlexContainer) (style : BoxStyle := {}) (children : Array WidgetBuilder) : WidgetBuilder := do
+def flexRow (props : Trellis.FlexContainer) (style : BoxStyle := {}) (children : Array WidgetBuilder) : WidgetBuilder := do
   let wid ← freshId
   let cs ← children.mapM fun b => b
   pure (.flex wid { props with direction := .row } style cs)
 
 /-- Create a column with custom flex properties. -/
-def flexColumn (props : Layout.FlexContainer) (style : BoxStyle := {}) (children : Array WidgetBuilder) : WidgetBuilder := do
+def flexColumn (props : Trellis.FlexContainer) (style : BoxStyle := {}) (children : Array WidgetBuilder) : WidgetBuilder := do
   let wid ← freshId
   let cs ← children.mapM fun b => b
   pure (.flex wid { props with direction := .column } style cs)
@@ -94,23 +95,23 @@ def flexColumn (props : Layout.FlexContainer) (style : BoxStyle := {}) (children
 /-- Create a centered container (centers single child). -/
 def center (style : BoxStyle := {}) (child : WidgetBuilder) : WidgetBuilder := do
   let wid ← freshId
-  let props := Layout.FlexContainer.centered
+  let props := Trellis.FlexContainer.centered
   let c ← child
   pure (.flex wid props style #[c])
 
 /-- Create a container with space-between alignment. -/
-def spaceBetween (direction : Layout.FlexDirection := .row) (style : BoxStyle := {})
+def spaceBetween (direction : Trellis.FlexDirection := .row) (style : BoxStyle := {})
     (children : Array WidgetBuilder) : WidgetBuilder := do
   let wid ← freshId
-  let props := { Layout.FlexContainer.default with direction, justifyContent := .spaceBetween }
+  let props := { Trellis.FlexContainer.default with direction, justifyContent := .spaceBetween }
   let cs ← children.mapM fun b => b
   pure (.flex wid props style cs)
 
 /-- Create a container with space-around alignment. -/
-def spaceAround (direction : Layout.FlexDirection := .row) (style : BoxStyle := {})
+def spaceAround (direction : Trellis.FlexDirection := .row) (style : BoxStyle := {})
     (children : Array WidgetBuilder) : WidgetBuilder := do
   let wid ← freshId
-  let props := { Layout.FlexContainer.default with direction, justifyContent := .spaceAround }
+  let props := { Trellis.FlexContainer.default with direction, justifyContent := .spaceAround }
   let cs ← children.mapM fun b => b
   pure (.flex wid props style cs)
 
@@ -120,12 +121,12 @@ def spaceAround (direction : Layout.FlexDirection := .row) (style : BoxStyle := 
 def grid (columns : Nat) (gap : Float := 0) (style : BoxStyle := {})
     (children : Array WidgetBuilder) : WidgetBuilder := do
   let wid ← freshId
-  let props := Layout.GridContainer.columns columns gap
+  let props := Trellis.GridContainer.columns columns gap
   let cs ← children.mapM fun b => b
   pure (.grid wid props style cs)
 
 /-- Create a grid with custom properties. -/
-def gridCustom (props : Layout.GridContainer) (style : BoxStyle := {})
+def gridCustom (props : Trellis.GridContainer) (style : BoxStyle := {})
     (children : Array WidgetBuilder) : WidgetBuilder := do
   let wid ← freshId
   let cs ← children.mapM fun b => b
@@ -152,23 +153,23 @@ def vscroll (style : BoxStyle := {}) (contentHeight : Float)
 /-- Create a padded container around a child. -/
 def padded (padding : Float) (child : WidgetBuilder) : WidgetBuilder := do
   let wid ← freshId
-  let props := Layout.FlexContainer.default
-  let style := { padding := Layout.EdgeInsets.uniform padding }
+  let props := Trellis.FlexContainer.default
+  let style := { padding := Trellis.EdgeInsets.uniform padding }
   let c ← child
   pure (.flex wid props style #[c])
 
 /-- Create a container with margin around a child. -/
 def marginBox (margin : Float) (child : WidgetBuilder) : WidgetBuilder := do
   let wid ← freshId
-  let props := Layout.FlexContainer.default
-  let style := { margin := Layout.EdgeInsets.uniform margin }
+  let props := Trellis.FlexContainer.default
+  let style := { margin := Trellis.EdgeInsets.uniform margin }
   let c ← child
   pure (.flex wid props style #[c])
 
 /-- Create a card (box with background and padding). -/
 def card (bg : Color) (padding : Float := 16) (child : WidgetBuilder) : WidgetBuilder := do
   let wid ← freshId
-  let props := Layout.FlexContainer.default
+  let props := Trellis.FlexContainer.default
   let style := BoxStyle.card bg padding
   let c ← child
   pure (.flex wid props style #[c])
@@ -176,7 +177,7 @@ def card (bg : Color) (padding : Float := 16) (child : WidgetBuilder) : WidgetBu
 /-- Create a container with border. -/
 def bordered (borderColor : Color) (borderWidth : Float := 1) (child : WidgetBuilder) : WidgetBuilder := do
   let wid ← freshId
-  let props := Layout.FlexContainer.default
+  let props := Trellis.FlexContainer.default
   let style := { borderColor := some borderColor, borderWidth }
   let c ← child
   pure (.flex wid props style #[c])

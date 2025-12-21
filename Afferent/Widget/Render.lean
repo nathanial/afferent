@@ -5,13 +5,14 @@
 import Afferent.Widget.Core
 import Afferent.Widget.Measure
 import Afferent.Canvas.Context
+import Afferent.Layout
 
 namespace Afferent.Widget
 
 open Afferent CanvasM
 
 /-- Render a box background and border based on BoxStyle. -/
-def renderBoxStyle (rect : Layout.LayoutRect) (style : BoxStyle) : CanvasM Unit := do
+def renderBoxStyle (rect : Trellis.LayoutRect) (style : BoxStyle) : CanvasM Unit := do
   -- Background
   if let some bg := style.backgroundColor then
     setFillColor bg
@@ -31,7 +32,7 @@ def renderBoxStyle (rect : Layout.LayoutRect) (style : BoxStyle) : CanvasM Unit 
         strokeRectXYWH rect.x rect.y rect.width rect.height
 
 /-- Render wrapped text with alignment. -/
-def renderWrappedText (contentRect : Layout.LayoutRect) (font : Font)
+def renderWrappedText (contentRect : Trellis.LayoutRect) (font : Font)
     (color : Color) (align : TextAlign) (textLayout : TextLayout) : CanvasM Unit := do
   setFillColor color
   let ascender := font.ascender
@@ -52,7 +53,7 @@ def renderWrappedText (contentRect : Layout.LayoutRect) (font : Font)
     y := y + lineAdvance
 
 /-- Render a single-line text (no wrapping). -/
-def renderSingleLineText (contentRect : Layout.LayoutRect) (text : String)
+def renderSingleLineText (contentRect : Trellis.LayoutRect) (text : String)
     (font : Font) (color : Color) (align : TextAlign) : CanvasM Unit := do
   setFillColor color
   let (textWidth, _) ← measureText text font
@@ -71,7 +72,7 @@ def renderSingleLineText (contentRect : Layout.LayoutRect) (text : String)
 
 /-- Render a widget tree using computed layout positions.
     The widget should have been measured (text layouts computed) before calling this. -/
-partial def renderWidget (w : Widget) (layouts : Layout.LayoutResult) : CanvasM Unit := do
+partial def renderWidget (w : Widget) (layouts : Trellis.LayoutResult) : CanvasM Unit := do
   let some computed := layouts.get w.id | return
   let borderRect := computed.borderRect
   let contentRect := computed.contentRect

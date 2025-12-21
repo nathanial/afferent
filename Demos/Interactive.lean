@@ -4,8 +4,9 @@
 -/
 import Afferent
 import Afferent.Widget
+import Trellis
 
-open Afferent Afferent.Widget
+open Afferent Afferent.Widget Trellis
 
 /-- Messages for the counter application. -/
 inductive CounterMsg where
@@ -33,7 +34,7 @@ def counterApp (font : Font) : App CounterModel CounterMsg where
     buildInteractive do
       let cardStyle : BoxStyle := {
         backgroundColor := some (Color.rgb 0.2 0.2 0.25)
-        padding := Layout.EdgeInsets.uniform 24
+        padding := EdgeInsets.uniform 24
         cornerRadius := 12
       }
       centerI (style := cardStyle) do

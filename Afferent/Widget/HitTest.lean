@@ -3,7 +3,7 @@
   Map screen coordinates to widget IDs with proper Z-order.
 -/
 import Afferent.Widget.Core
-import Afferent.Layout.Result
+import Afferent.Layout
 
 namespace Afferent.Widget
 

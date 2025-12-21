@@ -5,6 +5,7 @@
 import Afferent.Core.Types
 import Afferent.Layout
 import Afferent.Text.Font
+import Trellis
 
 namespace Afferent.Widget
 
@@ -65,8 +66,8 @@ structure BoxStyle where
   borderColor : Option Color := none
   borderWidth : Float := 0
   cornerRadius : Float := 0
-  padding : Layout.EdgeInsets := {}
-  margin : Layout.EdgeInsets := {}
+  padding : Trellis.EdgeInsets := {}
+  margin : Trellis.EdgeInsets := {}
   minWidth : Option Float := none
   maxWidth : Option Float := none
   minHeight : Option Float := none
@@ -83,11 +84,11 @@ def withBackground (color : Color) : BoxStyle :=
 
 /-- Create a box style with uniform padding. -/
 def withPadding (p : Float) : BoxStyle :=
-  { padding := Layout.EdgeInsets.uniform p }
+  { padding := Trellis.EdgeInsets.uniform p }
 
 /-- Create a box style with background and padding. -/
 def card (bg : Color) (p : Float) : BoxStyle :=
-  { backgroundColor := some bg, padding := Layout.EdgeInsets.uniform p }
+  { backgroundColor := some bg, padding := Trellis.EdgeInsets.uniform p }
 
 end BoxStyle
 
@@ -95,13 +96,13 @@ end BoxStyle
 inductive Widget where
   /-- Flexbox container -/
   | flex (id : WidgetId)
-         (props : Layout.FlexContainer)
+         (props : Trellis.FlexContainer)
          (style : BoxStyle)
          (children : Array Widget)
 
   /-- CSS Grid container -/
   | grid (id : WidgetId)
-         (props : Layout.GridContainer)
+         (props : Trellis.GridContainer)
          (style : BoxStyle)
          (children : Array Widget)
 

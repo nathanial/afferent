@@ -6,7 +6,7 @@ import Afferent.Widget.Core
 import Afferent.Widget.Event
 import Afferent.Widget.HitTest
 import Afferent.Widget.UI
-import Afferent.Layout.Result
+import Afferent.Layout
 import Afferent.FFI
 
 namespace Afferent.Widget

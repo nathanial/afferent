@@ -2,10 +2,10 @@
   Grid Demo - CSS Grid layout visualization
 -/
 import Afferent
-import Afferent.Layout
+import Trellis
 
 open Afferent CanvasM
-open Afferent.Layout
+open Trellis
 
 namespace Demos
 

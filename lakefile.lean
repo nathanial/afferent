@@ -10,6 +10,7 @@ require crucible from git "https://github.com/nathanial/crucible" @ "master"
 require wisp from git "https://github.com/nathanial/wisp" @ "master"
 require cellar from git "https://github.com/nathanial/cellar" @ "master"
 require tincture from git "https://github.com/nathanial/tincture" @ "master"
+require trellis from ".." / "trellis"
 
 -- Common link arguments for all executables
 -- Includes both Homebrew paths for Apple Silicon (/opt/homebrew) and Intel (/usr/local)

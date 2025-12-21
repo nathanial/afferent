@@ -6,6 +6,7 @@ import Afferent.Widget.Core
 import Afferent.Widget.DSL
 import Afferent.Widget.Event
 import Afferent.Widget.App
+import Trellis
 
 
 namespace Afferent.Widget
@@ -95,21 +96,21 @@ def spacerI (width height : Float) : StateM (InteractiveBuilderState Msg) Widget
 def rowI' (gap : Float := 0) (style : BoxStyle := {})
     (children : Array Widget) : StateM (InteractiveBuilderState Msg) Widget := do
   let wid ← freshIdI
-  let props := Layout.FlexContainer.row gap
+  let props := Trellis.FlexContainer.row gap
   pure (Widget.flex wid props style children)
 
 /-- Create a vertical column from child widgets. -/
 def columnI' (gap : Float := 0) (style : BoxStyle := {})
     (children : Array Widget) : StateM (InteractiveBuilderState Msg) Widget := do
   let wid ← freshIdI
-  let props := Layout.FlexContainer.column gap
+  let props := Trellis.FlexContainer.column gap
   pure (Widget.flex wid props style children)
 
 /-- Create a centered container. -/
 def centerI (style : BoxStyle := {})
     (child : StateM (InteractiveBuilderState Msg) Widget) : StateM (InteractiveBuilderState Msg) Widget := do
   let wid ← freshIdI
-  let props := Layout.FlexContainer.centered
+  let props := Trellis.FlexContainer.centered
   let c ← child
   pure (Widget.flex wid props style #[c])
 
@@ -124,7 +125,7 @@ def boxI (style : BoxStyle) : StateM (InteractiveBuilderState Msg) Widget := do
 def buttonI (label : String) (font : Font) (bgColor : Color)
     (textColor : Color := Color.white) (msg : Msg) : StateM (InteractiveBuilderState Msg) Widget :=
   onClick (fun _ => msg) do
-    let padding := Layout.EdgeInsets.symmetric 12 8
+    let padding := Trellis.EdgeInsets.symmetric 12 8
     let style : BoxStyle := { backgroundColor := some bgColor, padding, cornerRadius := 4 }
     centerI (style := style) (textI label font textColor .center)
 

@@ -3,7 +3,6 @@
   Entry point for running all tests.
 -/
 import Afferent.Tests.TessellationTests
-import Afferent.Tests.LayoutTests
 import Afferent.Tests.WidgetTests
 import Afferent.Tests.FFISafetyTests
 import Afferent.Tests.AssetLoadingTests
@@ -22,8 +21,7 @@ def main : IO UInt32 := do
   -- Run tessellation tests
   exitCode := exitCode + (← runTests "Tessellation Tests" TessellationTests.cases)
 
-  -- Run layout tests
-  exitCode := exitCode + (← runTests "Layout Tests" LayoutTests.cases)
+  -- Note: Layout tests are now in the Trellis library
 
   -- Run widget tests
   exitCode := exitCode + (← runTests "Widget Tests" WidgetTests.cases)
