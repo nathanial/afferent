@@ -58,10 +58,10 @@ Afferent is a Lean 4 2D/3D graphics and UI framework targeting macOS with Metal 
 │   FreeType fonts, measurement        │
 ├──────────────────────────────────────┤
 │   FFI Layer                          │  Afferent/FFI/*.lean
-│   Window, Renderer, Texture, Asset   │
+│   Window, Renderer, Texture, 3D      │
 ├──────────────────────────────────────┤
 │   Native Code                        │  native/src/
-│   Metal pipeline, FreeType, Assimp   │
+│   Metal pipeline, FreeType           │
 └──────────────────────────────────────┘
 ```
 
@@ -121,8 +121,7 @@ afferent/
 │       ├── Renderer3D.lean # 3D rendering (meshes, fog, ocean)
 │       ├── Text.lean      # Text FFI bindings
 │       ├── FloatBuffer.lean # High-perf mutable float arrays
-│       ├── Texture.lean   # Texture loading & sprites
-│       └── Asset.lean     # 3D asset loading (Assimp)
+│       └── Texture.lean   # Texture loading & sprites
 │
 ├── Demos/                 # 20+ demo applications
 │   ├── Runner.lean        # Multi-pane demo runner
@@ -160,8 +159,7 @@ afferent/
         │   └── shaders/       # Metal Shading Language files
         └── common/
             ├── text_render.c  # FreeType integration
-            ├── float_buffer.c # FloatBuffer implementation
-            └── assimp_loader.cpp # Assimp model loading
+            └── float_buffer.c # FloatBuffer implementation
 ```
 
 ## Key Modules
@@ -221,13 +219,12 @@ Key FFI modules:
 - **Renderer3D.lean** - 3D meshes, fog, procedural ocean
 - **FloatBuffer.lean** - C-allocated mutable arrays (avoids Lean copy-on-write)
 - **Texture.lean** - Texture loading, sprite rendering
-- **Asset.lean** - Assimp 3D model loading (FBX, OBJ, COLLADA)
 
 ## Dependencies
 
 - **collimator** - Profunctor optics library for Lean 4 (state management)
 - **FreeType** - Font rendering (Homebrew: `brew install freetype`)
-- **Assimp** - 3D model loading (Homebrew: `brew install assimp`)
+- **Assimptor** - Assimp 3D model loading wrapper (see `../assimptor`)
 - **Metal/Cocoa/QuartzCore** - macOS frameworks for GPU rendering
 
 ## FFI Notes

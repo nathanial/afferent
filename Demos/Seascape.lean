@@ -4,8 +4,9 @@
   Features interactive FPS camera controls (WASD + mouse look).
 -/
 import Afferent
+import Assimptor
 
-open Afferent Afferent.FFI Afferent.Render
+open Afferent Afferent.FFI Afferent.Render Assimptor
 
 namespace Demos
 

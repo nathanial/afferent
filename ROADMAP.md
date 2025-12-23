@@ -45,7 +45,7 @@ This document tracks improvement opportunities, feature proposals, and code clea
 **Rationale:** Modern 3D content uses PBR workflows. The current system only loads diffuse textures.
 
 **Affected Files:**
-- `Afferent/FFI/Asset.lean` (SubMesh structure, loadAsset function - lines 44-47)
+- `Assimptor/Asset.lean` (SubMesh structure, loadAsset function - lines 44-47)
 - `native/src/metal/` (shader updates for PBR)
 
 **Estimated Effort:** Large

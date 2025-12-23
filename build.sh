@@ -15,21 +15,10 @@ export LIBRARY_PATH=/opt/homebrew/lib:${LIBRARY_PATH:-}
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$SCRIPT_DIR"
 
-# Initialize and update git submodules if needed
-if [ ! -f "third_party/assimp/CMakeLists.txt" ]; then
-    echo "Initializing git submodules..."
-    git submodule update --init --recursive
-fi
-
-# Build Assimp if not already built
-if [ ! -f "third_party/assimp/build/lib/libassimp.a" ] && [ ! -f "third_party/assimp/build/lib/libassimp.dylib" ]; then
-    echo "Building Assimp (this may take a few minutes on first build)..."
-    mkdir -p third_party/assimp/build
-    pushd third_party/assimp/build > /dev/null
-    cmake .. -DCMAKE_BUILD_TYPE=Release -DBUILD_SHARED_LIBS=OFF -DASSIMP_BUILD_TESTS=OFF -DASSIMP_BUILD_SAMPLES=OFF
-    cmake --build . --config Release -j$(sysctl -n hw.ncpu)
-    popd > /dev/null
-    echo "Assimp build complete!"
+# Ensure Assimptor (Assimp wrapper) is built first when present
+if [ -d "../assimptor" ]; then
+    echo "Building Assimptor dependency..."
+    (cd ../assimptor && ./build.sh Assimptor)
 fi
 
 # Build the specified target (default: afferent executable)

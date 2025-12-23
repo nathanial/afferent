@@ -3,8 +3,8 @@
   Validates Assimp-based model importing invariants.
 -/
 import Afferent.Tests.Framework
-import Afferent.FFI.Asset
 import Afferent.FFI.Init
+import Assimptor
 import Demos.Seascape
 
 namespace Afferent.Tests.AssetLoadingTests
@@ -13,7 +13,7 @@ open Crucible
 open Afferent.Tests
 
 private def validateSubmeshRanges (indicesSize : Nat) (textureCount : Nat)
-    (submeshes : Array Afferent.FFI.SubMesh) : IO Unit := do
+    (submeshes : Array Assimptor.SubMesh) : IO Unit := do
   for sm in submeshes do
     let off : Nat := sm.indexOffset.toNat
     let cnt : Nat := sm.indexCount.toNat
@@ -31,7 +31,7 @@ testSuite "Asset Loading Tests"
 test "loadAsset rejects missing file" := do
   let ok ←
     try
-      let _ ← Afferent.FFI.loadAsset "assets/does-not-exist.fbx" "assets"
+      let _ ← Assimptor.loadAsset "assets/does-not-exist.fbx" "assets"
       pure false
     catch _ =>
       pure true
@@ -44,7 +44,7 @@ test "Demos.loadFrigate caches without crashing" := do
   let _ ← Demos.loadFrigate
 
 test "loadAsset loads fictional frigate" := do
-  let asset ← Afferent.FFI.loadAsset
+  let asset ← Assimptor.loadAsset
     "assets/fictional-frigate/source/frigateUn1.fbx"
     "assets/fictional-frigate/textures"
 

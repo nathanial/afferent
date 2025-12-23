@@ -12,6 +12,7 @@ require cellar from ".." / "cellar"
 require tincture from ".." / "tincture"
 require trellis from ".." / "trellis"
 require arbor from ".." / "arbor"
+require assimptor from ".." / "assimptor"
 
 -- Common link arguments for all executables
 -- Includes both Homebrew paths for Apple Silicon (/opt/homebrew) and Intel (/usr/local)
@@ -30,7 +31,7 @@ def commonLinkArgs : Array String := #[
   "-lssl",
   "-lcrypto",
   "-lfreetype",
-  "-Lthird_party/assimp/build/lib",
+  "-L../assimptor/assimp/build/lib",
   "-lassimp",
   "-lz",
   "-lcurl",  -- Required by wisp
@@ -144,22 +145,6 @@ target texture_o pkg : FilePath := do
     "-O2"
   ] #[] "cc"
 
--- Assimp loader (C++ code for 3D model loading)
-target assimp_loader_o pkg : FilePath := do
-  let oFile := pkg.buildDir / "native" / "assimp_loader.o"
-  let srcFile := pkg.dir / "native" / "src" / "common" / "assimp_loader.cpp"
-  let includeDir := pkg.dir / "native" / "include"
-  let assimpIncludeDir := pkg.dir / "third_party" / "assimp" / "include"
-  let assimpBuildIncludeDir := pkg.dir / "third_party" / "assimp" / "build" / "include"
-  buildO oFile (← inputTextFile srcFile) #[
-    "-I", includeDir.toString,
-    "-I", assimpIncludeDir.toString,
-    "-I", assimpBuildIncludeDir.toString,
-    "-std=c++17",
-    "-fPIC",
-    "-O2"
-  ] #[] "clang++"
-
 extern_lib libafferent_native pkg := do
   let name := nameToStaticLib "afferent_native"
   let windowO ← window_o.fetch
@@ -168,5 +153,4 @@ extern_lib libafferent_native pkg := do
   let bridgeO ← lean_bridge_o.fetch
   let floatBufferO ← float_buffer_o.fetch
   let textureO ← texture_o.fetch
-  let assimpLoaderO ← assimp_loader_o.fetch
-  buildStaticLib (pkg.staticLibDir / name) #[windowO, metalO, textO, bridgeO, floatBufferO, textureO, assimpLoaderO]
+  buildStaticLib (pkg.staticLibDir / name) #[windowO, metalO, textO, bridgeO, floatBufferO, textureO]
