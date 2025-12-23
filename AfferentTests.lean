@@ -6,6 +6,7 @@ import Afferent.Tests.TessellationTests
 import Afferent.Tests.FFISafetyTests
 import Afferent.Tests.AssetLoadingTests
 import Afferent.Tests.SeascapeSmokeTests
+import Crucible
 
 open Crucible
 open Afferent.Tests
@@ -15,22 +16,7 @@ def main : IO UInt32 := do
   IO.println "║       Afferent Test Suite              ║"
   IO.println "╚════════════════════════════════════════╝"
 
-  let mut exitCode : UInt32 := 0
-
-  -- Run tessellation tests
-  exitCode := exitCode + (← runTests "Tessellation Tests" TessellationTests.cases)
-
-  -- Note: Layout tests are now in the Trellis library
-  -- Note: Widget tests are now in the Arbor library
-
-  -- Run FFI safety tests
-  exitCode := exitCode + (← runTests "FFI Safety Tests" FFISafetyTests.cases)
-
-  -- Run asset loading tests
-  exitCode := exitCode + (← runTests "Asset Loading Tests" AssetLoadingTests.cases)
-
-  -- Run Seascape smoke tests (skipped unless AFFERENT_RUN_GPU_TESTS=1)
-  exitCode := exitCode + (← runTests "Seascape Smoke Tests" SeascapeSmokeTests.cases)
+  let exitCode ← runAllSuites
 
   -- Summary
   IO.println ""
