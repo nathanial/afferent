@@ -20,7 +20,6 @@ import Demos.Interactive
 import Demos.SpinningCubes
 import Demos.DemoGrid
 import Demos.Seascape
-import Demos.Map
 
 set_option maxRecDepth 1024
 
@@ -121,9 +120,6 @@ def unifiedDemo : IO Unit := do
   let (fontReg2, fontMediumId) := fontReg1.register fontMedium "medium"
   let fontRegistry := fontReg2.setDefault fontMedium
 
-  -- Initialize Map demo (HTTP + initial state)
-  initMapDemo physWidthF physHeightF
-
   -- Display modes: 0 = demo, 1 = grid squares, 2 = triangles, 3 = circles, 4 = sprites
   let startTime ← IO.monoMsNow
   let mut c := canvas
@@ -142,7 +138,7 @@ def unifiedDemo : IO Unit := do
         | none => 0
     | none => 0
 
-  let mut displayMode : Nat := startMode % 12
+  let mut displayMode : Nat := startMode % 11
   let mut msaaEnabled : Bool := true
   let mut lastTime := startTime
   let mut bouncingState := bouncingParticles
@@ -168,7 +164,7 @@ def unifiedDemo : IO Unit := do
       -- Release pointer lock when leaving mode 9 or 10
       if displayMode == 9 || displayMode == 10 then
         FFI.Window.setPointerLock c.ctx.window false
-      displayMode := (displayMode + 1) % 12
+      displayMode := (displayMode + 1) % 11
       c.clearKey
       -- Disable MSAA for throughput-heavy benchmarks and the seascape demo.
       -- (Seascape is usually fill-rate bound; MSAA can be a big hit at Retina resolutions.)
@@ -185,8 +181,7 @@ def unifiedDemo : IO Unit := do
       | 7 => IO.println "Switched to WIDGET demo (full-size)"
       | 8 => IO.println "Switched to INTERACTIVE demo (click the buttons!)"
       | 9 => IO.println "Switched to 3D SPINNING CUBES demo"
-      | 10 => IO.println "Switched to SEASCAPE demo (Gerstner waves)"
-      | _ => IO.println "Switched to MAP demo (tile-based map viewer)"
+      | _ => IO.println "Switched to SEASCAPE demo (Gerstner waves)"
 
     let ok ← c.beginFrame Color.darkGray
     if ok then
@@ -373,18 +368,6 @@ def unifiedDemo : IO Unit := do
           fillTextXY
             (s!"pos=({seascapeCamera.x},{seascapeCamera.y},{seascapeCamera.z}) yaw={seascapeCamera.yaw} pitch={seascapeCamera.pitch}")
             (20 * screenScale) (55 * screenScale) fontSmall
-      else if displayMode == 11 then
-        -- Map demo: tile-based map viewer
-        updateMapDemo c.ctx.window
-        let info ← renderMapDemo c.ctx.renderer
-        c ← run' (c.resetTransform) do
-          setFillColor Color.white
-          fillTextXY "Map Demo - Drag to pan, scroll to zoom (Space to advance)" (20 * screenScale) (30 * screenScale) fontMedium
-          -- Info overlay
-          setFillColor (Color.hsva 0.0 0.0 0.0 0.6)
-          fillRectXYWH (10 * screenScale) (40 * screenScale) (500 * screenScale) (25 * screenScale)
-          setFillColor Color.white
-          fillTextXY info (20 * screenScale) (57 * screenScale) fontSmall
       else
         -- Normal demo mode: grid of demos using CanvasM for proper state threading
         c ← run' (c.resetTransform) do
@@ -406,7 +389,6 @@ def unifiedDemo : IO Unit := do
           break
 
   IO.println "Cleaning up..."
-  cleanupMapDemo
   fontSmall.destroy
   fontMedium.destroy
   fontLarge.destroy
