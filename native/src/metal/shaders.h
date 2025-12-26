@@ -4,12 +4,12 @@
 
 #import <Foundation/Foundation.h>
 
-// Load a shader from the shaders directory by name (without .metal extension)
-// Returns the shader source as an NSString, or nil on error
-NSString* afferent_load_shader(const char* name);
+// Set a shader source by name (called from Lean FFI with embedded shaders)
+// Must be called for all shaders before afferent_init_shaders
+void afferent_set_shader_source(const char* name, const char* source);
 
-// Initialize all shaders (loads from files)
-// Returns YES on success, NO on failure
+// Verify all shaders were initialized
+// Returns YES if all shaders are set, NO otherwise
 BOOL afferent_init_shaders(void);
 
 // Basic colored vertex shader

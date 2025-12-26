@@ -1,6 +1,9 @@
 -- This module serves as the root of the `Afferent` library.
 -- Import modules here that should be built as part of the library.
 
+-- Embedded shader sources
+import Afferent.Shaders
+
 -- Core types
 import Afferent.Core.Types
 import Afferent.Core.Path

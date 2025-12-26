@@ -97,6 +97,17 @@ LEAN_EXPORT lean_obj_res afferent_initialize(uint8_t builtin, lean_obj_arg world
     return lean_io_result_mk_ok(lean_box(0));
 }
 
+// Set shader source from Lean (embedded shaders)
+extern void afferent_set_shader_source(const char* name, const char* source);
+
+LEAN_EXPORT lean_obj_res lean_afferent_set_shader_source(b_lean_obj_arg name, b_lean_obj_arg source, lean_obj_arg world) {
+    (void)world;
+    const char* name_str = lean_string_cstr(name);
+    const char* source_str = lean_string_cstr(source);
+    afferent_set_shader_source(name_str, source_str);
+    return lean_io_result_mk_ok(lean_box(0));
+}
+
 // Window creation
 LEAN_EXPORT lean_obj_res lean_afferent_window_create(
     uint32_t width,

@@ -3,6 +3,7 @@
   GPU rendering operations including frame management, drawing, and instanced rendering.
 -/
 import Afferent.FFI.Types
+import Afferent.FFI.Init
 
 namespace Afferent.FFI
 
