@@ -7,7 +7,6 @@ package afferent where
 
 require collimator from ".." / "collimator"
 require crucible from ".." / "crucible"
-require wisp from ".." / "wisp"
 require tincture from ".." / "tincture"
 require trellis from ".." / "trellis"
 require arbor from ".." / "arbor"
@@ -26,15 +25,10 @@ def commonLinkArgs : Array String := #[
   "-lobjc",
   "-L/opt/homebrew/lib",    -- Apple Silicon Homebrew
   "-L/usr/local/lib",        -- Intel Homebrew fallback
-  "-L/opt/homebrew/opt/openssl@3/lib", -- Homebrew OpenSSL (keg-only)
-  "-L/usr/local/opt/openssl@3/lib",    -- Intel Homebrew OpenSSL (keg-only)
-  "-lssl",
-  "-lcrypto",
   "-lfreetype",
   "-L../assimptor/assimp/build/lib",
   "-lassimp",
   "-lz",
-  "-lcurl",  -- Required by wisp
   "-lc++"
 ]
 
