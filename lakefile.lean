@@ -8,7 +8,6 @@ package afferent where
 require collimator from ".." / "collimator"
 require crucible from ".." / "crucible"
 require wisp from ".." / "wisp"
-require cellar from ".." / "cellar"
 require tincture from ".." / "tincture"
 require trellis from ".." / "trellis"
 require arbor from ".." / "arbor"
