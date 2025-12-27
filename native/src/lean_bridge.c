@@ -163,11 +163,18 @@ LEAN_EXPORT lean_obj_res lean_afferent_window_get_size(lean_obj_arg window_obj, 
     return lean_io_result_mk_ok(tuple);
 }
 
-// Get keyboard key code (returns 0 if no key pressed)
+// Get keyboard key code (only valid if hasKeyPressed is true)
 LEAN_EXPORT lean_obj_res lean_afferent_window_get_key_code(lean_obj_arg window_obj, lean_obj_arg world) {
     AfferentWindowRef window = (AfferentWindowRef)lean_get_external_data(window_obj);
     uint16_t key_code = afferent_window_get_key_code(window);
     return lean_io_result_mk_ok(lean_box(key_code));
+}
+
+// Check if a key is pending (distinguishes key code 0 from "no key")
+LEAN_EXPORT lean_obj_res lean_afferent_window_has_key_pressed(lean_obj_arg window_obj, lean_obj_arg world) {
+    AfferentWindowRef window = (AfferentWindowRef)lean_get_external_data(window_obj);
+    bool has_key = afferent_window_has_key_pressed(window);
+    return lean_io_result_mk_ok(lean_box(has_key ? 1 : 0));
 }
 
 // Clear keyboard state

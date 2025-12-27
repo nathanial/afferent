@@ -64,6 +64,7 @@ void afferent_window_get_size(AfferentWindowRef window, uint32_t* width, uint32_
 
 // Keyboard input
 uint16_t afferent_window_get_key_code(AfferentWindowRef window);
+bool afferent_window_has_key_pressed(AfferentWindowRef window);
 void afferent_window_clear_key(AfferentWindowRef window);
 
 // Mouse input

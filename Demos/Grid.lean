@@ -44,9 +44,9 @@ def demoGrid3Col : CanvasM Unit := do
   -- Grid with 3 equal columns (1fr 1fr 1fr)
   let props := GridContainer.columns 3 (gap := 10)
   let tree := LayoutNode.gridBox 0 props #[
-    LayoutNode.leaf 1 ⟨0, 60⟩,  -- Content size doesn't matter with stretch
-    LayoutNode.leaf 2 ⟨0, 60⟩,
-    LayoutNode.leaf 3 ⟨0, 60⟩
+    LayoutNode.leaf 1 (ContentSize.mk' 0 60),  -- Content size doesn't matter with stretch
+    LayoutNode.leaf 2 (ContentSize.mk' 0 60),
+    LayoutNode.leaf 3 (ContentSize.mk' 0 60)
   ]
 
   let result := layout tree 350 80
@@ -56,9 +56,9 @@ def demoGrid3Col : CanvasM Unit := do
 def demoGridMixed : CanvasM Unit := do
   let props := GridContainer.withColumns #[.px 80, .fr 1, .fr 2] (gap := 10)
   let tree := LayoutNode.gridBox 0 props #[
-    LayoutNode.leaf 1 ⟨0, 60⟩,
-    LayoutNode.leaf 2 ⟨0, 60⟩,
-    LayoutNode.leaf 3 ⟨0, 60⟩
+    LayoutNode.leaf 1 (ContentSize.mk' 0 60),
+    LayoutNode.leaf 2 (ContentSize.mk' 0 60),
+    LayoutNode.leaf 3 (ContentSize.mk' 0 60)
   ]
 
   let result := layout tree 350 80
@@ -68,12 +68,12 @@ def demoGridMixed : CanvasM Unit := do
 def demoGridAuto : CanvasM Unit := do
   let props := GridContainer.columns 3 (gap := 10)
   let tree := LayoutNode.gridBox 0 props #[
-    LayoutNode.leaf 1 ⟨0, 50⟩,
-    LayoutNode.leaf 2 ⟨0, 50⟩,
-    LayoutNode.leaf 3 ⟨0, 50⟩,
-    LayoutNode.leaf 4 ⟨0, 50⟩,
-    LayoutNode.leaf 5 ⟨0, 50⟩,
-    LayoutNode.leaf 6 ⟨0, 50⟩
+    LayoutNode.leaf 1 (ContentSize.mk' 0 50),
+    LayoutNode.leaf 2 (ContentSize.mk' 0 50),
+    LayoutNode.leaf 3 (ContentSize.mk' 0 50),
+    LayoutNode.leaf 4 (ContentSize.mk' 0 50),
+    LayoutNode.leaf 5 (ContentSize.mk' 0 50),
+    LayoutNode.leaf 6 (ContentSize.mk' 0 50)
   ]
 
   let result := layout tree 350 130
@@ -110,9 +110,9 @@ def demoGridSpan : CanvasM Unit := do
 
   let tree := LayoutNode.gridBox 0 props #[
     LayoutNode.leaf' 1 0 50 {} (.gridChild spanItem),  -- spans 2 cols
-    LayoutNode.leaf 2 ⟨0, 50⟩,
-    LayoutNode.leaf 3 ⟨0, 50⟩,
-    LayoutNode.leaf 4 ⟨0, 50⟩
+    LayoutNode.leaf 2 (ContentSize.mk' 0 50),
+    LayoutNode.leaf 3 (ContentSize.mk' 0 50),
+    LayoutNode.leaf 4 (ContentSize.mk' 0 50)
   ]
 
   let result := layout tree 350 130

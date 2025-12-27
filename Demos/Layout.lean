@@ -46,9 +46,9 @@ def demoFlexRow : CanvasM Unit := do
   -- fillTextXY "Flex Row (justify-content: flex-start)" 50 30 font
 
   let tree := LayoutNode.row 0 #[
-    LayoutNode.leaf 1 ⟨80, 60⟩,
-    LayoutNode.leaf 2 ⟨100, 60⟩,
-    LayoutNode.leaf 3 ⟨70, 60⟩
+    LayoutNode.leaf 1 (ContentSize.mk' 80 60),
+    LayoutNode.leaf 2 (ContentSize.mk' 100 60),
+    LayoutNode.leaf 3 (ContentSize.mk' 70 60)
   ] (gap := 10)
 
   let result := layout tree 350 80
@@ -58,9 +58,9 @@ def demoFlexRow : CanvasM Unit := do
 def demoFlexRowCenter : CanvasM Unit := do
   let props := { FlexContainer.row with justifyContent := .center, gap := 10 }
   let tree := LayoutNode.flexBox 0 props #[
-    LayoutNode.leaf 1 ⟨60, 50⟩,
-    LayoutNode.leaf 2 ⟨60, 50⟩,
-    LayoutNode.leaf 3 ⟨60, 50⟩
+    LayoutNode.leaf 1 (ContentSize.mk' 60 50),
+    LayoutNode.leaf 2 (ContentSize.mk' 60 50),
+    LayoutNode.leaf 3 (ContentSize.mk' 60 50)
   ]
 
   let result := layout tree 350 70
@@ -70,9 +70,9 @@ def demoFlexRowCenter : CanvasM Unit := do
 def demoFlexRowSpaceBetween : CanvasM Unit := do
   let props := { FlexContainer.row with justifyContent := .spaceBetween }
   let tree := LayoutNode.flexBox 0 props #[
-    LayoutNode.leaf 1 ⟨50, 50⟩,
-    LayoutNode.leaf 2 ⟨50, 50⟩,
-    LayoutNode.leaf 3 ⟨50, 50⟩
+    LayoutNode.leaf 1 (ContentSize.mk' 50 50),
+    LayoutNode.leaf 2 (ContentSize.mk' 50 50),
+    LayoutNode.leaf 3 (ContentSize.mk' 50 50)
   ]
 
   let result := layout tree 350 70
@@ -92,9 +92,9 @@ def demoFlexGrow : CanvasM Unit := do
 /-- Demo 5: Flex Column -/
 def demoFlexColumn : CanvasM Unit := do
   let tree := LayoutNode.column 0 #[
-    LayoutNode.leaf 1 ⟨100, 40⟩,
-    LayoutNode.leaf 2 ⟨120, 50⟩,
-    LayoutNode.leaf 3 ⟨80, 45⟩
+    LayoutNode.leaf 1 (ContentSize.mk' 100 40),
+    LayoutNode.leaf 2 (ContentSize.mk' 120 50),
+    LayoutNode.leaf 3 (ContentSize.mk' 80 45)
   ] (gap := 10)
 
   let result := layout tree 150 200
@@ -104,9 +104,9 @@ def demoFlexColumn : CanvasM Unit := do
 def demoAlignItems : CanvasM Unit := do
   let props := { FlexContainer.row with alignItems := .center, gap := 10 }
   let tree := LayoutNode.flexBox 0 props #[
-    LayoutNode.leaf 1 ⟨60, 30⟩,
-    LayoutNode.leaf 2 ⟨60, 60⟩,
-    LayoutNode.leaf 3 ⟨60, 45⟩
+    LayoutNode.leaf 1 (ContentSize.mk' 60 30),
+    LayoutNode.leaf 2 (ContentSize.mk' 60 60),
+    LayoutNode.leaf 3 (ContentSize.mk' 60 45)
   ]
 
   let result := layout tree 250 80
@@ -115,14 +115,14 @@ def demoAlignItems : CanvasM Unit := do
 /-- Demo 7: Nested Containers -/
 def demoNested : CanvasM Unit := do
   let innerColumn := LayoutNode.column 10 #[
-    LayoutNode.leaf 11 ⟨50, 30⟩,
-    LayoutNode.leaf 12 ⟨50, 30⟩
+    LayoutNode.leaf 11 (ContentSize.mk' 50 30),
+    LayoutNode.leaf 12 (ContentSize.mk' 50 30)
   ] (gap := 5)
 
   let tree := LayoutNode.row 0 #[
-    LayoutNode.leaf 1 ⟨60, 80⟩,
+    LayoutNode.leaf 1 (ContentSize.mk' 60 80),
     innerColumn.withItem (.flexChild (FlexItem.growing 1)),
-    LayoutNode.leaf 2 ⟨60, 80⟩
+    LayoutNode.leaf 2 (ContentSize.mk' 60 80)
   ] (gap := 10)
 
   let result := layout tree 300 100
@@ -137,9 +137,9 @@ def demoComplex : CanvasM Unit := do
 
   -- Content area with sidebar
   let sidebar := LayoutNode.column 200 #[
-    LayoutNode.leaf 201 ⟨80, 50⟩,
-    LayoutNode.leaf 202 ⟨80, 50⟩,
-    LayoutNode.leaf 203 ⟨80, 50⟩
+    LayoutNode.leaf 201 (ContentSize.mk' 80 50),
+    LayoutNode.leaf 202 (ContentSize.mk' 80 50),
+    LayoutNode.leaf 203 (ContentSize.mk' 80 50)
   ] (gap := 5)
 
   let mainContent := LayoutNode.flexBox 300

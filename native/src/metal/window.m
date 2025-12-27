@@ -512,12 +512,17 @@ CAMetalLayer* afferent_window_get_metal_layer(AfferentWindowRef window) {
     return window ? window->view.metalLayer : nil;
 }
 
-// Get the last key code pressed (0 if none)
+// Get the last key code pressed (only valid if hasKeyPressed is true)
 uint16_t afferent_window_get_key_code(AfferentWindowRef window) {
     if (window && window->keyPressed) {
         return window->lastKeyCode;
     }
     return 0;
+}
+
+// Check if a key is currently pending (use this to distinguish key code 0 from "no key")
+bool afferent_window_has_key_pressed(AfferentWindowRef window) {
+    return window && window->keyPressed;
 }
 
 // Clear the key pressed state (call after handling the key)

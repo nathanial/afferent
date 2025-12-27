@@ -26,6 +26,9 @@ opaque Window.getSize (window : @& Window) : IO (UInt32 × UInt32)
 @[extern "lean_afferent_window_get_key_code"]
 opaque Window.getKeyCode (window : @& Window) : IO UInt16
 
+@[extern "lean_afferent_window_has_key_pressed"]
+opaque Window.hasKeyPressed (window : @& Window) : IO Bool
+
 @[extern "lean_afferent_window_clear_key"]
 opaque Window.clearKey (window : @& Window) : IO Unit
 

@@ -59,9 +59,13 @@ def shouldClose (ctx : DrawContext) : IO Bool :=
 def pollEvents (ctx : DrawContext) : IO Unit :=
   ctx.window.pollEvents
 
-/-- Get the last key code pressed (0 if none). -/
+/-- Get the last key code pressed (only valid if hasKeyPressed is true). -/
 def getKeyCode (ctx : DrawContext) : IO UInt16 :=
   ctx.window.getKeyCode
+
+/-- Check if a key is pending (use to distinguish key code 0 from "no key"). -/
+def hasKeyPressed (ctx : DrawContext) : IO Bool :=
+  ctx.window.hasKeyPressed
 
 /-- Clear the key pressed state (call after handling). -/
 def clearKey (ctx : DrawContext) : IO Unit :=
@@ -628,9 +632,13 @@ def shouldClose (c : Canvas) : IO Bool :=
 def pollEvents (c : Canvas) : IO Unit :=
   c.ctx.pollEvents
 
-/-- Get the last key code pressed (0 if none). Common codes: Space=49, Escape=53, P=35 -/
+/-- Get the last key code pressed (only valid if hasKeyPressed is true). Common codes: Space=49, Escape=53, P=35 -/
 def getKeyCode (c : Canvas) : IO UInt16 :=
   c.ctx.getKeyCode
+
+/-- Check if a key is pending (use to distinguish key code 0 from "no key"). -/
+def hasKeyPressed (c : Canvas) : IO Bool :=
+  c.ctx.hasKeyPressed
 
 /-- Clear the key pressed state (call after handling the key). -/
 def clearKey (c : Canvas) : IO Unit :=
