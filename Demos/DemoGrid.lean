@@ -59,7 +59,24 @@ def renderDemoGridM (screenScale : Float) (screenWidth screenHeight : Float)
   setFillColor Color.white
   fillTextXY s!"layouts: {result.layouts.size}, w={screenWidth}, h={screenHeight}" 60 30 fontSmall
 
-  -- Render each cell based on layout results
+  -- Debug: draw colored rectangles for each cell WITHOUT clipping or complex content
+  -- This helps isolate if the issue is with trellis layout or with rendering
+  for cl in result.layouts do
+    if cl.nodeId >= 1 && cl.nodeId <= 6 then
+      let rect := cl.borderRect
+      let cellIdx := cl.nodeId - 1
+      let config := getCellConfig cellIdx
+
+      -- Draw debug rectangle for this cell (no clipping)
+      setFillColor config.bg
+      fillRectXYWH rect.x rect.y rect.width rect.height
+
+      -- Draw cell label
+      setFillColor Color.white
+      fillTextXY s!"Cell {cellIdx}: {rect.x},{rect.y} {rect.width}x{rect.height}"
+        (rect.x + 10) (rect.y + 30) fontSmall
+
+  -- Now render actual demo content
   for cl in result.layouts do
     -- Only process leaf nodes (id 1-6), skip container (id 0)
     if cl.nodeId >= 1 && cl.nodeId <= 6 then
@@ -73,14 +90,10 @@ def renderDemoGridM (screenScale : Float) (screenWidth screenHeight : Float)
       -- Clip to cell bounds
       clip cellRect
 
-      -- Draw background
-      setFillColor config.bg
-      fillRect cellRect
-
       -- Draw label
       setFillColor (Color.hsva 0.0 0.0 1.0 0.5)
-      fillTextXY s!"Cell: {cellIdx % 2},{cellIdx / 2} - {config.label}"
-        (rect.x + 10 * screenScale) (rect.y + 20 * screenScale) fontSmall
+      fillTextXY s!"{config.label}"
+        (rect.x + 10 * screenScale) (rect.y + 50 * screenScale) fontSmall
 
       -- Render demo content (translated to cell origin, scaled)
       save

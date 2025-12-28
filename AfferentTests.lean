@@ -6,6 +6,7 @@ import Afferent.Tests.TessellationTests
 import Afferent.Tests.FFISafetyTests
 import Afferent.Tests.AssetLoadingTests
 import Afferent.Tests.SeascapeSmokeTests
+import Afferent.Tests.LayoutTests
 import Crucible
 
 open Crucible
