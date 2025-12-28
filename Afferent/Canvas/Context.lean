@@ -692,27 +692,48 @@ def setScissor (x y width height : UInt32) (c : Canvas) : IO Unit :=
 def resetScissor (c : Canvas) : IO Unit :=
   c.ctx.resetScissor
 
-/-- Set a clip rectangle in logical canvas coordinates.
-    The coordinates will be scaled to match the current drawable size.
+/-- Helper to compute and apply the effective scissor from the clip stack. -/
+private def applyEffectiveScissor (c : Canvas) : IO Unit := do
+  match c.state.effectiveClipRect with
+  | some r =>
+    -- Clamp to non-negative values for UInt32
+    let x := (max 0 r.x).toUInt32
+    let y := (max 0 r.y).toUInt32
+    let w := (max 0 r.width).toUInt32
+    let h := (max 0 r.height).toUInt32
+    c.ctx.setScissor x y w h
+  | none =>
+    c.ctx.resetScissor
+
+/-- Push a clip rectangle onto the clip stack. The rect coordinates are in the
+    current coordinate system (after any transforms). The clip will be transformed
+    by the CURRENT canvas transform, so clipping respects translate/scale/rotate.
     Flushes any pending auto-batch geometry before setting the scissor. -/
 def clip (rect : Rect) (c : Canvas) : IO Canvas := do
   -- Flush pending geometry so it renders without the new clip
   let c ← c.flushAutoBatch
-  let (drawW, drawH) ← c.ctx.getCurrentSize
-  let scaleX := drawW / c.ctx.baseWidth
-  let scaleY := drawH / c.ctx.baseHeight
-  let x := (rect.x * scaleX).toUInt32
-  let y := (rect.y * scaleY).toUInt32
-  let w := (rect.width * scaleX).toUInt32
-  let h := (rect.height * scaleY).toUInt32
-  c.ctx.setScissor x y w h
+  -- Push clip with current transform onto the stack
+  let c := c.modifyState (·.pushClip rect)
+  -- Apply effective scissor
+  c.applyEffectiveScissor
   pure c
 
-/-- Remove clipping and restore full viewport.
+/-- Pop the most recent clip rectangle from the clip stack.
+    Restores the previous clip state (or disables clipping if stack is empty).
+    Flushes any pending auto-batch geometry before updating the scissor. -/
+def popClip (c : Canvas) : IO Canvas := do
+  let c ← c.flushAutoBatch
+  let c := c.modifyState (·.popClip)
+  c.applyEffectiveScissor
+  pure c
+
+/-- Remove all clipping and restore full viewport.
+    Clears the entire clip stack.
     Flushes any pending auto-batch geometry before resetting the scissor. -/
 def unclip (c : Canvas) : IO Canvas := do
   -- Flush pending geometry so it renders with the current clip
   let c ← c.flushAutoBatch
+  let c := c.modifyState (·.clearClipStack)
   c.ctx.resetScissor
   pure c
 
@@ -827,6 +848,7 @@ def measureText (text : String) (font : Font) : CanvasM (Float × Float) := do
 /-! ## Clipping -/
 
 def clip (rect : Rect) : CanvasM Unit := liftCanvas (Canvas.clip rect)
+def popClip : CanvasM Unit := liftCanvas Canvas.popClip
 def unclip : CanvasM Unit := liftCanvas Canvas.unclip
 
 /-! ## Batching -/

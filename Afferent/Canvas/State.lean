@@ -23,8 +23,9 @@ structure CanvasState where
   strokeStyle : StrokeStyle
   /-- Global alpha (multiplied with style alphas). -/
   globalAlpha : Float
-  /-- Clipping path (optional). -/
-  clipPath : Option Path
+  /-- Stack of clip rectangles. Each rect is stored with the transform active
+      when clip was called, allowing proper transform-aware clipping. -/
+  clipStack : Array (Rect × Transform) := #[]
 deriving Repr
 
 namespace CanvasState
@@ -35,7 +36,7 @@ def default : CanvasState :=
     fillStyle := .solid Color.black
     strokeStyle := StrokeStyle.default
     globalAlpha := 1.0
-    clipPath := none }
+    clipStack := #[] }
 
 instance : Inhabited CanvasState := ⟨default⟩
 
@@ -53,8 +54,8 @@ def strokeStyleLens : Lens' CanvasState StrokeStyle :=
 def globalAlphaLens : Lens' CanvasState Float :=
   lens' (fun s => s.globalAlpha) (fun s a => { s with globalAlpha := a })
 
-def clipPathLens : Lens' CanvasState (Option Path) :=
-  lens' (fun s => s.clipPath) (fun s p => { s with clipPath := p })
+def clipStackLens : Lens' CanvasState (Array (Rect × Transform)) :=
+  lens' (fun s => s.clipStack) (fun s cs => { s with clipStack := cs })
 
 /-! ## Transform operations -/
 
@@ -161,6 +162,61 @@ def effectiveFillStyle (state : CanvasState) : FillStyle :=
 def effectiveStrokeColor (state : CanvasState) : Color :=
   let baseColor := state.strokeStyle.color
   { baseColor with a := baseColor.a * state.globalAlpha }
+
+/-! ## Clip stack operations -/
+
+/-- Transform a rect by applying a transform to all 4 corners and computing
+    the axis-aligned bounding box. The result is in the same coordinate system
+    as the transform (typically pixel coordinates). -/
+def transformRectToScreenAABB (rect : Rect) (xform : Transform) : Rect :=
+  -- Transform all 4 corners
+  let p1 := xform.apply rect.origin
+  let p2 := xform.apply ⟨rect.maxX, rect.y⟩
+  let p3 := xform.apply ⟨rect.maxX, rect.maxY⟩
+  let p4 := xform.apply ⟨rect.x, rect.maxY⟩
+  -- Compute AABB
+  let minX := min (min p1.x p2.x) (min p3.x p4.x)
+  let maxX := max (max p1.x p2.x) (max p3.x p4.x)
+  let minY := min (min p1.y p2.y) (min p3.y p4.y)
+  let maxY := max (max p1.y p2.y) (max p3.y p4.y)
+  Rect.mk' minX minY (maxX - minX) (maxY - minY)
+
+/-- Intersect two rectangles. Returns none if they don't overlap. -/
+def rectIntersect (r1 r2 : Rect) : Option Rect :=
+  let x := max r1.x r2.x
+  let y := max r1.y r2.y
+  let right := min r1.maxX r2.maxX
+  let bottom := min r1.maxY r2.maxY
+  if right > x && bottom > y then
+    some (Rect.mk' x y (right - x) (bottom - y))
+  else
+    none
+
+/-- Compute the effective clip rect in screen pixels from the clip stack.
+    Returns none if clip stack is empty (no clipping).
+    Each clip rect is transformed by its stored transform and then intersected. -/
+def effectiveClipRect (state : CanvasState) : Option Rect :=
+  if state.clipStack.isEmpty then
+    none
+  else
+    -- Transform each clip rect to screen space
+    let screenRects := state.clipStack.map fun (rect, xform) =>
+      transformRectToScreenAABB rect xform
+    -- Intersect all rects
+    screenRects.foldl (init := some screenRects[0]!) fun acc r =>
+      acc.bind (rectIntersect · r)
+
+/-- Push a clip rect with the current transform onto the clip stack. -/
+def pushClip (rect : Rect) (state : CanvasState) : CanvasState :=
+  { state with clipStack := state.clipStack.push (rect, state.transform) }
+
+/-- Pop the most recent clip rect from the stack. -/
+def popClip (state : CanvasState) : CanvasState :=
+  { state with clipStack := state.clipStack.pop }
+
+/-- Clear the entire clip stack. -/
+def clearClipStack (state : CanvasState) : CanvasState :=
+  { state with clipStack := #[] }
 
 end CanvasState
 

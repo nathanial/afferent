@@ -74,11 +74,14 @@ def renderDemoGridM (screenScale : Float) (screenWidth screenHeight : Float)
       fillTextXY config.label
         (rect.x + 10 * screenScale) (rect.y + 20 * screenScale) fontSmall
 
-      -- Render demo content (translated to cell origin, scaled)
+      -- Render demo content with transform-aware clipping
       save
       translate rect.x rect.y
+      -- Clip to cell bounds (now transform-aware - will be offset by translate)
+      clip (Rect.mk' 0 0 rect.width rect.height)
       scale (config.scale * screenScale) (config.scale * screenScale)
       config.render t fonts
+      popClip
       restore
 
 end Demos
