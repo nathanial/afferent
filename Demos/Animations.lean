@@ -3,7 +3,7 @@
 -/
 import Afferent
 
-open Afferent CanvasM
+open Afferent CanvasM Linalg
 
 namespace Demos
 
@@ -26,14 +26,12 @@ def hsvToRgb (h s v : Float) : Color :=
 
 /-- Render psychedelic animation cell using CanvasM -/
 def renderAnimationsM (t : Float) : CanvasM Unit := do
-  let pi := 3.14159265358979323846
-
   -- Spinning star cluster
   save
   translate 150 150
   for i in [:7] do
     save
-    let angle := t * 2.0 + i.toFloat * (pi * 2.0 / 7.0)
+    let angle := t * 2.0 + i.toFloat * (Float.twoPi / 7.0)
     let dist := 60 + 20 * Float.sin (t * 3.0 + i.toFloat)
     translate (dist * Float.cos angle) (dist * Float.sin angle)
     rotate (t * 4.0 + i.toFloat)
@@ -47,7 +45,7 @@ def renderAnimationsM (t : Float) : CanvasM Unit := do
   save
   translate 400 150
   for i in [:12] do
-    let angle := i.toFloat * (pi / 6.0)
+    let angle := i.toFloat * (Float.pi / 6.0)
     let pulse := 0.5 + 0.5 * Float.sin (t * 4.0 + i.toFloat * 0.5)
     let radius := 20 + 30 * pulse
     let x := 80 * Float.cos (angle + t)

@@ -3,14 +3,12 @@
 -/
 import Afferent
 
-open Afferent CanvasM
+open Afferent CanvasM Linalg
 
 namespace Demos
 
 /-- Render strokes demo content to canvas using CanvasM -/
 def renderStrokesM : CanvasM Unit := do
-  let pi := 3.14159265358979323846
-
   -- Row 1: Stroked rectangles with different line widths
   setStrokeColor Color.white
   setLineWidth 1.0
@@ -157,9 +155,9 @@ def renderStrokesM : CanvasM Unit := do
   -- Row 6: Arc strokes
   setStrokeColor Color.red
   setLineWidth 3.0
-  strokePath (Path.arcPath ⟨100, 620⟩ 50 0 pi)
+  strokePath (Path.arcPath ⟨100, 620⟩ 50 0 Float.pi)
   setStrokeColor Color.green
-  strokePath (Path.arcPath ⟨230, 620⟩ 50 0 (pi * 1.5))
+  strokePath (Path.arcPath ⟨230, 620⟩ 50 0 (Float.pi * 1.5))
   setStrokeColor Color.blue
   setLineWidth 4.0
   strokePath (Path.semicircle ⟨360, 620⟩ 50 0)
@@ -167,9 +165,9 @@ def renderStrokesM : CanvasM Unit := do
   -- Pie slice outlines
   setStrokeColor Color.yellow
   setLineWidth 2.0
-  strokePath (Path.pie ⟨500, 620⟩ 50 0 (pi * 0.5))
+  strokePath (Path.pie ⟨500, 620⟩ 50 0 Float.halfPi)
   setStrokeColor Color.cyan
-  strokePath (Path.pie ⟨620, 620⟩ 50 (pi * 0.25) (pi * 1.25))
+  strokePath (Path.pie ⟨620, 620⟩ 50 (Float.pi * 0.25) (Float.pi * 1.25))
 
   -- Custom arrow shape
   let arrow := Path.empty

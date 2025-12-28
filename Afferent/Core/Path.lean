@@ -3,6 +3,8 @@
   Path representation following HTML5 Canvas model.
 -/
 import Afferent.Core.Types
+import Linalg.Core  -- For Float.pi, Float.twoPi, Float.halfPi
+open Linalg
 
 namespace Afferent
 
@@ -161,20 +163,17 @@ def roundedRect (r : Rect) (cornerRadius : Float) : Path :=
     Uses the standard approach of splitting arcs > 90° into multiple segments. -/
 def arcToBeziers (center : Point) (radius : Float) (startAngle endAngle : Float)
     (counterclockwise : Bool := false) : Array (Point × Point × Point) := Id.run do
-  let pi := 3.14159265358979323846
-  let twoPi := 2.0 * pi
-
   -- Normalize angles and compute sweep
   let mut start := startAngle
   let mut sweep := endAngle - startAngle
 
   if counterclockwise then
-    if sweep > 0 then sweep := sweep - twoPi
+    if sweep > 0 then sweep := sweep - Float.twoPi
   else
-    if sweep < 0 then sweep := sweep + twoPi
+    if sweep < 0 then sweep := sweep + Float.twoPi
 
   -- Split into segments of at most 90 degrees (π/2)
-  let maxSweep := pi / 2.0
+  let maxSweep := Float.halfPi
   let numSegments := (Float.ceil (Float.abs sweep / maxSweep)).toUInt32.toNat
   let numSegments := if numSegments == 0 then 1 else numSegments
   let segmentSweep := sweep / numSegments.toFloat
@@ -244,8 +243,7 @@ def arcPath (center : Point) (radius : Float) (startAngle endAngle : Float)
 
 /-- Create a semicircle. -/
 def semicircle (center : Point) (radius : Float) (startAngle : Float := 0.0) : Path :=
-  let pi := 3.14159265358979323846
-  arcPath center radius startAngle (startAngle + pi) |>.closePath
+  arcPath center radius startAngle (startAngle + Float.pi) |>.closePath
 
 /-- Create a quadratic bezier curve path (for demo purposes). -/
 def quadraticCurve (start cp endPt : Point) : Path :=
@@ -273,10 +271,9 @@ def heart (center : Point) (size : Float) : Path :=
 
 /-- Create a star shape. -/
 def star (center : Point) (outerRadius innerRadius : Float) (points : Nat := 5) : Path := Id.run do
-  let pi := 3.14159265358979323846
   let numPoints := if points < 3 then 3 else points
-  let angleStep := pi / numPoints.toFloat
-  let startAngle := -pi / 2.0 - angleStep  -- Offset so first outer point is at top
+  let angleStep := Float.pi / numPoints.toFloat
+  let startAngle := -Float.halfPi - angleStep  -- Offset so first outer point is at top
 
   let mut path := empty
   let mut first := true
@@ -296,10 +293,9 @@ def star (center : Point) (outerRadius innerRadius : Float) (points : Nat := 5) 
 
 /-- Create a regular polygon. -/
 def polygon (center : Point) (radius : Float) (sides : Nat) : Path := Id.run do
-  let pi := 3.14159265358979323846
   let numSides := if sides < 3 then 3 else sides
-  let angleStep := 2.0 * pi / numSides.toFloat
-  let startAngle := -pi / 2.0  -- Start at top
+  let angleStep := Float.twoPi / numSides.toFloat
+  let startAngle := -Float.halfPi  -- Start at top
 
   let mut path := empty
   let mut first := true

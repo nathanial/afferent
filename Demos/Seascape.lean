@@ -11,15 +11,7 @@ open Linalg
 
 namespace Demos
 
-/-- Pi constant for wave calculations. -/
-private def pi : Float := 3.14159265358979
-
-private def v3cross (ax ay az bx by_ bz : Float) : Float × Float × Float :=
-  (ay * bz - az * by_, az * bx - ax * bz, ax * by_ - ay * bx)
-
-private def v3normalize (x y z : Float) : Float × Float × Float :=
-  let len := Float.sqrt (x * x + y * y + z * z)
-  if len < 0.000001 then (0.0, 0.0, 0.0) else (x / len, y / len, z / len)
+-- Use Float.pi from Linalg.Core
 
 /-! ## Gerstner Wave Parameters -/
 
@@ -34,9 +26,9 @@ structure GerstnerWave where
 /-- Default wave set for moderate ocean conditions. -/
 def defaultWaves : Array GerstnerWave := #[
   { amplitude := 0.8, wavelength := 20.0, direction := 0.0, speed := 1.0 },
-  { amplitude := 0.5, wavelength := 15.0, direction := pi / 4.0, speed := 0.8 },
-  { amplitude := 0.3, wavelength := 10.0, direction := -pi / 6.0, speed := 1.2 },
-  { amplitude := 0.2, wavelength := 7.0, direction := pi * 0.39, speed := 1.5 }
+  { amplitude := 0.5, wavelength := 15.0, direction := Float.pi / 4.0, speed := 0.8 },
+  { amplitude := 0.3, wavelength := 10.0, direction := -Float.pi / 6.0, speed := 1.2 },
+  { amplitude := 0.2, wavelength := 7.0, direction := Float.pi * 0.39, speed := 1.5 }
 ]
 
 /-- Precomputed wave constants to reduce per-vertex work. -/
@@ -52,7 +44,7 @@ private structure PreparedWave where
 private def prepareWaves (waves : Array GerstnerWave) : Array PreparedWave :=
   let gravity := 9.8
   waves.map fun w =>
-    let k := 2.0 * pi / w.wavelength
+    let k := Float.twoPi / w.wavelength
     let omega := Float.sqrt (gravity * k)
     let dirX := Float.cos w.direction
     let dirZ := Float.sin w.direction
@@ -87,7 +79,7 @@ private def defaultWavesGpuParams : Array Float :=
 def gerstnerDisplacement (waves : Array GerstnerWave) (x z t : Float) : Float × Float × Float :=
   let gravity := 9.8
   waves.foldl (init := (0.0, 0.0, 0.0)) fun (dx, dy, dz) wave =>
-    let k := 2.0 * pi / wave.wavelength
+    let k := Float.twoPi / wave.wavelength
     let omega := Float.sqrt (gravity * k)
     let dirX := Float.cos wave.direction
     let dirZ := Float.sin wave.direction
@@ -193,7 +185,7 @@ def OceanMesh.createRing (radialSteps angularSteps : Nat) (innerExtent outerExte
       let radius := innerExtent + t * (outerExtent - innerExtent)
 
       for angularIdx in [:angularSteps] do
-        let angle := 2.0 * pi * angularIdx.toFloat / angularSteps.toFloat
+        let angle := Float.twoPi * angularIdx.toFloat / angularSteps.toFloat
         let x := radius * Float.cos angle
         let z := radius * Float.sin angle
 
@@ -287,13 +279,14 @@ def OceanMesh.applyWaves (mesh : OceanMesh) (waves : Array GerstnerWave) (t : Fl
       let dPdzY := sz
       let dPdzZ := 1.0 - szz
 
-      let (nx0, ny0, nz0) := v3cross dPdzX dPdzY dPdzZ dPdxX dPdxY dPdxZ
-      let nLen := Float.sqrt (nx0 * nx0 + ny0 * ny0 + nz0 * nz0)
+      let dPdz := Vec3.mk dPdzX dPdzY dPdzZ
+      let dPdx := Vec3.mk dPdxX dPdxY dPdxZ
+      let normal := (dPdz.cross dPdx).normalize
       let (nx, ny, nz) :=
-        if nLen < 0.000001 then
+        if normal.length < 0.000001 then
           (0.0, 1.0, 0.0)
         else
-          (nx0 / nLen, ny0 / nLen, nz0 / nLen)
+          (normal.x, normal.y, normal.z)
 
       -- Color based on wave height (y displacement)
       let heightFactor := (y + 2.0) / 4.0
@@ -341,14 +334,13 @@ def OceanMesh.createProjectedGrid (gridSize : Nat) (fovY aspect : Float)
   let cosYaw := Float.cos camera.yaw
   let sinYaw := Float.sin camera.yaw
 
-  let fwdX := cosPitch * sinYaw
-  let fwdY := sinPitch
-  let fwdZ := -cosPitch * cosYaw
+  let fwd := Vec3.mk (cosPitch * sinYaw) sinPitch (-cosPitch * cosYaw)
 
-  let (rx0, ry0, rz0) := v3cross fwdX fwdY fwdZ 0.0 1.0 0.0
-  let (rightX, rightY, rightZ) := v3normalize rx0 ry0 rz0
-  let (ux0, uy0, uz0) := v3cross rightX rightY rightZ fwdX fwdY fwdZ
-  let (upX, upY, upZ) := v3normalize ux0 uy0 uz0
+  let right := (fwd.cross Vec3.unitY).normalize
+  let up := (right.cross fwd).normalize
+  let (rightX, rightY, rightZ) := (right.x, right.y, right.z)
+  let (upX, upY, upZ) := (up.x, up.y, up.z)
+  let (fwdX, fwdY, fwdZ) := (fwd.x, fwd.y, fwd.z)
 
   -- Projection parameters (camera-space rays)
   let tanHalfFovY := Float.tan (fovY / 2.0)
@@ -443,7 +435,7 @@ def SkyDome.create (radius : Float) (segments : Nat) (rings : Nat) : SkyDome :=
 
     -- Generate upper hemisphere rings (zenith to horizon)
     for ring in [:rings] do
-      let phi := (pi / 2.0) * (1.0 - (ring + 1).toFloat / rings.toFloat)
+      let phi := Float.halfPi * (1.0 - (ring + 1).toFloat / rings.toFloat)
       let y := radius * Float.sin phi
       let ringRadius := radius * Float.cos phi
 
@@ -454,7 +446,7 @@ def SkyDome.create (radius : Float) (segments : Nat) (rings : Nat) : SkyDome :=
       let b := 0.42 + t * 0.20  -- 0.42 to 0.62
 
       for seg in [:segments] do
-        let theta := 2.0 * pi * seg.toFloat / segments.toFloat
+        let theta := Float.twoPi * seg.toFloat / segments.toFloat
         let x := ringRadius * Float.cos theta
         let z := ringRadius * Float.sin theta
 
@@ -472,7 +464,7 @@ def SkyDome.create (radius : Float) (segments : Nat) (rings : Nat) : SkyDome :=
 
     -- Generate lower hemisphere rings (horizon downward, constant color)
     for ring in [:lowerRings] do
-      let phi := -(pi / 2.0) * (ring + 1).toFloat / lowerRings.toFloat  -- 0 to -pi/2
+      let phi := -Float.halfPi * (ring + 1).toFloat / lowerRings.toFloat  -- 0 to -pi/2
       let y := radius * Float.sin phi
       let ringRadius := radius * Float.cos phi
 
@@ -482,7 +474,7 @@ def SkyDome.create (radius : Float) (segments : Nat) (rings : Nat) : SkyDome :=
       let b := 0.62
 
       for seg in [:segments] do
-        let theta := 2.0 * pi * seg.toFloat / segments.toFloat
+        let theta := Float.twoPi * seg.toFloat / segments.toFloat
         let x := ringRadius * Float.cos theta
         let z := ringRadius * Float.sin theta
 
@@ -658,7 +650,7 @@ def defaultFog : FogParams :=
 def renderSeascape (renderer : Renderer) (t : Float)
     (screenWidth screenHeight : Float) (camera : FPSCamera) : IO Unit := do
   let aspect := screenWidth / screenHeight
-  let fovY := pi / 3.0  -- 60 degrees for wide ocean vista
+  let fovY := Float.pi / 3.0  -- 60 degrees for wide ocean vista
   let proj := Mat4.perspective fovY aspect 0.1 1000.0
   let view := camera.viewMatrix
 
@@ -763,7 +755,7 @@ def seascapeCamera : FPSCamera :=
   { x := 0.0
   , y := 8.0
   , z := 30.0
-  , yaw := pi  -- Facing negative Z (into the ocean)
+  , yaw := Float.pi  -- Facing negative Z (into the ocean)
   , pitch := -0.15   -- Slightly angled down
   , moveSpeed := 10.0
   , lookSensitivity := 0.003 }

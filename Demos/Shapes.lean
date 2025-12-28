@@ -3,14 +3,12 @@
 -/
 import Afferent
 
-open Afferent CanvasM
+open Afferent CanvasM Linalg
 
 namespace Demos
 
 /-- Render shapes demo content to canvas using CanvasM -/
 def renderShapesM : CanvasM Unit := do
-  let pi := 3.14159265358979323846
-
   -- Row 1: Basic rectangles
   setFillColor Color.red
   fillRectXYWH 50 30 120 80
@@ -61,13 +59,13 @@ def renderShapesM : CanvasM Unit := do
 
   -- Row 3: Pie slices
   setFillColor Color.red
-  fillPath (Path.pie ⟨680, 350⟩ 60 0 (pi * 0.5))
+  fillPath (Path.pie ⟨680, 350⟩ 60 0 Float.halfPi)
   setFillColor Color.green
-  fillPath (Path.pie ⟨680, 350⟩ 60 (pi * 0.5) pi)
+  fillPath (Path.pie ⟨680, 350⟩ 60 Float.halfPi Float.pi)
   setFillColor Color.blue
-  fillPath (Path.pie ⟨680, 350⟩ 60 pi (pi * 1.5))
+  fillPath (Path.pie ⟨680, 350⟩ 60 Float.pi (Float.pi * 1.5))
   setFillColor Color.yellow
-  fillPath (Path.pie ⟨680, 350⟩ 60 (pi * 1.5) (pi * 2))
+  fillPath (Path.pie ⟨680, 350⟩ 60 (Float.pi * 1.5) Float.twoPi)
 
   -- Row 3: Semicircle
   setFillColor Color.purple
@@ -94,7 +92,7 @@ def renderShapesM : CanvasM Unit := do
 
   -- Row 4: Arc paths
   setFillColor Color.green
-  fillPath (Path.arcPath ⟨550, 530⟩ 50 0 (pi * 1.5) |>.closePath)
+  fillPath (Path.arcPath ⟨550, 530⟩ 50 0 (Float.pi * 1.5) |>.closePath)
 
   -- Row 4: More rounded rectangles
   setFillColor Color.red

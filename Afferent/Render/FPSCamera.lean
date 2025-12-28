@@ -30,8 +30,6 @@ instance : Inhabited FPSCamera := ⟨FPSCamera.default⟩
 
 namespace FPSCamera
 
-def pi : Float := 3.14159265358979
-
 /-- Clamp a Float to a range. -/
 private def clamp (v lo hi : Float) : Float :=
   if v < lo then lo else if v > hi then hi else v
@@ -45,7 +43,7 @@ def update (cam : FPSCamera) (dt : Float)
     (mouseDeltaX mouseDeltaY : Float) : FPSCamera :=
   -- Update look direction from mouse
   let yaw := cam.yaw + mouseDeltaX * cam.lookSensitivity
-  let pitch := clamp (cam.pitch - mouseDeltaY * cam.lookSensitivity) (-pi/2 * 0.99) (pi/2 * 0.99)
+  let pitch := clamp (cam.pitch - mouseDeltaY * cam.lookSensitivity) (-Float.halfPi * 0.99) (Float.halfPi * 0.99)
 
   -- Calculate forward and right vectors (in XZ plane for movement)
   let fwdX := Float.sin yaw

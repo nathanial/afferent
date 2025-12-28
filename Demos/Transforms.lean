@@ -3,14 +3,12 @@
 -/
 import Afferent
 
-open Afferent CanvasM
+open Afferent CanvasM Linalg
 
 namespace Demos
 
 /-- Render transforms demo content to canvas using CanvasM -/
 def renderTransformsM : CanvasM Unit := do
-  let pi := 3.14159265358979323846
-
   -- Row 1: Basic shapes without transform (reference)
   setFillColor Color.white
   fillRectXYWH 50 30 60 40
@@ -38,7 +36,7 @@ def renderTransformsM : CanvasM Unit := do
   translate 150 200
   for i in [:8] do
     save
-    let angle := i.toFloat * (pi / 4.0)
+    let angle := i.toFloat * (Float.pi / 4.0)
     rotate angle
     setFillColor (Color.rgba
       (0.5 + 0.5 * Float.cos angle)
@@ -65,7 +63,7 @@ def renderTransformsM : CanvasM Unit := do
   -- Row 3: Combined transforms - rotating star
   save
   translate 150 380
-  rotate (pi / 6.0)
+  rotate (Float.pi / 6.0)
   scale 1.2 0.8
   setFillColor Color.yellow
   fillPath (Path.star ⟨0, 0⟩ 60 30 5)
@@ -111,7 +109,7 @@ def renderTransformsM : CanvasM Unit := do
   translate 200 520
   for i in [:6] do
     save
-    let angle := i.toFloat * (pi / 3.0)
+    let angle := i.toFloat * (Float.pi / 3.0)
     rotate angle
     translate 60 0
     rotate (-angle)
@@ -127,7 +125,7 @@ def renderTransformsM : CanvasM Unit := do
   -- Row 4: Skewed/sheared effect
   save
   translate 450 520
-  rotate (pi / 12.0)
+  rotate (Float.pi / 12.0)
   scale 1.5 0.7
   setFillColor Color.magenta
   fillRectXYWH (-40) (-25) 80 50
@@ -140,7 +138,7 @@ def renderTransformsM : CanvasM Unit := do
   fillPath (Path.heart ⟨0, 0⟩ 50)
 
   translate 100 0
-  rotate (pi / 8.0)
+  rotate (Float.pi / 8.0)
   scale 0.7 0.7
   setFillColor Color.magenta
   fillPath (Path.heart ⟨0, 0⟩ 50)
