@@ -1,7 +1,9 @@
 /-
   Demo Grid - Normal demo mode showing all demos in a 2x3 grid layout
+  Uses Trellis CSS Grid for proper resize handling.
 -/
 import Afferent
+import Afferent.Layout
 import Demos.Shapes
 import Demos.Transforms
 import Demos.Strokes
@@ -10,101 +12,83 @@ import Demos.Text
 import Demos.Animations
 
 open Afferent CanvasM
+open Trellis
 
 namespace Demos
 
-/-- Render the normal demo mode: 2x3 grid of demo cells -/
-def renderDemoGridM (screenScale : Float) (cellWidth cellHeight : Float)
+/-- Cell configuration: background color, label, scale factor, and render function -/
+structure CellConfig where
+  bg : Color
+  label : String
+  scale : Float
+  render : Float → Fonts → CanvasM Unit
+
+/-- Get cell configuration by index (0-5, left-to-right, top-to-bottom) -/
+def getCellConfig (idx : Nat) : CellConfig :=
+  match idx with
+  | 0 => ⟨Color.hsva 0.667 0.25 0.20 1.0, "Shapes",     0.45, fun _ _ => renderShapesM⟩
+  | 1 => ⟨Color.hsva 0.0   0.25 0.20 1.0, "Transforms", 0.60, fun _ _ => renderTransformsM⟩
+  | 2 => ⟨Color.hsva 0.333 0.25 0.20 1.0, "Strokes",    0.51, fun _ _ => renderStrokesM⟩
+  | 3 => ⟨Color.hsva 0.125 0.4  0.20 1.0, "Gradients",  0.51, fun _ _ => renderGradientsM⟩
+  | 4 => ⟨Color.hsva 0.767 0.25 0.20 1.0, "Text",       0.51, fun _ fonts => renderTextM fonts⟩
+  | _ => ⟨Color.hsva 0.75  0.25 0.20 1.0, "Animations", 0.45, fun t _ => renderAnimationsM t⟩
+
+/-- Render the normal demo mode: 2x3 grid of demo cells using Trellis layout -/
+def renderDemoGridM (screenScale : Float) (screenWidth screenHeight : Float)
     (fontSmall : Font) (fonts : Fonts) (t : Float) : CanvasM Unit := do
-  -- Background colors for each cell
-  let bg00 := Color.hsva 0.667 0.25 0.20 1.0  -- Dark blue-gray
-  let bg10 := Color.hsva 0.0 0.25 0.20 1.0    -- Dark red-gray
-  let bg01 := Color.hsva 0.333 0.25 0.20 1.0  -- Dark green-gray
-  let bg11 := Color.hsva 0.125 0.4 0.20 1.0   -- Dark warm gray
-  let bg02 := Color.hsva 0.767 0.25 0.20 1.0  -- Dark purple-gray
-  let bg12 := Color.hsva 0.75 0.25 0.20 1.0   -- Dark purple-gray
+  -- Create 2x3 grid with cells that stretch to fill viewport
+  -- 2 columns (1fr each), 3 rows (1fr each)
+  let props := GridContainer.withTemplate
+    #[.fr 1, .fr 1, .fr 1]  -- 3 rows, each 1fr
+    #[.fr 1, .fr 1]          -- 2 columns, each 1fr
+  let tree := LayoutNode.gridBox 0 props #[
+    LayoutNode.leaf 1 ContentSize.zero,
+    LayoutNode.leaf 2 ContentSize.zero,
+    LayoutNode.leaf 3 ContentSize.zero,
+    LayoutNode.leaf 4 ContentSize.zero,
+    LayoutNode.leaf 5 ContentSize.zero,
+    LayoutNode.leaf 6 ContentSize.zero
+  ]
 
-  -- Cell 0,0: Shapes demo (top-left)
-  let cellRect00 := Rect.mk' 0 0 cellWidth cellHeight
-  clip cellRect00
-  setFillColor bg00
-  fillRect cellRect00
-  setFillColor (Color.hsva 0.0 0.0 1.0 0.5)
-  fillTextXY "Cell: 0,0 - Shapes" (10 * screenScale) (20 * screenScale) fontSmall
-  save
-  scale (0.45 * screenScale) (0.45 * screenScale)
-  renderShapesM
-  restore
-  unclip
+  -- Run layout algorithm with current screen dimensions
+  let result := layout tree screenWidth screenHeight
 
-  -- Cell 1,0: Transforms demo (top-right)
-  let cellRect10 := Rect.mk' cellWidth 0 cellWidth cellHeight
-  clip cellRect10
-  setFillColor bg10
-  fillRect cellRect10
-  setFillColor (Color.hsva 0.0 0.0 1.0 0.5)
-  fillTextXY "Cell: 1,0 - Transforms" (cellWidth + 10 * screenScale) (20 * screenScale) fontSmall
-  save
-  translate cellWidth 0
-  scale (0.6 * screenScale) (0.6 * screenScale)
-  renderTransformsM
-  restore
-  unclip
+  -- Debug: draw a marker to confirm we're rendering + show layout count
+  setFillColor Color.red
+  fillRectXYWH 0 0 50 50
+  setFillColor Color.white
+  fillTextXY s!"layouts: {result.layouts.size}, w={screenWidth}, h={screenHeight}" 60 30 fontSmall
 
-  -- Cell 0,1: Strokes demo (middle-left)
-  let cellRect01 := Rect.mk' 0 cellHeight cellWidth cellHeight
-  clip cellRect01
-  setFillColor bg01
-  fillRect cellRect01
-  setFillColor (Color.hsva 0.0 0.0 1.0 0.5)
-  fillTextXY "Cell: 0,1 - Strokes" (10 * screenScale) (cellHeight + 20 * screenScale) fontSmall
-  save
-  translate 0 cellHeight
-  scale (0.51 * screenScale) (0.51 * screenScale)
-  renderStrokesM
-  restore
-  unclip
+  -- Render each cell based on layout results
+  for cl in result.layouts do
+    -- Only process leaf nodes (id 1-6), skip container (id 0)
+    if cl.nodeId >= 1 && cl.nodeId <= 6 then
+      let rect := cl.borderRect
+      let cellIdx := cl.nodeId - 1  -- Convert node ID (1-6) to index (0-5)
+      let config := getCellConfig cellIdx
 
-  -- Cell 1,1: Gradients demo (middle-right)
-  let cellRect11 := Rect.mk' cellWidth cellHeight cellWidth cellHeight
-  clip cellRect11
-  setFillColor bg11
-  fillRect cellRect11
-  setFillColor (Color.hsva 0.0 0.0 1.0 0.5)
-  fillTextXY "Cell: 1,1 - Gradients" (cellWidth + 10 * screenScale) (cellHeight + 20 * screenScale) fontSmall
-  save
-  translate cellWidth cellHeight
-  scale (0.51 * screenScale) (0.51 * screenScale)
-  renderGradientsM
-  restore
-  unclip
+      -- Create afferent rect for clipping
+      let cellRect := Rect.mk' rect.x rect.y rect.width rect.height
 
-  -- Cell 0,2: Text demo (bottom-left)
-  let cellRect02 := Rect.mk' 0 (cellHeight * 2) cellWidth cellHeight
-  clip cellRect02
-  setFillColor bg02
-  fillRect cellRect02
-  setFillColor (Color.hsva 0.0 0.0 1.0 0.5)
-  fillTextXY "Cell: 0,2 - Text" (10 * screenScale) (cellHeight * 2 + 20 * screenScale) fontSmall
-  save
-  translate 0 (cellHeight * 2)
-  scale (0.51 * screenScale) (0.51 * screenScale)
-  renderTextM fonts
-  restore
-  unclip
+      -- Clip to cell bounds
+      clip cellRect
 
-  -- Cell 1,2: Animations demo (bottom-right)
-  let cellRect12 := Rect.mk' cellWidth (cellHeight * 2) cellWidth cellHeight
-  clip cellRect12
-  setFillColor bg12
-  fillRect cellRect12
-  setFillColor (Color.hsva 0.0 0.0 1.0 0.5)
-  fillTextXY "Cell: 1,2 - Animations" (cellWidth + 10 * screenScale) (cellHeight * 2 + 20 * screenScale) fontSmall
-  save
-  translate cellWidth (cellHeight * 2)
-  scale (0.45 * screenScale) (0.45 * screenScale)
-  renderAnimationsM t
-  restore
-  unclip
+      -- Draw background
+      setFillColor config.bg
+      fillRect cellRect
+
+      -- Draw label
+      setFillColor (Color.hsva 0.0 0.0 1.0 0.5)
+      fillTextXY s!"Cell: {cellIdx % 2},{cellIdx / 2} - {config.label}"
+        (rect.x + 10 * screenScale) (rect.y + 20 * screenScale) fontSmall
+
+      -- Render demo content (translated to cell origin, scaled)
+      save
+      translate rect.x rect.y
+      scale (config.scale * screenScale) (config.scale * screenScale)
+      config.render t fonts
+      restore
+
+      unclip
 
 end Demos

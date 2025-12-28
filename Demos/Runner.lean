@@ -64,10 +64,6 @@ def unifiedDemo : IO Unit := do
   IO.println "Rendering animated demo... (close window to exit)"
   IO.println "Press SPACE to toggle performance test mode (10000 spinning squares)"
 
-  -- Grid layout: 2x3, cell dimensions scaled for physical resolution
-  let cellWidth : Float := 960 * screenScale
-  let cellHeight : Float := 360 * screenScale
-
   -- Pre-compute particle data ONCE at startup using unified Dynamic module
   -- Sizes scaled for physical resolution
   let halfSize := 1.5 * screenScale
@@ -371,18 +367,21 @@ def unifiedDemo : IO Unit := do
             (s!"pos=({seascapeCamera.x},{seascapeCamera.y},{seascapeCamera.z}) yaw={seascapeCamera.yaw} pitch={seascapeCamera.pitch}")
             (20 * screenScale) (55 * screenScale) fontSmall
       else
-        -- Normal demo mode: grid of demos using CanvasM for proper state threading
+        -- Normal demo mode: grid of demos using Trellis layout
+        let (currentW, currentH) ← c.ctx.getCurrentSize
         c ← run' (c.resetTransform) do
-          renderDemoGridM screenScale cellWidth cellHeight fontSmall fonts t
+          renderDemoGridM screenScale currentW currentH fontSmall fonts t
 
       -- Render FPS counter in top-right corner (after all other rendering)
+      -- Use current drawable size for proper positioning after resize
+      let (fpsW, _) ← c.ctx.getCurrentSize
       let fpsText := s!"{displayFps.toUInt32} FPS"
       let (textWidth, _) ← fontSmall.measureText fpsText
       c ← run' (c.resetTransform) do
         setFillColor (Color.hsva 0.0 0.0 0.0 0.6)
-        fillRectXYWH (physWidthF - textWidth - 20 * screenScale) (5 * screenScale) (textWidth + 15 * screenScale) (25 * screenScale)
+        fillRectXYWH (fpsW - textWidth - 20 * screenScale) (5 * screenScale) (textWidth + 15 * screenScale) (25 * screenScale)
         setFillColor Color.white
-        fillTextXY fpsText (physWidthF - textWidth - 12 * screenScale) (22 * screenScale) fontSmall
+        fillTextXY fpsText (fpsW - textWidth - 12 * screenScale) (22 * screenScale) fontSmall
 
       c ← c.endFrame
       if framesLeft != 0 then
