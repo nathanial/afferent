@@ -13,9 +13,11 @@ import Afferent.Core.Paint
 -- Rendering
 import Afferent.Render.Tessellation
 import Afferent.Render.Dynamic
-import Afferent.Render.Matrix4
 import Afferent.Render.Mesh
 import Afferent.Render.FPSCamera
+
+-- Linear algebra (from Linalg library)
+import Linalg
 
 -- Canvas API
 import Afferent.Canvas.State
@@ -36,3 +38,9 @@ import Afferent.Widget
 
 -- App runtime helpers
 import Afferent.App.UIRunner
+
+-- Re-export useful Linalg types
+namespace Afferent
+export Linalg (Vec2 Vec3 Vec4 Mat4 Quat)
+-- Note: Linalg.Easing is available as a namespace (e.g., Linalg.Easing.quadInOut)
+end Afferent

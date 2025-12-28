@@ -6,6 +6,7 @@
 import Afferent
 
 open Afferent Afferent.FFI Afferent.Render
+open Linalg
 
 def main : IO Unit := do
   -- Initialize FFI
@@ -33,8 +34,8 @@ def main : IO Unit := do
       -- Camera setup (pulled back to see 5x5 grid)
       let aspect := 800.0 / 600.0
       let fovY := 3.14159265358979 / 4.0  -- pi/4 radians = 45 degrees
-      let proj := Matrix4.perspective fovY aspect 0.1 100.0
-      let view := Matrix4.lookAt (0, 0, 12) (0, 0, 0) (0, 1, 0)
+      let proj := Mat4.perspective fovY aspect 0.1 100.0
+      let view := Mat4.lookAt ⟨0, 0, 12⟩ ⟨0, 0, 0⟩ Vec3.unitY
 
       -- Light direction (normalized, pointing from upper-right-front)
       let lightDir := #[0.5, 0.7, 0.5]
@@ -50,16 +51,16 @@ def main : IO Unit := do
           let phase := (row * 5 + col).toFloat * 0.25
 
           -- Build model matrix: translate then rotate
-          let translateMat := Matrix4.translate x y 0
-          let rotateYMat := Matrix4.rotateY (t + phase)
-          let rotateXMat := Matrix4.rotateX (t * 0.7 + phase)
+          let translateMat := Mat4.translation x y 0
+          let rotateYMat := Mat4.rotationY (t + phase)
+          let rotateXMat := Mat4.rotationX (t * 0.7 + phase)
 
           -- Combine: model = translate * rotateY * rotateX
-          let model := Matrix4.multiply translateMat (Matrix4.multiply rotateYMat rotateXMat)
+          let model := translateMat * rotateYMat * rotateXMat
 
           -- MVP = proj * view * model
-          let viewModel := Matrix4.multiply view model
-          let mvp := Matrix4.multiply proj viewModel
+          let viewModel := view * model
+          let mvp := proj * viewModel
 
           -- Draw the cube
           Renderer.drawMesh3D renderer

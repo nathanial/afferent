@@ -7,6 +7,7 @@ import Afferent
 import Assimptor
 
 open Afferent Afferent.FFI Afferent.Render Assimptor
+open Linalg
 
 namespace Demos
 
@@ -658,7 +659,7 @@ def renderSeascape (renderer : Renderer) (t : Float)
     (screenWidth screenHeight : Float) (camera : FPSCamera) : IO Unit := do
   let aspect := screenWidth / screenHeight
   let fovY := pi / 3.0  -- 60 degrees for wide ocean vista
-  let proj := Matrix4.perspective fovY aspect 0.1 1000.0
+  let proj := Mat4.perspective fovY aspect 0.1 1000.0
   let view := camera.viewMatrix
 
   -- Light direction (from above-left, softer for overcast)
@@ -679,8 +680,8 @@ def renderSeascape (renderer : Renderer) (t : Float)
   let skyDome ← getSeascapeSkyDome
 
   -- Sky model matrix - translate to camera position
-  let skyModel := Matrix4.translate camera.x camera.y camera.z
-  let skyMvp := Matrix4.multiply proj (Matrix4.multiply view skyModel)
+  let skyModel := Mat4.translation camera.x camera.y camera.z
+  let skyMvp := proj * view * skyModel
 
   -- Render sky first (it's at far distance) - no fog for sky
   Renderer.drawMesh3D renderer
@@ -692,8 +693,8 @@ def renderSeascape (renderer : Renderer) (t : Float)
     1.0  -- Full ambient for sky (no directional lighting)
 
   -- Ocean model matrix (identity - ocean is at world origin)
-  let model := Matrix4.identity
-  let mvp := Matrix4.multiply proj (Matrix4.multiply view model)
+  let model := Mat4.identity
+  let mvp := proj * view * model
 
   -- Ocean via GPU projected grid + GPU Gerstner waves (fast path).
   -- `maxDistance` should extend past fog end distance so the edge stays hidden.
@@ -734,10 +735,10 @@ def renderSeascape (renderer : Renderer) (t : Float)
   let frigateY := dy - 1.0  -- Offset to sit at water level (adjust based on model)
 
   -- Model matrix: first scale, then translate
-  let scaleMatrix := Matrix4.scale frigateScale frigateScale frigateScale
-  let translateMatrix := Matrix4.translate (frigateBaseX + dx) frigateY (frigateBaseZ + dz)
-  let frigateModel := Matrix4.multiply translateMatrix scaleMatrix
-  let frigateMvp := Matrix4.multiply proj (Matrix4.multiply view frigateModel)
+  let scaleMatrix := Mat4.scaling frigateScale frigateScale frigateScale
+  let translateMatrix := Mat4.translation (frigateBaseX + dx) frigateY (frigateBaseZ + dz)
+  let frigateModel := translateMatrix * scaleMatrix
+  let frigateMvp := proj * view * frigateModel
 
   -- Draw each submesh of the frigate
   for submesh in frigate.asset.subMeshes do

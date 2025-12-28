@@ -12,6 +12,7 @@ require trellis from ".." / "trellis"
 require arbor from ".." / "arbor"
 require assimptor from ".." / "assimptor"
 require staple from ".." / "staple"
+require linalg from ".." / "linalg"
 
 -- Common link arguments for all executables
 -- Includes both Homebrew paths for Apple Silicon (/opt/homebrew) and Intel (/usr/local)

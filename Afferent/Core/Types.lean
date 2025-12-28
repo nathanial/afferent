@@ -3,6 +3,7 @@
   Basic geometric primitives for 2D graphics.
 -/
 import Tincture
+import Linalg.Vec2
 
 -- Re-export Color type and namespace so existing code using Color.black etc. works
 open Tincture (Color)
@@ -57,6 +58,12 @@ instance : Sub Point := ⟨sub⟩
 instance : Neg Point := ⟨negate⟩
 instance : HMul Point Float Point := ⟨scale⟩
 instance : HMul Float Point Point := ⟨fun s p => scale p s⟩
+
+/-- Convert Point to Linalg Vec2. -/
+def toVec2 (p : Point) : Linalg.Vec2 := ⟨p.x, p.y⟩
+
+/-- Create Point from Linalg Vec2. -/
+def fromVec2 (v : Linalg.Vec2) : Point := ⟨v.x, v.y⟩
 
 end Point
 

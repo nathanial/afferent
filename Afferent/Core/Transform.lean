@@ -3,6 +3,7 @@
   2D affine transformation matrix.
 -/
 import Afferent.Core.Types
+import Linalg.Affine2D
 
 namespace Afferent
 
@@ -114,6 +115,15 @@ def fromArray (arr : Array Float) : Transform :=
     { a := arr[0]!, b := arr[1]!, c := arr[2]!,
       d := arr[3]!, tx := arr[4]!, ty := arr[5]! }
   else identity
+
+/-- Convert to Linalg Affine2D. Both use the same column-major layout. -/
+def toAffine2D (t : Transform) : Linalg.Affine2D :=
+  { data := #[t.a, t.b, t.c, t.d, t.tx, t.ty] }
+
+/-- Create from Linalg Affine2D. Both use the same column-major layout. -/
+def fromAffine2D (a : Linalg.Affine2D) : Transform :=
+  { a := a.data[0]!, b := a.data[1]!, c := a.data[2]!,
+    d := a.data[3]!, tx := a.data[4]!, ty := a.data[5]! }
 
 end Transform
 

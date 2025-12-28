@@ -2,9 +2,11 @@
   Afferent FPS Camera
   First-person-shooter style camera with position and look direction.
 -/
-import Afferent.Render.Matrix4
+import Linalg
 
 namespace Afferent.Render
+
+open Linalg
 
 /-- FPS camera state with position and orientation. -/
 structure FPSCamera where
@@ -76,7 +78,7 @@ def update (cam : FPSCamera) (dt : Float)
   { cam with x := cam.x + dx, y := cam.y + dy, z := cam.z + dz, yaw, pitch }
 
 /-- Build view matrix from camera state. -/
-def viewMatrix (cam : FPSCamera) : Matrix4 :=
+def viewMatrix (cam : FPSCamera) : Mat4 :=
   -- Camera looks in direction based on yaw and pitch
   let cosPitch := Float.cos cam.pitch
   let sinPitch := Float.sin cam.pitch
@@ -93,7 +95,7 @@ def viewMatrix (cam : FPSCamera) : Matrix4 :=
   let targetY := cam.y + fwdY
   let targetZ := cam.z + fwdZ
 
-  Matrix4.lookAt (cam.x, cam.y, cam.z) (targetX, targetY, targetZ) (0, 1, 0)
+  Mat4.lookAt ⟨cam.x, cam.y, cam.z⟩ ⟨targetX, targetY, targetZ⟩ Vec3.unitY
 
 end FPSCamera
 
