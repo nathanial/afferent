@@ -311,8 +311,9 @@ def unifiedDemo : IO Unit := do
         -- Update camera (forward, back, left, right, up, down)
         fpsCamera := fpsCamera.update dt wDown sDown aDown dDown eDown qDown dx dy
 
-        -- Render with camera.
-        renderSpinningCubesWithCamera c.ctx.renderer t physWidthF physHeightF fpsCamera
+        -- Render with camera (use current drawable size for correct aspect ratio on resize).
+        let (currentW, currentH) ← c.ctx.getCurrentSize
+        renderSpinningCubesWithCamera c.ctx.renderer t currentW currentH fpsCamera
         c ← run' (c.resetTransform) do
           setFillColor Color.white
           if locked then
@@ -356,8 +357,9 @@ def unifiedDemo : IO Unit := do
         -- Update seascape camera
         seascapeCamera := seascapeCamera.update dt wDown sDown aDown dDown eDown qDown dx dy
 
-        -- Render seascape
-        renderSeascape c.ctx.renderer t physWidthF physHeightF seascapeCamera
+        -- Render seascape (use current drawable size for correct aspect ratio on resize).
+        let (currentW, currentH) ← c.ctx.getCurrentSize
+        renderSeascape c.ctx.renderer t currentW currentH seascapeCamera
         c ← run' (c.resetTransform) do
           setFillColor Color.white
           if locked then
