@@ -53,47 +53,26 @@ def renderDemoGridM (screenScale : Float) (screenWidth screenHeight : Float)
   -- Run layout algorithm with current screen dimensions
   let result := layout tree screenWidth screenHeight
 
-  -- Debug: draw a marker to confirm we're rendering + show layout count
-  setFillColor Color.red
-  fillRectXYWH 0 0 50 50
-  setFillColor Color.white
-  fillTextXY s!"layouts: {result.layouts.size}, w={screenWidth}, h={screenHeight}" 60 30 fontSmall
+  -- Draw cell backgrounds
+  for cl in result.layouts do
+    if cl.nodeId >= 1 && cl.nodeId <= 6 then
+      let rect := cl.borderRect
+      let cellIdx := cl.nodeId - 1
+      let config := getCellConfig cellIdx
+      setFillColor config.bg
+      fillRectXYWH rect.x rect.y rect.width rect.height
 
-  -- Debug: draw colored rectangles for each cell WITHOUT clipping or complex content
-  -- This helps isolate if the issue is with trellis layout or with rendering
+  -- Render demo content in each cell
   for cl in result.layouts do
     if cl.nodeId >= 1 && cl.nodeId <= 6 then
       let rect := cl.borderRect
       let cellIdx := cl.nodeId - 1
       let config := getCellConfig cellIdx
 
-      -- Draw debug rectangle for this cell (no clipping)
-      setFillColor config.bg
-      fillRectXYWH rect.x rect.y rect.width rect.height
-
       -- Draw cell label
-      setFillColor Color.white
-      fillTextXY s!"Cell {cellIdx}: {rect.x},{rect.y} {rect.width}x{rect.height}"
-        (rect.x + 10) (rect.y + 30) fontSmall
-
-  -- Now render actual demo content
-  for cl in result.layouts do
-    -- Only process leaf nodes (id 1-6), skip container (id 0)
-    if cl.nodeId >= 1 && cl.nodeId <= 6 then
-      let rect := cl.borderRect
-      let cellIdx := cl.nodeId - 1  -- Convert node ID (1-6) to index (0-5)
-      let config := getCellConfig cellIdx
-
-      -- Create afferent rect for clipping
-      let cellRect := Rect.mk' rect.x rect.y rect.width rect.height
-
-      -- Clip to cell bounds
-      clip cellRect
-
-      -- Draw label
       setFillColor (Color.hsva 0.0 0.0 1.0 0.5)
-      fillTextXY s!"{config.label}"
-        (rect.x + 10 * screenScale) (rect.y + 50 * screenScale) fontSmall
+      fillTextXY config.label
+        (rect.x + 10 * screenScale) (rect.y + 20 * screenScale) fontSmall
 
       -- Render demo content (translated to cell origin, scaled)
       save
@@ -101,7 +80,5 @@ def renderDemoGridM (screenScale : Float) (screenWidth screenHeight : Float)
       scale (config.scale * screenScale) (config.scale * screenScale)
       config.render t fonts
       restore
-
-      unclip
 
 end Demos
