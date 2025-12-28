@@ -111,12 +111,20 @@ static inline void afferent_window_push_click(struct AfferentWindow *w, uint8_t 
 
 - (void)setFrameSize:(NSSize)newSize {
     [super setFrameSize:newSize];
-    // Don't update drawable size - keep it fixed for 1:1 pixel rendering
+    // Update drawable to match new window size
+    CGFloat scale = self.metalLayer.contentsScale;
+    if (scale <= 0.0) scale = 1.0;
+    self.metalLayer.drawableSize = CGSizeMake(newSize.width * scale, newSize.height * scale);
 }
 
 - (void)viewDidChangeBackingProperties {
     [super viewDidChangeBackingProperties];
-    // Don't update drawable size - keep it fixed for 1:1 pixel rendering
+    // Update scale and recalculate drawable size
+    CGFloat scale = self.window.backingScaleFactor;
+    if (scale <= 0.0) scale = 1.0;
+    self.metalLayer.contentsScale = scale;
+    CGSize bounds = self.bounds.size;
+    self.metalLayer.drawableSize = CGSizeMake(bounds.width * scale, bounds.height * scale);
 }
 
 - (BOOL)acceptsFirstResponder {

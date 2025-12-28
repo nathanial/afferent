@@ -94,8 +94,9 @@ def resetScissor (ctx : DrawContext) : IO Unit :=
 
 /-- Fill a rectangle with a solid color (pixel coordinates). -/
 def fillRect (ctx : DrawContext) (rect : Rect) (color : Color) : IO Unit := do
-  -- Use base (logical) canvas size for NDC conversion to maintain coordinate system
-  let result := Tessellation.tessellateRectNDC rect color ctx.baseWidth ctx.baseHeight
+  -- Use current drawable size for NDC conversion (dynamic resize support)
+  let (w, h) ← ctx.getCurrentSize
+  let result := Tessellation.tessellateRectNDC rect color w h
   if result.vertices.size > 0 && result.indices.size > 0 then
     let vertexBuffer ← FFI.Buffer.createVertex ctx.renderer result.vertices
     let indexBuffer ← FFI.Buffer.createIndex ctx.renderer result.indices
@@ -109,8 +110,9 @@ def fillRectXYWH (ctx : DrawContext) (x y w h : Float) (color : Color) : IO Unit
 
 /-- Fill a convex path with a solid color (pixel coordinates). -/
 def fillPath (ctx : DrawContext) (path : Path) (color : Color) : IO Unit := do
-  -- Use base (logical) canvas size for NDC conversion to maintain coordinate system
-  let result := Tessellation.tessellateConvexPathNDC path color ctx.baseWidth ctx.baseHeight
+  -- Use current drawable size for NDC conversion (dynamic resize support)
+  let (w, h) ← ctx.getCurrentSize
+  let result := Tessellation.tessellateConvexPathNDC path color w h
   if result.vertices.size > 0 && result.indices.size > 0 then
     let vertexBuffer ← FFI.Buffer.createVertex ctx.renderer result.vertices
     let indexBuffer ← FFI.Buffer.createIndex ctx.renderer result.indices
@@ -134,8 +136,9 @@ def fillRoundedRect (ctx : DrawContext) (rect : Rect) (cornerRadius : Float) (co
 
 /-- Fill a rectangle with a fill style (solid color or gradient). -/
 def fillRectWithStyle (ctx : DrawContext) (rect : Rect) (style : FillStyle) : IO Unit := do
-  -- Use base (logical) canvas size for NDC conversion to maintain coordinate system
-  let result := Tessellation.tessellateRectFillNDC rect style ctx.baseWidth ctx.baseHeight
+  -- Use current drawable size for NDC conversion (dynamic resize support)
+  let (w, h) ← ctx.getCurrentSize
+  let result := Tessellation.tessellateRectFillNDC rect style w h
   if result.vertices.size > 0 && result.indices.size > 0 then
     let vertexBuffer ← FFI.Buffer.createVertex ctx.renderer result.vertices
     let indexBuffer ← FFI.Buffer.createIndex ctx.renderer result.indices
@@ -145,7 +148,9 @@ def fillRectWithStyle (ctx : DrawContext) (rect : Rect) (style : FillStyle) : IO
 
 /-- Fill a transformed rectangle with a fill style (fast path - no Path allocation). -/
 def fillTransformedRectWithStyle (ctx : DrawContext) (rect : Rect) (transform : Transform) (style : FillStyle) : IO Unit := do
-  let result := Tessellation.tessellateTransformedRectNDC rect transform style ctx.baseWidth ctx.baseHeight
+  -- Use current drawable size for NDC conversion (dynamic resize support)
+  let (w, h) ← ctx.getCurrentSize
+  let result := Tessellation.tessellateTransformedRectNDC rect transform style w h
   if result.vertices.size > 0 && result.indices.size > 0 then
     let vertexBuffer ← FFI.Buffer.createVertex ctx.renderer result.vertices
     let indexBuffer ← FFI.Buffer.createIndex ctx.renderer result.indices
@@ -155,8 +160,9 @@ def fillTransformedRectWithStyle (ctx : DrawContext) (rect : Rect) (transform : 
 
 /-- Fill a convex path with a fill style (solid color or gradient). -/
 def fillPathWithStyle (ctx : DrawContext) (path : Path) (style : FillStyle) : IO Unit := do
-  -- Use base (logical) canvas size for NDC conversion to maintain coordinate system
-  let result := Tessellation.tessellateConvexPathFillNDC path style ctx.baseWidth ctx.baseHeight
+  -- Use current drawable size for NDC conversion (dynamic resize support)
+  let (w, h) ← ctx.getCurrentSize
+  let result := Tessellation.tessellateConvexPathFillNDC path style w h
   if result.vertices.size > 0 && result.indices.size > 0 then
     let vertexBuffer ← FFI.Buffer.createVertex ctx.renderer result.vertices
     let indexBuffer ← FFI.Buffer.createIndex ctx.renderer result.indices
@@ -193,8 +199,9 @@ def fillRoundedRectWithStyle (ctx : DrawContext) (rect : Rect) (cornerRadius : F
 
 /-- Stroke a path with a given style (pixel coordinates). -/
 def strokePath (ctx : DrawContext) (path : Path) (style : StrokeStyle) : IO Unit := do
-  -- Use base (logical) canvas size for NDC conversion to maintain coordinate system
-  let result := Tessellation.tessellateStrokeNDC path style ctx.baseWidth ctx.baseHeight
+  -- Use current drawable size for NDC conversion (dynamic resize support)
+  let (w, h) ← ctx.getCurrentSize
+  let result := Tessellation.tessellateStrokeNDC path style w h
   if result.vertices.size > 0 && result.indices.size > 0 then
     let vertexBuffer ← FFI.Buffer.createVertex ctx.renderer result.vertices
     let indexBuffer ← FFI.Buffer.createIndex ctx.renderer result.indices
@@ -245,9 +252,10 @@ def drawBatch (ctx : DrawContext) (batch : Batch) : IO Unit := do
 /-! ## Text Rendering -/
 
 /-- Draw text at a position with a font, color, and transform.
-    Uses the base (logical) canvas size for NDC conversion to maintain coordinate system. -/
-def fillTextTransformed (ctx : DrawContext) (text : String) (pos : Point) (font : Font) (color : Color) (transform : Transform) : IO Unit :=
-  FFI.Text.render ctx.renderer font.handle text pos.x pos.y color.r color.g color.b color.a transform.toArray ctx.baseWidth ctx.baseHeight
+    Uses the current drawable size for NDC conversion (dynamic resize support). -/
+def fillTextTransformed (ctx : DrawContext) (text : String) (pos : Point) (font : Font) (color : Color) (transform : Transform) : IO Unit := do
+  let (w, h) ← ctx.getCurrentSize
+  FFI.Text.render ctx.renderer font.handle text pos.x pos.y color.r color.g color.b color.a transform.toArray w h
 
 /-- Draw text at a position with a font and color (identity transform). -/
 def fillText (ctx : DrawContext) (text : String) (pos : Point) (font : Font) (color : Color) : IO Unit :=
@@ -428,10 +436,11 @@ def batched (capacityHint : Nat := 1000) (action : Canvas → IO Canvas) (c : Ca
 def batchRectsBy (count : Nat)
     (generator : Nat → Float × Float × Float × Float × Color)
     (c : Canvas) : IO Canvas := do
+  let (w, h) ← c.ctx.getCurrentSize
   let mut batch := Batch.withCapacity count
   for i in [:count] do
     let (x, y, angle, halfSize, color) := generator i
-    batch := batch.addRectDirect x y angle halfSize color c.ctx.baseWidth c.ctx.baseHeight
+    batch := batch.addRectDirect x y angle halfSize color w h
   c.ctx.drawBatch batch
   pure c
 
@@ -443,6 +452,7 @@ def batchRectsBy (count : Nat)
 def batchInstancedRectsBy (count : Nat)
     (generator : Nat → Float × Float × Float × Float × Color)
     (c : Canvas) : IO Canvas := do
+  let (canvasW, canvasH) ← c.ctx.getCurrentSize
   let floatCount := count * 8
   -- Reuse existing buffer if large enough, otherwise grow it
   let data := if c.instanceBufferCapacity >= count then
@@ -455,10 +465,10 @@ def batchInstancedRectsBy (count : Nat)
   for i in [:count] do
     let (x, y, angle, halfSize, color) := generator i
     -- Convert position to NDC
-    let ndcX := (x / c.ctx.baseWidth) * 2.0 - 1.0
-    let ndcY := 1.0 - (y / c.ctx.baseHeight) * 2.0
+    let ndcX := (x / canvasW) * 2.0 - 1.0
+    let ndcY := 1.0 - (y / canvasH) * 2.0
     -- Convert halfSize to NDC (use width for uniform scale)
-    let ndcHalfSize := halfSize / c.ctx.baseWidth * 2.0
+    let ndcHalfSize := halfSize / canvasW * 2.0
     -- Pack instance data using set! (in-place mutation)
     let base := i * 8
     data := data.set! base ndcX
@@ -481,10 +491,11 @@ def batchInstancedRectsBy (count : Nat)
     Note: Gradients are sampled at original path positions since gradient coordinates
     are defined in the original coordinate space. -/
 def fillPath (path : Path) (c : Canvas) : IO Canvas := do
+  let (w, h) ← c.ctx.getCurrentSize
   let transformedPath := c.state.transformPath path
   let style := c.state.effectiveFillStyle
   -- Use both original and transformed paths: original for gradient sampling, transformed for positions
-  let result := Tessellation.tessellateConvexPathFillNDCWithOriginal path transformedPath style c.ctx.baseWidth c.ctx.baseHeight
+  let result := Tessellation.tessellateConvexPathFillNDCWithOriginal path transformedPath style w h
   match c.batch with
   | some batch =>
     pure { c with batch := some (batch.add result) }
@@ -501,17 +512,18 @@ def fillPath (path : Path) (c : Canvas) : IO Canvas := do
     Uses fast path that skips Path allocation - just transforms 4 corners directly.
     When auto-batching is enabled, geometry is accumulated and drawn at endFrame. -/
 def fillRect (rect : Rect) (c : Canvas) : IO Canvas := do
+  let (w, h) ← c.ctx.getCurrentSize
   let transform := c.state.transform
   let style := c.state.effectiveFillStyle
   match c.batch with
   | some batch =>
     -- Explicit batch: write directly into batch arrays
-    let batch' := batch.addTransformedRect rect transform style c.ctx.baseWidth c.ctx.baseHeight
+    let batch' := batch.addTransformedRect rect transform style w h
     pure { c with batch := some batch' }
   | none =>
     if c.autoBatchEnabled then
       -- Auto-batch: accumulate in autoBatch, will be flushed at endFrame
-      let autoBatch' := c.autoBatch.addTransformedRect rect transform style c.ctx.baseWidth c.ctx.baseHeight
+      let autoBatch' := c.autoBatch.addTransformedRect rect transform style w h
       pure { c with autoBatch := autoBatch' }
     else
       -- Immediate mode: draw directly (legacy behavior)
@@ -545,9 +557,10 @@ private def effectiveStrokeStyle (c : Canvas) : StrokeStyle :=
 /-- Stroke a path using the current state. Batch-aware: adds to batch if active.
     When auto-batching is enabled, geometry is accumulated and drawn at endFrame. -/
 def strokePath (path : Path) (c : Canvas) : IO Canvas := do
+  let (w, h) ← c.ctx.getCurrentSize
   let transformedPath := c.state.transformPath path
   let style := c.effectiveStrokeStyle
-  let result := Tessellation.tessellateStrokeNDC transformedPath style c.ctx.baseWidth c.ctx.baseHeight
+  let result := Tessellation.tessellateStrokeNDC transformedPath style w h
   match c.batch with
   | some batch =>
     pure { c with batch := some (batch.add result) }
