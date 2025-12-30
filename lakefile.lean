@@ -10,7 +10,7 @@ require crucible from git "https://github.com/nathanial/crucible" @ "v0.0.1"
 require tincture from git "https://github.com/nathanial/tincture" @ "v0.0.1"
 require trellis from git "https://github.com/nathanial/trellis" @ "v0.0.1"
 require arbor from git "https://github.com/nathanial/arbor" @ "v0.0.1"
-require assimptor from git "https://github.com/nathanial/assimptor" @ "v0.0.2"
+require assimptor from git "https://github.com/nathanial/assimptor" @ "v0.0.1"
 require staple from git "https://github.com/nathanial/staple" @ "v0.0.1"
 require linalg from git "https://github.com/nathanial/linalg" @ "v0.0.1"
 
