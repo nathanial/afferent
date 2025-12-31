@@ -239,18 +239,11 @@ import Linalg.Easing
 
 ---
 
-### [Priority: Medium] FPSCamera Clamp Function Visibility (Easy Fix Available)
+### [Priority: Medium] ~~FPSCamera Clamp Function Visibility~~ ✅ COMPLETED
 
-**Current State:** The clamp helper function in FPSCamera is marked private but could use `Float.clamp` from linalg.
+**Status:** Completed - replaced private `clamp` with `Float.clamp` from linalg.
 
-**Proposed Change:** Replace the private `clamp` function with `Float.clamp` from `Linalg.Core`, which provides the same functionality.
-
-**Benefits:** Reduce code duplication, use standard library function.
-
-**Affected Files:**
-- `Afferent/Render/FPSCamera.lean` (line 34) - already imports Linalg
-
-**Estimated Effort:** Trivial (one-line change)
+**Resolution:** The private `clamp` helper was removed and replaced with `Float.clamp` from `Linalg.Core`.
 
 ---
 
@@ -284,16 +277,11 @@ import Linalg.Easing
 
 ---
 
-### [Priority: Low] Reduce Magic Numbers in Path.lean (Partially Complete)
+### [Priority: Low] ~~Reduce Magic Numbers in Path.lean~~ ✅ COMPLETED
 
-**Current State:** Pi constants now come from linalg (`Float.pi`, `Float.twoPi`, `Float.halfPi`). The bezier approximation constant (0.5522847498 = 4/3 * tan(π/8)) still appears inline in multiple places.
+**Status:** Completed - defined `bezierCircleK` constant.
 
-**Remaining Work:** Define a named constant like `bezierCircleApprox` for the magic number 0.5522847498.
-
-**Affected Files:**
-- `Afferent/Core/Path.lean` (circle, ellipse, roundedRect functions)
-
-**Estimated Effort:** Small
+**Resolution:** Added `Path.bezierCircleK : Float := 0.5522847498` and updated circle, ellipse, and roundedRect functions to use it.
 
 ---
 
@@ -319,18 +307,11 @@ import Linalg.Easing
 
 ---
 
-### [Priority: Medium] Document Vertex Layout Constants
+### [Priority: Medium] ~~Document Vertex Layout Constants~~ ✅ COMPLETED
 
-**Issue:** Vertex layouts (6 floats for 2D, 10 floats for 3D, 12 floats for textured 3D) are documented in comments but could benefit from named constants.
+**Status:** Completed - added vertex size constants to Tessellation.lean.
 
-**Location:**
-- `Afferent/Render/Tessellation.lean` (multiple locations)
-- `Afferent/FFI/Renderer3D.lean`
-- `Afferent/FFI/Asset.lean`
-
-**Action Required:** Define constants like VERTEX_SIZE_2D = 6, VERTEX_SIZE_3D = 10, VERTEX_SIZE_TEXTURED = 12.
-
-**Estimated Effort:** Small
+**Resolution:** Added `Tessellation.vertexSize2D`, `vertexSize3D`, and `vertexSize3DTextured` constants. The Batch module now uses `vertexSize2D` for vertex count calculations.
 
 ---
 
@@ -363,13 +344,11 @@ import Linalg.Easing
 
 ---
 
-### [Priority: Low] Demo Code Cleanup (Mostly Complete)
+### [Priority: Low] ~~Demo Code Cleanup~~ ✅ COMPLETED
 
-**Issue:** Most demos now use linalg utilities. A few demos still have hardcoded pi values (e.g., `Demos/SpinningCubes.lean` uses `3.14159...` instead of `Float.pi`).
+**Status:** Completed - all demos now use linalg constants.
 
-**Action Required:** Replace remaining hardcoded math constants with linalg imports.
-
-**Estimated Effort:** Trivial
+**Resolution:** Updated `Demos/SpinningCubes.lean` and `examples/SpinningCubes.lean` to use `Float.pi` instead of hardcoded values.
 
 ---
 
@@ -411,11 +390,11 @@ The widget event system could benefit from a formal state machine for focus, hov
 These items can be addressed quickly with minimal risk:
 
 1. ~~Define pi constant in one place~~ ✅ (done via linalg)
-2. Add named constants for vertex layout sizes
+2. ~~Add named constants for vertex layout sizes~~ ✅ (vertexSize2D/3D/3DTextured)
 3. Add shouldBeNear tolerance parameter to test helpers
 4. Document all FFI function parameters
 5. Add more gradient sampling tests
-6. Define named constant for bezier circle approximation (0.5522847498)
+6. ~~Define named constant for bezier circle approximation~~ ✅ (bezierCircleK)
 
 ---
 
@@ -445,4 +424,4 @@ Metal shaders are now embedded directly in the binary, eliminating runtime shade
 
 ---
 
-*Last updated: 2025-12-30*
+*Last updated: 2025-12-30* (quick wins implemented)
