@@ -315,20 +315,16 @@ import Linalg.Easing
 
 ---
 
-### [Priority: Medium] Add More Test Coverage
+### [Priority: Medium] ~~Add More Test Coverage~~ ✅ COMPLETED
 
-**Issue:** Tests exist for tessellation and FFI safety but coverage could be expanded for Canvas, Widget rendering, and gradient sampling edge cases.
+**Status:** Completed - test count increased from 43 to 76 tests.
 
-**Location:**
-- `Afferent/Tests/` directory
-- `AfferentTests.lean`
+**New test suites added:**
+- `CanvasStateTests.lean`: 20 tests for transform composition, inverse, state stack
+- `FontTests.lean`: 7 tests for font loading and text measurement
+- Gradient edge cases: 6 tests for empty/single stops, out-of-bounds sampling
 
-**Action Required:**
-- Add CanvasState transform composition tests
-- Add gradient edge case tests (empty stops, single stop)
-- Add Font loading and measurement tests
-
-**Estimated Effort:** Medium
+**Remaining opportunities:** Widget rendering tests, more layout edge cases.
 
 ---
 
@@ -391,9 +387,9 @@ These items can be addressed quickly with minimal risk:
 
 1. ~~Define pi constant in one place~~ ✅ (done via linalg)
 2. ~~Add named constants for vertex layout sizes~~ ✅ (vertexSize2D/3D/3DTextured)
-3. Add shouldBeNear tolerance parameter to test helpers
-4. Document all FFI function parameters
-5. Add more gradient sampling tests
+3. ~~Add shouldBeNear tolerance parameter to test helpers~~ ✅ (already in Crucible)
+4. ~~Document all FFI function parameters~~ ✅ (Window.lean documented)
+5. ~~Add more gradient sampling tests~~ ✅ (6 edge case tests added)
 6. ~~Define named constant for bezier circle approximation~~ ✅ (bezierCircleK)
 
 ---
@@ -424,4 +420,4 @@ Metal shaders are now embedded directly in the binary, eliminating runtime shade
 
 ---
 
-*Last updated: 2025-12-30* (quick wins implemented)
+*Last updated: 2025-12-30* (quick wins + test coverage complete)
