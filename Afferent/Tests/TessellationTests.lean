@@ -7,6 +7,7 @@ import Afferent.Core.Types
 import Afferent.Core.Path
 import Afferent.Core.Paint
 import Afferent.Render.Tessellation
+import Linalg.Core
 
 
 namespace Afferent.Tests.TessellationTests
@@ -15,6 +16,7 @@ open Crucible
 open Afferent
 open Afferent.Tests
 open Afferent.Tessellation
+open Linalg
 
 testSuite "Tessellation Tests"
 
@@ -611,6 +613,212 @@ test "tessellateConvexPath produces correct output for hexagon" := do
   ensure (result.vertices.size == 36) s!"Expected 36 floats, got {result.vertices.size}"
   -- 4 triangles (fan from first vertex) = 12 indices
   ensure (result.indices.size == 12) s!"Expected 12 indices, got {result.indices.size}"
+
+/-! ## Bezier-Curved Shape Tessellation Tests -/
+
+test "heart tessellation produces valid triangles" := do
+  let heartPath := Path.heart ⟨100, 100⟩ 50
+  let points := pathToPolygon heartPath 0.5
+  let indices := triangulatePolygon points
+  -- Basic validity checks
+  ensure (points.size >= 3) s!"Heart should have at least 3 points, got {points.size}"
+  ensure (indices.size >= 3) s!"Should produce at least 1 triangle, got {indices.size}"
+  ensure (indices.size % 3 == 0) s!"Index count should be multiple of 3, got {indices.size}"
+  -- Verify all indices are in bounds
+  for idx in indices do
+    ensure (idx.toNat < points.size) s!"Index {idx} out of bounds (points.size={points.size})"
+  -- Expected triangle count: n-2 triangles for n vertices
+  let expectedTriangles := points.size - 2
+  ensure (indices.size / 3 == expectedTriangles) s!"Expected {expectedTriangles} triangles, got {indices.size / 3}"
+
+test "circle tessellation produces valid triangles" := do
+  let circlePath := Path.circle ⟨100, 100⟩ 50
+  let points := pathToPolygon circlePath 0.5
+  let indices := triangulatePolygon points
+  -- Basic validity checks
+  ensure (points.size >= 3) s!"Circle should have at least 3 points, got {points.size}"
+  ensure (indices.size >= 3) s!"Should produce at least 1 triangle, got {indices.size}"
+  ensure (indices.size % 3 == 0) s!"Index count should be multiple of 3, got {indices.size}"
+  -- Verify all indices are in bounds
+  for idx in indices do
+    ensure (idx.toNat < points.size) s!"Index {idx} out of bounds (points.size={points.size})"
+  -- Expected triangle count
+  let expectedTriangles := points.size - 2
+  ensure (indices.size / 3 == expectedTriangles) s!"Expected {expectedTriangles} triangles, got {indices.size / 3}"
+
+test "ellipse tessellation produces valid triangles" := do
+  let ellipsePath := Path.ellipse ⟨100, 100⟩ 60 40
+  let points := pathToPolygon ellipsePath 0.5
+  let indices := triangulatePolygon points
+  -- Basic validity checks
+  ensure (points.size >= 3) s!"Ellipse should have at least 3 points, got {points.size}"
+  ensure (indices.size >= 3) s!"Should produce at least 1 triangle, got {indices.size}"
+  ensure (indices.size % 3 == 0) s!"Index count should be multiple of 3, got {indices.size}"
+  -- Verify all indices are in bounds
+  for idx in indices do
+    ensure (idx.toNat < points.size) s!"Index {idx} out of bounds (points.size={points.size})"
+  -- Expected triangle count
+  let expectedTriangles := points.size - 2
+  ensure (indices.size / 3 == expectedTriangles) s!"Expected {expectedTriangles} triangles, got {indices.size / 3}"
+
+test "pie slice tessellation produces valid triangles" := do
+  let piePath := Path.pie ⟨100, 100⟩ 50 0 Float.halfPi
+  let points := pathToPolygon piePath 0.5
+  let indices := triangulatePolygon points
+  -- Basic validity checks
+  ensure (points.size >= 3) s!"Pie should have at least 3 points, got {points.size}"
+  ensure (indices.size >= 3) s!"Should produce at least 1 triangle, got {indices.size}"
+  ensure (indices.size % 3 == 0) s!"Index count should be multiple of 3, got {indices.size}"
+  -- Verify all indices are in bounds
+  for idx in indices do
+    ensure (idx.toNat < points.size) s!"Index {idx} out of bounds (points.size={points.size})"
+
+test "270-degree arc tessellation produces valid triangles" := do
+  -- This is the "45+scale" test case - a 270-degree arc creates a non-convex chord
+  let arcPath := Path.arcPath ⟨0, 0⟩ 35 0 (Float.pi * 1.5) false
+  let points := pathToPolygon arcPath 0.5
+  let indices := triangulatePolygon points
+  -- Basic validity checks
+  ensure (points.size >= 3) s!"Arc should have at least 3 points, got {points.size}"
+  ensure (indices.size >= 3) s!"Should produce at least 1 triangle, got {indices.size}"
+  ensure (indices.size % 3 == 0) s!"Index count should be multiple of 3, got {indices.size}"
+  -- Verify all indices are in bounds
+  for idx in indices do
+    ensure (idx.toNat < points.size) s!"Index {idx} out of bounds (points.size={points.size})"
+  -- Expected triangle count
+  let expectedTriangles := points.size - 2
+  ensure (indices.size / 3 == expectedTriangles) s!"Expected {expectedTriangles} triangles, got {indices.size / 3}"
+
+test "star shape tessellation produces valid triangles" := do
+  -- Stars are non-convex with alternating inner/outer vertices
+  let starPath := Path.star ⟨100, 100⟩ 50 25 5
+  let points := pathToPolygon starPath 0.5
+  let indices := triangulatePolygon points
+  -- Basic validity checks - star with 5 points has 10 vertices
+  ensure (points.size == 10) s!"5-pointed star should have 10 vertices, got {points.size}"
+  ensure (indices.size >= 3) s!"Should produce at least 1 triangle, got {indices.size}"
+  ensure (indices.size % 3 == 0) s!"Index count should be multiple of 3, got {indices.size}"
+  -- Verify all indices are in bounds
+  for idx in indices do
+    ensure (idx.toNat < points.size) s!"Index {idx} out of bounds (points.size={points.size})"
+  -- Expected triangle count: 10-2 = 8 triangles = 24 indices
+  ensure (indices.size == 24) s!"Expected 24 indices for star, got {indices.size}"
+
+/-! ## Winding Order Tests -/
+
+test "signedPolygonArea positive for CCW polygon" := do
+  -- Counter-clockwise square (in standard coords)
+  let ccwSquare := #[
+    Point.mk' 0 0,
+    Point.mk' 100 0,
+    Point.mk' 100 100,
+    Point.mk' 0 100
+  ]
+  let area := signedPolygonArea ccwSquare
+  ensure (area > 0) s!"CCW polygon should have positive area, got {area}"
+
+test "signedPolygonArea negative for CW polygon" := do
+  -- Clockwise square (in standard coords)
+  let cwSquare := #[
+    Point.mk' 0 0,
+    Point.mk' 0 100,
+    Point.mk' 100 100,
+    Point.mk' 100 0
+  ]
+  let area := signedPolygonArea cwSquare
+  ensure (area < 0) s!"CW polygon should have negative area, got {area}"
+
+test "signedPolygonArea handles degenerate cases" := do
+  ensure (signedPolygonArea #[] == 0.0) "Empty polygon should have zero area"
+  ensure (signedPolygonArea #[Point.mk' 0 0] == 0.0) "Single point should have zero area"
+  ensure (signedPolygonArea #[Point.mk' 0 0, Point.mk' 100 0] == 0.0) "Line should have zero area"
+
+test "flattened circle has consistent winding" := do
+  let circlePath := Path.circle ⟨0, 0⟩ 50
+  let points := pathToPolygon circlePath 0.5
+  let area := signedPolygonArea points
+  -- Circle beziers produce a specific winding - just verify it's consistent (non-zero)
+  ensure (area.abs > 100) s!"Circle should have significant area, got {area}"
+
+test "flattened heart has consistent winding" := do
+  let heartPath := Path.heart ⟨0, 0⟩ 50
+  let points := pathToPolygon heartPath 0.5
+  let area := signedPolygonArea points
+  -- Heart beziers produce a specific winding - just verify it's consistent (non-zero)
+  ensure (area.abs > 100) s!"Heart should have significant area, got {area}"
+
+/-! ## Regression Tests for Recent Fixes -/
+
+test "triangulateEarClipping handles CW polygon" := do
+  -- Clockwise square - should still triangulate correctly after winding fix
+  let cwSquare := #[
+    Point.mk' 0 0,
+    Point.mk' 0 100,
+    Point.mk' 100 100,
+    Point.mk' 100 0
+  ]
+  let indices := triangulateEarClipping cwSquare
+  -- Should produce 2 triangles = 6 indices
+  ensure (indices.size == 6) s!"CW square should produce 6 indices, got {indices.size}"
+  -- Verify all indices are in bounds
+  for idx in indices do
+    ensure (idx.toNat < 4) s!"Index {idx} out of bounds for 4-vertex polygon"
+
+test "triangulateEarClipping handles CW concave polygon" := do
+  -- Clockwise L-shape (reverse of the CCW version)
+  let cwLShape := #[
+    Point.mk' 0 0,
+    Point.mk' 0 100,
+    Point.mk' 30 100,
+    Point.mk' 30 30,
+    Point.mk' 80 30,
+    Point.mk' 80 0
+  ]
+  let indices := triangulateEarClipping cwLShape
+  -- 6 vertices → 4 triangles → 12 indices
+  ensure (indices.size == 12) s!"CW L-shape should produce 12 indices, got {indices.size}"
+  -- Verify all indices are in bounds
+  for idx in indices do
+    ensure (idx.toNat < 6) s!"Index {idx} out of bounds for 6-vertex polygon"
+
+test "270-degree arc has correct winding for ear-clipping" := do
+  -- The "45+scale" arc case - verify winding detection works
+  let arcPath := Path.arcPath ⟨0, 0⟩ 35 0 (Float.pi * 1.5) false
+  let points := pathToPolygon arcPath 0.5
+  let area := signedPolygonArea points
+  -- Area should be non-zero (we handle both CW and CCW)
+  ensure (area.abs > 10) s!"270-degree arc should have significant area, got {area}"
+  -- Triangulation should work regardless of winding
+  let indices := triangulatePolygon points
+  let expectedTriangles := points.size - 2
+  ensure (indices.size / 3 == expectedTriangles) s!"Expected {expectedTriangles} triangles, got {indices.size / 3}"
+
+test "semicircle tessellation produces valid triangles" := do
+  let semiPath := Path.semicircle ⟨100, 100⟩ 50
+  let points := pathToPolygon semiPath 0.5
+  let indices := triangulatePolygon points
+  -- Basic validity checks
+  ensure (points.size >= 3) s!"Semicircle should have at least 3 points, got {points.size}"
+  ensure (indices.size >= 3) s!"Should produce at least 1 triangle, got {indices.size}"
+  ensure (indices.size % 3 == 0) s!"Index count should be multiple of 3, got {indices.size}"
+  -- Verify all indices are in bounds
+  for idx in indices do
+    ensure (idx.toNat < points.size) s!"Index {idx} out of bounds (points.size={points.size})"
+
+test "rounded rectangle tessellation produces valid triangles" := do
+  let rrPath := Path.roundedRect (Rect.mk' 0 0 100 80) 15
+  let points := pathToPolygon rrPath 0.5
+  let indices := triangulatePolygon points
+  -- Basic validity checks
+  ensure (points.size >= 8) s!"Rounded rect should have at least 8 points, got {points.size}"
+  ensure (indices.size >= 3) s!"Should produce at least 1 triangle, got {indices.size}"
+  ensure (indices.size % 3 == 0) s!"Index count should be multiple of 3, got {indices.size}"
+  -- Verify all indices are in bounds
+  for idx in indices do
+    ensure (idx.toNat < points.size) s!"Index {idx} out of bounds (points.size={points.size})"
+  -- Expected triangle count
+  let expectedTriangles := points.size - 2
+  ensure (indices.size / 3 == expectedTriangles) s!"Expected {expectedTriangles} triangles, got {indices.size / 3}"
 
 #generate_tests
 
