@@ -5,14 +5,14 @@ open System (FilePath)
 package afferent where
   version := v!"0.1.0"
 
-require collimator from git "https://github.com/nathanial/collimator" @ "v0.0.1"
+require collimator from git "https://github.com/nathanial/collimator" @ "v0.0.2"
 require crucible from git "https://github.com/nathanial/crucible" @ "v0.0.1"
 require tincture from git "https://github.com/nathanial/tincture" @ "v0.0.1"
 require trellis from git "https://github.com/nathanial/trellis" @ "v0.0.1"
 require arbor from git "https://github.com/nathanial/arbor" @ "v0.0.1"
-require assimptor from git "https://github.com/nathanial/assimptor" @ "v0.0.1"
-require staple from git "https://github.com/nathanial/staple" @ "v0.0.1"
-require linalg from git "https://github.com/nathanial/linalg" @ "v0.0.1"
+require assimptor from git "https://github.com/nathanial/assimptor" @ "v0.0.2"
+require staple from git "https://github.com/nathanial/staple" @ "v0.0.2"
+require linalg from git "https://github.com/nathanial/linalg" @ "v0.0.2"
 
 -- Common link arguments for all executables
 -- Includes both Homebrew paths for Apple Silicon (/opt/homebrew) and Intel (/usr/local)
