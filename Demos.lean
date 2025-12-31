@@ -13,4 +13,5 @@ import Demos.TrianglesPerf
 import Demos.CirclesPerf
 import Demos.SpritesPerf
 import Demos.Layout
+import Demos.ShapeGallery
 import Demos.Runner

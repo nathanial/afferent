@@ -21,6 +21,7 @@ import Demos.SpinningCubes
 import Demos.DemoGrid
 import Demos.Seascape
 import Demos.PathFeatures
+import Demos.ShapeGallery
 
 set_option maxRecDepth 1024
 
@@ -151,6 +152,8 @@ def unifiedDemo : IO Unit := do
   let mut framesLeft : Nat := exitAfterFrames
   -- Interactive counter demo state (mode 8)
   let mut counterState : Demos.CounterState := Demos.CounterState.initial
+  -- Shape gallery state (mode 12)
+  let mut shapeGalleryIndex : Nat := 0
 
   while !(← c.shouldClose) do
     c.pollEvents
@@ -161,7 +164,7 @@ def unifiedDemo : IO Unit := do
       -- Release pointer lock when leaving mode 9 or 10
       if displayMode == 9 || displayMode == 10 then
         FFI.Window.setPointerLock c.ctx.window false
-      displayMode := (displayMode + 1) % 12
+      displayMode := (displayMode + 1) % 13
       c.clearKey
       -- Disable MSAA for throughput-heavy benchmarks and the seascape demo.
       -- (Seascape is usually fill-rate bound; MSAA can be a big hit at Retina resolutions.)
@@ -179,7 +182,17 @@ def unifiedDemo : IO Unit := do
       | 8 => IO.println "Switched to INTERACTIVE demo (click the buttons!)"
       | 9 => IO.println "Switched to 3D SPINNING CUBES demo"
       | 10 => IO.println "Switched to SEASCAPE demo (Gerstner waves)"
-      | _ => IO.println "Switched to PATH FEATURES demo (non-convex, arcTo, transforms)"
+      | 11 => IO.println "Switched to PATH FEATURES demo (non-convex, arcTo, transforms)"
+      | _ => IO.println "Switched to SHAPE GALLERY (arrow keys to navigate)"
+
+    -- Arrow key navigation for shape gallery (mode 12)
+    if displayMode == 12 then
+      if keyCode == 124 then  -- Right arrow
+        shapeGalleryIndex := (shapeGalleryIndex + 1) % Demos.shapeGalleryCount
+        c.clearKey
+      else if keyCode == 123 then  -- Left arrow
+        shapeGalleryIndex := if shapeGalleryIndex == 0 then Demos.shapeGalleryCount - 1 else shapeGalleryIndex - 1
+        c.clearKey
 
     let ok ← c.beginFrame Color.darkGray
     if ok then
@@ -374,6 +387,12 @@ def unifiedDemo : IO Unit := do
           renderPathFeaturesM screenScale fontSmall
           setFillColor Color.white
           fillTextXY "Path Features Demo - Non-convex, arcTo, transforms (Space to advance)" (20 * screenScale) (30 * screenScale) fontMedium
+      else if displayMode == 12 then
+        -- Shape Gallery: flip through labeled shapes with arrow keys
+        c ← run' (c.resetTransform) do
+          renderShapeGalleryM shapeGalleryIndex physWidthF physHeightF screenScale fontLarge fontSmall
+          setFillColor Color.white
+          fillTextXY "Shape Gallery (Space to advance)" (20 * screenScale) (30 * screenScale) fontMedium
       else
         -- Normal demo mode: grid of demos using Trellis layout
         let (currentW, currentH) ← c.ctx.getCurrentSize
