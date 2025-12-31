@@ -492,10 +492,9 @@ def batchInstancedRectsBy (count : Nat)
     are defined in the original coordinate space. -/
 def fillPath (path : Path) (c : Canvas) : IO Canvas := do
   let (w, h) ← c.ctx.getCurrentSize
-  let transformedPath := c.state.transformPath path
   let style := c.state.effectiveFillStyle
-  -- Use both original and transformed paths: original for gradient sampling, transformed for positions
-  let result := Tessellation.tessellateConvexPathFillNDCWithOriginal path transformedPath style w h
+  -- Use transform directly to ensure exact 1-to-1 point correspondence after bezier flattening
+  let result := Tessellation.tessellatePathWithTransform path c.state.transform style w h
   match c.batch with
   | some batch =>
     pure { c with batch := some (batch.add result) }
@@ -505,6 +504,7 @@ def fillPath (path : Path) (c : Canvas) : IO Canvas := do
       pure { c with autoBatch := c.autoBatch.add result }
     else
       -- Immediate mode: draw directly (legacy behavior)
+      let transformedPath := c.state.transformPath path
       c.ctx.fillPathWithStyle transformedPath style
       pure c
 

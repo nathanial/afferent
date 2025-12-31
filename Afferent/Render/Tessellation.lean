@@ -639,6 +639,87 @@ def tessellateConvexPathFillNDCWithOriginal (originalPath transformedPath : Path
     let indices := triangulatePolygon truncatedPoints
     return { vertices, indices }
 
+/-- Tessellate a path with a fill style using a transform for position calculation.
+    Unlike tessellateConvexPathFillNDCWithOriginal, this function flattens the path only once
+    and applies the transform to each point, ensuring exact 1-to-1 correspondence between
+    original and transformed points. This fixes issues with non-uniform scaling where
+    adaptive bezier flattening would produce different numbers of points for each path.
+    - originalPath: used for both structure AND gradient color sampling
+    - transform: applied to each flattened point for final positions
+    For radial gradients, adds a center vertex to ensure proper color interpolation. -/
+def tessellatePathWithTransform (originalPath : Path) (transform : Transform) (style : FillStyle)
+    (screenWidth screenHeight : Float) (tolerance : Float := 0.5) : TessellationResult := Id.run do
+  -- Flatten only the original path once
+  let originalPoints := pathToPolygon originalPath tolerance
+  let numPoints := originalPoints.size
+
+  if numPoints < 3 then
+    return { vertices := #[], indices := #[] }
+
+  -- Apply transform to get transformed positions - guaranteed 1-to-1 correspondence
+  let transformedPoints := originalPoints.map transform.apply
+
+  -- Check if this is a radial gradient - if so, we need a center vertex for proper interpolation
+  let isRadialGradient := match style with
+    | .gradient (.radial _ _ _) => true
+    | _ => false
+
+  if isRadialGradient then
+    -- For radial gradients: add center vertex and create fan triangles from center
+    let originalCenter := computeCentroid originalPoints
+    let transformedCenter := transform.apply originalCenter
+    let centerColor := sampleFillStyle style originalCenter
+    let centerNDC := pixelToNDC transformedCenter.x transformedCenter.y screenWidth screenHeight
+
+    -- Vertex 0 is center, vertices 1..n are perimeter
+    let mut vertices : Array Float := Array.mkEmpty ((numPoints + 1) * 6)
+
+    -- Add center vertex first
+    vertices := vertices.push centerNDC.x
+    vertices := vertices.push centerNDC.y
+    vertices := vertices.push centerColor.r
+    vertices := vertices.push centerColor.g
+    vertices := vertices.push centerColor.b
+    vertices := vertices.push centerColor.a
+
+    -- Add perimeter vertices
+    for i in [:numPoints] do
+      let color := sampleFillStyle style originalPoints[i]!
+      let ndc := pixelToNDC transformedPoints[i]!.x transformedPoints[i]!.y screenWidth screenHeight
+      vertices := vertices.push ndc.x
+      vertices := vertices.push ndc.y
+      vertices := vertices.push color.r
+      vertices := vertices.push color.g
+      vertices := vertices.push color.b
+      vertices := vertices.push color.a
+
+    -- Create fan triangles from center (vertex 0) to perimeter
+    let mut indices : Array UInt32 := Array.mkEmpty (numPoints * 3)
+    for i in [:numPoints] do
+      let curr := (i + 1).toUInt32  -- perimeter vertices start at index 1
+      let next := if i + 1 < numPoints then (i + 2).toUInt32 else 1  -- wrap around
+      indices := indices.push 0       -- center
+      indices := indices.push curr    -- current perimeter vertex
+      indices := indices.push next    -- next perimeter vertex
+
+    return { vertices, indices }
+  else
+    -- For solid colors and linear gradients: use smart triangulation
+    let mut vertices : Array Float := Array.mkEmpty (numPoints * 6)
+    for i in [:numPoints] do
+      let color := sampleFillStyle style originalPoints[i]!
+      let ndc := pixelToNDC transformedPoints[i]!.x transformedPoints[i]!.y screenWidth screenHeight
+      vertices := vertices.push ndc.x
+      vertices := vertices.push ndc.y
+      vertices := vertices.push color.r
+      vertices := vertices.push color.g
+      vertices := vertices.push color.b
+      vertices := vertices.push color.a
+
+    -- Use triangulatePolygon which handles both convex and non-convex shapes
+    let indices := triangulatePolygon transformedPoints
+    return { vertices, indices }
+
 /-- Tessellate a rectangle with a fill style (solid or gradient), converting to NDC. -/
 def tessellateRectFillNDC (r : Rect) (style : FillStyle) (screenWidth screenHeight : Float) : TessellationResult :=
   let tl := r.topLeft
