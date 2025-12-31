@@ -40,17 +40,17 @@ This document tracks improvement opportunities, feature proposals, and code clea
 
 ### [Priority: High] PBR Material Support for 3D
 
-**Description:** Extend the 3D asset loading pipeline to support full PBR (Physically Based Rendering) materials including normal maps, metallic, and roughness textures. The LoadedAsset structure notes this as a future enhancement.
+**Description:** Extend the 3D asset loading pipeline to support full PBR (Physically Based Rendering) materials including normal maps, metallic, and roughness textures.
 
 **Rationale:** Modern 3D content uses PBR workflows. The current system only loads diffuse textures.
 
 **Affected Files:**
-- `Assimptor/Asset.lean` (SubMesh structure, loadAsset function - lines 44-47)
-- `native/src/metal/` (shader updates for PBR)
+- `assimptor` package (SubMesh structure, asset loading) - now a separate dependency
+- `native/src/metal/` (shader updates for PBR in Afferent)
 
 **Estimated Effort:** Large
 
-**Dependencies:** Shader modifications, additional texture slots.
+**Dependencies:** Shader modifications, additional texture slots. Requires coordination with assimptor package.
 
 ---
 
@@ -103,19 +103,17 @@ This document tracks improvement opportunities, feature proposals, and code clea
 
 ---
 
-### [Priority: Medium] Animation Easing Library
+### [Priority: Medium] ~~Animation Easing Library~~ ✅ COMPLETED
 
-**Description:** Add a library of standard easing functions (ease-in, ease-out, ease-in-out, cubic-bezier, spring) for animations.
+**Status:** Completed via linalg library integration (v0.0.1+).
 
-**Rationale:** The framework has robust animation support (animated rendering, time-based loops) but lacks high-level easing utilities.
+**Description:** Standard easing functions are now available through the `Linalg.Easing` module, which provides ease-in, ease-out, ease-in-out, and other common easing functions.
 
-**Affected Files:**
-- New file: `Afferent/Animation/Easing.lean`
-- Integration with existing animation demos
-
-**Estimated Effort:** Small
-
-**Dependencies:** None.
+**Usage:**
+```lean
+import Linalg.Easing
+-- Use Easing.easeInOutCubic, Easing.easeOutQuad, etc.
+```
 
 ---
 
@@ -231,35 +229,28 @@ This document tracks improvement opportunities, feature proposals, and code clea
 
 ---
 
-### [Priority: Medium] Matrix4 Performance
+### [Priority: Medium] Matrix4 Performance (Superseded)
 
-**Current State:** Matrix4.multiply creates intermediate arrays and uses nested loops with getD.
+**Current State:** Matrix operations are now provided by the `linalg` library via `Mat4`. The old `Afferent/Render/Matrix4.lean` may be deprecated or removed in favor of `Linalg.Mat4`.
 
-**Proposed Change:** Implement matrix multiplication with inline expanded operations or SIMD intrinsics in native code.
+**Note:** Evaluate if `Linalg.Mat4` performance is sufficient. If SIMD optimization is still needed, it should be added to the linalg library rather than Afferent.
 
-**Benefits:** Faster 3D transforms, especially for scenes with many objects.
-
-**Affected Files:**
-- `Afferent/Render/Matrix4.lean` (multiply function)
-- Optionally: new FFI for matrix operations
-
-**Estimated Effort:** Small to Medium
+**Estimated Effort:** Potentially N/A if linalg Mat4 is sufficient
 
 ---
 
-### [Priority: Medium] FPSCamera Clamp Function Visibility
+### [Priority: Medium] FPSCamera Clamp Function Visibility (Easy Fix Available)
 
-**Current State:** The clamp helper function in FPSCamera is marked private but could be useful elsewhere.
+**Current State:** The clamp helper function in FPSCamera is marked private but could use `Float.clamp` from linalg.
 
-**Proposed Change:** Move clamp to a shared utility module (e.g., Afferent.Core.Math or use Float.max/Float.min).
+**Proposed Change:** Replace the private `clamp` function with `Float.clamp` from `Linalg.Core`, which provides the same functionality.
 
-**Benefits:** Reduce code duplication, consistent utility functions.
+**Benefits:** Reduce code duplication, use standard library function.
 
 **Affected Files:**
-- `Afferent/Render/FPSCamera.lean` (line 34)
-- New file or existing core module
+- `Afferent/Render/FPSCamera.lean` (line 34) - already imports Linalg
 
-**Estimated Effort:** Small
+**Estimated Effort:** Trivial (one-line change)
 
 ---
 
@@ -293,35 +284,24 @@ This document tracks improvement opportunities, feature proposals, and code clea
 
 ---
 
-### [Priority: Low] Reduce Magic Numbers in Path.lean
+### [Priority: Low] Reduce Magic Numbers in Path.lean (Partially Complete)
 
-**Current State:** Pi is defined as a literal constant (3.14159265358979323846) and the bezier approximation constant (0.5522847498) appears multiple times.
+**Current State:** Pi constants now come from linalg (`Float.pi`, `Float.twoPi`, `Float.halfPi`). The bezier approximation constant (0.5522847498 = 4/3 * tan(π/8)) still appears inline in multiple places.
 
-**Proposed Change:** Define named constants for pi and the bezier circle approximation factor.
-
-**Benefits:** Improved readability, single source of truth.
+**Remaining Work:** Define a named constant like `bezierCircleApprox` for the magic number 0.5522847498.
 
 **Affected Files:**
-- `Afferent/Core/Path.lean` (lines 165-166, 112, 127, 142)
+- `Afferent/Core/Path.lean` (circle, ellipse, roundedRect functions)
 
 **Estimated Effort:** Small
 
 ---
 
-### [Priority: Low] Pi Constant Consolidation
+### [Priority: Low] ~~Pi Constant Consolidation~~ ✅ COMPLETED
 
-**Current State:** Pi is defined locally in multiple files (Path.lean, FPSCamera.lean, Seascape.lean).
+**Status:** Completed via linalg library integration.
 
-**Proposed Change:** Define Float.pi or Afferent.pi in a single location and use it everywhere.
-
-**Benefits:** Consistency, reduced duplication.
-
-**Affected Files:**
-- `Afferent/Core/Path.lean`
-- `Afferent/Render/FPSCamera.lean`
-- `Demos/Seascape.lean`
-
-**Estimated Effort:** Small
+**Resolution:** All files now import `Float.pi`, `Float.twoPi`, and `Float.halfPi` from the `Linalg.Core` module instead of defining them locally. Path.lean, FPSCamera.lean, and other files have been updated to use the linalg constants.
 
 ---
 
@@ -383,17 +363,13 @@ This document tracks improvement opportunities, feature proposals, and code clea
 
 ---
 
-### [Priority: Low] Demo Code Cleanup
+### [Priority: Low] Demo Code Cleanup (Mostly Complete)
 
-**Issue:** Demo files have some duplicated helper functions (e.g., pi definition, vector operations).
+**Issue:** Most demos now use linalg utilities. A few demos still have hardcoded pi values (e.g., `Demos/SpinningCubes.lean` uses `3.14159...` instead of `Float.pi`).
 
-**Location:**
-- `Demos/Seascape.lean`
-- Other demo files
+**Action Required:** Replace remaining hardcoded math constants with linalg imports.
 
-**Action Required:** Extract shared demo utilities to a common module.
-
-**Estimated Effort:** Small
+**Estimated Effort:** Trivial
 
 ---
 
@@ -426,7 +402,7 @@ The widget event system could benefit from a formal state machine for focus, hov
 
 ### Memory Budget System for Tile Cache
 
-The map tile cache uses fixed counts for GPU and RAM limits. A memory-budget-based system would be more flexible across different devices.
+**Note:** The map tile cache has been extracted to the `worldmap` package. This improvement should be tracked in the worldmap roadmap instead.
 
 ---
 
@@ -434,12 +410,39 @@ The map tile cache uses fixed counts for GPU and RAM limits. A memory-budget-bas
 
 These items can be addressed quickly with minimal risk:
 
-1. Define pi constant in one place
+1. ~~Define pi constant in one place~~ ✅ (done via linalg)
 2. Add named constants for vertex layout sizes
 3. Add shouldBeNear tolerance parameter to test helpers
 4. Document all FFI function parameters
 5. Add more gradient sampling tests
+6. Define named constant for bezier circle approximation (0.5522847498)
 
 ---
 
-*Last updated: 2025-12-21*
+## Recent Developments (December 2025)
+
+### Linalg Integration ✅
+
+The project now uses the `linalg` library for math operations, providing:
+- `Float.pi`, `Float.twoPi`, `Float.halfPi` constants
+- `Vec3`, `Mat4` types with standard operations
+- Easing functions via `Linalg.Easing`
+
+### Module Extraction ✅
+
+Several components have been extracted to separate packages for better reusability:
+- **assimptor**: 3D asset loading (Assimp wrapper)
+- **worldmap**: Map tile rendering and caching
+
+### Window Improvements ✅
+
+- Resizable windows with proper handling
+- Improved keyboard input handling
+
+### Embedded Shaders ✅
+
+Metal shaders are now embedded directly in the binary, eliminating runtime shader file loading.
+
+---
+
+*Last updated: 2025-12-30*
