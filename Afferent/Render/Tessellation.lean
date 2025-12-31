@@ -519,7 +519,8 @@ def sampleFillStyle (style : FillStyle) (p : Point) : Color :=
   | .solid c => c
   | .gradient g => sampleGradient g p
 
-/-- Tessellate a convex path with a fill style (solid or gradient), converting to NDC. -/
+/-- Tessellate a path with a fill style (solid or gradient), converting to NDC.
+    Handles both convex and non-convex polygons. -/
 def tessellateConvexPathFillNDC (path : Path) (style : FillStyle)
     (screenWidth screenHeight : Float) (tolerance : Float := 0.5) : TessellationResult := Id.run do
   let points := pathToPolygon path tolerance
@@ -539,7 +540,8 @@ def tessellateConvexPathFillNDC (path : Path) (style : FillStyle)
     vertices := vertices.push color.b
     vertices := vertices.push color.a
 
-  let indices := triangulateConvexFan points.size
+  -- Use triangulatePolygon which handles both convex and non-convex shapes
+  let indices := triangulatePolygon points
   return { vertices, indices }
 
 /-- Compute the centroid of a set of points. -/
@@ -615,8 +617,11 @@ def tessellateConvexPathFillNDCWithOriginal (originalPath transformedPath : Path
 
     return { vertices, indices }
   else
-    -- For solid colors and linear gradients: use standard fan triangulation
+    -- For solid colors and linear gradients: use smart triangulation
+    -- that handles both convex and non-convex polygons
     let mut vertices : Array Float := Array.mkEmpty (numPoints * 6)
+    -- Build a truncated points array that matches the vertices we're creating
+    let mut truncatedPoints : Array Point := Array.mkEmpty numPoints
     for i in [:numPoints] do
       if h : i < originalPoints.size ∧ i < transformedPoints.size then
         let color := sampleFillStyle style originalPoints[i]
@@ -627,8 +632,11 @@ def tessellateConvexPathFillNDCWithOriginal (originalPath transformedPath : Path
         vertices := vertices.push color.g
         vertices := vertices.push color.b
         vertices := vertices.push color.a
+        truncatedPoints := truncatedPoints.push transformedPoints[i]
 
-    let indices := triangulateConvexFan numPoints
+    -- Use triangulatePolygon which handles both convex and non-convex shapes
+    -- Pass the truncated points array that matches our vertex count
+    let indices := triangulatePolygon truncatedPoints
     return { vertices, indices }
 
 /-- Tessellate a rectangle with a fill style (solid or gradient), converting to NDC. -/
