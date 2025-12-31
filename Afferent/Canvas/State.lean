@@ -6,6 +6,7 @@ import Afferent.Core.Types
 import Afferent.Core.Path
 import Afferent.Core.Transform
 import Afferent.Core.Paint
+import Afferent.Render.Tessellation
 import Collimator.Prelude
 
 
@@ -119,25 +120,83 @@ def setGlobalAlpha (a : Float) (state : CanvasState) : CanvasState :=
 def transformPoint (state : CanvasState) (p : Point) : Point :=
   state.transform.apply p
 
-/-- Transform an entire path by the current transform. -/
-def transformPath (state : CanvasState) (path : Path) : Path :=
-  let transformCmd : PathCommand → PathCommand
-    | .moveTo p => .moveTo (state.transform.apply p)
-    | .lineTo p => .lineTo (state.transform.apply p)
+/-- Transform an entire path by the current transform.
+    Arcs are converted to bezier curves before transformation to handle non-uniform scaling correctly. -/
+def transformPath (state : CanvasState) (path : Path) : Path := Id.run do
+  let mut result : Array PathCommand := Array.mkEmpty path.commands.size
+  let mut currentPoint := path.startPoint.getD Point.zero
+  let mut subpathStart := currentPoint
+
+  for cmd in path.commands do
+    match cmd with
+    | .moveTo p =>
+      currentPoint := p
+      subpathStart := p
+      result := result.push (.moveTo (state.transform.apply p))
+
+    | .lineTo p =>
+      currentPoint := p
+      result := result.push (.lineTo (state.transform.apply p))
+
     | .quadraticCurveTo cp p =>
-        .quadraticCurveTo (state.transform.apply cp) (state.transform.apply p)
+      currentPoint := p
+      result := result.push (.quadraticCurveTo (state.transform.apply cp) (state.transform.apply p))
+
     | .bezierCurveTo cp1 cp2 p =>
-        .bezierCurveTo (state.transform.apply cp1) (state.transform.apply cp2) (state.transform.apply p)
-    | .arcTo p1 p2 r =>
-        .arcTo (state.transform.apply p1) (state.transform.apply p2) r  -- radius doesn't scale uniformly
-    | .arc center r startAngle endAngle ccw =>
-        .arc (state.transform.apply center) r startAngle endAngle ccw  -- needs proper transform handling
+      currentPoint := p
+      result := result.push (.bezierCurveTo (state.transform.apply cp1) (state.transform.apply cp2) (state.transform.apply p))
+
+    | .arcTo p1 p2 radius =>
+      -- Convert arcTo to beziers, then transform the control points
+      -- This handles non-uniform scaling correctly
+      match Tessellation.computeArcTo currentPoint p1 p2 radius with
+      | some (t1, beziers, t2) =>
+        -- Line to first tangent point
+        result := result.push (.lineTo (state.transform.apply t1))
+        -- Add transformed bezier segments
+        for (cp1, cp2, endPt) in beziers do
+          result := result.push (.bezierCurveTo (state.transform.apply cp1) (state.transform.apply cp2) (state.transform.apply endPt))
+        currentPoint := t2
+      | none =>
+        -- Degenerate case: just line to p1
+        result := result.push (.lineTo (state.transform.apply p1))
+        currentPoint := p1
+
+    | .arc center radius startAngle endAngle counterclockwise =>
+      -- Convert arc to beziers, then transform the control points
+      -- This handles non-uniform scaling correctly (circles become ellipses)
+      let beziers := Path.arcToBeziers center radius startAngle endAngle counterclockwise
+      -- First point on arc
+      let startPt := Point.mk' (center.x + radius * Float.cos startAngle) (center.y + radius * Float.sin startAngle)
+      if beziers.size > 0 then
+        -- Move to arc start if not already there (for standalone arcs)
+        if (currentPoint.x - startPt.x).abs > 0.001 || (currentPoint.y - startPt.y).abs > 0.001 then
+          result := result.push (.lineTo (state.transform.apply startPt))
+        -- Add transformed bezier segments
+        for (cp1, cp2, endPt) in beziers do
+          result := result.push (.bezierCurveTo (state.transform.apply cp1) (state.transform.apply cp2) (state.transform.apply endPt))
+          currentPoint := endPt
+
     | .rect rect =>
-        -- Transform rectangle to path since rectangles don't transform well
-        .rect { origin := state.transform.apply rect.origin, size := rect.size }
-    | .closePath => .closePath
-  { path with
-    commands := path.commands.map transformCmd
+      -- Convert rect to lines, then transform
+      let tl := rect.topLeft
+      let tr := rect.topRight
+      let br := rect.bottomRight
+      let bl := rect.bottomLeft
+      result := result.push (.moveTo (state.transform.apply tl))
+      result := result.push (.lineTo (state.transform.apply tr))
+      result := result.push (.lineTo (state.transform.apply br))
+      result := result.push (.lineTo (state.transform.apply bl))
+      result := result.push .closePath
+      currentPoint := tl
+      subpathStart := tl
+
+    | .closePath =>
+      result := result.push .closePath
+      currentPoint := subpathStart
+
+  return { path with
+    commands := result
     currentPoint := path.currentPoint.map state.transform.apply
     startPoint := path.startPoint.map state.transform.apply }
 

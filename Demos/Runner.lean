@@ -20,6 +20,7 @@ import Demos.Interactive
 import Demos.SpinningCubes
 import Demos.DemoGrid
 import Demos.Seascape
+import Demos.PathFeatures
 
 set_option maxRecDepth 1024
 
@@ -134,7 +135,7 @@ def unifiedDemo : IO Unit := do
         | none => 0
     | none => 0
 
-  let mut displayMode : Nat := startMode % 11
+  let mut displayMode : Nat := startMode % 12
   let mut msaaEnabled : Bool := true
   let mut lastTime := startTime
   let mut bouncingState := bouncingParticles
@@ -160,7 +161,7 @@ def unifiedDemo : IO Unit := do
       -- Release pointer lock when leaving mode 9 or 10
       if displayMode == 9 || displayMode == 10 then
         FFI.Window.setPointerLock c.ctx.window false
-      displayMode := (displayMode + 1) % 11
+      displayMode := (displayMode + 1) % 12
       c.clearKey
       -- Disable MSAA for throughput-heavy benchmarks and the seascape demo.
       -- (Seascape is usually fill-rate bound; MSAA can be a big hit at Retina resolutions.)
@@ -177,7 +178,8 @@ def unifiedDemo : IO Unit := do
       | 7 => IO.println "Switched to WIDGET demo (full-size)"
       | 8 => IO.println "Switched to INTERACTIVE demo (click the buttons!)"
       | 9 => IO.println "Switched to 3D SPINNING CUBES demo"
-      | _ => IO.println "Switched to SEASCAPE demo (Gerstner waves)"
+      | 10 => IO.println "Switched to SEASCAPE demo (Gerstner waves)"
+      | _ => IO.println "Switched to PATH FEATURES demo (non-convex, arcTo, transforms)"
 
     let ok ← c.beginFrame Color.darkGray
     if ok then
@@ -366,6 +368,12 @@ def unifiedDemo : IO Unit := do
           fillTextXY
             (s!"pos=({seascapeCamera.x},{seascapeCamera.y},{seascapeCamera.z}) yaw={seascapeCamera.yaw} pitch={seascapeCamera.pitch}")
             (20 * screenScale) (55 * screenScale) fontSmall
+      else if displayMode == 11 then
+        -- Path Features demo: non-convex polygons, arcTo, transformed arcs
+        c ← run' (c.resetTransform) do
+          renderPathFeaturesM screenScale fontSmall
+          setFillColor Color.white
+          fillTextXY "Path Features Demo - Non-convex, arcTo, transforms (Space to advance)" (20 * screenScale) (30 * screenScale) fontMedium
       else
         -- Normal demo mode: grid of demos using Trellis layout
         let (currentW, currentH) ← c.ctx.getCurrentSize

@@ -346,6 +346,254 @@ test "tessellateStroke handles closed paths" := do
   ensure (result.vertices.size > 0) "Should produce vertices for closed path"
   ensure (result.indices.size > 0) "Should produce indices for closed path"
 
+/-! ## Polygon Convexity Tests -/
+
+test "isConvexPolygon returns true for square" := do
+  let square := #[
+    Point.mk' 0 0,
+    Point.mk' 100 0,
+    Point.mk' 100 100,
+    Point.mk' 0 100
+  ]
+  ensure (isConvexPolygon square) "Square should be convex"
+
+test "isConvexPolygon returns true for triangle" := do
+  let triangle := #[
+    Point.mk' 50 0,
+    Point.mk' 100 100,
+    Point.mk' 0 100
+  ]
+  ensure (isConvexPolygon triangle) "Triangle should be convex"
+
+test "isConvexPolygon returns false for concave arrow" := do
+  -- Arrow shape pointing up with notch at bottom
+  let arrow := #[
+    Point.mk' 50 0,      -- top
+    Point.mk' 100 50,    -- right
+    Point.mk' 75 50,     -- right notch
+    Point.mk' 75 100,    -- right bottom
+    Point.mk' 25 100,    -- left bottom
+    Point.mk' 25 50,     -- left notch
+    Point.mk' 0 50       -- left
+  ]
+  ensure (!isConvexPolygon arrow) "Arrow shape should be concave"
+
+test "isConvexPolygon returns false for L-shape" := do
+  let lShape := #[
+    Point.mk' 0 0,
+    Point.mk' 80 0,
+    Point.mk' 80 30,
+    Point.mk' 30 30,
+    Point.mk' 30 100,
+    Point.mk' 0 100
+  ]
+  ensure (!isConvexPolygon lShape) "L-shape should be concave"
+
+test "isConvexPolygon returns true for degenerate (< 3 points)" := do
+  -- With less than 3 points, we can't have a concave polygon
+  ensure (isConvexPolygon #[]) "Empty should be considered convex"
+  ensure (isConvexPolygon #[Point.mk' 0 0]) "Single point should be convex"
+  ensure (isConvexPolygon #[Point.mk' 0 0, Point.mk' 100 0]) "Line should be convex"
+
+/-! ## Cross Product Tests -/
+
+test "crossProduct2D positive for CCW turn" := do
+  let a := Point.mk' 0 0
+  let b := Point.mk' 100 0
+  let c := Point.mk' 100 100
+  let cross := crossProduct2D a b c
+  ensure (cross > 0) s!"CCW turn should have positive cross product, got {cross}"
+
+test "crossProduct2D negative for CW turn" := do
+  let a := Point.mk' 0 0
+  let b := Point.mk' 100 0
+  let c := Point.mk' 100 (-100)
+  let cross := crossProduct2D a b c
+  ensure (cross < 0) s!"CW turn should have negative cross product, got {cross}"
+
+test "crossProduct2D zero for collinear points" := do
+  let a := Point.mk' 0 0
+  let b := Point.mk' 50 0
+  let c := Point.mk' 100 0
+  let cross := crossProduct2D a b c
+  shouldBeNear cross 0.0
+
+/-! ## Point In Triangle Tests -/
+
+test "pointInTriangle returns true for center point" := do
+  let a := Point.mk' 0 0
+  let b := Point.mk' 100 0
+  let c := Point.mk' 50 100
+  let center := Point.mk' 50 33
+  ensure (pointInTriangle center a b c) "Center should be inside triangle"
+
+test "pointInTriangle returns false for point outside" := do
+  let a := Point.mk' 0 0
+  let b := Point.mk' 100 0
+  let c := Point.mk' 50 100
+  let outside := Point.mk' 200 200
+  ensure (!pointInTriangle outside a b c) "Point outside should not be in triangle"
+
+test "pointInTriangle handles edge cases" := do
+  let a := Point.mk' 0 0
+  let b := Point.mk' 100 0
+  let c := Point.mk' 50 100
+  -- Point on vertex (may or may not be considered inside depending on implementation)
+  let _onVertex := Point.mk' 0 0
+  -- Point clearly outside
+  let farOut := Point.mk' (-100) (-100)
+  ensure (!pointInTriangle farOut a b c) "Far point should not be in triangle"
+
+/-! ## Ear Clipping Triangulation Tests -/
+
+test "triangulateEarClipping on triangle produces 1 triangle" := do
+  let triangle := #[
+    Point.mk' 0 0,
+    Point.mk' 100 0,
+    Point.mk' 50 100
+  ]
+  let indices := triangulateEarClipping triangle
+  ensure (indices.size == 3) s!"Triangle should produce 3 indices, got {indices.size}"
+
+test "triangulateEarClipping on square produces 2 triangles" := do
+  let square := #[
+    Point.mk' 0 0,
+    Point.mk' 100 0,
+    Point.mk' 100 100,
+    Point.mk' 0 100
+  ]
+  let indices := triangulateEarClipping square
+  ensure (indices.size == 6) s!"Square should produce 6 indices (2 triangles), got {indices.size}"
+
+test "triangulateEarClipping on concave arrow produces correct triangles" := do
+  -- 7-sided concave polygon should produce 5 triangles
+  let arrow := #[
+    Point.mk' 50 0,
+    Point.mk' 100 50,
+    Point.mk' 75 50,
+    Point.mk' 75 100,
+    Point.mk' 25 100,
+    Point.mk' 25 50,
+    Point.mk' 0 50
+  ]
+  let indices := triangulateEarClipping arrow
+  -- n-2 triangles for n vertices = 5 triangles = 15 indices
+  ensure (indices.size == 15) s!"7-vertex polygon should produce 15 indices, got {indices.size}"
+
+test "triangulateEarClipping on L-shape produces correct triangles" := do
+  let lShape := #[
+    Point.mk' 0 0,
+    Point.mk' 80 0,
+    Point.mk' 80 30,
+    Point.mk' 30 30,
+    Point.mk' 30 100,
+    Point.mk' 0 100
+  ]
+  let indices := triangulateEarClipping lShape
+  -- 6 vertices → 4 triangles → 12 indices
+  ensure (indices.size == 12) s!"L-shape should produce 12 indices, got {indices.size}"
+
+test "triangulatePolygon uses fan for convex, ear-clipping for concave" := do
+  let square := #[
+    Point.mk' 0 0,
+    Point.mk' 100 0,
+    Point.mk' 100 100,
+    Point.mk' 0 100
+  ]
+  let arrow := #[
+    Point.mk' 50 0,
+    Point.mk' 100 50,
+    Point.mk' 75 50,
+    Point.mk' 75 100,
+    Point.mk' 25 100,
+    Point.mk' 25 50,
+    Point.mk' 0 50
+  ]
+  -- Both should produce valid triangulations
+  let squareIndices := triangulatePolygon square
+  let arrowIndices := triangulatePolygon arrow
+  ensure (squareIndices.size == 6) s!"Square: expected 6 indices, got {squareIndices.size}"
+  ensure (arrowIndices.size == 15) s!"Arrow: expected 15 indices, got {arrowIndices.size}"
+
+/-! ## arcTo Geometry Tests -/
+
+test "computeArcTo returns some for valid corner" := do
+  let current := Point.mk' 0 50
+  let p1 := Point.mk' 50 50  -- corner
+  let p2 := Point.mk' 50 100 -- direction
+  let radius := 10.0
+  let result := computeArcTo current p1 p2 radius
+  ensure result.isSome "computeArcTo should return some for valid corner"
+  match result with
+  | some (t1, beziers, t2) =>
+    ensure (beziers.size > 0) "Should produce bezier segments"
+    -- Tangent points should be near p1 (within radius distance)
+    let d1 := Float.sqrt ((t1.x - p1.x) * (t1.x - p1.x) + (t1.y - p1.y) * (t1.y - p1.y))
+    let d2 := Float.sqrt ((t2.x - p1.x) * (t2.x - p1.x) + (t2.y - p1.y) * (t2.y - p1.y))
+    ensure (d1 <= radius + 1.0) s!"First tangent too far from corner: {d1}"
+    ensure (d2 <= radius + 1.0) s!"Second tangent too far from corner: {d2}"
+  | none => pure ()  -- Already handled by isSome check
+
+test "computeArcTo returns none for zero radius" := do
+  let current := Point.mk' 0 0
+  let p1 := Point.mk' 50 50
+  let p2 := Point.mk' 100 50
+  let result := computeArcTo current p1 p2 0.0
+  ensure result.isNone "computeArcTo should return none for zero radius"
+
+test "computeArcTo returns none for negative radius" := do
+  let current := Point.mk' 0 0
+  let p1 := Point.mk' 50 50
+  let p2 := Point.mk' 100 50
+  let result := computeArcTo current p1 p2 (-10.0)
+  ensure result.isNone "computeArcTo should return none for negative radius"
+
+test "computeArcTo returns none for collinear points" := do
+  let current := Point.mk' 0 0
+  let p1 := Point.mk' 50 0   -- same line
+  let p2 := Point.mk' 100 0  -- same line
+  let result := computeArcTo current p1 p2 10.0
+  ensure result.isNone "computeArcTo should return none for collinear points"
+
+test "computeArcTo handles right angle corner" := do
+  let current := Point.mk' 0 0
+  let p1 := Point.mk' 100 0   -- corner at right
+  let p2 := Point.mk' 100 100 -- going down
+  let radius := 20.0
+  let result := computeArcTo current p1 p2 radius
+  ensure result.isSome "computeArcTo should handle right angle corner"
+  match result with
+  | some (t1, beziers, t2) =>
+    -- For 90° corner, tangent points should be radius distance from corner
+    let d1 := Float.sqrt ((t1.x - p1.x) * (t1.x - p1.x) + (t1.y - p1.y) * (t1.y - p1.y))
+    let d2 := Float.sqrt ((t2.x - p1.x) * (t2.x - p1.x) + (t2.y - p1.y) * (t2.y - p1.y))
+    ensure ((d1 - radius).abs < 1.0) s!"First tangent distance should be ~{radius}, got {d1}"
+    ensure ((d2 - radius).abs < 1.0) s!"Second tangent distance should be ~{radius}, got {d2}"
+    ensure (beziers.size >= 1) "Should produce at least 1 bezier segment"
+  | none => pure ()  -- Already handled by isSome check
+
+/-! ## tessellatePath Tests (uses triangulatePolygon) -/
+
+test "tessellatePath handles concave polygon" := do
+  -- Create a concave arrow path
+  let path := Path.empty
+    |>.moveTo ⟨50, 0⟩
+    |>.lineTo ⟨100, 50⟩
+    |>.lineTo ⟨75, 50⟩
+    |>.lineTo ⟨75, 100⟩
+    |>.lineTo ⟨25, 100⟩
+    |>.lineTo ⟨25, 50⟩
+    |>.lineTo ⟨0, 50⟩
+    |>.closePath
+  let result := tessellatePath path Color.red
+  -- Should produce valid triangulation
+  ensure (result.vertices.size > 0) "Should produce vertices"
+  ensure (result.indices.size > 0) "Should produce indices"
+  -- 7 vertices × 6 floats = 42
+  ensure (result.vertices.size == 42) s!"Expected 42 floats (7 vertices), got {result.vertices.size}"
+  -- 5 triangles × 3 indices = 15
+  ensure (result.indices.size == 15) s!"Expected 15 indices, got {result.indices.size}"
+
 /-! ## Convex Path Tessellation Tests -/
 
 test "tessellateConvexPath produces correct output for triangle" := do

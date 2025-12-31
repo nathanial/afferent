@@ -71,6 +71,88 @@ def flattenQuadraticBezier (p0 cp p2 : Point) (tolerance : Float := 0.5) : Array
   let cp2 := Point.lerp p2 cp (2.0 / 3.0)
   flattenCubicBezier p0 cp1 cp2 p2 tolerance
 
+/-! ## arcTo Geometry -/
+
+/-- Compute the tangent arc for arcTo command.
+    Given current point, corner point p1, direction point p2, and radius:
+    1. Find tangent points on both line segments
+    2. Calculate arc center
+    3. Return (tangentPoint1, bezierSegments, tangentPoint2)
+    Returns none for degenerate cases (collinear points, zero radius). -/
+def computeArcTo (current p1 p2 : Point) (radius : Float)
+    : Option (Point × Array (Point × Point × Point) × Point) := Id.run do
+  if radius <= 0 then return none
+
+  -- Direction vectors
+  let d1x := current.x - p1.x
+  let d1y := current.y - p1.y
+  let d2x := p2.x - p1.x
+  let d2y := p2.y - p1.y
+
+  -- Normalize direction vectors
+  let len1 := Float.sqrt (d1x * d1x + d1y * d1y)
+  let len2 := Float.sqrt (d2x * d2x + d2y * d2y)
+  if len1 < 0.0001 || len2 < 0.0001 then return none
+
+  let u1x := d1x / len1
+  let u1y := d1y / len1
+  let u2x := d2x / len2
+  let u2y := d2y / len2
+
+  -- Cross product to check if lines are collinear
+  let cross := u1x * u2y - u1y * u2x
+  if cross.abs < 0.0001 then return none  -- Collinear, no arc possible
+
+  -- Compute half-angle between the two directions
+  -- The dot product gives cos(angle between directions)
+  let dot := u1x * u2x + u1y * u2y
+  let clampedDot := if dot < -1.0 then -1.0 else if dot > 1.0 then 1.0 else dot
+  let halfAngle := Float.acos clampedDot / 2.0
+
+  -- Distance from corner to tangent point: radius / tan(halfAngle)
+  let tanHalf := Float.tan halfAngle
+  if tanHalf.abs < 0.0001 then return none
+  let dist := radius / tanHalf
+
+  -- Clamp distance if it exceeds the line segment lengths
+  let minLen := if len1 < len2 then len1 else len2
+  let dist := if dist < minLen then dist else minLen
+  let actualRadius := dist * tanHalf
+
+  -- Tangent points
+  let t1 := Point.mk' (p1.x + u1x * dist) (p1.y + u1y * dist)
+  let t2 := Point.mk' (p1.x + u2x * dist) (p1.y + u2y * dist)
+
+  -- Arc center is at distance radius from both tangent points,
+  -- perpendicular to the line segments
+  -- Unit bisector direction (pointing toward center)
+  let bisectX := u1x + u2x
+  let bisectY := u1y + u2y
+  let bisectLen := Float.sqrt (bisectX * bisectX + bisectY * bisectY)
+  if bisectLen < 0.0001 then return none
+
+  -- The center is at distance radius/sin(halfAngle) from p1 along bisector
+  let sinHalf := Float.sin halfAngle
+  if sinHalf.abs < 0.0001 then return none
+  let centerDist := actualRadius / sinHalf
+
+  -- Determine which side the center is on (based on cross product sign)
+  let centerX := p1.x + (bisectX / bisectLen) * centerDist
+  let centerY := p1.y + (bisectY / bisectLen) * centerDist
+  let center := Point.mk' centerX centerY
+
+  -- Calculate start and end angles for the arc
+  let startAngle := Float.atan2 (t1.y - center.y) (t1.x - center.x)
+  let endAngle := Float.atan2 (t2.y - center.y) (t2.x - center.x)
+
+  -- Determine if we go clockwise or counterclockwise
+  let counterclockwise := cross > 0
+
+  -- Generate bezier segments for the arc
+  let beziers := Path.arcToBeziers center actualRadius startAngle endAngle counterclockwise
+
+  return some (t1, beziers, t2)
+
 /-- Convert a path to an array of polygon vertices (flatten all curves).
     Also returns whether the path is closed (ends with closePath or first/last points match). -/
 def pathToPolygonWithClosed (path : Path) (tolerance : Float := 0.5) : Array Point × Bool := Id.run do
@@ -119,12 +201,24 @@ def pathToPolygonWithClosed (path : Path) (tolerance : Float := 0.5) : Array Poi
         for pt in flat do
           points := points.push pt
         current := endPt
-    | .arcTo p1 p2 _radius =>
-      -- arcTo draws a line to p1, then an arc tangent to both lines
-      -- For now, approximate with line to p2 (full implementation is complex)
-      points := points.push p1
-      points := points.push p2
-      current := p2
+    | .arcTo p1 p2 radius =>
+      -- arcTo draws a line to the first tangent point, then an arc to the second tangent point
+      match computeArcTo current p1 p2 radius with
+      | some (t1, beziers, t2) =>
+        -- Line to first tangent point
+        points := points.push t1
+        -- Flatten the arc beziers
+        let mut arcCurrent := t1
+        for (cp1, cp2, endPt) in beziers do
+          let flat := flattenCubicBezier arcCurrent cp1 cp2 endPt tolerance
+          for pt in flat do
+            points := points.push pt
+          arcCurrent := endPt
+        current := t2
+      | none =>
+        -- Degenerate case: just draw line to p1
+        points := points.push p1
+        current := p1
 
   return (points, isClosed)
 
@@ -144,6 +238,116 @@ def triangulateConvexFan (numVertices : Nat) : Array UInt32 := Id.run do
     indices := indices.push (i + 1).toUInt32
   return indices
 
+/-! ## Ear-Clipping Triangulation for Non-Convex Polygons -/
+
+/-- Compute 2D cross product (z-component of 3D cross product).
+    Positive result means counter-clockwise turn from (a→b) to (a→c). -/
+def crossProduct2D (a b c : Point) : Float :=
+  (b.x - a.x) * (c.y - a.y) - (b.y - a.y) * (c.x - a.x)
+
+/-- Check if point p is inside triangle (a, b, c) using barycentric coordinates.
+    Returns true if point is strictly inside (not on edge). -/
+def pointInTriangle (p a b c : Point) : Bool :=
+  let d1 := crossProduct2D p a b
+  let d2 := crossProduct2D p b c
+  let d3 := crossProduct2D p c a
+  let hasNeg := d1 < 0 || d2 < 0 || d3 < 0
+  let hasPos := d1 > 0 || d2 > 0 || d3 > 0
+  !(hasNeg && hasPos)
+
+/-- Check if polygon is convex (all cross products have the same sign). -/
+def isConvexPolygon (vertices : Array Point) : Bool := Id.run do
+  if vertices.size < 3 then return true
+  let mut sign : Option Bool := none
+  for i in [:vertices.size] do
+    let a := vertices[i]!
+    let b := vertices[(i + 1) % vertices.size]!
+    let c := vertices[(i + 2) % vertices.size]!
+    let cross := crossProduct2D a b c
+    if cross.abs > 0.0001 then  -- Ignore nearly collinear
+      let isPositive := cross > 0
+      match sign with
+      | none => sign := some isPositive
+      | some s => if s != isPositive then return false
+  return true
+
+/-- Check if vertex at index i is an "ear" that can be clipped.
+    An ear is a vertex where:
+    1. The triangle formed with neighbors is oriented correctly (convex vertex)
+    2. No other vertices are inside that triangle -/
+private def isEar (vertices : Array Point) (remaining : Array Nat) (idx : Nat) : Bool := Id.run do
+  if remaining.size < 3 then return false
+  let prevIdx := (idx + remaining.size - 1) % remaining.size
+  let nextIdx := (idx + 1) % remaining.size
+  let a := vertices[remaining[prevIdx]!]!
+  let b := vertices[remaining[idx]!]!
+  let c := vertices[remaining[nextIdx]!]!
+  -- Check if this is a convex vertex (counter-clockwise turn)
+  let cross := crossProduct2D a b c
+  if cross <= 0 then return false  -- Reflex vertex, not an ear
+  -- Check that no other vertices are inside this triangle
+  for i in [:remaining.size] do
+    if i != prevIdx && i != idx && i != nextIdx then
+      let p := vertices[remaining[i]!]!
+      if pointInTriangle p a b c then return false
+  return true
+
+/-- Triangulate a simple polygon using ear clipping algorithm.
+    Works for both convex and concave polygons. -/
+def triangulateEarClipping (vertices : Array Point) : Array UInt32 := Id.run do
+  if vertices.size < 3 then return #[]
+
+  let numTriangles := vertices.size - 2
+  let mut indices : Array UInt32 := Array.mkEmpty (numTriangles * 3)
+  let mut remaining : Array Nat := Array.range vertices.size
+
+  let mut iterations := 0
+  let maxIterations := vertices.size * vertices.size  -- Safety limit
+
+  while remaining.size > 3 && iterations < maxIterations do
+    iterations := iterations + 1
+    let mut foundEar := false
+    let mut earIdx : Nat := 0
+
+    for i in [:remaining.size] do
+      if isEar vertices remaining i then
+        earIdx := i
+        foundEar := true
+        break
+
+    if foundEar then
+      -- Clip this ear: add triangle and remove vertex
+      let i := earIdx
+      let prevIdx := (i + remaining.size - 1) % remaining.size
+      let nextIdx := (i + 1) % remaining.size
+      indices := indices.push remaining[prevIdx]!.toUInt32
+      indices := indices.push remaining[i]!.toUInt32
+      indices := indices.push remaining[nextIdx]!.toUInt32
+      -- Remove the element at index i
+      let mut newRemaining : Array Nat := Array.mkEmpty (remaining.size - 1)
+      for j in [:remaining.size] do
+        if j != i then
+          newRemaining := newRemaining.push remaining[j]!
+      remaining := newRemaining
+    else
+      -- No ear found - polygon may be degenerate, fall back to fan
+      return triangulateConvexFan vertices.size
+
+  -- Add the final triangle
+  if remaining.size == 3 then
+    indices := indices.push remaining[0]!.toUInt32
+    indices := indices.push remaining[1]!.toUInt32
+    indices := indices.push remaining[2]!.toUInt32
+
+  return indices
+
+/-- Smart triangulation: use fast fan for convex polygons, ear-clipping for concave. -/
+def triangulatePolygon (vertices : Array Point) : Array UInt32 :=
+  if isConvexPolygon vertices then
+    triangulateConvexFan vertices.size
+  else
+    triangulateEarClipping vertices
+
 /-- Tessellate a rectangle into two triangles. -/
 def tessellateRect (r : Rect) (color : Color) : TessellationResult :=
   let tl := r.topLeft
@@ -161,8 +365,9 @@ def tessellateRect (r : Rect) (color : Color) : TessellationResult :=
 
   { vertices, indices := rectIndices }
 
-/-- Tessellate a convex path with a solid color. -/
-def tessellateConvexPath (path : Path) (color : Color) (tolerance : Float := 0.5) : TessellationResult := Id.run do
+/-- Tessellate a path with a solid color.
+    Works for both convex and non-convex simple polygons. -/
+def tessellatePath (path : Path) (color : Color) (tolerance : Float := 0.5) : TessellationResult := Id.run do
   let points := pathToPolygon path tolerance
 
   if points.size < 3 then
@@ -178,8 +383,13 @@ def tessellateConvexPath (path : Path) (color : Color) (tolerance : Float := 0.5
     vertices := vertices.push color.b
     vertices := vertices.push color.a
 
-  let indices := triangulateConvexFan points.size
+  let indices := triangulatePolygon points
   return { vertices, indices }
+
+/-- Tessellate a convex path with a solid color.
+    @deprecated Use tessellatePath which handles both convex and non-convex paths. -/
+def tessellateConvexPath (path : Path) (color : Color) (tolerance : Float := 0.5) : TessellationResult :=
+  tessellatePath path color tolerance
 
 /-- Convert pixel coordinates to NDC (Normalized Device Coordinates).
     NDC range is -1 to 1, with (0,0) at center.
@@ -205,8 +415,9 @@ def tessellateRectNDC (r : Rect) (color : Color) (screenWidth screenHeight : Flo
 
   { vertices, indices := rectIndices }
 
-/-- Tessellate a convex path with pixel coordinates, converting to NDC. -/
-def tessellateConvexPathNDC (path : Path) (color : Color)
+/-- Tessellate a path with pixel coordinates, converting to NDC.
+    Works for both convex and non-convex simple polygons. -/
+def tessellatePathNDC (path : Path) (color : Color)
     (screenWidth screenHeight : Float) (tolerance : Float := 0.5) : TessellationResult := Id.run do
   let points := pathToPolygon path tolerance
 
@@ -224,8 +435,14 @@ def tessellateConvexPathNDC (path : Path) (color : Color)
     vertices := vertices.push color.b
     vertices := vertices.push color.a
 
-  let indices := triangulateConvexFan points.size
+  let indices := triangulatePolygon points
   return { vertices, indices }
+
+/-- Tessellate a convex path with pixel coordinates, converting to NDC.
+    @deprecated Use tessellatePathNDC which handles both convex and non-convex paths. -/
+def tessellateConvexPathNDC (path : Path) (color : Color)
+    (screenWidth screenHeight : Float) (tolerance : Float := 0.5) : TessellationResult :=
+  tessellatePathNDC path color screenWidth screenHeight tolerance
 
 /-! ## Gradient Sampling -/
 

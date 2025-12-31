@@ -184,48 +184,33 @@ import Linalg.Easing
 
 ## Code Improvements
 
-### [Priority: High] Non-Convex Polygon Tessellation
+### [Priority: High] ~~Non-Convex Polygon Tessellation~~ ✅ COMPLETED
 
-**Current State:** The tessellateConvexPath function uses simple fan triangulation which only works correctly for convex polygons.
+**Status:** Completed - implemented ear-clipping triangulation algorithm.
 
-**Proposed Change:** Implement proper ear-clipping or triangulation algorithm for non-convex polygons.
+**Resolution:** Added `triangulateEarClipping`, `triangulatePolygon`, `isConvexPolygon`, `crossProduct2D`, and `pointInTriangle` functions. The `tessellatePath` function now automatically uses ear-clipping for concave polygons and fast fan triangulation for convex ones.
 
-**Benefits:** Correct rendering of arbitrary polygon shapes (complex paths, concave shapes).
-
-**Affected Files:**
-- `Afferent/Render/Tessellation.lean` (triangulateConvexFan function and callers)
-
-**Estimated Effort:** Medium
+**Demo:** PathFeatures demo (mode 11 in Runner) showcases arrows, L-shapes, stars, and chevrons.
 
 ---
 
-### [Priority: High] Proper arcTo Implementation
+### [Priority: High] ~~Proper arcTo Implementation~~ ✅ COMPLETED
 
-**Current State:** The arcTo command in path tessellation is simplified to just draw lines to p1 and p2 (line 116).
+**Status:** Completed - implemented HTML5 Canvas-style arcTo geometry.
 
-**Proposed Change:** Implement proper arcTo geometry that draws a line to p1 then an arc tangent to both lines with the given radius.
+**Resolution:** Added `computeArcTo` function that calculates tangent points and arc center, then generates bezier curve approximations. The `pathToPolygonWithClosed` function now properly handles arcTo commands with correct rounded corner geometry.
 
-**Benefits:** Correct HTML5 Canvas API compatibility for rounded corners and path effects.
-
-**Affected Files:**
-- `Afferent/Render/Tessellation.lean` (pathToPolygonWithClosed, lines 113-118)
-
-**Estimated Effort:** Medium
+**Demo:** PathFeatures demo shows rounded rectangles, rounded triangles, and pill shapes using arcTo.
 
 ---
 
-### [Priority: High] Arc Transform Handling
+### [Priority: High] ~~Arc Transform Handling~~ ✅ COMPLETED
 
-**Current State:** In CanvasState.transformPath, arc commands transform the center but not the radius or angles (line 132-133 comment notes this).
+**Status:** Completed - arcs are now converted to beziers before transformation.
 
-**Proposed Change:** Properly handle arc transforms including non-uniform scaling (may require converting arcs to beziers).
+**Resolution:** Updated `transformPath` in `CanvasState` to convert arc and arcTo commands to bezier curves before applying transforms. This correctly handles non-uniform scaling (circles become ellipses) and rotation.
 
-**Benefits:** Correct arc rendering under arbitrary transforms.
-
-**Affected Files:**
-- `Afferent/Canvas/State.lean` (transformPath function, lines 131-133)
-
-**Estimated Effort:** Medium
+**Demo:** PathFeatures demo shows circles under 2:1 and 1:2 scaling (rendering as ellipses), rotated pie slices, and combined scale+rotation on arcs.
 
 ---
 
@@ -317,12 +302,13 @@ import Linalg.Easing
 
 ### [Priority: Medium] ~~Add More Test Coverage~~ ✅ COMPLETED
 
-**Status:** Completed - test count increased from 43 to 76 tests.
+**Status:** Completed - test count increased from 43 to 98 tests.
 
 **New test suites added:**
 - `CanvasStateTests.lean`: 20 tests for transform composition, inverse, state stack
 - `FontTests.lean`: 7 tests for font loading and text measurement
 - Gradient edge cases: 6 tests for empty/single stops, out-of-bounds sampling
+- Tessellation tests: 22 tests for ear-clipping, convexity detection, arcTo geometry
 
 **Remaining opportunities:** Widget rendering tests, more layout edge cases.
 
@@ -418,6 +404,15 @@ Several components have been extracted to separate packages for better reusabili
 
 Metal shaders are now embedded directly in the binary, eliminating runtime shader file loading.
 
+### Path Features ✅ (New)
+
+Implemented three high-priority code improvements:
+- **Ear-clipping triangulation**: Non-convex polygon support (arrows, L-shapes, stars)
+- **Proper arcTo**: HTML5 Canvas-style tangent arc geometry for rounded corners
+- **Arc transforms**: Arcs convert to beziers for correct non-uniform scaling
+
+New PathFeatures demo (mode 11 in Runner) showcases all three features.
+
 ---
 
-*Last updated: 2025-12-30* (quick wins + test coverage complete)
+*Last updated: 2025-12-30* (path features + 98 tests)
