@@ -229,6 +229,74 @@ test "sampleRadialGradient at edge returns last stop" := do
   shouldBeNear result.r 0.0
   shouldBeNear result.b 1.0
 
+/-! ## Gradient Edge Case Tests -/
+
+test "interpolateGradientStops with empty stops returns black" := do
+  let stops : Array GradientStop := #[]
+  let result := interpolateGradientStops stops 0.5
+  shouldBeNear result.r 0.0
+  shouldBeNear result.g 0.0
+  shouldBeNear result.b 0.0
+
+test "interpolateGradientStops with single stop returns that color" := do
+  let stops := #[{ position := 0.5, color := Color.green : GradientStop }]
+  let result := interpolateGradientStops stops 0.0
+  shouldBeNear result.r 0.0
+  shouldBeNear result.g 1.0
+  shouldBeNear result.b 0.0
+  -- Also check at t=1.0
+  let result2 := interpolateGradientStops stops 1.0
+  shouldBeNear result2.g 1.0
+
+test "interpolateGradientStops clamps t below 0" := do
+  let stops := #[
+    { position := 0.0, color := Color.red : GradientStop },
+    { position := 1.0, color := Color.blue }
+  ]
+  let result := interpolateGradientStops stops (-0.5)
+  -- Should return first stop color
+  shouldBeNear result.r 1.0
+  shouldBeNear result.b 0.0
+
+test "interpolateGradientStops clamps t above 1" := do
+  let stops := #[
+    { position := 0.0, color := Color.red : GradientStop },
+    { position := 1.0, color := Color.blue }
+  ]
+  let result := interpolateGradientStops stops 1.5
+  -- Should return last stop color
+  shouldBeNear result.r 0.0
+  shouldBeNear result.b 1.0
+
+test "sampleLinearGradient outside gradient bounds clamps" := do
+  let start := Point.mk' 0 0
+  let finish := Point.mk' 100 0
+  let stops := #[
+    { position := 0.0, color := Color.white : GradientStop },
+    { position := 1.0, color := Color.black }
+  ]
+  -- Sample before start (x = -50)
+  let before := sampleLinearGradient start finish stops ⟨-50, 0⟩
+  shouldBeNear before.r 1.0  -- White
+  -- Sample after end (x = 150)
+  let after := sampleLinearGradient start finish stops ⟨150, 0⟩
+  shouldBeNear after.r 0.0  -- Black
+
+test "sampleRadialGradient outside radius clamps to last stop" := do
+  let center := Point.mk' 50 50
+  let radius := 25.0
+  let stops := #[
+    { position := 0.0, color := Color.yellow : GradientStop },
+    { position := 1.0, color := Color.purple }
+  ]
+  -- Point far outside radius
+  let farPoint := Point.mk' 200 200
+  let result := sampleRadialGradient center radius stops farPoint
+  -- Should be clamped to last stop (purple)
+  shouldBeNear result.r 0.5
+  shouldBeNear result.g 0.0
+  shouldBeNear result.b 0.5
+
 /-! ## NDC Conversion Tests -/
 
 test "pixelToNDC converts top-left (0,0) to (-1, 1)" := do

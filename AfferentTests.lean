@@ -7,6 +7,8 @@ import Afferent.Tests.FFISafetyTests
 import Afferent.Tests.AssetLoadingTests
 import Afferent.Tests.SeascapeSmokeTests
 import Afferent.Tests.LayoutTests
+import Afferent.Tests.CanvasStateTests
+import Afferent.Tests.FontTests
 import Crucible
 
 open Crucible
