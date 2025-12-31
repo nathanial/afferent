@@ -54,7 +54,7 @@ private def renderCubesWithView (renderer : Renderer) (t : Float)
     screenWidth/screenHeight: for aspect ratio calculation -/
 def renderSpinningCubes (renderer : Renderer) (t : Float) (screenWidth screenHeight : Float) : IO Unit := do
   let aspect := screenWidth / screenHeight
-  let fovY := 3.14159265358979 / 4.0  -- pi/4 radians = 45 degrees
+  let fovY := Float.pi / 4.0  -- 45 degrees
   let proj := Mat4.perspective fovY aspect 0.1 100.0
   let view := Mat4.lookAt ⟨0, 0, 12⟩ ⟨0, 0, 0⟩ Vec3.unitY
   renderCubesWithView renderer t proj view
@@ -67,7 +67,7 @@ def renderSpinningCubes (renderer : Renderer) (t : Float) (screenWidth screenHei
 def renderSpinningCubesWithCamera (renderer : Renderer) (t : Float)
     (screenWidth screenHeight : Float) (camera : FPSCamera) : IO Unit := do
   let aspect := screenWidth / screenHeight
-  let fovY := 3.14159265358979 / 4.0  -- pi/4 radians = 45 degrees
+  let fovY := Float.pi / 4.0  -- 45 degrees
   let proj := Mat4.perspective fovY aspect 0.1 100.0
   let view := camera.viewMatrix
   renderCubesWithView renderer t proj view

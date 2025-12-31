@@ -20,6 +20,15 @@ deriving Repr, Inhabited
 
 namespace Tessellation
 
+/-- Vertex size for 2D rendering: x, y, r, g, b, a -/
+def vertexSize2D : Nat := 6
+
+/-- Vertex size for 3D rendering: x, y, z, nx, ny, nz, r, g, b, a -/
+def vertexSize3D : Nat := 10
+
+/-- Vertex size for textured 3D: x, y, z, nx, ny, nz, u, v, r, g, b, a -/
+def vertexSize3DTextured : Nat := 12
+
 /-- Cached rectangle indices for two triangles (0,1,2) and (0,2,3).
     Reused across all rectangle tessellation to avoid repeated allocation. -/
 private def rectIndices : Array UInt32 := #[0, 1, 2, 0, 2, 3]
@@ -724,11 +733,11 @@ end Tessellation
 /-- Accumulates tessellated geometry for a single draw call.
     Use this to batch many shapes into one draw call for better performance. -/
 structure Batch where
-  /-- Accumulated vertex data (6 floats per vertex: x, y, r, g, b, a). -/
+  /-- Accumulated vertex data (vertexSize2D floats per vertex: x, y, r, g, b, a). -/
   vertices : Array Float
   /-- Accumulated triangle indices. -/
   indices : Array UInt32
-  /-- Current vertex count (vertices.size / 6), used for index remapping. -/
+  /-- Current vertex count (vertices.size / vertexSize2D), used for index remapping. -/
   vertexCount : Nat
 deriving Inhabited
 
@@ -757,7 +766,7 @@ def add (batch : Batch) (result : TessellationResult) : Batch :=
       indices := indices.push (idx + offset)
     { vertices := batch.vertices ++ result.vertices
       indices := indices
-      vertexCount := batch.vertexCount + result.vertices.size / 6 }
+      vertexCount := batch.vertexCount + result.vertices.size / Tessellation.vertexSize2D }
 
 /-- Combine two batches.
     Uses in-place push loop to avoid intermediate array allocation from .map -/

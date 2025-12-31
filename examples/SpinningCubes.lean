@@ -33,7 +33,7 @@ def main : IO Unit := do
 
       -- Camera setup (pulled back to see 5x5 grid)
       let aspect := 800.0 / 600.0
-      let fovY := 3.14159265358979 / 4.0  -- pi/4 radians = 45 degrees
+      let fovY := Float.pi / 4.0  -- 45 degrees
       let proj := Mat4.perspective fovY aspect 0.1 100.0
       let view := Mat4.lookAt ⟨0, 0, 12⟩ ⟨0, 0, 0⟩ Vec3.unitY
 

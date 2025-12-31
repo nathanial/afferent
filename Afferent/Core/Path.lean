@@ -36,6 +36,9 @@ deriving Repr, Inhabited
 
 namespace Path
 
+/-- Bezier approximation factor for circular arcs: 4/3 * tan(π/8) ≈ 0.5522847498 -/
+def bezierCircleK : Float := 0.5522847498
+
 def empty : Path :=
   { commands := #[]
     currentPoint := none
@@ -109,9 +112,7 @@ def rectangleXYWH (x y width height : Float) : Path :=
 
 /-- Approximate a circle using cubic Bezier curves (4 segments). -/
 def circle (center : Point) (radius : Float) : Path :=
-  -- Magic number for circular arc approximation with cubic beziers
-  -- k = 4/3 * tan(π/8) ≈ 0.5522847498
-  let k := 0.5522847498 * radius
+  let k := bezierCircleK * radius
   let cx := center.x
   let cy := center.y
   let r := radius
@@ -125,9 +126,8 @@ def circle (center : Point) (radius : Float) : Path :=
 
 /-- Create an ellipse path. -/
 def ellipse (center : Point) (radiusX radiusY : Float) : Path :=
-  let k := 0.5522847498
-  let kx := k * radiusX
-  let ky := k * radiusY
+  let kx := bezierCircleK * radiusX
+  let ky := bezierCircleK * radiusY
   let cx := center.x
   let cy := center.y
   empty
@@ -141,7 +141,7 @@ def ellipse (center : Point) (radiusX radiusY : Float) : Path :=
 /-- Create a rounded rectangle path. -/
 def roundedRect (r : Rect) (cornerRadius : Float) : Path :=
   let cr := min cornerRadius (min (r.width / 2) (r.height / 2))
-  let k := 0.5522847498 * cr
+  let k := bezierCircleK * cr
   let x := r.x
   let y := r.y
   let w := r.width
