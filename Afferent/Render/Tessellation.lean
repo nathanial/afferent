@@ -271,20 +271,35 @@ def isConvexPolygon (vertices : Array Point) : Bool := Id.run do
       | some s => if s != isPositive then return false
   return true
 
+/-- Compute signed area of polygon (positive for CCW, negative for CW in standard coords).
+    Note: In screen coordinates (y-down), the sign is flipped. -/
+def signedPolygonArea (vertices : Array Point) : Float := Id.run do
+  if vertices.size < 3 then return 0.0
+  let mut area := 0.0
+  for i in [:vertices.size] do
+    let j := (i + 1) % vertices.size
+    area := area + vertices[i]!.x * vertices[j]!.y
+    area := area - vertices[j]!.x * vertices[i]!.y
+  return area / 2.0
+
 /-- Check if vertex at index i is an "ear" that can be clipped.
     An ear is a vertex where:
     1. The triangle formed with neighbors is oriented correctly (convex vertex)
-    2. No other vertices are inside that triangle -/
-private def isEar (vertices : Array Point) (remaining : Array Nat) (idx : Nat) : Bool := Id.run do
+    2. No other vertices are inside that triangle
+    The `expectPositive` parameter indicates the expected sign of cross products
+    for convex vertices (depends on polygon winding order). -/
+private def isEar (vertices : Array Point) (remaining : Array Nat) (idx : Nat)
+    (expectPositive : Bool) : Bool := Id.run do
   if remaining.size < 3 then return false
   let prevIdx := (idx + remaining.size - 1) % remaining.size
   let nextIdx := (idx + 1) % remaining.size
   let a := vertices[remaining[prevIdx]!]!
   let b := vertices[remaining[idx]!]!
   let c := vertices[remaining[nextIdx]!]!
-  -- Check if this is a convex vertex (counter-clockwise turn)
+  -- Check if this is a convex vertex (sign depends on winding order)
   let cross := crossProduct2D a b c
-  if cross <= 0 then return false  -- Reflex vertex, not an ear
+  let isConvex := if expectPositive then cross > 0 else cross < 0
+  if !isConvex then return false  -- Reflex vertex, not an ear
   -- Check that no other vertices are inside this triangle
   for i in [:remaining.size] do
     if i != prevIdx && i != idx && i != nextIdx then
@@ -293,9 +308,15 @@ private def isEar (vertices : Array Point) (remaining : Array Nat) (idx : Nat) :
   return true
 
 /-- Triangulate a simple polygon using ear clipping algorithm.
-    Works for both convex and concave polygons. -/
+    Works for both convex and concave polygons, regardless of winding order. -/
 def triangulateEarClipping (vertices : Array Point) : Array UInt32 := Id.run do
   if vertices.size < 3 then return #[]
+
+  -- Detect winding order using signed area
+  -- Positive area = CCW (expect positive cross products for convex vertices)
+  -- Negative area = CW (expect negative cross products for convex vertices)
+  let area := signedPolygonArea vertices
+  let expectPositive := area > 0
 
   let numTriangles := vertices.size - 2
   let mut indices : Array UInt32 := Array.mkEmpty (numTriangles * 3)
@@ -310,7 +331,7 @@ def triangulateEarClipping (vertices : Array Point) : Array UInt32 := Id.run do
     let mut earIdx : Nat := 0
 
     for i in [:remaining.size] do
-      if isEar vertices remaining i then
+      if isEar vertices remaining i expectPositive then
         earIdx := i
         foundEar := true
         break
