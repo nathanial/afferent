@@ -17,6 +17,7 @@ struct AfferentWindow {
     __unsafe_unretained AfferentView *view;
     __unsafe_unretained AfferentWindowDelegate *delegate;
     __unsafe_unretained id<MTLDevice> device;
+    bool destroyed;
     // Keyboard state
     uint16_t lastKeyCode;
     bool keyPressed;
@@ -467,6 +468,7 @@ AfferentResult afferent_window_create(
         handle->mouseDeltaY = 0;
         handle->clickHead = 0;
         handle->clickCount = 0;
+        handle->destroyed = false;
 
         // Set back-reference so view can store key events
         view.windowHandle = handle;
@@ -478,39 +480,42 @@ AfferentResult afferent_window_create(
 
 void afferent_window_destroy(AfferentWindowRef window) {
     if (window) {
-        @autoreleasepool {
-            AfferentView *view = window->view;
-            NSWindow *nsWindow = window->nsWindow;
-            AfferentWindowDelegate *delegate = window->delegate;
-            id<MTLDevice> device = window->device;
-
-            if (view) {
-                view.windowHandle = NULL;
-            }
-            if (nsWindow) {
-                [nsWindow setDelegate:nil];
-                [nsWindow setContentView:nil];
-                [nsWindow close];
-            }
-
-            if (delegate) {
-                CFRelease((__bridge CFTypeRef)delegate);
-            }
-            if (view) {
-                CFRelease((__bridge CFTypeRef)view);
-            }
-            if (nsWindow) {
-                CFRelease((__bridge CFTypeRef)nsWindow);
-            }
-            if (device) {
-                CFRelease((__bridge CFTypeRef)device);
-            }
-
-            window->delegate = NULL;
-            window->view = NULL;
-            window->nsWindow = NULL;
-            window->device = NULL;
+        if (window->destroyed) {
+            return;
         }
+        window->destroyed = true;
+
+        AfferentView *view = window->view;
+        NSWindow *nsWindow = window->nsWindow;
+        AfferentWindowDelegate *delegate = window->delegate;
+        id<MTLDevice> device = window->device;
+
+        if (view) {
+            view.windowHandle = NULL;
+        }
+        if (nsWindow) {
+            [nsWindow setDelegate:nil];
+            [nsWindow setContentView:nil];
+            [nsWindow close];
+        }
+
+        if (delegate) {
+            CFRelease((__bridge CFTypeRef)delegate);
+        }
+        if (view) {
+            CFRelease((__bridge CFTypeRef)view);
+        }
+        if (nsWindow) {
+            CFRelease((__bridge CFTypeRef)nsWindow);
+        }
+        if (device) {
+            CFRelease((__bridge CFTypeRef)device);
+        }
+
+        window->delegate = NULL;
+        window->view = NULL;
+        window->nsWindow = NULL;
+        window->device = NULL;
         free(window);
     }
 }
