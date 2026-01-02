@@ -826,13 +826,70 @@ private def computeNormal (dir : Point) : Point :=
     Returns left and right edge points for the stroke. -/
 def expandPolylineToStroke (points : Array Point) (halfWidth : Float)
     (lineCap : LineCap) (lineJoin : LineJoin) (miterLimit : Float := 10.0)
-    : Array Point × Array Point := Id.run do
+    (closed : Bool := false) : Array Point × Array Point := Id.run do
   if points.size < 2 then
     return (#[], #[])
 
   -- Pre-allocate with estimated capacity (may grow for bevel joins)
   let mut leftPoints : Array Point := Array.mkEmpty points.size
   let mut rightPoints : Array Point := Array.mkEmpty points.size
+
+  let addJoin (left right : Array Point) (p prev next : Point) : Array Point × Array Point := Id.run do
+    -- Direction vectors
+    let dx1 := p.x - prev.x
+    let dy1 := p.y - prev.y
+    let dx2 := next.x - p.x
+    let dy2 := next.y - p.y
+
+    let dir1 := normalize dx1 dy1
+    let dir2 := normalize dx2 dy2
+
+    let normal1 := computeNormal dir1
+    let normal2 := computeNormal dir2
+
+    -- Average normal for the join
+    let avgNx := (normal1.x + normal2.x) / 2.0
+    let avgNy := (normal1.y + normal2.y) / 2.0
+    let avgNormal := normalize avgNx avgNy
+
+    -- Compute miter length (how much to extend at sharp corners)
+    let dot := dir1.x * dir2.x + dir1.y * dir2.y
+    let miterScale := if dot > -0.999 then 1.0 / Float.sqrt ((1.0 + dot) / 2.0) else miterLimit
+
+    -- Apply line join
+    match lineJoin with
+    | .miter =>
+      let scale := min miterScale miterLimit
+      return (left.push ⟨p.x + avgNormal.x * halfWidth * scale,
+                         p.y + avgNormal.y * halfWidth * scale⟩,
+              right.push ⟨p.x - avgNormal.x * halfWidth * scale,
+                          p.y - avgNormal.y * halfWidth * scale⟩)
+    | .bevel =>
+      -- Add two points for bevel (simplified)
+      let left := left.push ⟨p.x + normal1.x * halfWidth, p.y + normal1.y * halfWidth⟩
+      let left := left.push ⟨p.x + normal2.x * halfWidth, p.y + normal2.y * halfWidth⟩
+      let right := right.push ⟨p.x - normal1.x * halfWidth, p.y - normal1.y * halfWidth⟩
+      let right := right.push ⟨p.x - normal2.x * halfWidth, p.y - normal2.y * halfWidth⟩
+      return (left, right)
+    | .round =>
+      -- Simplified to miter for now
+      let scale := min miterScale miterLimit
+      return (left.push ⟨p.x + avgNormal.x * halfWidth * scale,
+                         p.y + avgNormal.y * halfWidth * scale⟩,
+              right.push ⟨p.x - avgNormal.x * halfWidth * scale,
+                          p.y - avgNormal.y * halfWidth * scale⟩)
+
+  if closed then
+    -- Closed path: treat every point as a join, no caps.
+    for i in [:points.size] do
+      if h : i < points.size then
+        let p := points[i]
+        let prev := points[(i + points.size - 1) % points.size]!
+        let next := points[(i + 1) % points.size]!
+        let (left, right) := addJoin leftPoints rightPoints p prev next
+        leftPoints := left
+        rightPoints := right
+    return (leftPoints, rightPoints)
 
   -- Process each segment
   for i in [:points.size] do
@@ -900,49 +957,9 @@ def expandPolylineToStroke (points : Array Point) (halfWidth : Float)
         if h2 : i > 0 ∧ i + 1 < points.size then
           let prev := points[i - 1]
           let next := points[i + 1]
-
-          -- Direction vectors
-          let dx1 := p.x - prev.x
-          let dy1 := p.y - prev.y
-          let dx2 := next.x - p.x
-          let dy2 := next.y - p.y
-
-          let dir1 := normalize dx1 dy1
-          let dir2 := normalize dx2 dy2
-
-          let normal1 := computeNormal dir1
-          let normal2 := computeNormal dir2
-
-          -- Average normal for the join
-          let avgNx := (normal1.x + normal2.x) / 2.0
-          let avgNy := (normal1.y + normal2.y) / 2.0
-          let avgNormal := normalize avgNx avgNy
-
-          -- Compute miter length (how much to extend at sharp corners)
-          let dot := dir1.x * dir2.x + dir1.y * dir2.y
-          let miterScale := if dot > -0.999 then 1.0 / Float.sqrt ((1.0 + dot) / 2.0) else miterLimit
-
-          -- Apply line join
-          match lineJoin with
-          | .miter =>
-            let scale := min miterScale miterLimit
-            leftPoints := leftPoints.push ⟨p.x + avgNormal.x * halfWidth * scale,
-                                           p.y + avgNormal.y * halfWidth * scale⟩
-            rightPoints := rightPoints.push ⟨p.x - avgNormal.x * halfWidth * scale,
-                                             p.y - avgNormal.y * halfWidth * scale⟩
-          | .bevel =>
-            -- Add two points for bevel (simplified)
-            leftPoints := leftPoints.push ⟨p.x + normal1.x * halfWidth, p.y + normal1.y * halfWidth⟩
-            leftPoints := leftPoints.push ⟨p.x + normal2.x * halfWidth, p.y + normal2.y * halfWidth⟩
-            rightPoints := rightPoints.push ⟨p.x - normal1.x * halfWidth, p.y - normal1.y * halfWidth⟩
-            rightPoints := rightPoints.push ⟨p.x - normal2.x * halfWidth, p.y - normal2.y * halfWidth⟩
-          | .round =>
-            -- Simplified to miter for now
-            let scale := min miterScale miterLimit
-            leftPoints := leftPoints.push ⟨p.x + avgNormal.x * halfWidth * scale,
-                                           p.y + avgNormal.y * halfWidth * scale⟩
-            rightPoints := rightPoints.push ⟨p.x - avgNormal.x * halfWidth * scale,
-                                             p.y - avgNormal.y * halfWidth * scale⟩
+          let (left, right) := addJoin leftPoints rightPoints p prev next
+          leftPoints := left
+          rightPoints := right
 
   return (leftPoints, rightPoints)
 
@@ -1003,15 +1020,15 @@ def tessellateStroke (path : Path) (style : StrokeStyle) (tolerance : Float := 0
   if points.size < 2 then
     return { vertices := #[], indices := #[] }
 
-  -- For closed paths, add the first point at the end to close the loop
-  let points := if isClosed && points.size > 0 then
-    points.push points[0]!
-  else
-    points
-
   let halfWidth := style.lineWidth / 2.0
   let (leftPoints, rightPoints) := expandPolylineToStroke points halfWidth
-    style.lineCap style.lineJoin style.miterLimit
+    style.lineCap style.lineJoin style.miterLimit isClosed
+
+  -- For closed paths, close the strip by repeating the first edge points.
+  let (leftPoints, rightPoints) := if isClosed && leftPoints.size > 0 && rightPoints.size > 0 then
+    (leftPoints.push leftPoints[0]!, rightPoints.push rightPoints[0]!)
+  else
+    (leftPoints, rightPoints)
 
   return strokeEdgesToTriangles leftPoints rightPoints style.color
 
@@ -1024,15 +1041,15 @@ def tessellateStrokeNDC (path : Path) (style : StrokeStyle)
   if points.size < 2 then
     return { vertices := #[], indices := #[] }
 
-  -- For closed paths, add the first point at the end to close the loop
-  let points := if isClosed && points.size > 0 then
-    points.push points[0]!
-  else
-    points
-
   let halfWidth := style.lineWidth / 2.0
   let (leftPoints, rightPoints) := expandPolylineToStroke points halfWidth
-    style.lineCap style.lineJoin style.miterLimit
+    style.lineCap style.lineJoin style.miterLimit isClosed
+
+  -- For closed paths, close the strip by repeating the first edge points.
+  let (leftPoints, rightPoints) := if isClosed && leftPoints.size > 0 && rightPoints.size > 0 then
+    (leftPoints.push leftPoints[0]!, rightPoints.push rightPoints[0]!)
+  else
+    (leftPoints, rightPoints)
 
   -- Convert to NDC
   let toNDC := fun (p : Point) => pixelToNDC p.x p.y screenWidth screenHeight

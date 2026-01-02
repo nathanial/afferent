@@ -87,6 +87,64 @@ AfferentResult afferent_renderer_create(
 
 void afferent_renderer_destroy(AfferentRendererRef renderer) {
     if (renderer) {
+        @autoreleasepool {
+            renderer->currentEncoder = nil;
+            renderer->currentCommandBuffer = nil;
+            renderer->currentDrawable = nil;
+
+            renderer->msaaTexture = nil;
+            renderer->depthTexture = nil;
+            renderer->msaaDepthTexture = nil;
+            renderer->depthState = nil;
+            renderer->depthStateDisabled = nil;
+            renderer->depthStateOcean = nil;
+
+            renderer->pipelineState = nil;
+            renderer->textPipelineState = nil;
+            renderer->spritePipelineState = nil;
+            renderer->pipelineStateMSAA = nil;
+            renderer->pipelineStateNoMSAA = nil;
+            renderer->textPipelineStateMSAA = nil;
+            renderer->textPipelineStateNoMSAA = nil;
+            renderer->spritePipelineStateMSAA = nil;
+            renderer->spritePipelineStateNoMSAA = nil;
+            renderer->instancedPipelineState = nil;
+            renderer->trianglePipelineState = nil;
+            renderer->circlePipelineState = nil;
+            renderer->animatedRectPipelineState = nil;
+            renderer->animatedTrianglePipelineState = nil;
+            renderer->animatedCirclePipelineState = nil;
+            renderer->orbitalPipelineState = nil;
+            renderer->dynamicCirclePipelineState = nil;
+            renderer->dynamicRectPipelineState = nil;
+            renderer->dynamicTrianglePipelineState = nil;
+            renderer->texturedRectPipelineState = nil;
+            renderer->texturedRectPipelineStateMSAA = nil;
+            renderer->texturedRectPipelineStateNoMSAA = nil;
+            renderer->pipeline3D = nil;
+            renderer->pipeline3DMSAA = nil;
+            renderer->pipeline3DNoMSAA = nil;
+            renderer->pipeline3DOcean = nil;
+            renderer->pipeline3DOceanMSAA = nil;
+            renderer->pipeline3DOceanNoMSAA = nil;
+            renderer->pipeline3DTextured = nil;
+            renderer->pipeline3DTexturedMSAA = nil;
+            renderer->pipeline3DTexturedNoMSAA = nil;
+
+            renderer->textSampler = nil;
+            renderer->spriteSampler = nil;
+            renderer->texturedMeshSampler = nil;
+
+            renderer->oceanIndexBuffer = nil;
+            renderer->animatedRectBuffer = nil;
+            renderer->animatedTriangleBuffer = nil;
+            renderer->animatedCircleBuffer = nil;
+            renderer->orbitalBuffer = nil;
+
+            renderer->commandQueue = nil;
+            renderer->device = nil;
+            renderer->window = NULL;
+        }
         free(renderer);
     }
 }

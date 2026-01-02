@@ -179,6 +179,13 @@ void afferent_renderer_set_scissor(
     NSUInteger sw = (NSUInteger)width;
     NSUInteger sh = (NSUInteger)height;
 
+    // If origin is outside the drawable, clamp to empty scissor to avoid underflow.
+    if (sx >= maxW || sy >= maxH) {
+        MTLScissorRect scissor = {0, 0, 0, 0};
+        [renderer->currentEncoder setScissorRect:scissor];
+        return;
+    }
+
     // Ensure scissor doesn't exceed render target
     if (sx + sw > maxW) sw = maxW - sx;
     if (sy + sh > maxH) sh = maxH - sy;

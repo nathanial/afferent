@@ -43,62 +43,62 @@ extern void afferent_texture_set_metal_texture(AfferentTextureRef texture, void*
 // Internal renderer structure
 struct AfferentRenderer {
     AfferentWindowRef window;
-    id<MTLDevice> device;
-    id<MTLCommandQueue> commandQueue;
+    __strong id<MTLDevice> device;
+    __strong id<MTLCommandQueue> commandQueue;
     bool msaaEnabled;                                  // Per-frame MSAA toggle
     float drawableScaleOverride;                       // 0 = native scale, >0 overrides
     // Active pipeline pointers (match current render pass sample count)
-    id<MTLRenderPipelineState> pipelineState;
-    id<MTLRenderPipelineState> textPipelineState;      // For text rendering
-    id<MTLRenderPipelineState> spritePipelineState;    // For sprite/texture rendering
+    __strong id<MTLRenderPipelineState> pipelineState;
+    __strong id<MTLRenderPipelineState> textPipelineState;      // For text rendering
+    __strong id<MTLRenderPipelineState> spritePipelineState;    // For sprite/texture rendering
     // MSAA / non-MSAA variants for pipelines used in sprite benchmark
-    id<MTLRenderPipelineState> pipelineStateMSAA;
-    id<MTLRenderPipelineState> pipelineStateNoMSAA;
-    id<MTLRenderPipelineState> textPipelineStateMSAA;
-    id<MTLRenderPipelineState> textPipelineStateNoMSAA;
-    id<MTLRenderPipelineState> spritePipelineStateMSAA;
-    id<MTLRenderPipelineState> spritePipelineStateNoMSAA;
-    id<MTLRenderPipelineState> instancedPipelineState; // For instanced rect rendering
-    id<MTLRenderPipelineState> trianglePipelineState;  // For instanced triangle rendering
-    id<MTLRenderPipelineState> circlePipelineState;    // For instanced circle rendering
+    __strong id<MTLRenderPipelineState> pipelineStateMSAA;
+    __strong id<MTLRenderPipelineState> pipelineStateNoMSAA;
+    __strong id<MTLRenderPipelineState> textPipelineStateMSAA;
+    __strong id<MTLRenderPipelineState> textPipelineStateNoMSAA;
+    __strong id<MTLRenderPipelineState> spritePipelineStateMSAA;
+    __strong id<MTLRenderPipelineState> spritePipelineStateNoMSAA;
+    __strong id<MTLRenderPipelineState> instancedPipelineState; // For instanced rect rendering
+    __strong id<MTLRenderPipelineState> trianglePipelineState;  // For instanced triangle rendering
+    __strong id<MTLRenderPipelineState> circlePipelineState;    // For instanced circle rendering
     // Animated pipelines (GPU-side animation)
-    id<MTLRenderPipelineState> animatedRectPipelineState;
-    id<MTLRenderPipelineState> animatedTrianglePipelineState;
-    id<MTLRenderPipelineState> animatedCirclePipelineState;
-    id<MTLRenderPipelineState> orbitalPipelineState;   // For orbital particle rendering
-    id<MTLRenderPipelineState> dynamicCirclePipelineState;  // For dynamic position circles
-    id<MTLRenderPipelineState> dynamicRectPipelineState;    // For dynamic position rects
-    id<MTLRenderPipelineState> dynamicTrianglePipelineState; // For dynamic position triangles
-    id<MTLSamplerState> textSampler;                   // For text texture sampling
-    id<MTLSamplerState> spriteSampler;                 // For sprite texture sampling
+    __strong id<MTLRenderPipelineState> animatedRectPipelineState;
+    __strong id<MTLRenderPipelineState> animatedTrianglePipelineState;
+    __strong id<MTLRenderPipelineState> animatedCirclePipelineState;
+    __strong id<MTLRenderPipelineState> orbitalPipelineState;   // For orbital particle rendering
+    __strong id<MTLRenderPipelineState> dynamicCirclePipelineState;  // For dynamic position circles
+    __strong id<MTLRenderPipelineState> dynamicRectPipelineState;    // For dynamic position rects
+    __strong id<MTLRenderPipelineState> dynamicTrianglePipelineState; // For dynamic position triangles
+    __strong id<MTLSamplerState> textSampler;                   // For text texture sampling
+    __strong id<MTLSamplerState> spriteSampler;                 // For sprite texture sampling
     // Textured rectangle rendering (for map tiles)
-    id<MTLRenderPipelineState> texturedRectPipelineState;
-    id<MTLRenderPipelineState> texturedRectPipelineStateMSAA;
-    id<MTLRenderPipelineState> texturedRectPipelineStateNoMSAA;
-    id<MTLCommandBuffer> currentCommandBuffer;
-    id<MTLRenderCommandEncoder> currentEncoder;
-    id<CAMetalDrawable> currentDrawable;
-    id<MTLTexture> msaaTexture;  // 4x MSAA render target
+    __strong id<MTLRenderPipelineState> texturedRectPipelineState;
+    __strong id<MTLRenderPipelineState> texturedRectPipelineStateMSAA;
+    __strong id<MTLRenderPipelineState> texturedRectPipelineStateNoMSAA;
+    __strong id<MTLCommandBuffer> currentCommandBuffer;
+    __strong id<MTLRenderCommandEncoder> currentEncoder;
+    __strong id<CAMetalDrawable> currentDrawable;
+    __strong id<MTLTexture> msaaTexture;  // 4x MSAA render target
     NSUInteger msaaWidth;        // Track size for recreation
     NSUInteger msaaHeight;
     // 3D rendering support
-    id<MTLTexture> depthTexture;           // Depth buffer (non-MSAA)
-    id<MTLTexture> msaaDepthTexture;       // Depth buffer (MSAA)
-    id<MTLDepthStencilState> depthState;   // Depth test state (enabled)
-    id<MTLDepthStencilState> depthStateDisabled; // Depth test disabled for 2D after 3D
-    id<MTLDepthStencilState> depthStateOcean;    // Ocean depth state (test on, no writes)
-    id<MTLRenderPipelineState> pipeline3D;       // Active 3D rendering pipeline
-    id<MTLRenderPipelineState> pipeline3DMSAA;   // 3D pipeline (4x MSAA)
-    id<MTLRenderPipelineState> pipeline3DNoMSAA; // 3D pipeline (no MSAA)
-    id<MTLRenderPipelineState> pipeline3DOcean;       // Active ocean projected-grid pipeline
-    id<MTLRenderPipelineState> pipeline3DOceanMSAA;   // Ocean pipeline (4x MSAA)
-    id<MTLRenderPipelineState> pipeline3DOceanNoMSAA; // Ocean pipeline (no MSAA)
+    __strong id<MTLTexture> depthTexture;           // Depth buffer (non-MSAA)
+    __strong id<MTLTexture> msaaDepthTexture;       // Depth buffer (MSAA)
+    __strong id<MTLDepthStencilState> depthState;   // Depth test state (enabled)
+    __strong id<MTLDepthStencilState> depthStateDisabled; // Depth test disabled for 2D after 3D
+    __strong id<MTLDepthStencilState> depthStateOcean;    // Ocean depth state (test on, no writes)
+    __strong id<MTLRenderPipelineState> pipeline3D;       // Active 3D rendering pipeline
+    __strong id<MTLRenderPipelineState> pipeline3DMSAA;   // 3D pipeline (4x MSAA)
+    __strong id<MTLRenderPipelineState> pipeline3DNoMSAA; // 3D pipeline (no MSAA)
+    __strong id<MTLRenderPipelineState> pipeline3DOcean;       // Active ocean projected-grid pipeline
+    __strong id<MTLRenderPipelineState> pipeline3DOceanMSAA;   // Ocean pipeline (4x MSAA)
+    __strong id<MTLRenderPipelineState> pipeline3DOceanNoMSAA; // Ocean pipeline (no MSAA)
     // Textured 3D rendering (for loaded assets with diffuse textures)
-    id<MTLRenderPipelineState> pipeline3DTextured;       // Active textured 3D pipeline
-    id<MTLRenderPipelineState> pipeline3DTexturedMSAA;   // Textured 3D pipeline (4x MSAA)
-    id<MTLRenderPipelineState> pipeline3DTexturedNoMSAA; // Textured 3D pipeline (no MSAA)
-    id<MTLSamplerState> texturedMeshSampler;             // Sampler for textured meshes
-    id<MTLBuffer> oceanIndexBuffer;
+    __strong id<MTLRenderPipelineState> pipeline3DTextured;       // Active textured 3D pipeline
+    __strong id<MTLRenderPipelineState> pipeline3DTexturedMSAA;   // Textured 3D pipeline (4x MSAA)
+    __strong id<MTLRenderPipelineState> pipeline3DTexturedNoMSAA; // Textured 3D pipeline (no MSAA)
+    __strong id<MTLSamplerState> texturedMeshSampler;             // Sampler for textured meshes
+    __strong id<MTLBuffer> oceanIndexBuffer;
     uint32_t oceanIndexCount;
     uint32_t oceanGridSize;
     NSUInteger depthWidth;                 // Track depth texture size
@@ -107,10 +107,10 @@ struct AfferentRenderer {
     float screenWidth;   // Current screen dimensions for text rendering
     float screenHeight;
     // Persistent buffers for animated rendering (uploaded once, reused every frame)
-    id<MTLBuffer> animatedRectBuffer;
-    id<MTLBuffer> animatedTriangleBuffer;
-    id<MTLBuffer> animatedCircleBuffer;
-    id<MTLBuffer> orbitalBuffer;
+    __strong id<MTLBuffer> animatedRectBuffer;
+    __strong id<MTLBuffer> animatedTriangleBuffer;
+    __strong id<MTLBuffer> animatedCircleBuffer;
+    __strong id<MTLBuffer> orbitalBuffer;
     uint32_t animatedRectCount;
     uint32_t animatedTriangleCount;
     uint32_t animatedCircleCount;

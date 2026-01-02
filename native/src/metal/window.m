@@ -13,10 +13,10 @@
 
 // Internal window structure (defined here so the view can access fields)
 struct AfferentWindow {
-    NSWindow *nsWindow;
-    AfferentView *view;
-    AfferentWindowDelegate *delegate;
-    id<MTLDevice> device;
+    __strong NSWindow *nsWindow;
+    __strong AfferentView *view;
+    __strong AfferentWindowDelegate *delegate;
+    __strong id<MTLDevice> device;
     // Keyboard state
     uint16_t lastKeyCode;
     bool keyPressed;
@@ -479,7 +479,18 @@ AfferentResult afferent_window_create(
 void afferent_window_destroy(AfferentWindowRef window) {
     if (window) {
         @autoreleasepool {
-            [window->nsWindow close];
+            if (window->view) {
+                window->view.windowHandle = NULL;
+            }
+            if (window->nsWindow) {
+                [window->nsWindow setDelegate:nil];
+                [window->nsWindow setContentView:nil];
+                [window->nsWindow close];
+            }
+            window->delegate = nil;
+            window->view = nil;
+            window->nsWindow = nil;
+            window->device = nil;
         }
         free(window);
     }
