@@ -83,6 +83,9 @@ void afferent_renderer_draw_stroke_path(
     float miter_limit,
     uint32_t line_cap,
     uint32_t line_join,
+    float rotation_center_x,
+    float rotation_center_y,
+    float rotation,
     const float* dash_segments,
     uint32_t dash_count,
     float dash_offset,
@@ -105,7 +108,11 @@ void afferent_renderer_draw_stroke_path(
     v.lineCap = line_cap;
     v.lineJoin = line_join;
     v.segmentSubdivisions = subdivisions;
-    v.padding = 0;
+    v.padding0 = 0;
+    v.rotationCenter[0] = rotation_center_x;
+    v.rotationCenter[1] = rotation_center_y;
+    v.rotation = rotation;
+    v.padding1 = 0.0f;
 
     StrokePathFragmentUniforms f;
     f.color[0] = r;

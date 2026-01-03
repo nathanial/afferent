@@ -24,7 +24,9 @@ struct StrokePathVertexUniforms {
     uint lineCap;
     uint lineJoin;
     uint segmentSubdivisions;
-    uint padding;
+    float2 rotationCenter;
+    float rotation;
+    float padding;
 };
 
 struct StrokePathFragmentUniforms {
@@ -68,6 +70,15 @@ static inline float2 normalize_safe(float2 v) {
 
 static inline float2 perp(float2 v) {
     return float2(-v.y, v.x);
+}
+
+static inline float2 rotate_point(float2 p, float2 center, float cosA, float sinA) {
+    float2 v = p - center;
+    return float2(v.x * cosA - v.y * sinA, v.x * sinA + v.y * cosA) + center;
+}
+
+static inline float2 rotate_dir(float2 v, float cosA, float sinA) {
+    return float2(v.x * cosA - v.y * sinA, v.x * sinA + v.y * cosA);
 }
 
 static inline float2 cubic_point(float2 p0, float2 c1, float2 c2, float2 p1, float t) {
@@ -117,6 +128,16 @@ vertex StrokePathVertexOut stroke_path_vertex_main(
     StrokePathVertexOut out;
     StrokeSegment seg = segments[instance_id];
 
+    float cosA = cos(u.rotation);
+    float sinA = sin(u.rotation);
+
+    float2 rp0 = rotate_point(float2(seg.p0), u.rotationCenter, cosA, sinA);
+    float2 rp1 = rotate_point(float2(seg.p1), u.rotationCenter, cosA, sinA);
+    float2 rc1 = rotate_point(float2(seg.c1), u.rotationCenter, cosA, sinA);
+    float2 rc2 = rotate_point(float2(seg.c2), u.rotationCenter, cosA, sinA);
+    float2 prevDir = rotate_dir(normalize_safe(float2(seg.prevDir)), cosA, sinA);
+    float2 nextDir = rotate_dir(normalize_safe(float2(seg.nextDir)), cosA, sinA);
+
     uint subdivisions = max(u.segmentSubdivisions, 1u);
     uint sampleIndex = vertex_id / 2;
     float side = (vertex_id % 2 == 0) ? 1.0 : -1.0;
@@ -126,17 +147,11 @@ vertex StrokePathVertexOut stroke_path_vertex_main(
     float2 dir;
 
     if (seg.kind < 0.5) {
-        float2 p0 = float2(seg.p0);
-        float2 p1 = float2(seg.p1);
-        pos = mix(p0, p1, t);
-        dir = normalize_safe(p1 - p0);
+        pos = mix(rp0, rp1, t);
+        dir = normalize_safe(rp1 - rp0);
     } else {
-        float2 p0 = float2(seg.p0);
-        float2 p1 = float2(seg.p1);
-        float2 c1 = float2(seg.c1);
-        float2 c2 = float2(seg.c2);
-        pos = cubic_point(p0, c1, c2, p1, t);
-        dir = normalize_safe(cubic_tangent(p0, c1, c2, p1, t));
+        pos = cubic_point(rp0, rc1, rc2, rp1, t);
+        dir = normalize_safe(cubic_tangent(rp0, rc1, rc2, rp1, t));
     }
 
     if (length(dir) < 1e-4) {
@@ -152,12 +167,10 @@ vertex StrokePathVertexOut stroke_path_vertex_main(
 
     if (u.lineJoin == LINEJOIN_MITER) {
         if (isStart && seg.hasPrev > 0.5) {
-            float2 prevDir = normalize_safe(float2(seg.prevDir));
             float2 n1 = perp(prevDir);
             float2 n2 = normal;
             compute_miter(n1, n2, u.miterLimit, offsetDir, miterScale);
         } else if (isEnd && seg.hasNext > 0.5) {
-            float2 nextDir = normalize_safe(float2(seg.nextDir));
             float2 n1 = normal;
             float2 n2 = perp(nextDir);
             compute_miter(n1, n2, u.miterLimit, offsetDir, miterScale);

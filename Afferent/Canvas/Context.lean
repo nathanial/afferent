@@ -237,6 +237,7 @@ def strokePath (ctx : DrawContext) (path : Path) (style : StrokeStyle) : IO Unit
       w h
       style.miterLimit
       lineCap lineJoin
+      0.0 0.0 0.0
       dashSegments
       dashCount.toUInt32
       dashOffset
@@ -253,6 +254,7 @@ def strokePath (ctx : DrawContext) (path : Path) (style : StrokeStyle) : IO Unit
       w h
       style.miterLimit
       lineCap lineJoin
+      0.0 0.0 0.0
       dashSegments
       dashCount.toUInt32
       dashOffset
