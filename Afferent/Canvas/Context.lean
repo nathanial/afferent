@@ -310,6 +310,24 @@ def runStatefulLoop (ctx : DrawContext) (clearColor : Color)
 
 end DrawContext
 
+/-! ## Canvas Configuration -/
+
+/-- Configuration for creating a canvas application.
+    Dimensions are in logical pixels; if `scaleToScreen` is true (default),
+    they will be multiplied by the screen scale factor for Retina displays. -/
+structure CanvasConfig where
+  /-- Logical width in pixels (default: 1920) -/
+  width : Float := 1920.0
+  /-- Logical height in pixels (default: 1080) -/
+  height : Float := 1080.0
+  /-- Window title -/
+  title : String := "Afferent"
+  /-- Background color cleared each frame -/
+  clearColor : Color := Color.darkGray
+  /-- If true, multiply dimensions by screen scale factor for Retina displays -/
+  scaleToScreen : Bool := true
+deriving Repr, Inhabited
+
 /-! ## Stateful Canvas - Higher-level API with automatic state management -/
 
 /-- A canvas with built-in state management and optional batching. -/
@@ -947,5 +965,57 @@ def runLoopM (c : Canvas) (clearColor : Color) (render : Float → CanvasM Unit)
       canvas ← canvas.endFrame
 
 end CanvasM
+
+/-! ## Canvas.run - Simplified Application Entry Point -/
+
+namespace Canvas
+
+/-- Run a canvas application with automatic setup and frame loop.
+
+    This is the recommended way to create a simple canvas application.
+    The frame callback receives (elapsed, deltaTime) in seconds and runs in CanvasM.
+
+    Example:
+    ```lean
+    def main : IO Unit := do
+      let font ← Font.load "/System/Library/Fonts/Monaco.ttf" 24
+      Canvas.run { title := "My App" } fun elapsed dt => do
+        resetTransform
+        setFillColor Color.white
+        fillTextXY s!"Time: {elapsed:.2f}" 20 30 font
+    ```
+
+    For stateful applications, capture IORefs in the closure:
+    ```lean
+    def main : IO Unit := do
+      let counterRef ← IO.mkRef 0
+      Canvas.run { title := "Counter" } fun elapsed dt => do
+        let count ← counterRef.get
+        if ← hasKeyPressed then
+          counterRef.modify (· + 1)
+          clearKey
+        fillTextXY s!"Count: {count}" 20 30 font
+    ```
+-/
+def run (config : CanvasConfig) (frame : Float → Float → CanvasM Unit) : IO Unit := do
+  let screenScale ← if config.scaleToScreen then FFI.getScreenScale else pure 1.0
+  let physWidth := (config.width * screenScale).toUInt32
+  let physHeight := (config.height * screenScale).toUInt32
+  let canvas ← Canvas.create physWidth physHeight config.title
+  let startTime ← IO.monoMsNow
+  let mut lastTime := startTime
+  let mut c := canvas
+  while !(← c.shouldClose) do
+    c.pollEvents
+    let ok ← c.beginFrame config.clearColor
+    if ok then
+      let now ← IO.monoMsNow
+      let elapsed := (now - startTime).toFloat / 1000.0
+      let dt := (now - lastTime).toFloat / 1000.0
+      lastTime := now
+      c ← CanvasM.run' c (frame elapsed dt)
+      c ← c.endFrame
+
+end Canvas
 
 end Afferent

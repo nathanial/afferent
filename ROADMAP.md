@@ -314,24 +314,31 @@ Canvas.run settings fun ctx => do
 
 ---
 
-### [Priority: Medium] Simplified Main Loop
+### [Priority: Medium] ~~Simplified Main Loop~~ ✅ COMPLETED
 
-**Current:** Every app needs 50+ lines of boilerplate:
-- Create canvas, load fonts
-- `while !(← c.shouldClose)` loop
-- `pollEvents`, `beginFrame`, `endFrame`
-- Manual frame timing (`now - lastTime`)
-- Manual cleanup
+**Status:** Completed - added `Canvas.run` and `CanvasConfig`.
 
-**Proposed:**
+**Resolution:** New simplified application entry point:
 ```lean
-Canvas.run { width := 1920, height := 1080, title := "My App" } fun ctx t dt => do
-  -- Just rendering code here
-  -- t = elapsed time, dt = delta time
-  -- Cleanup automatic
+-- Before: 50+ lines of boilerplate
+let screenScale ← FFI.getScreenScale
+let canvas ← Canvas.create physWidth physHeight "Title"
+let mut c := canvas
+while !(← c.shouldClose) do
+  c.pollEvents
+  let ok ← c.beginFrame Color.darkGray
+  if ok then
+    let elapsed := ...
+    c ← run' c do ...
+    c ← c.endFrame
+
+-- After: 3 lines
+Canvas.run { title := "My App" } fun elapsed dt => do
+  resetTransform
+  fillTextXY s!"Time: {elapsed}" 20 30 font
 ```
 
-**Affected Files:** `Afferent/Canvas/Context.lean` (new `Canvas.run` function)
+`CanvasConfig` provides: width, height, title, clearColor, scaleToScreen (auto Retina scaling).
 
 ---
 
@@ -381,9 +388,9 @@ widget.onClick ce.x ce.y fun id =>
 
 ## Summary: Next Up
 
-1. **Canvas.run main loop** - Eliminates boilerplate, manages resources
-2. **Auto-scaling mode** - No more `* screenScale` everywhere
-3. **System font loading** - Platform-independent font names
+1. **Auto-scaling mode** - No more `* screenScale` everywhere
+2. **System font loading** - Platform-independent font names
+3. **Round line caps/joins** - Complete stroke rendering
 
 ---
 
