@@ -19,6 +19,55 @@ typedef struct __attribute__((packed)) {
     float color[4];     // RGBA (16 bytes)
 } InstanceData;  // Total: 32 bytes
 
+// Stroke uniforms structure (matches stroke shader)
+typedef struct {
+    float viewport[2];  // Canvas width/height in pixels (8 bytes)
+    float halfWidth;    // Half line width in pixels (4 bytes)
+    float padding;      // Alignment padding (4 bytes)
+    float color[4];     // RGBA (16 bytes)
+} StrokeUniforms;  // Total: 32 bytes
+
+// Stroke segment structure (packed floats, 18 floats = 72 bytes)
+typedef struct __attribute__((packed)) {
+    float p0[2];
+    float p1[2];
+    float c1[2];
+    float c2[2];
+    float prevDir[2];
+    float nextDir[2];
+    float startDist;
+    float length;
+    float hasPrev;
+    float hasNext;
+    float kind;
+    float padding;
+} StrokeSegment;
+
+// Stroke path vertex uniforms (matches stroke_path shader)
+typedef struct {
+    float viewport[2];
+    float halfWidth;
+    float miterLimit;
+    uint32_t lineCap;
+    uint32_t lineJoin;
+    uint32_t segmentSubdivisions;
+    uint32_t padding;
+} StrokePathVertexUniforms;  // Total: 32 bytes
+
+// Stroke path fragment uniforms (matches stroke_path shader)
+typedef struct {
+    float color[4];
+    float dashSegments[8];
+    uint32_t dashCount;
+    float dashOffset;
+    uint32_t lineCap;
+    float halfWidth;
+    float padding0;
+    float padding1;
+    float padding2;
+    float padding3;
+} StrokePathFragmentUniforms;  // Total: 80 bytes
+
 // Animated instance data structure (matches shader) - 24 bytes
 typedef struct {
     float pixelPos[2];      // Position in pixel coordinates (8 bytes)

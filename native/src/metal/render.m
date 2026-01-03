@@ -100,10 +100,13 @@ void afferent_renderer_destroy(AfferentRendererRef renderer) {
             renderer->depthStateOcean = nil;
 
             renderer->pipelineState = nil;
+            renderer->strokePipelineState = nil;
             renderer->textPipelineState = nil;
             renderer->spritePipelineState = nil;
             renderer->pipelineStateMSAA = nil;
             renderer->pipelineStateNoMSAA = nil;
+            renderer->strokePipelineStateMSAA = nil;
+            renderer->strokePipelineStateNoMSAA = nil;
             renderer->textPipelineStateMSAA = nil;
             renderer->textPipelineStateNoMSAA = nil;
             renderer->spritePipelineStateMSAA = nil;
@@ -159,6 +162,8 @@ void afferent_renderer_set_msaa_enabled(AfferentRendererRef renderer, bool enabl
     if (!renderer) return;
     renderer->msaaEnabled = enabled;
     renderer->pipelineState = enabled ? renderer->pipelineStateMSAA : renderer->pipelineStateNoMSAA;
+    renderer->strokePipelineState = enabled ? renderer->strokePipelineStateMSAA : renderer->strokePipelineStateNoMSAA;
+    renderer->strokePathPipelineState = enabled ? renderer->strokePathPipelineStateMSAA : renderer->strokePathPipelineStateNoMSAA;
     renderer->textPipelineState = enabled ? renderer->textPipelineStateMSAA : renderer->textPipelineStateNoMSAA;
     renderer->spritePipelineState = enabled ? renderer->spritePipelineStateMSAA : renderer->spritePipelineStateNoMSAA;
     renderer->pipeline3D = enabled ? renderer->pipeline3DMSAA : renderer->pipeline3DNoMSAA;
@@ -313,6 +318,68 @@ AfferentResult afferent_buffer_create_vertex(
         // Get wrapper struct from pool (avoids malloc per draw call)
         struct AfferentBuffer *buffer = pool_acquire_wrapper();
         buffer->count = vertex_count;
+        buffer->mtlBuffer = mtlBuffer;
+        *out_buffer = buffer;
+        return AFFERENT_OK;
+    }
+}
+
+AfferentResult afferent_buffer_create_stroke_vertex(
+    AfferentRendererRef renderer,
+    const AfferentStrokeVertex* vertices,
+    uint32_t vertex_count,
+    AfferentBufferRef* out_buffer
+) {
+    @autoreleasepool {
+        size_t required_size = vertex_count * sizeof(AfferentStrokeVertex);
+
+        id<MTLBuffer> mtlBuffer = pool_acquire_buffer(
+            renderer->device,
+            g_buffer_pool.vertex_pool,
+            &g_buffer_pool.vertex_pool_count,
+            required_size,
+            true
+        );
+
+        if (!mtlBuffer) {
+            return AFFERENT_ERROR_BUFFER_FAILED;
+        }
+
+        memcpy(mtlBuffer.contents, vertices, required_size);
+
+        struct AfferentBuffer *buffer = pool_acquire_wrapper();
+        buffer->count = vertex_count;
+        buffer->mtlBuffer = mtlBuffer;
+        *out_buffer = buffer;
+        return AFFERENT_OK;
+    }
+}
+
+AfferentResult afferent_buffer_create_stroke_segment(
+    AfferentRendererRef renderer,
+    const AfferentStrokeSegment* segments,
+    uint32_t segment_count,
+    AfferentBufferRef* out_buffer
+) {
+    @autoreleasepool {
+        size_t required_size = segment_count * sizeof(AfferentStrokeSegment);
+
+        id<MTLBuffer> mtlBuffer = pool_acquire_buffer(
+            renderer->device,
+            g_buffer_pool.vertex_pool,
+            &g_buffer_pool.vertex_pool_count,
+            required_size,
+            true
+        );
+
+        if (!mtlBuffer) {
+            return AFFERENT_ERROR_BUFFER_FAILED;
+        }
+
+        memcpy(mtlBuffer.contents, segments, required_size);
+
+        struct AfferentBuffer *buffer = pool_acquire_wrapper();
+        buffer->count = segment_count;
         buffer->mtlBuffer = mtlBuffer;
         *out_buffer = buffer;
         return AFFERENT_OK;

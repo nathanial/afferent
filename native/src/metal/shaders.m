@@ -12,6 +12,8 @@ NSString *dynamicCircleShaderSource = nil;
 NSString *dynamicRectShaderSource = nil;
 NSString *dynamicTriangleShaderSource = nil;
 NSString *spriteShaderSource = nil;
+NSString *strokeShaderSource = nil;
+NSString *strokePathShaderSource = nil;
 NSString *shader3DSource = nil;
 NSString *shader3DTexturedSource = nil;
 NSString *texturedRectShaderSource = nil;
@@ -38,6 +40,10 @@ void afferent_set_shader_source(const char* name, const char* source) {
         dynamicTriangleShaderSource = sourceStr;
     } else if (strcmp(name, "sprite") == 0) {
         spriteShaderSource = sourceStr;
+    } else if (strcmp(name, "stroke") == 0) {
+        strokeShaderSource = sourceStr;
+    } else if (strcmp(name, "stroke_path") == 0) {
+        strokePathShaderSource = sourceStr;
     } else if (strcmp(name, "mesh3d") == 0) {
         shader3DSource = sourceStr;
     } else if (strcmp(name, "mesh3d_textured") == 0) {
@@ -52,6 +58,7 @@ BOOL afferent_init_shaders(void) {
     if (shaderSource && textShaderSource && instancedShaderSource &&
         animatedShaderSource && orbitalShaderSource && dynamicCircleShaderSource &&
         dynamicRectShaderSource && dynamicTriangleShaderSource && spriteShaderSource &&
+        strokeShaderSource && strokePathShaderSource &&
         shader3DSource && shader3DTexturedSource && texturedRectShaderSource) {
         return YES;
     }

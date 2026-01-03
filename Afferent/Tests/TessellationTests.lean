@@ -316,37 +316,35 @@ test "pixelToNDC converts center to (0, 0)" := do
   shouldBeNear result.x 0.0
   shouldBeNear result.y 0.0
 
-/-! ## Stroke Tessellation Tests -/
+/-! ## Stroke Segment Tests -/
 
-test "expandPolylineToStroke produces left and right edges" := do
-  let points := #[Point.mk' 0 0, Point.mk' 100 0, Point.mk' 100 100]
-  let (left, right) := expandPolylineToStroke points 5.0 .butt .miter 10.0
-  ensure (left.size > 0) "Should produce left edge points"
-  ensure (right.size > 0) "Should produce right edge points"
-  ensure (left.size == right.size) s!"Left ({left.size}) and right ({right.size}) should have same size"
+test "tessellateStrokeSegments emits line segment for simple line" := do
+  let path := Path.empty
+    |>.moveTo ⟨0, 0⟩
+    |>.lineTo ⟨100, 0⟩
+  let result := tessellateStrokeSegments path StrokeStyle.default
+  ensure (result.lineCount == 1) s!"Expected 1 line segment, got {result.lineCount}"
+  ensure (result.lineSegments.size == strokeSegmentStride)
+    s!"Expected {strokeSegmentStride} floats, got {result.lineSegments.size}"
+  ensure (result.curveCount == 0) s!"Expected 0 curve segments, got {result.curveCount}"
 
-test "expandPolylineToStroke produces one edge pair per input point" := do
-  let points := #[Point.mk' 0 0, Point.mk' 100 0, Point.mk' 200 0]
-  let (left, right) := expandPolylineToStroke points 5.0 .butt .miter 10.0
-  -- 3 input points should produce 3 left and 3 right points
-  ensure (left.size == 3) s!"Expected 3 left points, got {left.size}"
-  ensure (right.size == 3) s!"Expected 3 right points, got {right.size}"
+test "tessellateStrokeSegments emits cubic segment for bezier path" := do
+  let path := Path.empty
+    |>.moveTo ⟨0, 0⟩
+    |>.bezierCurveTo ⟨50, 100⟩ ⟨150, 100⟩ ⟨200, 0⟩
+  let result := tessellateStrokeSegments path StrokeStyle.default
+  ensure (result.curveCount == 1) s!"Expected 1 curve segment, got {result.curveCount}"
+  ensure (result.curveSegments.size == strokeSegmentStride)
+    s!"Expected {strokeSegmentStride} floats, got {result.curveSegments.size}"
 
-test "strokeEdgesToTriangles produces valid triangle mesh" := do
-  let left := #[Point.mk' 0 5, Point.mk' 100 5, Point.mk' 200 5]
-  let right := #[Point.mk' 0 (-5), Point.mk' 100 (-5), Point.mk' 200 (-5)]
-  let result := strokeEdgesToTriangles left right Color.red
-  -- 3 pairs → 2 quads → 4 triangles → 12 indices
-  ensure (result.indices.size == 12) s!"Expected 12 indices, got {result.indices.size}"
-  -- 6 vertices (3 left + 3 right interleaved)
-  ensure (result.vertices.size == 36) s!"Expected 36 floats (6 vertices), got {result.vertices.size}"
-
-test "tessellateStroke handles closed paths" := do
+test "tessellateStrokeSegments marks closed paths as adjacent" := do
   let path := Path.rectangle (Rect.mk' 0 0 100 100)
-  let style := { StrokeStyle.default with lineWidth := 4.0 }
-  let result := tessellateStroke path style
-  ensure (result.vertices.size > 0) "Should produce vertices for closed path"
-  ensure (result.indices.size > 0) "Should produce indices for closed path"
+  let result := tessellateStrokeSegments path StrokeStyle.default
+  ensure (result.lineCount == 4) s!"Expected 4 segments, got {result.lineCount}"
+  let hasPrev := result.lineSegments[14]!
+  let hasNext := result.lineSegments[15]!
+  shouldBeNear hasPrev 1.0
+  shouldBeNear hasNext 1.0
 
 /-! ## Polygon Convexity Tests -/
 

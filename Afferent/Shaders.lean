@@ -35,6 +35,12 @@ def dynamicTriangle : String := include_str% "../native/src/metal/shaders/dynami
 /-- Sprite/texture shader -/
 def sprite : String := include_str% "../native/src/metal/shaders/sprite.metal"
 
+/-- Screen-space stroke shader -/
+def stroke : String := include_str% "../native/src/metal/shaders/stroke.metal"
+
+/-- Screen-space stroke path shader (segment-based) -/
+def strokePath : String := include_str% "../native/src/metal/shaders/stroke_path.metal"
+
 /-- 3D mesh shader with lighting and fog -/
 def mesh3d : String := include_str% "../native/src/metal/shaders/mesh3d.metal"
 
@@ -55,6 +61,8 @@ def all : Array (String × String) := #[
   ("dynamic_rect", dynamicRect),
   ("dynamic_triangle", dynamicTriangle),
   ("sprite", sprite),
+  ("stroke", stroke),
+  ("stroke_path", strokePath),
   ("mesh3d", mesh3d),
   ("mesh3d_textured", mesh3dTextured),
   ("textured_rect", texturedRect)

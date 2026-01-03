@@ -39,6 +39,12 @@ extern NSString *dynamicTriangleShaderSource;
 // Sprite/texture shader
 extern NSString *spriteShaderSource;
 
+// Screen-space stroke shader
+extern NSString *strokeShaderSource;
+
+// Screen-space stroke path shader (segment-based)
+extern NSString *strokePathShaderSource;
+
 // 3D mesh shader with lighting and fog
 extern NSString *shader3DSource;
 

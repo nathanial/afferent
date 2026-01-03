@@ -126,6 +126,121 @@ AfferentResult create_pipelines(struct AfferentRenderer* renderer) {
     renderer->pipelineState = renderer->pipelineStateMSAA;
     renderer->msaaEnabled = true;
 
+    // Create stroke rendering pipeline (screen-space extrusion)
+    id<MTLLibrary> strokeLibrary = [renderer->device newLibraryWithSource:strokeShaderSource
+                                                                  options:nil
+                                                                    error:&error];
+    if (!strokeLibrary) {
+        NSLog(@"Stroke shader compilation failed: %@", error);
+        return AFFERENT_ERROR_PIPELINE_FAILED;
+    }
+
+    id<MTLFunction> strokeVertexFunction = [strokeLibrary newFunctionWithName:@"stroke_vertex_main"];
+    id<MTLFunction> strokeFragmentFunction = [strokeLibrary newFunctionWithName:@"stroke_fragment_main"];
+
+    if (!strokeVertexFunction || !strokeFragmentFunction) {
+        NSLog(@"Failed to find stroke shader functions");
+        return AFFERENT_ERROR_PIPELINE_FAILED;
+    }
+
+    MTLVertexDescriptor *strokeVertexDescriptor = [[MTLVertexDescriptor alloc] init];
+
+    // Position: 2 floats at offset 0
+    strokeVertexDescriptor.attributes[0].format = MTLVertexFormatFloat2;
+    strokeVertexDescriptor.attributes[0].offset = offsetof(AfferentStrokeVertex, position);
+    strokeVertexDescriptor.attributes[0].bufferIndex = 0;
+
+    // Normal: 2 floats after position
+    strokeVertexDescriptor.attributes[1].format = MTLVertexFormatFloat2;
+    strokeVertexDescriptor.attributes[1].offset = offsetof(AfferentStrokeVertex, normal);
+    strokeVertexDescriptor.attributes[1].bufferIndex = 0;
+
+    // Side: 1 float after normal
+    strokeVertexDescriptor.attributes[2].format = MTLVertexFormatFloat;
+    strokeVertexDescriptor.attributes[2].offset = offsetof(AfferentStrokeVertex, side);
+    strokeVertexDescriptor.attributes[2].bufferIndex = 0;
+
+    strokeVertexDescriptor.layouts[0].stride = sizeof(AfferentStrokeVertex);
+    strokeVertexDescriptor.layouts[0].stepFunction = MTLVertexStepFunctionPerVertex;
+
+    MTLRenderPipelineDescriptor *strokePipelineDesc = [[MTLRenderPipelineDescriptor alloc] init];
+    strokePipelineDesc.vertexFunction = strokeVertexFunction;
+    strokePipelineDesc.fragmentFunction = strokeFragmentFunction;
+    strokePipelineDesc.vertexDescriptor = strokeVertexDescriptor;
+    strokePipelineDesc.colorAttachments[0].pixelFormat = MTLPixelFormatBGRA8Unorm;
+    strokePipelineDesc.rasterSampleCount = 4;
+
+    // Enable blending for transparency
+    strokePipelineDesc.colorAttachments[0].blendingEnabled = YES;
+    strokePipelineDesc.colorAttachments[0].sourceRGBBlendFactor = MTLBlendFactorSourceAlpha;
+    strokePipelineDesc.colorAttachments[0].destinationRGBBlendFactor = MTLBlendFactorOneMinusSourceAlpha;
+    strokePipelineDesc.colorAttachments[0].sourceAlphaBlendFactor = MTLBlendFactorOne;
+    strokePipelineDesc.colorAttachments[0].destinationAlphaBlendFactor = MTLBlendFactorOneMinusSourceAlpha;
+
+    renderer->strokePipelineStateMSAA = [renderer->device newRenderPipelineStateWithDescriptor:strokePipelineDesc
+                                                                                          error:&error];
+    if (!renderer->strokePipelineStateMSAA) {
+        NSLog(@"Stroke pipeline creation failed (MSAA): %@", error);
+        return AFFERENT_ERROR_PIPELINE_FAILED;
+    }
+
+    strokePipelineDesc.rasterSampleCount = 1;
+    renderer->strokePipelineStateNoMSAA = [renderer->device newRenderPipelineStateWithDescriptor:strokePipelineDesc
+                                                                                            error:&error];
+    if (!renderer->strokePipelineStateNoMSAA) {
+        NSLog(@"Stroke pipeline creation failed (no MSAA): %@", error);
+        return AFFERENT_ERROR_PIPELINE_FAILED;
+    }
+
+    renderer->strokePipelineState = renderer->strokePipelineStateMSAA;
+
+    // Create stroke path rendering pipeline (segment-based GPU extrusion)
+    id<MTLLibrary> strokePathLibrary = [renderer->device newLibraryWithSource:strokePathShaderSource
+                                                                       options:nil
+                                                                         error:&error];
+    if (!strokePathLibrary) {
+        NSLog(@"Stroke path shader compilation failed: %@", error);
+        return AFFERENT_ERROR_PIPELINE_FAILED;
+    }
+
+    id<MTLFunction> strokePathVertexFunction = [strokePathLibrary newFunctionWithName:@"stroke_path_vertex_main"];
+    id<MTLFunction> strokePathFragmentFunction = [strokePathLibrary newFunctionWithName:@"stroke_path_fragment_main"];
+
+    if (!strokePathVertexFunction || !strokePathFragmentFunction) {
+        NSLog(@"Failed to find stroke path shader functions");
+        return AFFERENT_ERROR_PIPELINE_FAILED;
+    }
+
+    MTLRenderPipelineDescriptor *strokePathPipelineDesc = [[MTLRenderPipelineDescriptor alloc] init];
+    strokePathPipelineDesc.vertexFunction = strokePathVertexFunction;
+    strokePathPipelineDesc.fragmentFunction = strokePathFragmentFunction;
+    strokePathPipelineDesc.colorAttachments[0].pixelFormat = MTLPixelFormatBGRA8Unorm;
+    strokePathPipelineDesc.rasterSampleCount = 4;
+
+    // Enable blending for transparency
+    strokePathPipelineDesc.colorAttachments[0].blendingEnabled = YES;
+    strokePathPipelineDesc.colorAttachments[0].sourceRGBBlendFactor = MTLBlendFactorSourceAlpha;
+    strokePathPipelineDesc.colorAttachments[0].destinationRGBBlendFactor = MTLBlendFactorOneMinusSourceAlpha;
+    strokePathPipelineDesc.colorAttachments[0].sourceAlphaBlendFactor = MTLBlendFactorOne;
+    strokePathPipelineDesc.colorAttachments[0].destinationAlphaBlendFactor = MTLBlendFactorOneMinusSourceAlpha;
+
+    renderer->strokePathPipelineStateMSAA = [renderer->device newRenderPipelineStateWithDescriptor:strokePathPipelineDesc
+                                                                                            error:&error];
+    if (!renderer->strokePathPipelineStateMSAA) {
+        NSLog(@"Stroke path pipeline creation failed (MSAA): %@", error);
+        return AFFERENT_ERROR_PIPELINE_FAILED;
+    }
+
+    strokePathPipelineDesc.rasterSampleCount = 1;
+    renderer->strokePathPipelineStateNoMSAA = [renderer->device newRenderPipelineStateWithDescriptor:strokePathPipelineDesc
+                                                                                              error:&error];
+    if (!renderer->strokePathPipelineStateNoMSAA) {
+        NSLog(@"Stroke path pipeline creation failed (no MSAA): %@", error);
+        return AFFERENT_ERROR_PIPELINE_FAILED;
+    }
+
+    renderer->strokePathPipelineState = renderer->strokePathPipelineStateMSAA;
+
     // Create text rendering pipeline
     id<MTLLibrary> textLibrary = [renderer->device newLibraryWithSource:textShaderSource
                                                                 options:nil

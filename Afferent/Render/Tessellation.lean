@@ -25,10 +25,42 @@ structure TessellationResult where
   indices : Array UInt32
 deriving Repr, Inhabited
 
+/-- Stroke segment kind for GPU extrusion. -/
+inductive StrokeSegmentKind where
+  | line
+  | cubic
+deriving Repr, BEq, Inhabited
+
+/-- Parametric stroke segment (CPU-side) for GPU extrusion. -/
+structure StrokeSegment where
+  p0 : Point
+  p1 : Point
+  c1 : Point
+  c2 : Point
+  prevDir : Point
+  nextDir : Point
+  startDist : Float
+  length : Float
+  hasPrev : Bool
+  hasNext : Bool
+  kind : StrokeSegmentKind
+deriving Repr, Inhabited
+
+/-- GPU stroke segment buffers split by segment type. -/
+structure StrokePathSegments where
+  lineSegments : Array Float
+  curveSegments : Array Float
+  lineCount : Nat
+  curveCount : Nat
+deriving Repr, Inhabited
+
 namespace Tessellation
 
 /-- Vertex size for 2D rendering: x, y, r, g, b, a -/
 def vertexSize2D : Nat := 6
+
+/-- Float stride for GPU stroke segments (see StrokeSegment packing). -/
+def strokeSegmentStride : Nat := 18
 
 /-- Vertex size for 3D rendering: x, y, z, nx, ny, nz, r, g, b, a -/
 def vertexSize3D : Nat := 10
@@ -813,7 +845,7 @@ def tessellateTransformedRectNDC
 
   { vertices, indices := rectIndices }
 
-/-! ## Stroke Tessellation -/
+/-! ## Stroke Segment Builder (GPU extrusion) -/
 
 /-- Normalize a 2D vector. Returns zero vector if input is zero length. -/
 private def normalize (dx dy : Float) : Point :=
@@ -821,518 +853,317 @@ private def normalize (dx dy : Float) : Point :=
   if len < 0.0001 then ⟨0, 0⟩
   else ⟨dx / len, dy / len⟩
 
-/-- Get perpendicular vector (rotated 90 degrees counterclockwise). -/
-private def perpendicular (dx dy : Float) : Point :=
-  ⟨-dy, dx⟩
-
 /-- Compute the normal (perpendicular) at a point given the direction. -/
 private def computeNormal (dir : Point) : Point :=
   ⟨-dir.y, dir.x⟩
 
-/-! ## Dash Pattern Utilities -/
+/-- Convert a quadratic Bezier curve to cubic control points. -/
+private def quadraticToCubic (p0 cp p1 : Point) : Point × Point :=
+  let c1 := Point.lerp p0 cp (2.0 / 3.0)
+  let c2 := Point.lerp p1 cp (2.0 / 3.0)
+  (c1, c2)
 
-/-- Float modulo operation: a mod b = a - floor(a/b) * b -/
-private def floatMod (a b : Float) : Float :=
-  if b == 0.0 then 0.0
-  else a - Float.floor (a / b) * b
+/-- Evaluate a cubic Bezier at parameter t. -/
+private def evalCubic (p0 c1 c2 p1 : Point) (t : Float) : Point :=
+  let u := 1.0 - t
+  let tt := t * t
+  let uu := u * u
+  let uuu := uu * u
+  let ttt := tt * t
+  p0 * uuu +
+    c1 * (3.0 * uu * t) +
+    c2 * (3.0 * u * tt) +
+    p1 * ttt
 
-/-- Compute cumulative arc lengths for a polyline.
-    Returns an array where arcLengths[i] is the distance from start to points[i]. -/
-private def computeArcLengths (points : Array Point) : Array Float := Id.run do
-  if points.size == 0 then return #[]
-  let mut lengths : Array Float := Array.mkEmpty points.size
-  lengths := lengths.push 0.0  -- First point is at distance 0
-  for i in [1:points.size] do
-    if h : i < points.size ∧ i > 0 then
-      let prev := points[i - 1]'(by omega)
-      let curr := points[i]
-      let dx := curr.x - prev.x
-      let dy := curr.y - prev.y
-      let segLen := Float.sqrt (dx * dx + dy * dy)
-      let prevLen := if h2 : i - 1 < lengths.size then lengths[i - 1] else 0.0
-      lengths := lengths.push (prevLen + segLen)
-  return lengths
+/-- Evaluate the cubic Bezier tangent at parameter t. -/
+private def evalCubicTangent (p0 c1 c2 p1 : Point) (t : Float) : Point :=
+  let u := 1.0 - t
+  let tt := t * t
+  let uu := u * u
+  let term1 := (c1 - p0) * (3.0 * uu)
+  let term2 := (c2 - c1) * (6.0 * u * t)
+  let term3 := (p1 - c2) * (3.0 * tt)
+  term1 + term2 + term3
 
-/-- Interpolate a point at a given arc length along the polyline. -/
-private def interpolateAtArcLength (points : Array Point) (arcLengths : Array Float)
-    (targetLen : Float) : Point := Id.run do
-  if points.size < 2 then
-    return if h : points.size > 0 then points[0] else Point.zero
-  -- Find the segment containing targetLen
-  for i in [1:points.size] do
-    if h : i < arcLengths.size ∧ i < points.size then
-      let segEnd := arcLengths[i]
-      if targetLen <= segEnd then
-        let segStart := if h2 : i - 1 < arcLengths.size then arcLengths[i - 1] else 0.0
-        let segLen := segEnd - segStart
-        if segLen < 0.0001 then
-          return points[i]
-        let t := (targetLen - segStart) / segLen
-        let p1 := points[i - 1]'(by omega)
-        let p2 := points[i]
-        return Point.lerp p1 p2 t
-  -- Past the end, return last point
-  return if h : points.size > 0 then points[points.size - 1]! else Point.zero
+/-- Approximate cubic Bezier length by sampling. -/
+private def approximateCubicLength (p0 c1 c2 p1 : Point) (steps : Nat := 12) : Float := Id.run do
+  let steps := if steps < 2 then 2 else steps
+  let mut length := 0.0
+  let mut prev := p0
+  for i in [1:steps + 1] do
+    let t := i.toFloat / steps.toFloat
+    let pt := evalCubic p0 c1 c2 p1 t
+    length := length + Point.distance prev pt
+    prev := pt
+  return length
 
-/-- Segment a polyline by dash pattern, returning array of polyline segments to draw.
-    Each segment is a sub-polyline that should be stroked (dash portions).
-    Gap portions are not included. -/
-private def segmentByDashPattern (points : Array Point) (dashPattern : DashPattern)
-    : Array (Array Point) := Id.run do
-  if points.size < 2 || dashPattern.segments.size == 0 then
-    return #[points]  -- Return original if no pattern
+/-- Internal raw stroke segment before adjacency is computed. -/
+private structure RawStrokeSegment where
+  p0 : Point
+  p1 : Point
+  c1 : Point
+  c2 : Point
+  kind : StrokeSegmentKind
+deriving Inhabited
 
-  let arcLengths := computeArcLengths points
-  let totalLen := if h : arcLengths.size > 0 then arcLengths[arcLengths.size - 1]! else 0.0
-  if totalLen < 0.0001 then return #[]
+private def mkLineSegment (p0 p1 : Point) : RawStrokeSegment :=
+  { p0, p1, c1 := p0, c2 := p1, kind := .line }
 
-  let cycleLen := dashPattern.cycleLength
-  if cycleLen < 0.0001 then return #[points]
+private def mkCubicSegment (p0 c1 c2 p1 : Point) : RawStrokeSegment :=
+  { p0, p1, c1, c2, kind := .cubic }
 
-  let mut segments : Array (Array Point) := #[]
-  let offsetMod := floatMod dashPattern.offset cycleLen
-  let mut currentLen := offsetMod
-  if currentLen < 0 then currentLen := currentLen + cycleLen
+private def segmentStartDir (seg : RawStrokeSegment) : Point :=
+  match seg.kind with
+  | .line =>
+      let dx := seg.p1.x - seg.p0.x
+      let dy := seg.p1.y - seg.p0.y
+      normalize dx dy
+  | .cubic =>
+      let d := evalCubicTangent seg.p0 seg.c1 seg.c2 seg.p1 0.0
+      normalize d.x d.y
 
-  -- Track which segment of the dash pattern we're in
-  let mut patternIdx : Nat := 0
-  let mut inDash := true  -- First segment is always a dash
+private def segmentEndDir (seg : RawStrokeSegment) : Point :=
+  match seg.kind with
+  | .line =>
+      let dx := seg.p1.x - seg.p0.x
+      let dy := seg.p1.y - seg.p0.y
+      normalize dx dy
+  | .cubic =>
+      let d := evalCubicTangent seg.p0 seg.c1 seg.c2 seg.p1 1.0
+      normalize d.x d.y
 
-  -- Adjust starting position based on offset
-  let mut offsetConsumed := 0.0
-  while offsetConsumed < offsetMod do
-    if h : patternIdx < dashPattern.segments.size then
-      let segLen := dashPattern.segments[patternIdx]
-      if offsetConsumed + segLen > offsetMod then
-        break
-      offsetConsumed := offsetConsumed + segLen
-      inDash := !inDash
-      patternIdx := (patternIdx + 1) % dashPattern.segments.size
-    else
-      break
+private def segmentLength (seg : RawStrokeSegment) : Float :=
+  match seg.kind with
+  | .line => Point.distance seg.p0 seg.p1
+  | .cubic => approximateCubicLength seg.p0 seg.c1 seg.c2 seg.p1
 
-  let mut pos := 0.0
-  let mut currentSegment : Array Point := #[]
+/-- Remove degenerate segments (zero-length). -/
+private def filterDegenerateSegments (segments : Array RawStrokeSegment) : Array RawStrokeSegment := Id.run do
+  let mut result : Array RawStrokeSegment := #[]
+  for seg in segments do
+    if segmentLength seg > 0.0001 then
+      result := result.push seg
+  return result
 
-  -- Add first point if we're in a dash
-  if inDash then
-    currentSegment := currentSegment.push (interpolateAtArcLength points arcLengths pos)
+/-- Finalize raw segments into GPU-ready stroke segments (with adjacency + distances). -/
+private def finalizeStrokeSegments (segments : Array RawStrokeSegment) (closed : Bool) : Array StrokeSegment := Id.run do
+  let segments := filterDegenerateSegments segments
+  if segments.size == 0 then
+    return #[]
 
-  while pos < totalLen do
-    -- Get current dash/gap length
-    let patternLen := if h : patternIdx < dashPattern.segments.size
-      then dashPattern.segments[patternIdx] else 1.0
-    let nextPos := min (pos + patternLen) totalLen
+  let mut result : Array StrokeSegment := Array.mkEmpty segments.size
+  let mut dist : Float := 0.0
 
-    if inDash then
-      -- We're drawing: add intermediate points that fall within this dash
-      for i in [1:points.size] do
-        if h : i < arcLengths.size then
-          let ptLen := arcLengths[i]
-          if ptLen > pos && ptLen < nextPos then
-            if h2 : i < points.size then
-              currentSegment := currentSegment.push points[i]
+  for i in [:segments.size] do
+    let seg := segments[i]!
+    let len := segmentLength seg
+    let hasPrev := closed || i > 0
+    let hasNext := closed || i + 1 < segments.size
+    let prevIdx := if hasPrev then (if i == 0 then segments.size - 1 else i - 1) else 0
+    let nextIdx := if hasNext then (if i + 1 == segments.size then 0 else i + 1) else 0
+    let prevDir := if hasPrev then segmentEndDir (segments[prevIdx]!) else segmentStartDir seg
+    let nextDir := if hasNext then segmentStartDir (segments[nextIdx]!) else segmentEndDir seg
 
-      -- Add endpoint of this dash
-      if nextPos <= totalLen then
-        currentSegment := currentSegment.push (interpolateAtArcLength points arcLengths nextPos)
+    result := result.push {
+      p0 := seg.p0
+      p1 := seg.p1
+      c1 := seg.c1
+      c2 := seg.c2
+      prevDir := prevDir
+      nextDir := nextDir
+      startDist := dist
+      length := len
+      hasPrev := hasPrev
+      hasNext := hasNext
+      kind := seg.kind
+    }
 
-      -- Finish this dash segment if we're switching to a gap
-      if currentSegment.size >= 2 then
-        segments := segments.push currentSegment
-      currentSegment := #[]
-    else
-      -- We're in a gap: skip this section
-      pure ()
+    dist := dist + len
 
-    pos := nextPos
-    inDash := !inDash
-    patternIdx := (patternIdx + 1) % dashPattern.segments.size
+  return result
 
-    -- Start new dash segment if we're entering a dash
-    if inDash && pos < totalLen then
-      currentSegment := currentSegment.push (interpolateAtArcLength points arcLengths pos)
+private def segmentKindFloat (kind : StrokeSegmentKind) : Float :=
+  match kind with
+  | .line => 0.0
+  | .cubic => 1.0
 
-  -- Add any remaining segment
-  if currentSegment.size >= 2 then
-    segments := segments.push currentSegment
+private def pushStrokeSegment (arr : Array Float) (seg : StrokeSegment) : Array Float :=
+  arr
+    |>.push seg.p0.x |>.push seg.p0.y
+    |>.push seg.p1.x |>.push seg.p1.y
+    |>.push seg.c1.x |>.push seg.c1.y
+    |>.push seg.c2.x |>.push seg.c2.y
+    |>.push seg.prevDir.x |>.push seg.prevDir.y
+    |>.push seg.nextDir.x |>.push seg.nextDir.y
+    |>.push seg.startDist |>.push seg.length
+    |>.push (if seg.hasPrev then 1.0 else 0.0)
+    |>.push (if seg.hasNext then 1.0 else 0.0)
+    |>.push (segmentKindFloat seg.kind)
+    |>.push 0.0
 
-  return segments
+/-- Append finalized stroke segments into line/curve buffers. -/
+private def appendStrokeSegments (rawSegments : Array RawStrokeSegment) (closed : Bool)
+    (lineSegments : Array Float) (curveSegments : Array Float)
+    (lineCount curveCount : Nat) : Array Float × Array Float × Nat × Nat := Id.run do
+  if rawSegments.size == 0 then
+    return (lineSegments, curveSegments, lineCount, curveCount)
+  let finalized := finalizeStrokeSegments rawSegments closed
+  let mut lineSegs := lineSegments
+  let mut curveSegs := curveSegments
+  let mut lineCnt := lineCount
+  let mut curveCnt := curveCount
+  for seg in finalized do
+    match seg.kind with
+    | .line =>
+        lineSegs := pushStrokeSegment lineSegs seg
+        lineCnt := lineCnt + 1
+    | .cubic =>
+        curveSegs := pushStrokeSegment curveSegs seg
+        curveCnt := curveCnt + 1
+  return (lineSegs, curveSegs, lineCnt, curveCnt)
 
-/-- Number of segments to use for round caps and joins.
-    More segments = smoother curves but more geometry. -/
-private def roundCapSegments : Nat := 8
+/-- Recommended subdivision count for cubic segments in the GPU shader. -/
+def strokeCurveSubdivisions : Nat := 16
 
-/-- Generate arc points for a round cap or join.
-    center: center point of the arc
-    radius: radius of the arc
-    startAngle: starting angle in radians
-    endAngle: ending angle in radians
-    segments: number of line segments to approximate the arc -/
-private def generateArcPoints (center : Point) (radius : Float)
-    (startAngle endAngle : Float) (segments : Nat) : Array Point := Id.run do
-  if segments == 0 then return #[]
-  let mut points : Array Point := Array.mkEmpty (segments + 1)
-  for i in [:segments + 1] do
-    let t := i.toFloat / segments.toFloat
-    let angle := startAngle + (endAngle - startAngle) * t
-    let x := center.x + radius * Float.cos angle
-    let y := center.y + radius * Float.sin angle
-    points := points.push ⟨x, y⟩
-  return points
+/-- Tessellate a path into GPU stroke segments (no CPU extrusion). -/
+def tessellateStrokeSegments (path : Path) (_style : StrokeStyle) : StrokePathSegments := Id.run do
+  let mut lineSegments : Array Float := #[]
+  let mut curveSegments : Array Float := #[]
+  let mut lineCount : Nat := 0
+  let mut curveCount : Nat := 0
 
-/-- Expand a polyline into stroke geometry.
-    Returns left and right edge points for the stroke. -/
-def expandPolylineToStroke (points : Array Point) (halfWidth : Float)
-    (lineCap : LineCap) (lineJoin : LineJoin) (miterLimit : Float := 10.0)
-    (closed : Bool := false) : Array Point × Array Point := Id.run do
-  if points.size < 2 then
-    return (#[], #[])
+  let mut rawSegments : Array RawStrokeSegment := #[]
+  let mut hasCurrent := false
+  let mut current := Point.zero
+  let mut subpathStart := Point.zero
+  let mut closed := false
 
-  -- Pre-allocate with estimated capacity (may grow for bevel joins)
-  let mut leftPoints : Array Point := Array.mkEmpty points.size
-  let mut rightPoints : Array Point := Array.mkEmpty points.size
-
-  let addJoin (left right : Array Point) (p prev next : Point) : Array Point × Array Point := Id.run do
-    -- Direction vectors
-    let dx1 := p.x - prev.x
-    let dy1 := p.y - prev.y
-    let dx2 := next.x - p.x
-    let dy2 := next.y - p.y
-
-    let dir1 := normalize dx1 dy1
-    let dir2 := normalize dx2 dy2
-
-    let normal1 := computeNormal dir1
-    let normal2 := computeNormal dir2
-
-    -- Average normal for the join
-    let avgNx := (normal1.x + normal2.x) / 2.0
-    let avgNy := (normal1.y + normal2.y) / 2.0
-    let avgNormal := normalize avgNx avgNy
-
-    -- Compute miter length (how much to extend at sharp corners)
-    let dot := dir1.x * dir2.x + dir1.y * dir2.y
-    let miterScale := if dot > -0.999 then 1.0 / Float.sqrt ((1.0 + dot) / 2.0) else miterLimit
-
-    -- Apply line join
-    match lineJoin with
-    | .miter =>
-      let scale := min miterScale miterLimit
-      return (left.push ⟨p.x + avgNormal.x * halfWidth * scale,
-                         p.y + avgNormal.y * halfWidth * scale⟩,
-              right.push ⟨p.x - avgNormal.x * halfWidth * scale,
-                          p.y - avgNormal.y * halfWidth * scale⟩)
-    | .bevel =>
-      -- Add two points for bevel (simplified)
-      let left := left.push ⟨p.x + normal1.x * halfWidth, p.y + normal1.y * halfWidth⟩
-      let left := left.push ⟨p.x + normal2.x * halfWidth, p.y + normal2.y * halfWidth⟩
-      let right := right.push ⟨p.x - normal1.x * halfWidth, p.y - normal1.y * halfWidth⟩
-      let right := right.push ⟨p.x - normal2.x * halfWidth, p.y - normal2.y * halfWidth⟩
-      return (left, right)
-    | .round =>
-      -- Round join: add arc on the outside of the turn
-      -- Determine which side is outside (convex side of the turn)
-      let cross := dir1.x * dir2.y - dir1.y * dir2.x  -- Cross product determines turn direction
-      let angle1 := Float.atan2 normal1.y normal1.x
-      let angle2 := Float.atan2 normal2.y normal2.x
-
-      if cross > 0.0 then
-        -- Turning left: outside is on the right side
-        -- Add arc on right, single point on left
-        let leftPt := ⟨p.x + avgNormal.x * halfWidth * (min miterScale miterLimit),
-                       p.y + avgNormal.y * halfWidth * (min miterScale miterLimit)⟩
-        let mut rightArc := generateArcPoints p halfWidth (-angle1) (-angle2) (roundCapSegments / 2)
-        let mut newLeft := left.push leftPt
-        let mut newRight := right
-        for pt in rightArc do
-          newRight := newRight.push pt
-          -- Keep left/right arrays balanced by duplicating the left point
-          if newRight.size > newLeft.size then
-            newLeft := newLeft.push leftPt
-        return (newLeft, newRight)
+  for cmd in path.commands do
+    match cmd with
+    | .moveTo p =>
+      if rawSegments.size > 0 then
+        let (ls, cs, lc, cc) := appendStrokeSegments rawSegments closed lineSegments curveSegments lineCount curveCount
+        lineSegments := ls
+        curveSegments := cs
+        lineCount := lc
+        curveCount := cc
+        rawSegments := #[]
+        closed := false
+      hasCurrent := true
+      current := p
+      subpathStart := p
+    | .lineTo p =>
+      if !hasCurrent then
+        hasCurrent := true
+        current := p
+        subpathStart := p
       else
-        -- Turning right: outside is on the left side
-        -- Add arc on left, single point on right
-        let rightPt := ⟨p.x - avgNormal.x * halfWidth * (min miterScale miterLimit),
-                        p.y - avgNormal.y * halfWidth * (min miterScale miterLimit)⟩
-        let mut leftArc := generateArcPoints p halfWidth angle1 angle2 (roundCapSegments / 2)
-        let mut newLeft := left
-        let mut newRight := right.push rightPt
-        for pt in leftArc do
-          newLeft := newLeft.push pt
-          -- Keep left/right arrays balanced
-          if newLeft.size > newRight.size then
-            newRight := newRight.push rightPt
-        return (newLeft, newRight)
-
-  if closed then
-    -- Closed path: treat every point as a join, no caps.
-    for i in [:points.size] do
-      if h : i < points.size then
-        let p := points[i]
-        let prev := points[(i + points.size - 1) % points.size]!
-        let next := points[(i + 1) % points.size]!
-        let (left, right) := addJoin leftPoints rightPoints p prev next
-        leftPoints := left
-        rightPoints := right
-    return (leftPoints, rightPoints)
-
-  -- Process each segment
-  for i in [:points.size] do
-    if h : i < points.size then
-      let p := points[i]
-
-      if i == 0 then
-        -- First point: use direction to next point
-        if h2 : i + 1 < points.size then
-          let next := points[i + 1]
-          let dx := next.x - p.x
-          let dy := next.y - p.y
-          let dir := normalize dx dy
-          let normal := computeNormal dir
-
-          -- Apply line cap at start
-          match lineCap with
-            | .butt =>
-              leftPoints := leftPoints.push ⟨p.x + normal.x * halfWidth, p.y + normal.y * halfWidth⟩
-              rightPoints := rightPoints.push ⟨p.x - normal.x * halfWidth, p.y - normal.y * halfWidth⟩
-            | .square =>
-              -- Extend backwards by halfWidth
-              let backX := p.x - dir.x * halfWidth
-              let backY := p.y - dir.y * halfWidth
-              leftPoints := leftPoints.push ⟨backX + normal.x * halfWidth, backY + normal.y * halfWidth⟩
-              rightPoints := rightPoints.push ⟨backX - normal.x * halfWidth, backY - normal.y * halfWidth⟩
-            | .round =>
-              -- Round cap: semicircle going from right edge, around back, to left edge
-              -- Generate arc points for the semicircle
-              let rightAngle := Float.atan2 (-normal.y) (-normal.x)
-              let leftAngle := Float.atan2 normal.y normal.x
-              -- Go from right around back to left (clockwise when looking at start)
-              let arcPts := generateArcPoints p halfWidth rightAngle (rightAngle - Tessellation.pi) roundCapSegments
-              -- First point goes to right, last to left, middle points are paired
-              if arcPts.size > 0 then
-                rightPoints := rightPoints.push arcPts[0]!
-                leftPoints := leftPoints.push arcPts[arcPts.size - 1]!
-                -- Add middle arc points - pair them to maintain balanced arrays
-                for j in [1:arcPts.size - 1] do
-                  if j < arcPts.size then
-                    -- Mirror points around the center line for proper triangulation
-                    let arcPt := arcPts[j]!
-                    leftPoints := leftPoints.push arcPt
-                    -- Create a mirrored point on the right side
-                    let mirrorX := 2.0 * p.x - arcPt.x
-                    let mirrorY := 2.0 * p.y - arcPt.y
-                    rightPoints := rightPoints.push ⟨mirrorX, mirrorY⟩
-
-      else if i == points.size - 1 then
-        -- Last point: use direction from previous point
-        if h2 : i > 0 then
-          let prev := points[i - 1]
-          let dx := p.x - prev.x
-          let dy := p.y - prev.y
-          let dir := normalize dx dy
-          let normal := computeNormal dir
-
-          -- Apply line cap at end
-          match lineCap with
-            | .butt =>
-              leftPoints := leftPoints.push ⟨p.x + normal.x * halfWidth, p.y + normal.y * halfWidth⟩
-              rightPoints := rightPoints.push ⟨p.x - normal.x * halfWidth, p.y - normal.y * halfWidth⟩
-            | .square =>
-              -- Extend forwards by halfWidth
-              let fwdX := p.x + dir.x * halfWidth
-              let fwdY := p.y + dir.y * halfWidth
-              leftPoints := leftPoints.push ⟨fwdX + normal.x * halfWidth, fwdY + normal.y * halfWidth⟩
-              rightPoints := rightPoints.push ⟨fwdX - normal.x * halfWidth, fwdY - normal.y * halfWidth⟩
-            | .round =>
-              -- Round cap: semicircle going from left edge, around front, to right edge
-              let leftAngle := Float.atan2 normal.y normal.x
-              -- Go from left around front to right (counterclockwise when looking at end)
-              let arcPts := generateArcPoints p halfWidth leftAngle (leftAngle + Tessellation.pi) roundCapSegments
-              -- First point goes to left, last to right, middle points are paired
-              if arcPts.size > 0 then
-                leftPoints := leftPoints.push arcPts[0]!
-                rightPoints := rightPoints.push arcPts[arcPts.size - 1]!
-                -- Add middle arc points - pair them to maintain balanced arrays
-                for j in [1:arcPts.size - 1] do
-                  if j < arcPts.size then
-                    let arcPt := arcPts[j]!
-                    leftPoints := leftPoints.push arcPt
-                    -- Create a mirrored point on the right side
-                    let mirrorX := 2.0 * p.x - arcPt.x
-                    let mirrorY := 2.0 * p.y - arcPt.y
-                    rightPoints := rightPoints.push ⟨mirrorX, mirrorY⟩
-
+        rawSegments := rawSegments.push (mkLineSegment current p)
+        current := p
+    | .quadraticCurveTo cp p =>
+      if !hasCurrent then
+        hasCurrent := true
+        current := p
+        subpathStart := p
       else
-        -- Middle point: compute join between two segments
-        if h2 : i > 0 ∧ i + 1 < points.size then
-          let prev := points[i - 1]
-          let next := points[i + 1]
-          let (left, right) := addJoin leftPoints rightPoints p prev next
-          leftPoints := left
-          rightPoints := right
+        let (c1, c2) := quadraticToCubic current cp p
+        rawSegments := rawSegments.push (mkCubicSegment current c1 c2 p)
+        current := p
+    | .bezierCurveTo cp1 cp2 p =>
+      if !hasCurrent then
+        hasCurrent := true
+        current := p
+        subpathStart := p
+      else
+        rawSegments := rawSegments.push (mkCubicSegment current cp1 cp2 p)
+        current := p
+    | .arc center radius startAngle endAngle counterclockwise =>
+      if !hasCurrent then
+        -- Treat arc as moveTo end point when no current
+        let endPt := Point.mk'
+          (center.x + radius * Float.cos endAngle)
+          (center.y + radius * Float.sin endAngle)
+        hasCurrent := true
+        current := endPt
+        subpathStart := endPt
+      else
+        let beziers := Path.arcToBeziers center radius startAngle endAngle counterclockwise
+        for (cp1, cp2, endPt) in beziers do
+          rawSegments := rawSegments.push (mkCubicSegment current cp1 cp2 endPt)
+          current := endPt
+    | .arcTo p1 p2 radius =>
+      if !hasCurrent then
+        hasCurrent := true
+        current := p1
+        subpathStart := p1
+      else
+        match computeArcTo current p1 p2 radius with
+        | some (t1, beziers, t2) =>
+          if Point.distance current t1 > 0.0001 then
+            rawSegments := rawSegments.push (mkLineSegment current t1)
+          let mut arcCurrent := t1
+          for (cp1, cp2, endPt) in beziers do
+            rawSegments := rawSegments.push (mkCubicSegment arcCurrent cp1 cp2 endPt)
+            arcCurrent := endPt
+          current := t2
+        | none =>
+          rawSegments := rawSegments.push (mkLineSegment current p1)
+          current := p1
+    | .rect r =>
+      if rawSegments.size > 0 then
+        let (ls, cs, lc, cc) := appendStrokeSegments rawSegments closed lineSegments curveSegments lineCount curveCount
+        lineSegments := ls
+        curveSegments := cs
+        lineCount := lc
+        curveCount := cc
+        rawSegments := #[]
+        closed := false
+      let p0 := r.topLeft
+      let p1 := r.topRight
+      let p2 := r.bottomRight
+      let p3 := r.bottomLeft
+      rawSegments := #[
+        mkLineSegment p0 p1,
+        mkLineSegment p1 p2,
+        mkLineSegment p2 p3,
+        mkLineSegment p3 p0
+      ]
+      closed := true
+      current := p0
+      subpathStart := p0
+      if rawSegments.size > 0 then
+        let (ls, cs, lc, cc) := appendStrokeSegments rawSegments closed lineSegments curveSegments lineCount curveCount
+        lineSegments := ls
+        curveSegments := cs
+        lineCount := lc
+        curveCount := cc
+        rawSegments := #[]
+        closed := false
+      hasCurrent := true
+    | .closePath =>
+      if hasCurrent then
+        if Point.distance current subpathStart > 0.0001 then
+          rawSegments := rawSegments.push (mkLineSegment current subpathStart)
+        closed := true
+        current := subpathStart
+        if rawSegments.size > 0 then
+          let (ls, cs, lc, cc) := appendStrokeSegments rawSegments closed lineSegments curveSegments lineCount curveCount
+          lineSegments := ls
+          curveSegments := cs
+          lineCount := lc
+          curveCount := cc
+          rawSegments := #[]
+          closed := false
+        hasCurrent := true
 
-  return (leftPoints, rightPoints)
+  if rawSegments.size > 0 then
+    let (ls, cs, lc, cc) := appendStrokeSegments rawSegments closed lineSegments curveSegments lineCount curveCount
+    lineSegments := ls
+    curveSegments := cs
+    lineCount := lc
+    curveCount := cc
 
-/-- Convert stroke edges to triangles.
-    Takes left and right edge point arrays and creates a triangle strip. -/
-def strokeEdgesToTriangles (leftPoints rightPoints : Array Point) (color : Color)
-    : TessellationResult := Id.run do
-  if leftPoints.size < 2 || rightPoints.size < 2 then
-    return { vertices := #[], indices := #[] }
-
-  let numPairs := min leftPoints.size rightPoints.size
-  -- Pre-allocate: 2 vertices per pair, 6 floats per vertex
-  let mut vertices : Array Float := Array.mkEmpty (numPairs * 2 * 6)
-  -- Pre-allocate: 2 triangles per segment, 3 indices per triangle
-  let mut indices : Array UInt32 := Array.mkEmpty ((numPairs - 1) * 6)
-
-  -- Build vertices: interleave left and right points
-  for i in [:numPairs] do
-    if h : i < leftPoints.size ∧ i < rightPoints.size then
-      let lp := leftPoints[i]
-      let rp := rightPoints[i]
-      -- Left point
-      vertices := vertices.push lp.x
-      vertices := vertices.push lp.y
-      vertices := vertices.push color.r
-      vertices := vertices.push color.g
-      vertices := vertices.push color.b
-      vertices := vertices.push color.a
-      -- Right point
-      vertices := vertices.push rp.x
-      vertices := vertices.push rp.y
-      vertices := vertices.push color.r
-      vertices := vertices.push color.g
-      vertices := vertices.push color.b
-      vertices := vertices.push color.a
-
-  -- Build triangle strip indices
-  -- Vertices are: L0, R0, L1, R1, L2, R2, ...
-  -- Triangles: (L0, R0, L1), (R0, L1, R1), (L1, R1, L2), (R1, L2, R2), ...
-  for i in [:(numPairs - 1)] do
-    let baseIdx := (i * 2).toUInt32
-    -- First triangle: Li, Ri, Li+1
-    indices := indices.push baseIdx        -- Li
-    indices := indices.push (baseIdx + 1)  -- Ri
-    indices := indices.push (baseIdx + 2)  -- Li+1
-    -- Second triangle: Ri, Li+1, Ri+1
-    indices := indices.push (baseIdx + 1)  -- Ri
-    indices := indices.push (baseIdx + 3)  -- Ri+1
-    indices := indices.push (baseIdx + 2)  -- Li+1
-
-  return { vertices, indices }
-
-/-- Tessellate a single polyline segment as a stroke. -/
-private def tessellatePolylineSegment (points : Array Point) (style : StrokeStyle)
-    (closed : Bool) : TessellationResult := Id.run do
-  if points.size < 2 then
-    return { vertices := #[], indices := #[] }
-
-  let halfWidth := style.lineWidth / 2.0
-  let (leftPoints, rightPoints) := expandPolylineToStroke points halfWidth
-    style.lineCap style.lineJoin style.miterLimit closed
-
-  -- For closed paths, close the strip by repeating the first edge points.
-  let (leftPoints, rightPoints) := if closed && leftPoints.size > 0 && rightPoints.size > 0 then
-    (leftPoints.push leftPoints[0]!, rightPoints.push rightPoints[0]!)
-  else
-    (leftPoints, rightPoints)
-
-  return strokeEdgesToTriangles leftPoints rightPoints style.color
-
-/-- Merge two tessellation results by combining vertices and remapping indices. -/
-private def mergeTessResults (a b : TessellationResult) : TessellationResult :=
-  if a.vertices.size == 0 then b
-  else if b.vertices.size == 0 then a
-  else Id.run do
-    let aVertCount := a.vertices.size / Tessellation.vertexSize2D
-    let offset := aVertCount.toUInt32
-    let mut indices := a.indices
-    for idx in b.indices do
-      indices := indices.push (idx + offset)
-    { vertices := a.vertices ++ b.vertices, indices }
-
-/-- Tessellate a path as a stroke (outline). -/
-def tessellateStroke (path : Path) (style : StrokeStyle) (tolerance : Float := 0.5)
-    : TessellationResult := Id.run do
-  let (points, isClosed) := pathToPolygonWithClosed path tolerance
-
-  if points.size < 2 then
-    return { vertices := #[], indices := #[] }
-
-  -- Handle dash pattern
-  match style.dashPattern with
-  | none =>
-    -- Solid stroke
-    tessellatePolylineSegment points style isClosed
-  | some dashPat =>
-    -- Dashed stroke: segment the path and tessellate each segment
-    let segments := segmentByDashPattern points dashPat
-    let mut result : TessellationResult := { vertices := #[], indices := #[] }
-    for seg in segments do
-      let segResult := tessellatePolylineSegment seg style false  -- Dash segments are never closed
-      result := mergeTessResults result segResult
-    result
-
-/-- Tessellate a single polyline segment as a stroke with NDC conversion. -/
-private def tessellatePolylineSegmentNDC (points : Array Point) (style : StrokeStyle)
-    (screenWidth screenHeight : Float) (closed : Bool) : TessellationResult := Id.run do
-  if points.size < 2 then
-    return { vertices := #[], indices := #[] }
-
-  let halfWidth := style.lineWidth / 2.0
-  let (leftPoints, rightPoints) := expandPolylineToStroke points halfWidth
-    style.lineCap style.lineJoin style.miterLimit closed
-
-  -- For closed paths, close the strip by repeating the first edge points.
-  let (leftPoints, rightPoints) := if closed && leftPoints.size > 0 && rightPoints.size > 0 then
-    (leftPoints.push leftPoints[0]!, rightPoints.push rightPoints[0]!)
-  else
-    (leftPoints, rightPoints)
-
-  -- Convert to NDC
-  let toNDC := fun (p : Point) => pixelToNDC p.x p.y screenWidth screenHeight
-  let leftNDC := leftPoints.map toNDC
-  let rightNDC := rightPoints.map toNDC
-
-  return strokeEdgesToTriangles leftNDC rightNDC style.color
-
-/-- Tessellate a path as a stroke with NDC conversion. -/
-def tessellateStrokeNDC (path : Path) (style : StrokeStyle)
-    (screenWidth screenHeight : Float) (tolerance : Float := 0.5)
-    : TessellationResult := Id.run do
-  let (points, isClosed) := pathToPolygonWithClosed path tolerance
-
-  if points.size < 2 then
-    return { vertices := #[], indices := #[] }
-
-  -- Handle dash pattern
-  match style.dashPattern with
-  | none =>
-    -- Solid stroke
-    tessellatePolylineSegmentNDC points style screenWidth screenHeight isClosed
-  | some dashPat =>
-    -- Dashed stroke: segment the path and tessellate each segment
-    let segments := segmentByDashPattern points dashPat
-    let mut result : TessellationResult := { vertices := #[], indices := #[] }
-    for seg in segments do
-      let segResult := tessellatePolylineSegmentNDC seg style screenWidth screenHeight false
-      result := mergeTessResults result segResult
-    result
-
-/-- Create a simple line segment as a stroked path. -/
-def tessellateLineNDC (p1 p2 : Point) (style : StrokeStyle)
-    (screenWidth screenHeight : Float) : TessellationResult :=
-  let path := Path.empty |>.moveTo p1 |>.lineTo p2
-  tessellateStrokeNDC path style screenWidth screenHeight
-
-/-- Tessellate a stroked rectangle (just the outline). -/
-def tessellateStrokeRectNDC (r : Rect) (style : StrokeStyle)
-    (screenWidth screenHeight : Float) : TessellationResult :=
-  let path := Path.rectangle r
-  tessellateStrokeNDC path style screenWidth screenHeight
+  return { lineSegments, curveSegments, lineCount, curveCount }
 
 end Tessellation
 

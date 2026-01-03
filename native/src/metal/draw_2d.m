@@ -31,6 +31,113 @@ void afferent_renderer_draw_triangles(
                                   indexBufferOffset:0];
 }
 
+void afferent_renderer_draw_stroke(
+    AfferentRendererRef renderer,
+    AfferentBufferRef vertex_buffer,
+    AfferentBufferRef index_buffer,
+    uint32_t index_count,
+    float half_width,
+    float canvas_width,
+    float canvas_height,
+    float r,
+    float g,
+    float b,
+    float a
+) {
+    if (!renderer->currentEncoder || !vertex_buffer || !index_buffer) {
+        return;
+    }
+
+    StrokeUniforms uniforms;
+    uniforms.viewport[0] = canvas_width;
+    uniforms.viewport[1] = canvas_height;
+    uniforms.halfWidth = half_width;
+    uniforms.padding = 0.0f;
+    uniforms.color[0] = r;
+    uniforms.color[1] = g;
+    uniforms.color[2] = b;
+    uniforms.color[3] = a;
+
+    [renderer->currentEncoder setRenderPipelineState:renderer->strokePipelineState];
+    [renderer->currentEncoder setVertexBuffer:vertex_buffer->mtlBuffer offset:0 atIndex:0];
+    [renderer->currentEncoder setVertexBytes:&uniforms length:sizeof(StrokeUniforms) atIndex:1];
+    [renderer->currentEncoder setFragmentBytes:&uniforms length:sizeof(StrokeUniforms) atIndex:1];
+
+    [renderer->currentEncoder drawIndexedPrimitives:MTLPrimitiveTypeTriangle
+                                         indexCount:index_count
+                                          indexType:MTLIndexTypeUInt32
+                                        indexBuffer:index_buffer->mtlBuffer
+                                  indexBufferOffset:0];
+
+    [renderer->currentEncoder setRenderPipelineState:renderer->pipelineState];
+}
+
+void afferent_renderer_draw_stroke_path(
+    AfferentRendererRef renderer,
+    AfferentBufferRef segment_buffer,
+    uint32_t segment_count,
+    uint32_t segment_subdivisions,
+    float half_width,
+    float canvas_width,
+    float canvas_height,
+    float miter_limit,
+    uint32_t line_cap,
+    uint32_t line_join,
+    const float* dash_segments,
+    uint32_t dash_count,
+    float dash_offset,
+    float r,
+    float g,
+    float b,
+    float a
+) {
+    if (!renderer || !renderer->currentEncoder || !segment_buffer || segment_count == 0) {
+        return;
+    }
+
+    uint32_t subdivisions = segment_subdivisions > 0 ? segment_subdivisions : 1;
+
+    StrokePathVertexUniforms v;
+    v.viewport[0] = canvas_width;
+    v.viewport[1] = canvas_height;
+    v.halfWidth = half_width;
+    v.miterLimit = miter_limit;
+    v.lineCap = line_cap;
+    v.lineJoin = line_join;
+    v.segmentSubdivisions = subdivisions;
+    v.padding = 0;
+
+    StrokePathFragmentUniforms f;
+    f.color[0] = r;
+    f.color[1] = g;
+    f.color[2] = b;
+    f.color[3] = a;
+    for (uint32_t i = 0; i < 8; ++i) {
+        f.dashSegments[i] = (dash_segments && i < dash_count) ? dash_segments[i] : 0.0f;
+    }
+    f.dashCount = dash_count;
+    f.dashOffset = dash_offset;
+    f.lineCap = line_cap;
+    f.halfWidth = half_width;
+    f.padding0 = 0.0f;
+    f.padding1 = 0.0f;
+    f.padding2 = 0.0f;
+    f.padding3 = 0.0f;
+
+    [renderer->currentEncoder setRenderPipelineState:renderer->strokePathPipelineState];
+    [renderer->currentEncoder setVertexBuffer:segment_buffer->mtlBuffer offset:0 atIndex:0];
+    [renderer->currentEncoder setVertexBytes:&v length:sizeof(StrokePathVertexUniforms) atIndex:1];
+    [renderer->currentEncoder setFragmentBytes:&f length:sizeof(StrokePathFragmentUniforms) atIndex:1];
+
+    uint32_t vertexCount = (subdivisions + 1) * 2;
+    [renderer->currentEncoder drawPrimitives:MTLPrimitiveTypeTriangleStrip
+                                 vertexStart:0
+                                 vertexCount:vertexCount
+                               instanceCount:segment_count];
+
+    [renderer->currentEncoder setRenderPipelineState:renderer->pipelineState];
+}
+
 // Draw instanced rectangles - GPU computes transforms
 // instance_data: array of 9 floats per instance (pos.x, pos.y, sin, cos, halfSize, r, g, b, a)
 void afferent_renderer_draw_instanced_rects(

@@ -35,6 +35,29 @@ typedef struct {
     float color[4];
 } AfferentVertex;
 
+// Stroke vertex structure (position, normal, side)
+typedef struct {
+    float position[2];
+    float normal[2];
+    float side;
+} AfferentStrokeVertex;
+
+// Stroke segment structure for GPU extrusion (packed floats)
+typedef struct __attribute__((packed)) {
+    float p0[2];
+    float p1[2];
+    float c1[2];
+    float c2[2];
+    float prevDir[2];
+    float nextDir[2];
+    float startDist;
+    float length;
+    float hasPrev;
+    float hasNext;
+    float kind;
+    float padding;
+} AfferentStrokeSegment;
+
 // 3D Vertex structure (for 3D mesh rendering)
 typedef struct {
     float position[3];  // x, y, z
@@ -112,6 +135,18 @@ AfferentResult afferent_buffer_create_vertex(
     uint32_t vertex_count,
     AfferentBufferRef* out_buffer
 );
+AfferentResult afferent_buffer_create_stroke_vertex(
+    AfferentRendererRef renderer,
+    const AfferentStrokeVertex* vertices,
+    uint32_t vertex_count,
+    AfferentBufferRef* out_buffer
+);
+AfferentResult afferent_buffer_create_stroke_segment(
+    AfferentRendererRef renderer,
+    const AfferentStrokeSegment* segments,
+    uint32_t segment_count,
+    AfferentBufferRef* out_buffer
+);
 AfferentResult afferent_buffer_create_index(
     AfferentRendererRef renderer,
     const uint32_t* indices,
@@ -126,6 +161,38 @@ void afferent_renderer_draw_triangles(
     AfferentBufferRef vertex_buffer,
     AfferentBufferRef index_buffer,
     uint32_t index_count
+);
+void afferent_renderer_draw_stroke(
+    AfferentRendererRef renderer,
+    AfferentBufferRef vertex_buffer,
+    AfferentBufferRef index_buffer,
+    uint32_t index_count,
+    float half_width,
+    float canvas_width,
+    float canvas_height,
+    float r,
+    float g,
+    float b,
+    float a
+);
+void afferent_renderer_draw_stroke_path(
+    AfferentRendererRef renderer,
+    AfferentBufferRef segment_buffer,
+    uint32_t segment_count,
+    uint32_t segment_subdivisions,
+    float half_width,
+    float canvas_width,
+    float canvas_height,
+    float miter_limit,
+    uint32_t line_cap,
+    uint32_t line_join,
+    const float* dash_segments,
+    uint32_t dash_count,
+    float dash_offset,
+    float r,
+    float g,
+    float b,
+    float a
 );
 
 // Instanced rectangle drawing (GPU-accelerated transforms)

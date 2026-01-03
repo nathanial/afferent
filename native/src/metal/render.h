@@ -49,11 +49,17 @@ struct AfferentRenderer {
     float drawableScaleOverride;                       // 0 = native scale, >0 overrides
     // Active pipeline pointers (match current render pass sample count)
     __strong id<MTLRenderPipelineState> pipelineState;
+    __strong id<MTLRenderPipelineState> strokePipelineState;    // Screen-space stroke pipeline
+    __strong id<MTLRenderPipelineState> strokePathPipelineState; // GPU stroke path pipeline
     __strong id<MTLRenderPipelineState> textPipelineState;      // For text rendering
     __strong id<MTLRenderPipelineState> spritePipelineState;    // For sprite/texture rendering
     // MSAA / non-MSAA variants for pipelines used in sprite benchmark
     __strong id<MTLRenderPipelineState> pipelineStateMSAA;
     __strong id<MTLRenderPipelineState> pipelineStateNoMSAA;
+    __strong id<MTLRenderPipelineState> strokePipelineStateMSAA;
+    __strong id<MTLRenderPipelineState> strokePipelineStateNoMSAA;
+    __strong id<MTLRenderPipelineState> strokePathPipelineStateMSAA;
+    __strong id<MTLRenderPipelineState> strokePathPipelineStateNoMSAA;
     __strong id<MTLRenderPipelineState> textPipelineStateMSAA;
     __strong id<MTLRenderPipelineState> textPipelineStateNoMSAA;
     __strong id<MTLRenderPipelineState> spritePipelineStateMSAA;

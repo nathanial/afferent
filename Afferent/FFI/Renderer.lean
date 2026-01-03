@@ -33,6 +33,14 @@ opaque Renderer.setDrawableScale (renderer : @& Renderer) (scale : Float) : IO U
 @[extern "lean_afferent_buffer_create_vertex"]
 opaque Buffer.createVertex (renderer : @& Renderer) (vertices : @& Array Float) : IO Buffer
 
+-- Stroke vertices: Array of Float, 5 per vertex (pos.x, pos.y, nx, ny, side)
+@[extern "lean_afferent_buffer_create_stroke_vertex"]
+opaque Buffer.createStrokeVertex (renderer : @& Renderer) (vertices : @& Array Float) : IO Buffer
+
+-- Stroke segments: Array of Float, 18 per segment (packed parametric segment data)
+@[extern "lean_afferent_buffer_create_stroke_segment"]
+opaque Buffer.createStrokeSegment (renderer : @& Renderer) (segments : @& Array Float) : IO Buffer
+
 -- Indices: Array of UInt32
 @[extern "lean_afferent_buffer_create_index"]
 opaque Buffer.createIndex (renderer : @& Renderer) (indices : @& Array UInt32) : IO Buffer
@@ -46,6 +54,35 @@ opaque Renderer.drawTriangles
   (renderer : @& Renderer)
   (vertexBuffer indexBuffer : @& Buffer)
   (indexCount : UInt32) : IO Unit
+
+-- Draw extruded strokes (screen-space width)
+@[extern "lean_afferent_renderer_draw_stroke"]
+opaque Renderer.drawStroke
+  (renderer : @& Renderer)
+  (vertexBuffer indexBuffer : @& Buffer)
+  (indexCount : UInt32)
+  (halfWidth : Float)
+  (canvasWidth : Float)
+  (canvasHeight : Float)
+  (r g b a : Float) : IO Unit
+
+-- Draw GPU-extruded strokes from parametric segments
+@[extern "lean_afferent_renderer_draw_stroke_path"]
+opaque Renderer.drawStrokePath
+  (renderer : @& Renderer)
+  (segmentBuffer : @& Buffer)
+  (segmentCount : UInt32)
+  (segmentSubdivisions : UInt32)
+  (halfWidth : Float)
+  (canvasWidth : Float)
+  (canvasHeight : Float)
+  (miterLimit : Float)
+  (lineCap : UInt32)
+  (lineJoin : UInt32)
+  (dashSegments : @& Array Float)
+  (dashCount : UInt32)
+  (dashOffset : Float)
+  (r g b a : Float) : IO Unit
 
 -- Instanced rectangle drawing (GPU-accelerated transforms)
 -- instanceData: Array of 8 floats per instance (pos.x, pos.y, angle, halfSize, r, g, b, a)

@@ -201,13 +201,63 @@ def fillRoundedRectWithStyle (ctx : DrawContext) (rect : Rect) (cornerRadius : F
 def strokePath (ctx : DrawContext) (path : Path) (style : StrokeStyle) : IO Unit := do
   -- Use current drawable size for NDC conversion (dynamic resize support)
   let (w, h) ← ctx.getCurrentSize
-  let result := Tessellation.tessellateStrokeNDC path style w h
-  if result.vertices.size > 0 && result.indices.size > 0 then
-    let vertexBuffer ← FFI.Buffer.createVertex ctx.renderer result.vertices
-    let indexBuffer ← FFI.Buffer.createIndex ctx.renderer result.indices
-    ctx.renderer.drawTriangles vertexBuffer indexBuffer result.indices.size.toUInt32
-    FFI.Buffer.destroy indexBuffer
-    FFI.Buffer.destroy vertexBuffer
+  let segments := Tessellation.tessellateStrokeSegments path style
+  if segments.lineCount == 0 && segments.curveCount == 0 then
+    return
+
+  let halfWidth := style.lineWidth / 2.0
+  let lineCap : UInt32 :=
+    match style.lineCap with
+    | .butt => 0
+    | .round => 1
+    | .square => 2
+  let lineJoin : UInt32 :=
+    match style.lineJoin with
+    | .miter => 0
+    | .round => 1
+    | .bevel => 2
+
+  let dashMax : Nat := 8
+  let (dashSegments, dashCount, dashOffset) := Id.run do
+    match style.dashPattern with
+    | none => return (#[], 0, 0.0)
+    | some pat =>
+      let mut trimmed : Array Float := Array.mkEmpty (min pat.segments.size dashMax)
+      for i in [:min pat.segments.size dashMax] do
+        trimmed := trimmed.push pat.segments[i]!
+      return (trimmed, trimmed.size, pat.offset)
+
+  if segments.lineCount > 0 then
+    let buffer ← FFI.Buffer.createStrokeSegment ctx.renderer segments.lineSegments
+    ctx.renderer.drawStrokePath
+      buffer
+      segments.lineCount.toUInt32
+      1
+      halfWidth
+      w h
+      style.miterLimit
+      lineCap lineJoin
+      dashSegments
+      dashCount.toUInt32
+      dashOffset
+      style.color.r style.color.g style.color.b style.color.a
+    FFI.Buffer.destroy buffer
+
+  if segments.curveCount > 0 then
+    let buffer ← FFI.Buffer.createStrokeSegment ctx.renderer segments.curveSegments
+    ctx.renderer.drawStrokePath
+      buffer
+      segments.curveCount.toUInt32
+      Tessellation.strokeCurveSubdivisions.toUInt32
+      halfWidth
+      w h
+      style.miterLimit
+      lineCap lineJoin
+      dashSegments
+      dashCount.toUInt32
+      dashOffset
+      style.color.r style.color.g style.color.b style.color.a
+    FFI.Buffer.destroy buffer
 
 /-- Stroke a path with a color and line width. -/
 def strokePathSimple (ctx : DrawContext) (path : Path) (color : Color) (lineWidth : Float := 1.0) : IO Unit :=
@@ -597,24 +647,14 @@ private def effectiveStrokeStyle (c : Canvas) : StrokeStyle :=
   { state.strokeStyle with
     color := state.effectiveStrokeColor }
 
-/-- Stroke a path using the current state. Batch-aware: adds to batch if active.
-    When auto-batching is enabled, geometry is accumulated and drawn at endFrame. -/
+/-- Stroke a path using the current state.
+    Strokes bypass the fill batch because they use a different vertex format. -/
 def strokePath (path : Path) (c : Canvas) : IO Canvas := do
-  let (w, h) ← c.ctx.getCurrentSize
   let transformedPath := c.state.transformPath path
   let style := c.effectiveStrokeStyle
-  let result := Tessellation.tessellateStrokeNDC transformedPath style w h
-  match c.batch with
-  | some batch =>
-    pure { c with batch := some (batch.add result) }
-  | none =>
-    if c.autoBatchEnabled then
-      -- Auto-batch: accumulate in autoBatch, will be flushed at endFrame
-      pure { c with autoBatch := c.autoBatch.add result }
-    else
-      -- Immediate mode: draw directly (legacy behavior)
-      c.ctx.strokePath transformedPath style
-      pure c
+  -- Stroke extrusion uses a separate vertex format, so it bypasses the fill batch.
+  c.ctx.strokePath transformedPath style
+  pure c
 
 /-- Stroke a rectangle using the current state. -/
 def strokeRect (rect : Rect) (c : Canvas) : IO Canvas :=
