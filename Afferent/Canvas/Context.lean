@@ -863,6 +863,53 @@ def baseWidth : CanvasM Float := do return (← get).baseWidth
 def baseHeight : CanvasM Float := do return (← get).baseHeight
 def width : CanvasM Float := do (← get).width
 def height : CanvasM Float := do (← get).height
+def getCurrentSize : CanvasM (Float × Float) := do (← get).ctx.getCurrentSize
+
+/-! ## Window Input (lifted from Canvas/FFI.Window) -/
+
+def getKeyCode : CanvasM UInt16 := do (← get).getKeyCode
+def hasKeyPressed : CanvasM Bool := do (← get).hasKeyPressed
+def clearKey : CanvasM Unit := do (← get).clearKey
+
+def getPointerLock : CanvasM Bool := do
+  FFI.Window.getPointerLock (← get).ctx.window
+
+def setPointerLock (locked : Bool) : CanvasM Unit := do
+  FFI.Window.setPointerLock (← get).ctx.window locked
+
+def isKeyDown (keyCode : UInt16) : CanvasM Bool := do
+  FFI.Window.isKeyDown (← get).ctx.window keyCode
+
+def getMouseDelta : CanvasM (Float × Float) := do
+  FFI.Window.getMouseDelta (← get).ctx.window
+
+def getClick : CanvasM (Option FFI.ClickEvent) := do
+  FFI.Window.getClick (← get).ctx.window
+
+def clearClick : CanvasM Unit := do
+  FFI.Window.clearClick (← get).ctx.window
+
+/-! ## Context Accessors -/
+
+def getRenderer : CanvasM FFI.Renderer := do return (← get).ctx.renderer
+def getWindow : CanvasM FFI.Window := do return (← get).ctx.window
+
+/-! ## Frame Loop -/
+
+/-- Run a render loop entirely in CanvasM.
+    The render function receives elapsed time in seconds and handles all drawing.
+    Frame begin/end and polling are handled automatically. -/
+def runLoopM (c : Canvas) (clearColor : Color) (render : Float → CanvasM Unit) : IO Unit := do
+  let startTime ← IO.monoMsNow
+  let mut canvas := c
+  while !(← canvas.shouldClose) do
+    canvas.pollEvents
+    let ok ← canvas.beginFrame clearColor
+    if ok then
+      let now ← IO.monoMsNow
+      let elapsed := (now - startTime).toFloat / 1000.0
+      canvas ← run' canvas (render elapsed)
+      canvas ← canvas.endFrame
 
 end CanvasM
 

@@ -415,4 +415,247 @@ New PathFeatures demo (mode 11 in Runner) showcases all three features.
 
 ---
 
-*Last updated: 2025-12-30* (path features + 98 tests)
+*Last updated: 2026-01-02* (API ergonomics review)
+
+---
+
+## API Ergonomics (January 2026)
+
+Based on review of afferent-demos usage patterns, these improvements would make the API easier to use.
+
+### [Priority: High] Eliminate Canvas Threading Pattern
+
+**Current:**
+```lean
+c ← run' (c.resetTransform) do
+  setFillColor Color.white
+  fillTextXY ...
+c ← run' (c.resetTransform) do
+  ...
+```
+
+**Issue:** Verbose, error-prone manual threading of canvas state through every render block.
+
+**Proposed:** Canvas implicitly available after creation, or automatic state management:
+```lean
+canvas.frame do
+  setFillColor Color.white
+  fillTextXY ...
+```
+
+**Affected Files:** `Afferent/Canvas/Context.lean`
+
+---
+
+### [Priority: High] Named Key Constants
+
+**Current:**
+```lean
+if keyCode == 49 then  -- Space bar
+if keyCode == 53 then  -- Escape
+if keyCode == 124 then  -- Right arrow
+```
+
+**Issue:** Magic numbers, platform-specific, hard to maintain.
+
+**Proposed:**
+```lean
+if keyCode == Key.space then
+if keyCode == Key.escape then
+if keyCode == Key.right then
+```
+
+**Affected Files:** `Afferent/FFI/Window.lean` (add Key namespace with constants)
+
+---
+
+### [Priority: High] Flatten Context Access
+
+**Current:**
+```lean
+FFI.Window.getClick c.ctx.window
+FFI.Window.clearClick c.ctx.window
+FFI.Window.isKeyDown c.ctx.window 13
+c.ctx.renderer
+```
+
+**Issue:** Deep nesting (`c.ctx.window`, `c.ctx.renderer`) is verbose.
+
+**Proposed:**
+```lean
+c.getClick
+c.clearClick
+c.isKeyDown Key.w
+c.renderer
+```
+
+**Affected Files:** `Afferent/Canvas/Context.lean` (add convenience methods to Canvas)
+
+---
+
+### [Priority: Medium] Scoped Transform Helper
+
+**Current:**
+```lean
+save
+translate 150 150
+...stuff...
+restore
+```
+
+**Issue:** Easy to forget `restore`, verbose.
+
+**Proposed:**
+```lean
+withTransform (translate 150 150) do
+  ...stuff...
+-- or
+scoped do
+  translate 150 150
+  ...stuff...
+```
+
+**Affected Files:** `Afferent/Canvas/Context.lean`
+
+---
+
+### [Priority: Medium] Auto-Scaling Mode
+
+**Current:**
+```lean
+fillTextXY text (20 * screenScale) (30 * screenScale) fontMedium
+let fontSmall ← Font.load path (16 * screenScale).toUInt32
+```
+
+**Issue:** Manual scale multiplication everywhere, easy to miss.
+
+**Proposed:** Canvas has optional logical coordinate mode:
+```lean
+canvas.setLogicalSize 1920 1080  -- All coords in logical pixels
+fillTextXY text 20 30 fontMedium  -- Auto-scaled to physical
+```
+
+**Affected Files:** `Afferent/Canvas/Context.lean`, `Afferent/FFI/Renderer.lean`
+
+---
+
+### [Priority: Medium] Resource Scoping (RAII-style)
+
+**Current:**
+```lean
+let fontSmall ← Font.load path size
+...
+fontSmall.destroy  -- Easy to forget
+```
+
+**Proposed:**
+```lean
+Font.with path size fun font => do
+  ...  -- font auto-destroyed on exit
+
+-- Or bracket pattern:
+Canvas.run settings fun ctx => do
+  ...  -- all resources auto-cleaned
+```
+
+**Affected Files:** `Afferent/Text/Font.lean`, `Afferent/Canvas/Context.lean`
+
+---
+
+### [Priority: Medium] Simplified Main Loop
+
+**Current:** Every app needs 50+ lines of boilerplate:
+- Create canvas, load fonts
+- `while !(← c.shouldClose)` loop
+- `pollEvents`, `beginFrame`, `endFrame`
+- Manual frame timing (`now - lastTime`)
+- Manual cleanup
+
+**Proposed:**
+```lean
+Canvas.run { width := 1920, height := 1080, title := "My App" } fun ctx t dt => do
+  -- Just rendering code here
+  -- t = elapsed time, dt = delta time
+  -- Cleanup automatic
+```
+
+**Affected Files:** `Afferent/Canvas/Context.lean` (new `Canvas.run` function)
+
+---
+
+### [Priority: Medium] System Font Loading
+
+**Current:**
+```lean
+Font.load "/System/Library/Fonts/Monaco.ttf" size
+```
+
+**Issue:** Hardcoded macOS paths, brittle.
+
+**Proposed:**
+```lean
+Font.loadSystem "Monaco" size
+Font.loadSystem "monospace" size  -- Generic family names
+```
+
+**Affected Files:** `Afferent/Text/Font.lean`, `native/src/common/text_render.c`
+
+---
+
+### [Priority: Low] Color Convenience Methods
+
+**Current:**
+```lean
+Color.hsva 0.667 0.25 0.20 1.0
+Color.rgba color.r color.g color.b alpha
+```
+
+**Proposed:**
+```lean
+Color.hsv 0.667 0.25 0.20  -- alpha defaults to 1
+color.withAlpha 0.5
+color.lighter 0.2
+color.darker 0.2
+```
+
+**Affected Files:** `Afferent/Core/Color.lean`
+
+---
+
+### [Priority: Low] Simplified Widget Click Handling
+
+**Current (Interactive.lean):**
+```lean
+let (widget, layouts, ids, offsetX, offsetY) ←
+  Demos.prepareCounterForHitTest fontRegistry fontMediumId ...
+let hitId := Demos.hitTestCounter widget layouts offsetX offsetY ce.x ce.y
+counterState := { counterState with widgetIds := some ids }
+counterState := Demos.processClick counterState hitId
+```
+
+**Issue:** Too much ceremony for basic click handling.
+
+**Proposed:** Widget system handles hit testing internally:
+```lean
+widget.onClick ce.x ce.y fun id =>
+  match id with
+  | .increment => state.increment
+  | .decrement => state.decrement
+```
+
+**Affected Files:** `Afferent/Widget/*.lean`
+
+---
+
+## Summary: Quick Wins
+
+1. **Key constants** - Small change, big readability improvement
+2. **Flatten context access** - Add convenience methods to Canvas
+3. **withTransform helper** - Simple wrapper around save/restore
+4. **Color defaults** - `Color.hsv` with alpha=1 default
+
+## Summary: Bigger Wins (More Effort)
+
+1. **Canvas.run main loop** - Eliminates boilerplate, manages resources
+2. **Auto-scaling mode** - No more `* screenScale` everywhere
+3. **System font loading** - Platform-independent font names
