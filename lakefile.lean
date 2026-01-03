@@ -37,31 +37,6 @@ def commonLinkArgs : Array String := #[
 lean_lib Afferent where
   roots := #[`Afferent]
 
--- Demo library
-lean_lib Demos where
-  roots := #[`Demos]
-
-lean_exe afferent where
-  root := `Main
-  -- Link against Metal and Cocoa frameworks on macOS
-  -- NOTE: Build with LEAN_CC=/usr/bin/clang to use system linker
-  moreLinkArgs := commonLinkArgs
-
--- Example executable
-lean_exe hello_triangle where
-  root := `Examples.HelloTriangle
-  moreLinkArgs := commonLinkArgs
-
--- 3D Spinning Cubes demo
-lean_exe spinning_cubes where
-  root := `Examples.SpinningCubes
-  moreLinkArgs := commonLinkArgs
-
--- Headless map tile fetch/decode diagnostic
-lean_exe map_tile_fetch_test where
-  root := `Examples.MapTileFetchTest
-  moreLinkArgs := commonLinkArgs
-
 -- Test executable
 @[test_driver]
 lean_exe afferent_tests where

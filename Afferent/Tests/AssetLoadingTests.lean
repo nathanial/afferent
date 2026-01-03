@@ -3,9 +3,7 @@
   Validates Assimp-based model importing invariants.
 -/
 import Afferent.Tests.Framework
-import Afferent.FFI.Init
 import Assimptor
-import Demos.Seascape
 
 namespace Afferent.Tests.AssetLoadingTests
 
@@ -36,12 +34,6 @@ test "loadAsset rejects missing file" := do
     catch _ =>
       pure true
   ensure ok "expected loadAsset to throw on missing file"
-
-test "Demos.loadFrigate caches without crashing" := do
-  -- This exercises the Seascape caching path (IO.Ref.set with a cached Texture).
-  Afferent.FFI.init
-  let _ ← Demos.loadFrigate
-  let _ ← Demos.loadFrigate
 
 test "loadAsset loads fictional frigate" := do
   let asset ← Assimptor.loadAsset
