@@ -10,6 +10,13 @@ import Afferent.Core.Transform
 
 namespace Afferent
 
+namespace Tessellation
+
+/-- Pi constant for arc calculations. -/
+private def pi : Float := 3.14159265358979323846
+
+end Tessellation
+
 /-- Result of tessellating a path into triangles. -/
 structure TessellationResult where
   /-- Flat array of vertex data: x, y, r, g, b, a per vertex. -/
@@ -822,6 +829,28 @@ private def perpendicular (dx dy : Float) : Point :=
 private def computeNormal (dir : Point) : Point :=
   ⟨-dir.y, dir.x⟩
 
+/-- Number of segments to use for round caps and joins.
+    More segments = smoother curves but more geometry. -/
+private def roundCapSegments : Nat := 8
+
+/-- Generate arc points for a round cap or join.
+    center: center point of the arc
+    radius: radius of the arc
+    startAngle: starting angle in radians
+    endAngle: ending angle in radians
+    segments: number of line segments to approximate the arc -/
+private def generateArcPoints (center : Point) (radius : Float)
+    (startAngle endAngle : Float) (segments : Nat) : Array Point := Id.run do
+  if segments == 0 then return #[]
+  let mut points : Array Point := Array.mkEmpty (segments + 1)
+  for i in [:segments + 1] do
+    let t := i.toFloat / segments.toFloat
+    let angle := startAngle + (endAngle - startAngle) * t
+    let x := center.x + radius * Float.cos angle
+    let y := center.y + radius * Float.sin angle
+    points := points.push ⟨x, y⟩
+  return points
+
 /-- Expand a polyline into stroke geometry.
     Returns left and right edge points for the stroke. -/
 def expandPolylineToStroke (points : Array Point) (halfWidth : Float)
@@ -872,12 +901,40 @@ def expandPolylineToStroke (points : Array Point) (halfWidth : Float)
       let right := right.push ⟨p.x - normal2.x * halfWidth, p.y - normal2.y * halfWidth⟩
       return (left, right)
     | .round =>
-      -- Simplified to miter for now
-      let scale := min miterScale miterLimit
-      return (left.push ⟨p.x + avgNormal.x * halfWidth * scale,
-                         p.y + avgNormal.y * halfWidth * scale⟩,
-              right.push ⟨p.x - avgNormal.x * halfWidth * scale,
-                          p.y - avgNormal.y * halfWidth * scale⟩)
+      -- Round join: add arc on the outside of the turn
+      -- Determine which side is outside (convex side of the turn)
+      let cross := dir1.x * dir2.y - dir1.y * dir2.x  -- Cross product determines turn direction
+      let angle1 := Float.atan2 normal1.y normal1.x
+      let angle2 := Float.atan2 normal2.y normal2.x
+
+      if cross > 0.0 then
+        -- Turning left: outside is on the right side
+        -- Add arc on right, single point on left
+        let leftPt := ⟨p.x + avgNormal.x * halfWidth * (min miterScale miterLimit),
+                       p.y + avgNormal.y * halfWidth * (min miterScale miterLimit)⟩
+        let mut rightArc := generateArcPoints p halfWidth (-angle1) (-angle2) (roundCapSegments / 2)
+        let mut newLeft := left.push leftPt
+        let mut newRight := right
+        for pt in rightArc do
+          newRight := newRight.push pt
+          -- Keep left/right arrays balanced by duplicating the left point
+          if newRight.size > newLeft.size then
+            newLeft := newLeft.push leftPt
+        return (newLeft, newRight)
+      else
+        -- Turning right: outside is on the left side
+        -- Add arc on left, single point on right
+        let rightPt := ⟨p.x - avgNormal.x * halfWidth * (min miterScale miterLimit),
+                        p.y - avgNormal.y * halfWidth * (min miterScale miterLimit)⟩
+        let mut leftArc := generateArcPoints p halfWidth angle1 angle2 (roundCapSegments / 2)
+        let mut newLeft := left
+        let mut newRight := right.push rightPt
+        for pt in leftArc do
+          newLeft := newLeft.push pt
+          -- Keep left/right arrays balanced
+          if newLeft.size > newRight.size then
+            newRight := newRight.push rightPt
+        return (newLeft, newRight)
 
   if closed then
     -- Closed path: treat every point as a join, no caps.
@@ -906,23 +963,37 @@ def expandPolylineToStroke (points : Array Point) (halfWidth : Float)
           let normal := computeNormal dir
 
           -- Apply line cap at start
-          let (capLeft, capRight) := match lineCap with
+          match lineCap with
             | .butt =>
-              (⟨p.x + normal.x * halfWidth, p.y + normal.y * halfWidth⟩,
-               ⟨p.x - normal.x * halfWidth, p.y - normal.y * halfWidth⟩)
+              leftPoints := leftPoints.push ⟨p.x + normal.x * halfWidth, p.y + normal.y * halfWidth⟩
+              rightPoints := rightPoints.push ⟨p.x - normal.x * halfWidth, p.y - normal.y * halfWidth⟩
             | .square =>
               -- Extend backwards by halfWidth
               let backX := p.x - dir.x * halfWidth
               let backY := p.y - dir.y * halfWidth
-              (⟨backX + normal.x * halfWidth, backY + normal.y * halfWidth⟩,
-               ⟨backX - normal.x * halfWidth, backY - normal.y * halfWidth⟩)
+              leftPoints := leftPoints.push ⟨backX + normal.x * halfWidth, backY + normal.y * halfWidth⟩
+              rightPoints := rightPoints.push ⟨backX - normal.x * halfWidth, backY - normal.y * halfWidth⟩
             | .round =>
-              -- For round caps, we'd add arc points; simplified to butt for now
-              (⟨p.x + normal.x * halfWidth, p.y + normal.y * halfWidth⟩,
-               ⟨p.x - normal.x * halfWidth, p.y - normal.y * halfWidth⟩)
-
-          leftPoints := leftPoints.push capLeft
-          rightPoints := rightPoints.push capRight
+              -- Round cap: semicircle going from right edge, around back, to left edge
+              -- Generate arc points for the semicircle
+              let rightAngle := Float.atan2 (-normal.y) (-normal.x)
+              let leftAngle := Float.atan2 normal.y normal.x
+              -- Go from right around back to left (clockwise when looking at start)
+              let arcPts := generateArcPoints p halfWidth rightAngle (rightAngle - Tessellation.pi) roundCapSegments
+              -- First point goes to right, last to left, middle points are paired
+              if arcPts.size > 0 then
+                rightPoints := rightPoints.push arcPts[0]!
+                leftPoints := leftPoints.push arcPts[arcPts.size - 1]!
+                -- Add middle arc points - pair them to maintain balanced arrays
+                for j in [1:arcPts.size - 1] do
+                  if j < arcPts.size then
+                    -- Mirror points around the center line for proper triangulation
+                    let arcPt := arcPts[j]!
+                    leftPoints := leftPoints.push arcPt
+                    -- Create a mirrored point on the right side
+                    let mirrorX := 2.0 * p.x - arcPt.x
+                    let mirrorY := 2.0 * p.y - arcPt.y
+                    rightPoints := rightPoints.push ⟨mirrorX, mirrorY⟩
 
       else if i == points.size - 1 then
         -- Last point: use direction from previous point
@@ -934,23 +1005,34 @@ def expandPolylineToStroke (points : Array Point) (halfWidth : Float)
           let normal := computeNormal dir
 
           -- Apply line cap at end
-          let (capLeft, capRight) := match lineCap with
+          match lineCap with
             | .butt =>
-              (⟨p.x + normal.x * halfWidth, p.y + normal.y * halfWidth⟩,
-               ⟨p.x - normal.x * halfWidth, p.y - normal.y * halfWidth⟩)
+              leftPoints := leftPoints.push ⟨p.x + normal.x * halfWidth, p.y + normal.y * halfWidth⟩
+              rightPoints := rightPoints.push ⟨p.x - normal.x * halfWidth, p.y - normal.y * halfWidth⟩
             | .square =>
               -- Extend forwards by halfWidth
               let fwdX := p.x + dir.x * halfWidth
               let fwdY := p.y + dir.y * halfWidth
-              (⟨fwdX + normal.x * halfWidth, fwdY + normal.y * halfWidth⟩,
-               ⟨fwdX - normal.x * halfWidth, fwdY - normal.y * halfWidth⟩)
+              leftPoints := leftPoints.push ⟨fwdX + normal.x * halfWidth, fwdY + normal.y * halfWidth⟩
+              rightPoints := rightPoints.push ⟨fwdX - normal.x * halfWidth, fwdY - normal.y * halfWidth⟩
             | .round =>
-              -- Simplified to butt
-              (⟨p.x + normal.x * halfWidth, p.y + normal.y * halfWidth⟩,
-               ⟨p.x - normal.x * halfWidth, p.y - normal.y * halfWidth⟩)
-
-          leftPoints := leftPoints.push capLeft
-          rightPoints := rightPoints.push capRight
+              -- Round cap: semicircle going from left edge, around front, to right edge
+              let leftAngle := Float.atan2 normal.y normal.x
+              -- Go from left around front to right (counterclockwise when looking at end)
+              let arcPts := generateArcPoints p halfWidth leftAngle (leftAngle + Tessellation.pi) roundCapSegments
+              -- First point goes to left, last to right, middle points are paired
+              if arcPts.size > 0 then
+                leftPoints := leftPoints.push arcPts[0]!
+                rightPoints := rightPoints.push arcPts[arcPts.size - 1]!
+                -- Add middle arc points - pair them to maintain balanced arrays
+                for j in [1:arcPts.size - 1] do
+                  if j < arcPts.size then
+                    let arcPt := arcPts[j]!
+                    leftPoints := leftPoints.push arcPt
+                    -- Create a mirrored point on the right side
+                    let mirrorX := 2.0 * p.x - arcPt.x
+                    let mirrorY := 2.0 * p.y - arcPt.y
+                    rightPoints := rightPoints.push ⟨mirrorX, mirrorY⟩
 
       else
         -- Middle point: compute join between two segments

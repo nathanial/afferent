@@ -23,18 +23,18 @@ This document tracks improvement opportunities, feature proposals, and code clea
 
 ---
 
-### [Priority: High] Round Line Caps and Joins
+### [Priority: High] ~~Round Line Caps and Joins~~ ✅ COMPLETED
 
-**Description:** Implement proper round line caps and line joins for stroke rendering. Currently `LineCap.round` and `LineJoin.round` fall back to butt caps and miter joins respectively.
+**Status:** Completed - added arc geometry generation for round caps and joins.
 
-**Rationale:** Round caps and joins are commonly needed for smooth graphics and are part of the standard Canvas API.
+**Resolution:** Round line caps and joins now properly generate arc geometry:
+- Added `generateArcPoints` helper for arc tessellation
+- Round joins generate arcs on the outside of turns
+- Round start/end caps generate semicircular arcs
+- Uses 8 segments per arc for smooth curves
 
 **Affected Files:**
-- `Afferent/Render/Tessellation.lean` (expandPolylineToStroke function, lines 529, 555-558, 603-609)
-
-**Estimated Effort:** Medium
-
-**Dependencies:** None. Requires generating arc geometry for round elements.
+- `Afferent/Render/Tessellation.lean` (expandPolylineToStroke function)
 
 ---
 
@@ -271,23 +271,27 @@ The widget event system could benefit from a formal state machine for focus, hov
 
 ## API Ergonomics
 
-### [Priority: Medium] Auto-Scaling Mode
+### [Priority: Medium] ~~Auto-Scaling Mode~~ ✅ COMPLETED
 
-**Current:**
+**Status:** Completed - `Canvas.run` now auto-scales when `scaleToScreen = true` (default).
+
+**Resolution:** Canvas automatically applies screen scale transform at frame start:
 ```lean
+-- Before: manual scaling everywhere
 fillTextXY text (20 * screenScale) (30 * screenScale) fontMedium
-let fontSmall ← Font.load path (16 * screenScale).toUInt32
+
+-- After: just use logical pixels
+Canvas.run { title := "My App" } fun elapsed dt => do
+  fillTextXY text 20 30 fontMedium  -- Auto-scaled!
 ```
 
-**Issue:** Manual scale multiplication everywhere, easy to miss.
+Features:
+- `Canvas.createWithScale` stores screen scale factor
+- `Canvas.run` applies scale transform at frame start when `scaleToScreen = true`
+- `getScreenScale : CanvasM Float` accessor for font loading
+- `Font.loadSystemScaled` and `Font.loadScaled` for scaled font loading
 
-**Proposed:** Canvas has optional logical coordinate mode:
-```lean
-canvas.setLogicalSize 1920 1080  -- All coords in logical pixels
-fillTextXY text 20 30 fontMedium  -- Auto-scaled to physical
-```
-
-**Affected Files:** `Afferent/Canvas/Context.lean`, `Afferent/FFI/Renderer.lean`
+**Affected Files:** `Afferent/Canvas/Context.lean`
 
 ---
 
@@ -342,22 +346,31 @@ Canvas.run { title := "My App" } fun elapsed dt => do
 
 ---
 
-### [Priority: Medium] System Font Loading
+### [Priority: Medium] ~~System Font Loading~~ ✅ COMPLETED
 
-**Current:**
+**Status:** Completed - `Font.loadSystem` loads fonts by name.
+
+**Resolution:** System fonts can now be loaded by name:
 ```lean
+-- Before: hardcoded paths
 Font.load "/System/Library/Fonts/Monaco.ttf" size
+
+-- After: simple names
+let font ← Font.loadSystem "Monaco" 16
+let font ← Font.loadSystem "monospace" 24  -- Generic family
+let font ← Font.loadSystemScaled "Helvetica" 16 screenScale
 ```
 
-**Issue:** Hardcoded macOS paths, brittle.
+Features:
+- `Font.loadSystem` - load by font name (Monaco, Helvetica, Times, etc.)
+- `Font.loadSystemScaled` - load with screen scale factor
+- `Font.loadScaled` - load from path with screen scale
+- `Font.findSystemFont` - look up path by name
+- Generic families: monospace, sans-serif, serif, system-ui
 
-**Proposed:**
-```lean
-Font.loadSystem "Monaco" size
-Font.loadSystem "monospace" size  -- Generic family names
-```
+Supports 20+ common macOS fonts with normalized name lookup.
 
-**Affected Files:** `Afferent/Text/Font.lean`, `native/src/common/text_render.c`
+**Affected Files:** `Afferent/Text/Font.lean`
 
 ---
 
@@ -388,9 +401,16 @@ widget.onClick ce.x ce.y fun id =>
 
 ## Summary: Next Up
 
-1. **Auto-scaling mode** - No more `* screenScale` everywhere
-2. **System font loading** - Platform-independent font names
-3. **Round line caps/joins** - Complete stroke rendering
+1. **Pattern and image fills** - Texture fills for shapes
+2. **Dashed and dotted lines** - Dash patterns for strokes
+3. **Image/Texture drawing in Canvas API** - drawImage with transforms
+
+## Recently Completed
+
+- ✅ Auto-scaling mode - Canvas.run auto-scales, getScreenScale accessor
+- ✅ System font loading - Font.loadSystem with font name lookup
+- ✅ Round line caps/joins - Arc geometry for round stroke elements
+- ✅ Simplified main loop - Canvas.run and CanvasConfig
 
 ---
 

@@ -334,6 +334,8 @@ deriving Repr, Inhabited
 structure Canvas where
   ctx : DrawContext
   stateStack : StateStack
+  /-- Screen scale factor (e.g., 2.0 for Retina). Used for auto-scaling mode. -/
+  screenScale : Float := 1.0
   /-- Active batch accumulator. When Some, drawing ops add to batch instead of drawing immediately. -/
   batch : Option Batch := none
   /-- Auto-batch: always accumulates geometry, flushed at endFrame. Reduces per-draw allocations. -/
@@ -355,6 +357,11 @@ namespace Canvas
 def create (width height : UInt32) (title : String) : IO Canvas := do
   let ctx ← DrawContext.create width height title
   pure { ctx, stateStack := StateStack.new }
+
+/-- Create a new canvas with a window and explicit screen scale factor. -/
+def createWithScale (width height : UInt32) (title : String) (screenScale : Float) : IO Canvas := do
+  let ctx ← DrawContext.create width height title
+  pure { ctx, stateStack := StateStack.new, screenScale }
 
 /-- Get the current state. -/
 def state (c : Canvas) : CanvasState :=
@@ -918,6 +925,11 @@ def width : CanvasM Float := do (← get).width
 def height : CanvasM Float := do (← get).height
 def getCurrentSize : CanvasM (Float × Float) := do (← get).ctx.getCurrentSize
 
+/-- Get the screen scale factor (e.g., 2.0 for Retina displays).
+    Use this when loading fonts at physical pixel sizes:
+    `Font.load path (logicalSize * (← getScreenScale)).toUInt32` -/
+def getScreenScale : CanvasM Float := do return (← get).screenScale
+
 /-! ## Window Input (lifted from Canvas/FFI.Window) -/
 
 def getKeyCode : CanvasM UInt16 := do (← get).getKeyCode
@@ -1001,7 +1013,7 @@ def run (config : CanvasConfig) (frame : Float → Float → CanvasM Unit) : IO 
   let screenScale ← if config.scaleToScreen then FFI.getScreenScale else pure 1.0
   let physWidth := (config.width * screenScale).toUInt32
   let physHeight := (config.height * screenScale).toUInt32
-  let canvas ← Canvas.create physWidth physHeight config.title
+  let canvas ← Canvas.createWithScale physWidth physHeight config.title screenScale
   let startTime ← IO.monoMsNow
   let mut lastTime := startTime
   let mut c := canvas
@@ -1013,7 +1025,11 @@ def run (config : CanvasConfig) (frame : Float → Float → CanvasM Unit) : IO 
       let elapsed := (now - startTime).toFloat / 1000.0
       let dt := (now - lastTime).toFloat / 1000.0
       lastTime := now
-      c ← CanvasM.run' c (frame elapsed dt)
+      -- Auto-scaling: apply screen scale transform so user works in logical pixels
+      c ← CanvasM.run' c do
+        CanvasM.resetTransform
+        CanvasM.scale screenScale screenScale
+        frame elapsed dt
       c ← c.endFrame
 
 end Canvas
