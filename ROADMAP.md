@@ -415,7 +415,7 @@ New PathFeatures demo (mode 11 in Runner) showcases all three features.
 
 ---
 
-*Last updated: 2026-01-02* (API ergonomics review)
+*Last updated: 2026-01-03* (Canvas threading eliminated)
 
 ---
 
@@ -423,27 +423,26 @@ New PathFeatures demo (mode 11 in Runner) showcases all three features.
 
 Based on review of afferent-demos usage patterns, these improvements would make the API easier to use.
 
-### [Priority: High] Eliminate Canvas Threading Pattern
+### [Priority: High] ~~Eliminate Canvas Threading Pattern~~ ✅ COMPLETED
 
-**Current:**
+**Status:** Completed - added CanvasM wrappers for window input and frame loop.
+
+**Resolution:** Added to CanvasM namespace:
+- Window input: `getKeyCode`, `hasKeyPressed`, `clearKey`, `getPointerLock`, `setPointerLock`, `isKeyDown`, `getMouseDelta`, `getClick`, `clearClick`
+- Context access: `getRenderer`, `getWindow`, `getCurrentSize`
+- Frame loop: `runLoopM` for running render loops entirely in CanvasM
+
+**New pattern:**
 ```lean
-c ← run' (c.resetTransform) do
+c ← run' c do
+  resetTransform
   setFillColor Color.white
   fillTextXY ...
-c ← run' (c.resetTransform) do
-  ...
+  let renderer ← getRenderer
+  someFFICall renderer ...
 ```
 
-**Issue:** Verbose, error-prone manual threading of canvas state through every render block.
-
-**Proposed:** Canvas implicitly available after creation, or automatic state management:
-```lean
-canvas.frame do
-  setFillColor Color.white
-  fillTextXY ...
-```
-
-**Affected Files:** `Afferent/Canvas/Context.lean`
+All operations stay inside a single CanvasM block. Demo code refactored to use this pattern.
 
 ---
 
@@ -469,27 +468,20 @@ if keyCode == Key.right then
 
 ---
 
-### [Priority: High] Flatten Context Access
+### [Priority: High] ~~Flatten Context Access~~ ✅ COMPLETED (via CanvasM)
 
-**Current:**
+**Status:** Completed - CanvasM now has direct access to window/renderer operations.
+
+**Resolution:** Inside CanvasM, you can now use:
 ```lean
-FFI.Window.getClick c.ctx.window
-FFI.Window.clearClick c.ctx.window
-FFI.Window.isKeyDown c.ctx.window 13
-c.ctx.renderer
+c ← run' c do
+  let click ← getClick       -- was: FFI.Window.getClick c.ctx.window
+  clearClick                  -- was: FFI.Window.clearClick c.ctx.window
+  let down ← isKeyDown 13     -- was: FFI.Window.isKeyDown c.ctx.window 13
+  let renderer ← getRenderer  -- was: c.ctx.renderer
 ```
 
-**Issue:** Deep nesting (`c.ctx.window`, `c.ctx.renderer`) is verbose.
-
-**Proposed:**
-```lean
-c.getClick
-c.clearClick
-c.isKeyDown Key.w
-c.renderer
-```
-
-**Affected Files:** `Afferent/Canvas/Context.lean` (add convenience methods to Canvas)
+**Note:** Direct Canvas methods (outside CanvasM) not added, but CanvasM is the recommended pattern.
 
 ---
 
@@ -649,8 +641,8 @@ widget.onClick ce.x ce.y fun id =>
 
 ## Summary: Quick Wins
 
-1. **Key constants** - Small change, big readability improvement
-2. **Flatten context access** - Add convenience methods to Canvas
+1. **Key constants** - Small change, big readability improvement ⬅️ **NEXT**
+2. ~~Flatten context access~~ ✅ (via CanvasM wrappers)
 3. **withTransform helper** - Simple wrapper around save/restore
 4. **Color defaults** - `Color.hsv` with alpha=1 default
 
@@ -659,3 +651,8 @@ widget.onClick ce.x ce.y fun id =>
 1. **Canvas.run main loop** - Eliminates boilerplate, manages resources
 2. **Auto-scaling mode** - No more `* screenScale` everywhere
 3. **System font loading** - Platform-independent font names
+
+## Completed in January 2026
+
+- ✅ **Eliminate Canvas Threading Pattern** - CanvasM wrappers for window input, getRenderer, runLoopM
+- ✅ **Flatten Context Access** - All window/renderer ops available in CanvasM
