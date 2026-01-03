@@ -806,6 +806,41 @@ def scale (sx sy : Float) : CanvasM Unit := modifyCanvas (Canvas.scale sx sy)
 def scaleUniform (s : Float) : CanvasM Unit := modifyCanvas (Canvas.scaleUniform s)
 def resetTransform : CanvasM Unit := modifyCanvas Canvas.resetTransform
 
+/-- Run an action with the current state saved and restored.
+    Equivalent to `save; action; restore` but guarantees restore is called.
+
+    Example:
+    ```lean
+    saved do
+      translate 100 100
+      rotate 0.5
+      fillRect (Rect.mk' 0 0 50 50)
+    -- state is restored here
+    ```
+-/
+def saved (action : CanvasM α) : CanvasM α := do
+  save
+  let result ← action
+  restore
+  pure result
+
+/-- Run an action with a transform applied, then restore.
+    The transform is applied after saving, and state is restored after the action.
+
+    Example:
+    ```lean
+    withTransform (translate 100 100 *> rotate 0.5) do
+      fillRect (Rect.mk' 0 0 50 50)
+    -- state is restored here
+    ```
+-/
+def withTransform (transform : CanvasM Unit) (action : CanvasM α) : CanvasM α := do
+  save
+  transform
+  let result ← action
+  restore
+  pure result
+
 /-! ## Style operations -/
 
 def setFillColor (color : Color) : CanvasM Unit := modifyCanvas (Canvas.setFillColor color)

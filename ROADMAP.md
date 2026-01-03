@@ -492,29 +492,45 @@ c ← run' c do
 
 ---
 
-### [Priority: Medium] Scoped Transform Helper
+### [Priority: Medium] ~~Scoped Transform Helper~~ ✅ COMPLETED
 
-**Current:**
+**Status:** Completed - added `saved` and `withTransform` helpers to CanvasM.
+
+**Resolution:** Added two functions:
 ```lean
+-- Simple save/restore wrapper
+def saved (action : CanvasM α) : CanvasM α := do
+  save
+  let result ← action
+  restore
+  pure result
+
+-- Transform with save/restore
+def withTransform (transform : CanvasM Unit) (action : CanvasM α) : CanvasM α := do
+  save
+  transform
+  let result ← action
+  restore
+  pure result
+```
+
+**Usage:**
+```lean
+-- Before: easy to forget restore
 save
 translate 150 150
-...stuff...
+drawSomething
 restore
-```
 
-**Issue:** Easy to forget `restore`, verbose.
-
-**Proposed:**
-```lean
+-- After: automatic restore
 withTransform (translate 150 150) do
-  ...stuff...
--- or
-scoped do
-  translate 150 150
-  ...stuff...
-```
+  drawSomething
 
-**Affected Files:** `Afferent/Canvas/Context.lean`
+-- Or just save/restore without transform:
+saved do
+  setFillColor Color.red
+  fillRect ...
+```
 
 ---
 
@@ -650,8 +666,8 @@ widget.onClick ce.x ce.y fun id =>
 
 1. ~~Key constants~~ ✅ (FFI.Key namespace)
 2. ~~Flatten context access~~ ✅ (via CanvasM wrappers)
-3. **withTransform helper** - Simple wrapper around save/restore ⬅️ **NEXT**
-4. **Color defaults** - `Color.hsv` with alpha=1 default
+3. ~~withTransform helper~~ ✅ (`saved` and `withTransform` functions)
+4. **Color defaults** - `Color.hsv` with alpha=1 default ⬅️ **NEXT**
 
 ## Summary: Bigger Wins (More Effort)
 
@@ -664,3 +680,4 @@ widget.onClick ce.x ce.y fun id =>
 - ✅ **Eliminate Canvas Threading Pattern** - CanvasM wrappers for window input, getRenderer, runLoopM
 - ✅ **Flatten Context Access** - All window/renderer ops available in CanvasM
 - ✅ **Named Key Constants** - `FFI.Key.space`, `FFI.Key.escape`, `FFI.Key.w`, etc.
+- ✅ **Scoped Transform Helper** - `saved` and `withTransform` functions for auto save/restore
