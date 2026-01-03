@@ -419,6 +419,24 @@ def setFillLinearGradient (start finish : Point) (stops : Array GradientStop) (c
 def setFillRadialGradient (center : Point) (radius : Float) (stops : Array GradientStop) (c : Canvas) : Canvas :=
   { c with stateStack := c.stateStack.setFillRadialGradient center radius stops }
 
+def setLineCap (cap : LineCap) (c : Canvas) : Canvas :=
+  { c with stateStack := c.stateStack.setLineCap cap }
+
+def setLineJoin (join : LineJoin) (c : Canvas) : Canvas :=
+  { c with stateStack := c.stateStack.setLineJoin join }
+
+def setDashPattern (pattern : Option DashPattern) (c : Canvas) : Canvas :=
+  { c with stateStack := c.stateStack.setDashPattern pattern }
+
+def setDashed (dashLen gapLen : Float) (c : Canvas) : Canvas :=
+  { c with stateStack := c.stateStack.setDashed dashLen gapLen }
+
+def setDotted (c : Canvas) : Canvas :=
+  { c with stateStack := c.stateStack.setDotted }
+
+def setSolid (c : Canvas) : Canvas :=
+  { c with stateStack := c.stateStack.setSolid }
+
 /-! ## Batching API -/
 
 /-- Start accumulating shapes into a batch instead of drawing them immediately.
@@ -877,6 +895,13 @@ def setFillLinearGradient (start finish : Point) (stops : Array GradientStop) : 
   modifyCanvas (Canvas.setFillLinearGradient start finish stops)
 def setFillRadialGradient (center : Point) (radius : Float) (stops : Array GradientStop) : CanvasM Unit :=
   modifyCanvas (Canvas.setFillRadialGradient center radius stops)
+
+def setLineCap (cap : LineCap) : CanvasM Unit := modifyCanvas (Canvas.setLineCap cap)
+def setLineJoin (join : LineJoin) : CanvasM Unit := modifyCanvas (Canvas.setLineJoin join)
+def setDashPattern (pattern : Option DashPattern) : CanvasM Unit := modifyCanvas (Canvas.setDashPattern pattern)
+def setDashed (dashLen gapLen : Float) : CanvasM Unit := modifyCanvas (Canvas.setDashed dashLen gapLen)
+def setDotted : CanvasM Unit := modifyCanvas Canvas.setDotted
+def setSolid : CanvasM Unit := modifyCanvas Canvas.setSolid
 
 /-! ## Drawing operations -/
 

@@ -21,6 +21,36 @@ inductive LineJoin where
   | bevel  -- Beveled corner
 deriving Repr, BEq, Inhabited
 
+/-- Dash pattern for stroked lines.
+    Segments alternate between dash and gap lengths (e.g., #[5, 3] = 5px dash, 3px gap).
+    The pattern repeats along the path. -/
+structure DashPattern where
+  /-- Alternating dash and gap lengths. Must have even number of elements. -/
+  segments : Array Float
+  /-- Phase offset to shift the pattern start point. -/
+  offset : Float := 0.0
+deriving Repr, BEq, Inhabited
+
+namespace DashPattern
+
+/-- Create a simple dash pattern with equal dash and gap. -/
+def simple (dashLen gapLen : Float) : DashPattern :=
+  { segments := #[dashLen, gapLen], offset := 0.0 }
+
+/-- Create a dotted pattern (very short dashes with gaps). -/
+def dotted (gapLen : Float) : DashPattern :=
+  { segments := #[1.0, gapLen], offset := 0.0 }
+
+/-- Create a dash-dot pattern. -/
+def dashDot (dashLen dotLen gapLen : Float) : DashPattern :=
+  { segments := #[dashLen, gapLen, dotLen, gapLen], offset := 0.0 }
+
+/-- Total length of one complete pattern cycle. -/
+def cycleLength (p : DashPattern) : Float :=
+  p.segments.foldl (· + ·) 0.0
+
+end DashPattern
+
 /-- Stroke style for path outlines. -/
 structure StrokeStyle where
   color : Color
@@ -28,6 +58,8 @@ structure StrokeStyle where
   lineCap : LineCap
   lineJoin : LineJoin
   miterLimit : Float
+  /-- Optional dash pattern. None = solid line. -/
+  dashPattern : Option DashPattern := none
 deriving Repr, BEq
 
 namespace StrokeStyle
@@ -50,6 +82,19 @@ def withLineCap (s : StrokeStyle) (cap : LineCap) : StrokeStyle :=
 
 def withLineJoin (s : StrokeStyle) (join : LineJoin) : StrokeStyle :=
   { s with lineJoin := join }
+
+def withDashPattern (s : StrokeStyle) (pattern : Option DashPattern) : StrokeStyle :=
+  { s with dashPattern := pattern }
+
+/-- Create a dashed stroke style with specified dash and gap lengths. -/
+def dashed (color : Color) (lineWidth : Float) (dashLen gapLen : Float) : StrokeStyle :=
+  { color, lineWidth, lineCap := .butt, lineJoin := .miter,
+    miterLimit := 10.0, dashPattern := some (DashPattern.simple dashLen gapLen) }
+
+/-- Create a dotted stroke style. Uses round caps for circular dots. -/
+def dotted (color : Color) (lineWidth : Float) : StrokeStyle :=
+  { color, lineWidth, lineCap := .round, lineJoin := .miter,
+    miterLimit := 10.0, dashPattern := some (DashPattern.dotted (lineWidth * 2)) }
 
 instance : Inhabited StrokeStyle := ⟨default⟩
 

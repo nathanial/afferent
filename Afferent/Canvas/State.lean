@@ -114,6 +114,33 @@ def setLineWidth (w : Float) (state : CanvasState) : CanvasState :=
 def setGlobalAlpha (a : Float) (state : CanvasState) : CanvasState :=
   { state with globalAlpha := a }
 
+/-- Set the line cap style. -/
+def setLineCap (cap : LineCap) (state : CanvasState) : CanvasState :=
+  { state with strokeStyle := { state.strokeStyle with lineCap := cap } }
+
+/-- Set the line join style. -/
+def setLineJoin (join : LineJoin) (state : CanvasState) : CanvasState :=
+  { state with strokeStyle := { state.strokeStyle with lineJoin := join } }
+
+/-- Set the dash pattern for stroked lines. None = solid line. -/
+def setDashPattern (pattern : Option DashPattern) (state : CanvasState) : CanvasState :=
+  { state with strokeStyle := { state.strokeStyle with dashPattern := pattern } }
+
+/-- Set a simple dash pattern with dash and gap lengths. -/
+def setDashed (dashLen gapLen : Float) (state : CanvasState) : CanvasState :=
+  { state with strokeStyle := { state.strokeStyle with
+      dashPattern := some (DashPattern.simple dashLen gapLen) } }
+
+/-- Set a dotted line pattern. -/
+def setDotted (state : CanvasState) : CanvasState :=
+  { state with strokeStyle := { state.strokeStyle with
+      lineCap := .round
+      dashPattern := some (DashPattern.dotted (state.strokeStyle.lineWidth * 2)) } }
+
+/-- Clear the dash pattern (solid line). -/
+def setSolid (state : CanvasState) : CanvasState :=
+  { state with strokeStyle := { state.strokeStyle with dashPattern := none } }
+
 /-! ## Path transformation -/
 
 /-- Transform a point by the current transform. -/
@@ -350,6 +377,24 @@ def setLineWidth (w : Float) : StateStack → StateStack :=
 
 def setGlobalAlpha (a : Float) : StateStack → StateStack :=
   modify (CanvasState.setGlobalAlpha a)
+
+def setLineCap (cap : LineCap) : StateStack → StateStack :=
+  modify (CanvasState.setLineCap cap)
+
+def setLineJoin (join : LineJoin) : StateStack → StateStack :=
+  modify (CanvasState.setLineJoin join)
+
+def setDashPattern (pattern : Option DashPattern) : StateStack → StateStack :=
+  modify (CanvasState.setDashPattern pattern)
+
+def setDashed (dashLen gapLen : Float) : StateStack → StateStack :=
+  modify (CanvasState.setDashed dashLen gapLen)
+
+def setDotted : StateStack → StateStack :=
+  modify CanvasState.setDotted
+
+def setSolid : StateStack → StateStack :=
+  modify CanvasState.setSolid
 
 def resetTransform : StateStack → StateStack :=
   modify CanvasState.resetTransform

@@ -829,6 +829,136 @@ private def perpendicular (dx dy : Float) : Point :=
 private def computeNormal (dir : Point) : Point :=
   ⟨-dir.y, dir.x⟩
 
+/-! ## Dash Pattern Utilities -/
+
+/-- Float modulo operation: a mod b = a - floor(a/b) * b -/
+private def floatMod (a b : Float) : Float :=
+  if b == 0.0 then 0.0
+  else a - Float.floor (a / b) * b
+
+/-- Compute cumulative arc lengths for a polyline.
+    Returns an array where arcLengths[i] is the distance from start to points[i]. -/
+private def computeArcLengths (points : Array Point) : Array Float := Id.run do
+  if points.size == 0 then return #[]
+  let mut lengths : Array Float := Array.mkEmpty points.size
+  lengths := lengths.push 0.0  -- First point is at distance 0
+  for i in [1:points.size] do
+    if h : i < points.size ∧ i > 0 then
+      let prev := points[i - 1]'(by omega)
+      let curr := points[i]
+      let dx := curr.x - prev.x
+      let dy := curr.y - prev.y
+      let segLen := Float.sqrt (dx * dx + dy * dy)
+      let prevLen := if h2 : i - 1 < lengths.size then lengths[i - 1] else 0.0
+      lengths := lengths.push (prevLen + segLen)
+  return lengths
+
+/-- Interpolate a point at a given arc length along the polyline. -/
+private def interpolateAtArcLength (points : Array Point) (arcLengths : Array Float)
+    (targetLen : Float) : Point := Id.run do
+  if points.size < 2 then
+    return if h : points.size > 0 then points[0] else Point.zero
+  -- Find the segment containing targetLen
+  for i in [1:points.size] do
+    if h : i < arcLengths.size ∧ i < points.size then
+      let segEnd := arcLengths[i]
+      if targetLen <= segEnd then
+        let segStart := if h2 : i - 1 < arcLengths.size then arcLengths[i - 1] else 0.0
+        let segLen := segEnd - segStart
+        if segLen < 0.0001 then
+          return points[i]
+        let t := (targetLen - segStart) / segLen
+        let p1 := points[i - 1]'(by omega)
+        let p2 := points[i]
+        return Point.lerp p1 p2 t
+  -- Past the end, return last point
+  return if h : points.size > 0 then points[points.size - 1]! else Point.zero
+
+/-- Segment a polyline by dash pattern, returning array of polyline segments to draw.
+    Each segment is a sub-polyline that should be stroked (dash portions).
+    Gap portions are not included. -/
+private def segmentByDashPattern (points : Array Point) (dashPattern : DashPattern)
+    : Array (Array Point) := Id.run do
+  if points.size < 2 || dashPattern.segments.size == 0 then
+    return #[points]  -- Return original if no pattern
+
+  let arcLengths := computeArcLengths points
+  let totalLen := if h : arcLengths.size > 0 then arcLengths[arcLengths.size - 1]! else 0.0
+  if totalLen < 0.0001 then return #[]
+
+  let cycleLen := dashPattern.cycleLength
+  if cycleLen < 0.0001 then return #[points]
+
+  let mut segments : Array (Array Point) := #[]
+  let offsetMod := floatMod dashPattern.offset cycleLen
+  let mut currentLen := offsetMod
+  if currentLen < 0 then currentLen := currentLen + cycleLen
+
+  -- Track which segment of the dash pattern we're in
+  let mut patternIdx : Nat := 0
+  let mut inDash := true  -- First segment is always a dash
+
+  -- Adjust starting position based on offset
+  let mut offsetConsumed := 0.0
+  while offsetConsumed < offsetMod do
+    if h : patternIdx < dashPattern.segments.size then
+      let segLen := dashPattern.segments[patternIdx]
+      if offsetConsumed + segLen > offsetMod then
+        break
+      offsetConsumed := offsetConsumed + segLen
+      inDash := !inDash
+      patternIdx := (patternIdx + 1) % dashPattern.segments.size
+    else
+      break
+
+  let mut pos := 0.0
+  let mut currentSegment : Array Point := #[]
+
+  -- Add first point if we're in a dash
+  if inDash then
+    currentSegment := currentSegment.push (interpolateAtArcLength points arcLengths pos)
+
+  while pos < totalLen do
+    -- Get current dash/gap length
+    let patternLen := if h : patternIdx < dashPattern.segments.size
+      then dashPattern.segments[patternIdx] else 1.0
+    let nextPos := min (pos + patternLen) totalLen
+
+    if inDash then
+      -- We're drawing: add intermediate points that fall within this dash
+      for i in [1:points.size] do
+        if h : i < arcLengths.size then
+          let ptLen := arcLengths[i]
+          if ptLen > pos && ptLen < nextPos then
+            if h2 : i < points.size then
+              currentSegment := currentSegment.push points[i]
+
+      -- Add endpoint of this dash
+      if nextPos <= totalLen then
+        currentSegment := currentSegment.push (interpolateAtArcLength points arcLengths nextPos)
+
+      -- Finish this dash segment if we're switching to a gap
+      if currentSegment.size >= 2 then
+        segments := segments.push currentSegment
+      currentSegment := #[]
+    else
+      -- We're in a gap: skip this section
+      pure ()
+
+    pos := nextPos
+    inDash := !inDash
+    patternIdx := (patternIdx + 1) % dashPattern.segments.size
+
+    -- Start new dash segment if we're entering a dash
+    if inDash && pos < totalLen then
+      currentSegment := currentSegment.push (interpolateAtArcLength points arcLengths pos)
+
+  -- Add any remaining segment
+  if currentSegment.size >= 2 then
+    segments := segments.push currentSegment
+
+  return segments
+
 /-- Number of segments to use for round caps and joins.
     More segments = smoother curves but more geometry. -/
 private def roundCapSegments : Nat := 8
@@ -1094,6 +1224,36 @@ def strokeEdgesToTriangles (leftPoints rightPoints : Array Point) (color : Color
 
   return { vertices, indices }
 
+/-- Tessellate a single polyline segment as a stroke. -/
+private def tessellatePolylineSegment (points : Array Point) (style : StrokeStyle)
+    (closed : Bool) : TessellationResult := Id.run do
+  if points.size < 2 then
+    return { vertices := #[], indices := #[] }
+
+  let halfWidth := style.lineWidth / 2.0
+  let (leftPoints, rightPoints) := expandPolylineToStroke points halfWidth
+    style.lineCap style.lineJoin style.miterLimit closed
+
+  -- For closed paths, close the strip by repeating the first edge points.
+  let (leftPoints, rightPoints) := if closed && leftPoints.size > 0 && rightPoints.size > 0 then
+    (leftPoints.push leftPoints[0]!, rightPoints.push rightPoints[0]!)
+  else
+    (leftPoints, rightPoints)
+
+  return strokeEdgesToTriangles leftPoints rightPoints style.color
+
+/-- Merge two tessellation results by combining vertices and remapping indices. -/
+private def mergeTessResults (a b : TessellationResult) : TessellationResult :=
+  if a.vertices.size == 0 then b
+  else if b.vertices.size == 0 then a
+  else Id.run do
+    let aVertCount := a.vertices.size / Tessellation.vertexSize2D
+    let offset := aVertCount.toUInt32
+    let mut indices := a.indices
+    for idx in b.indices do
+      indices := indices.push (idx + offset)
+    { vertices := a.vertices ++ b.vertices, indices }
+
 /-- Tessellate a path as a stroke (outline). -/
 def tessellateStroke (path : Path) (style : StrokeStyle) (tolerance : Float := 0.5)
     : TessellationResult := Id.run do
@@ -1102,33 +1262,32 @@ def tessellateStroke (path : Path) (style : StrokeStyle) (tolerance : Float := 0
   if points.size < 2 then
     return { vertices := #[], indices := #[] }
 
-  let halfWidth := style.lineWidth / 2.0
-  let (leftPoints, rightPoints) := expandPolylineToStroke points halfWidth
-    style.lineCap style.lineJoin style.miterLimit isClosed
+  -- Handle dash pattern
+  match style.dashPattern with
+  | none =>
+    -- Solid stroke
+    tessellatePolylineSegment points style isClosed
+  | some dashPat =>
+    -- Dashed stroke: segment the path and tessellate each segment
+    let segments := segmentByDashPattern points dashPat
+    let mut result : TessellationResult := { vertices := #[], indices := #[] }
+    for seg in segments do
+      let segResult := tessellatePolylineSegment seg style false  -- Dash segments are never closed
+      result := mergeTessResults result segResult
+    result
 
-  -- For closed paths, close the strip by repeating the first edge points.
-  let (leftPoints, rightPoints) := if isClosed && leftPoints.size > 0 && rightPoints.size > 0 then
-    (leftPoints.push leftPoints[0]!, rightPoints.push rightPoints[0]!)
-  else
-    (leftPoints, rightPoints)
-
-  return strokeEdgesToTriangles leftPoints rightPoints style.color
-
-/-- Tessellate a path as a stroke with NDC conversion. -/
-def tessellateStrokeNDC (path : Path) (style : StrokeStyle)
-    (screenWidth screenHeight : Float) (tolerance : Float := 0.5)
-    : TessellationResult := Id.run do
-  let (points, isClosed) := pathToPolygonWithClosed path tolerance
-
+/-- Tessellate a single polyline segment as a stroke with NDC conversion. -/
+private def tessellatePolylineSegmentNDC (points : Array Point) (style : StrokeStyle)
+    (screenWidth screenHeight : Float) (closed : Bool) : TessellationResult := Id.run do
   if points.size < 2 then
     return { vertices := #[], indices := #[] }
 
   let halfWidth := style.lineWidth / 2.0
   let (leftPoints, rightPoints) := expandPolylineToStroke points halfWidth
-    style.lineCap style.lineJoin style.miterLimit isClosed
+    style.lineCap style.lineJoin style.miterLimit closed
 
   -- For closed paths, close the strip by repeating the first edge points.
-  let (leftPoints, rightPoints) := if isClosed && leftPoints.size > 0 && rightPoints.size > 0 then
+  let (leftPoints, rightPoints) := if closed && leftPoints.size > 0 && rightPoints.size > 0 then
     (leftPoints.push leftPoints[0]!, rightPoints.push rightPoints[0]!)
   else
     (leftPoints, rightPoints)
@@ -1139,6 +1298,29 @@ def tessellateStrokeNDC (path : Path) (style : StrokeStyle)
   let rightNDC := rightPoints.map toNDC
 
   return strokeEdgesToTriangles leftNDC rightNDC style.color
+
+/-- Tessellate a path as a stroke with NDC conversion. -/
+def tessellateStrokeNDC (path : Path) (style : StrokeStyle)
+    (screenWidth screenHeight : Float) (tolerance : Float := 0.5)
+    : TessellationResult := Id.run do
+  let (points, isClosed) := pathToPolygonWithClosed path tolerance
+
+  if points.size < 2 then
+    return { vertices := #[], indices := #[] }
+
+  -- Handle dash pattern
+  match style.dashPattern with
+  | none =>
+    -- Solid stroke
+    tessellatePolylineSegmentNDC points style screenWidth screenHeight isClosed
+  | some dashPat =>
+    -- Dashed stroke: segment the path and tessellate each segment
+    let segments := segmentByDashPattern points dashPat
+    let mut result : TessellationResult := { vertices := #[], indices := #[] }
+    for seg in segments do
+      let segResult := tessellatePolylineSegmentNDC seg style screenWidth screenHeight false
+      result := mergeTessResults result segResult
+    result
 
 /-- Create a simple line segment as a stroked path. -/
 def tessellateLineNDC (p1 p2 : Point) (style : StrokeStyle)

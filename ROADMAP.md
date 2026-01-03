@@ -54,19 +54,39 @@ This document tracks improvement opportunities, feature proposals, and code clea
 
 ---
 
-### [Priority: Medium] Dashed and Dotted Lines
+### [Priority: Medium] ~~Dashed and Dotted Lines~~ ✅ COMPLETED
 
-**Description:** Add support for dashed and dotted line patterns in StrokeStyle.
+**Status:** Completed - added `DashPattern` structure and stroke segmentation.
 
-**Rationale:** Dashed lines are a common requirement for charts, borders, selection indicators, and technical drawings.
+**Resolution:** Dashed and dotted lines are now fully supported:
+```lean
+-- Simple dashed line
+setDashed 10 5  -- 10px dash, 5px gap
+drawLine p1 p2
+
+-- Dotted line (uses round caps for circular dots)
+setDotted
+drawLine p1 p2
+
+-- Custom pattern: dash-dot
+setDashPattern (some ⟨#[15, 5, 3, 5], 0⟩)
+
+-- Back to solid
+setSolid
+```
+
+Features:
+- `DashPattern` structure with segments array and phase offset
+- Arc length utilities for path segmentation
+- Segmentation integrated with `tessellateStroke` and `tessellateStrokeNDC`
+- CanvasM accessors: `setDashed`, `setDotted`, `setSolid`, `setDashPattern`
+- Also added: `setLineCap`, `setLineJoin` accessors
 
 **Affected Files:**
-- `Afferent/Core/Paint.lean` (StrokeStyle structure)
-- `Afferent/Render/Tessellation.lean` (stroke tessellation)
-
-**Estimated Effort:** Medium
-
-**Dependencies:** None.
+- `Afferent/Core/Paint.lean`
+- `Afferent/Render/Tessellation.lean`
+- `Afferent/Canvas/State.lean`
+- `Afferent/Canvas/Context.lean`
 
 ---
 
@@ -402,11 +422,12 @@ widget.onClick ce.x ce.y fun id =>
 ## Summary: Next Up
 
 1. **Pattern and image fills** - Texture fills for shapes
-2. **Dashed and dotted lines** - Dash patterns for strokes
-3. **Image/Texture drawing in Canvas API** - drawImage with transforms
+2. **Image/Texture drawing in Canvas API** - drawImage with transforms
+3. **Shadow and glow effects** - Drop shadows and blur effects
 
 ## Recently Completed
 
+- ✅ Dashed and dotted lines - DashPattern structure, setDashed/setDotted API
 - ✅ Auto-scaling mode - Canvas.run auto-scales, getScreenScale accessor
 - ✅ System font loading - Font.loadSystem with font name lookup
 - ✅ Round line caps/joins - Arc geometry for round stroke elements
