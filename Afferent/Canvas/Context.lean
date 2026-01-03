@@ -22,6 +22,16 @@ structure DrawContext where
   /-- Initial/logical canvas height (used as reference for coordinate system) -/
   baseHeight : Float
 
+/-- Persistent GPU buffers for a stroked path (static geometry cache). -/
+structure StrokeCache where
+  lineBuffer : Option FFI.Buffer
+  curveBuffer : Option FFI.Buffer
+  lineCount : Nat
+  curveCount : Nat
+  /-- Transform used when computing path distances (dash alignment). -/
+  transform : Transform
+deriving Inhabited
+
 namespace DrawContext
 
 /-- Create a new drawing context with a window. -/
@@ -198,10 +208,11 @@ def fillRoundedRectWithStyle (ctx : DrawContext) (rect : Rect) (cornerRadius : F
 /-! ## Stroke Drawing (Simple API) -/
 
 /-- Stroke a path with a given style (pixel coordinates). -/
-def strokePath (ctx : DrawContext) (path : Path) (style : StrokeStyle) : IO Unit := do
+def strokePath (ctx : DrawContext) (path : Path) (style : StrokeStyle)
+    (transform : Transform := Transform.identity) : IO Unit := do
   -- Use current drawable size for NDC conversion (dynamic resize support)
   let (w, h) ← ctx.getCurrentSize
-  let segments := Tessellation.tessellateStrokeSegments path style
+  let segments := Tessellation.tessellateStrokeSegments path style transform
   if segments.lineCount == 0 && segments.curveCount == 0 then
     return
 
@@ -237,7 +248,7 @@ def strokePath (ctx : DrawContext) (path : Path) (style : StrokeStyle) : IO Unit
       w h
       style.miterLimit
       lineCap lineJoin
-      0.0 0.0 0.0
+      transform.a transform.b transform.c transform.d transform.tx transform.ty
       dashSegments
       dashCount.toUInt32
       dashOffset
@@ -254,11 +265,103 @@ def strokePath (ctx : DrawContext) (path : Path) (style : StrokeStyle) : IO Unit
       w h
       style.miterLimit
       lineCap lineJoin
-      0.0 0.0 0.0
+      transform.a transform.b transform.c transform.d transform.tx transform.ty
       dashSegments
       dashCount.toUInt32
       dashOffset
       style.color.r style.color.g style.color.b style.color.a
+    FFI.Buffer.destroy buffer
+
+/-- Build persistent stroke buffers for a path (static geometry cache). -/
+def createStrokeCache (ctx : DrawContext) (path : Path)
+    (transform : Transform := Transform.identity) : IO StrokeCache := do
+  -- Stroke tessellation ignores style; use default for geometry.
+  let segments := Tessellation.tessellateStrokeSegments path StrokeStyle.default transform
+  if segments.lineCount == 0 && segments.curveCount == 0 then
+    return { lineBuffer := none, curveBuffer := none, lineCount := 0, curveCount := 0, transform }
+
+  let lineBuffer ←
+    if segments.lineCount > 0 then
+      some <$> FFI.Buffer.createStrokeSegmentPersistent ctx.renderer segments.lineSegments
+    else
+      pure none
+
+  let curveBuffer ←
+    if segments.curveCount > 0 then
+      some <$> FFI.Buffer.createStrokeSegmentPersistent ctx.renderer segments.curveSegments
+    else
+      pure none
+
+  return {
+    lineBuffer
+    curveBuffer
+    lineCount := segments.lineCount
+    curveCount := segments.curveCount
+    transform
+  }
+
+/-- Draw a cached stroke with the given style. -/
+def drawStrokeCache (ctx : DrawContext) (cache : StrokeCache) (style : StrokeStyle) : IO Unit := do
+  if cache.lineCount == 0 && cache.curveCount == 0 then
+    return
+  let (w, h) ← ctx.getCurrentSize
+  let halfWidth := style.lineWidth / 2.0
+  let lineCap : UInt32 :=
+    match style.lineCap with
+    | .butt => 0
+    | .round => 1
+    | .square => 2
+  let lineJoin : UInt32 :=
+    match style.lineJoin with
+    | .miter => 0
+    | .round => 1
+    | .bevel => 2
+
+  let dashMax : Nat := 8
+  let (dashSegments, dashCount, dashOffset) := Id.run do
+    match style.dashPattern with
+    | none => return (#[], 0, 0.0)
+    | some pat =>
+      let mut trimmed : Array Float := Array.mkEmpty (min pat.segments.size dashMax)
+      for i in [:min pat.segments.size dashMax] do
+        trimmed := trimmed.push pat.segments[i]!
+      return (trimmed, trimmed.size, pat.offset)
+
+  if let some buffer := cache.lineBuffer then
+    ctx.renderer.drawStrokePath
+      buffer
+      cache.lineCount.toUInt32
+      1
+      halfWidth
+      w h
+      style.miterLimit
+      lineCap lineJoin
+      cache.transform.a cache.transform.b cache.transform.c cache.transform.d cache.transform.tx cache.transform.ty
+      dashSegments
+      dashCount.toUInt32
+      dashOffset
+      style.color.r style.color.g style.color.b style.color.a
+
+  if let some buffer := cache.curveBuffer then
+    ctx.renderer.drawStrokePath
+      buffer
+      cache.curveCount.toUInt32
+      Tessellation.strokeCurveSubdivisions.toUInt32
+      halfWidth
+      w h
+      style.miterLimit
+      lineCap lineJoin
+      cache.transform.a cache.transform.b cache.transform.c cache.transform.d cache.transform.tx cache.transform.ty
+      dashSegments
+      dashCount.toUInt32
+      dashOffset
+      style.color.r style.color.g style.color.b style.color.a
+
+/-- Destroy cached stroke buffers. -/
+def destroyStrokeCache (_ctx : DrawContext) (cache : StrokeCache) : IO Unit := do
+  if let some buffer := cache.lineBuffer then
+    FFI.Buffer.destroy buffer
+  if let some buffer := cache.curveBuffer then
     FFI.Buffer.destroy buffer
 
 /-- Stroke a path with a color and line width. -/
@@ -447,6 +550,15 @@ def scaleUniform (s : Float) (c : Canvas) : Canvas :=
 
 def resetTransform (c : Canvas) : Canvas :=
   { c with stateStack := c.stateStack.resetTransform }
+
+/-- Reset the entire canvas state to defaults (transform, styles, alpha, clips). -/
+def resetState (c : Canvas) : Canvas :=
+  { c with stateStack := StateStack.new }
+
+/-- Reset the canvas state and clear any active scissor. -/
+def resetStateAndScissor (c : Canvas) : IO Canvas := do
+  c.ctx.resetScissor
+  pure { c with stateStack := StateStack.new }
 
 /-! ## Style operations -/
 
@@ -652,10 +764,25 @@ private def effectiveStrokeStyle (c : Canvas) : StrokeStyle :=
 /-- Stroke a path using the current state.
     Strokes bypass the fill batch because they use a different vertex format. -/
 def strokePath (path : Path) (c : Canvas) : IO Canvas := do
-  let transformedPath := c.state.transformPath path
+  let transform := c.state.transform
   let style := c.effectiveStrokeStyle
   -- Stroke extrusion uses a separate vertex format, so it bypasses the fill batch.
-  c.ctx.strokePath transformedPath style
+  c.ctx.strokePath path style transform
+  pure c
+
+/-- Build a persistent stroke cache using the current transform. -/
+def createStrokeCache (path : Path) (c : Canvas) : IO StrokeCache :=
+  c.ctx.createStrokeCache path c.state.transform
+
+/-- Draw a cached stroke using the current stroke style. -/
+def drawStrokeCache (cache : StrokeCache) (c : Canvas) : IO Canvas := do
+  let style := c.effectiveStrokeStyle
+  c.ctx.drawStrokeCache cache style
+  pure c
+
+/-- Destroy cached stroke buffers. -/
+def destroyStrokeCache (cache : StrokeCache) (c : Canvas) : IO Canvas := do
+  c.ctx.destroyStrokeCache cache
   pure c
 
 /-- Stroke a rectangle using the current state. -/
@@ -890,6 +1017,8 @@ def rotate (angle : Float) : CanvasM Unit := modifyCanvas (Canvas.rotate angle)
 def scale (sx sy : Float) : CanvasM Unit := modifyCanvas (Canvas.scale sx sy)
 def scaleUniform (s : Float) : CanvasM Unit := modifyCanvas (Canvas.scaleUniform s)
 def resetTransform : CanvasM Unit := modifyCanvas Canvas.resetTransform
+def resetState : CanvasM Unit := modifyCanvas Canvas.resetState
+def resetStateAndScissor : CanvasM Unit := liftCanvas Canvas.resetStateAndScissor
 
 /-- Run an action with the current state saved and restored.
     Equivalent to `save; action; restore` but guarantees restore is called.

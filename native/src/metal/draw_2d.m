@@ -2,11 +2,14 @@
 #import "render.h"
 
 void afferent_buffer_destroy(AfferentBufferRef buffer) {
-    // Note: We don't destroy anything here anymore.
-    // MTLBuffers stay in the pool for reuse, and wrapper structs
-    // are pooled and recycled at frame boundaries.
-    // This function is kept for API compatibility but is now a no-op.
-    (void)buffer;
+    if (!buffer) {
+        return;
+    }
+    // Pooled buffers are kept for reuse. Persistent buffers are owned here.
+    if (buffer->persistent) {
+        buffer->mtlBuffer = nil;
+        free(buffer);
+    }
 }
 
 void afferent_renderer_draw_triangles(
@@ -83,9 +86,12 @@ void afferent_renderer_draw_stroke_path(
     float miter_limit,
     uint32_t line_cap,
     uint32_t line_join,
-    float rotation_center_x,
-    float rotation_center_y,
-    float rotation,
+    float transform_a,
+    float transform_b,
+    float transform_c,
+    float transform_d,
+    float transform_tx,
+    float transform_ty,
     const float* dash_segments,
     uint32_t dash_count,
     float dash_offset,
@@ -109,10 +115,14 @@ void afferent_renderer_draw_stroke_path(
     v.lineJoin = line_join;
     v.segmentSubdivisions = subdivisions;
     v.padding0 = 0;
-    v.rotationCenter[0] = rotation_center_x;
-    v.rotationCenter[1] = rotation_center_y;
-    v.rotation = rotation;
-    v.padding1 = 0.0f;
+    v.transform0[0] = transform_a;
+    v.transform0[1] = transform_b;
+    v.transform0[2] = transform_c;
+    v.transform0[3] = transform_d;
+    v.transform1[0] = transform_tx;
+    v.transform1[1] = transform_ty;
+    v.transform1[2] = 0.0f;
+    v.transform1[3] = 0.0f;
 
     StrokePathFragmentUniforms f;
     f.color[0] = r;

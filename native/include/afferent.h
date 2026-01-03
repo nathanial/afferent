@@ -147,6 +147,12 @@ AfferentResult afferent_buffer_create_stroke_segment(
     uint32_t segment_count,
     AfferentBufferRef* out_buffer
 );
+AfferentResult afferent_buffer_create_stroke_segment_persistent(
+    AfferentRendererRef renderer,
+    const AfferentStrokeSegment* segments,
+    uint32_t segment_count,
+    AfferentBufferRef* out_buffer
+);
 AfferentResult afferent_buffer_create_index(
     AfferentRendererRef renderer,
     const uint32_t* indices,
@@ -186,9 +192,12 @@ void afferent_renderer_draw_stroke_path(
     float miter_limit,
     uint32_t line_cap,
     uint32_t line_join,
-    float rotation_center_x,
-    float rotation_center_y,
-    float rotation,
+    float transform_a,
+    float transform_b,
+    float transform_c,
+    float transform_d,
+    float transform_tx,
+    float transform_ty,
     const float* dash_segments,
     uint32_t dash_count,
     float dash_offset,

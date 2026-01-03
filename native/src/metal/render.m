@@ -319,6 +319,7 @@ AfferentResult afferent_buffer_create_vertex(
         struct AfferentBuffer *buffer = pool_acquire_wrapper();
         buffer->count = vertex_count;
         buffer->mtlBuffer = mtlBuffer;
+        buffer->persistent = false;
         *out_buffer = buffer;
         return AFFERENT_OK;
     }
@@ -350,6 +351,7 @@ AfferentResult afferent_buffer_create_stroke_vertex(
         struct AfferentBuffer *buffer = pool_acquire_wrapper();
         buffer->count = vertex_count;
         buffer->mtlBuffer = mtlBuffer;
+        buffer->persistent = false;
         *out_buffer = buffer;
         return AFFERENT_OK;
     }
@@ -381,6 +383,38 @@ AfferentResult afferent_buffer_create_stroke_segment(
         struct AfferentBuffer *buffer = pool_acquire_wrapper();
         buffer->count = segment_count;
         buffer->mtlBuffer = mtlBuffer;
+        buffer->persistent = false;
+        *out_buffer = buffer;
+        return AFFERENT_OK;
+    }
+}
+
+AfferentResult afferent_buffer_create_stroke_segment_persistent(
+    AfferentRendererRef renderer,
+    const AfferentStrokeSegment* segments,
+    uint32_t segment_count,
+    AfferentBufferRef* out_buffer
+) {
+    if (!renderer || !segments || segment_count == 0 || !out_buffer) {
+        return AFFERENT_ERROR_BUFFER_FAILED;
+    }
+
+    @autoreleasepool {
+        size_t required_size = segment_count * sizeof(AfferentStrokeSegment);
+        id<MTLBuffer> mtlBuffer = [renderer->device newBufferWithBytes:segments
+                                                                length:required_size
+                                                               options:MTLResourceStorageModeShared];
+        if (!mtlBuffer) {
+            return AFFERENT_ERROR_BUFFER_FAILED;
+        }
+
+        struct AfferentBuffer *buffer = malloc(sizeof(struct AfferentBuffer));
+        if (!buffer) {
+            return AFFERENT_ERROR_BUFFER_FAILED;
+        }
+        buffer->count = segment_count;
+        buffer->mtlBuffer = mtlBuffer;
+        buffer->persistent = true;
         *out_buffer = buffer;
         return AFFERENT_OK;
     }
@@ -415,6 +449,7 @@ AfferentResult afferent_buffer_create_index(
         struct AfferentBuffer *buffer = pool_acquire_wrapper();
         buffer->count = index_count;
         buffer->mtlBuffer = mtlBuffer;
+        buffer->persistent = false;
         *out_buffer = buffer;
         return AFFERENT_OK;
     }

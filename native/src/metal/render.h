@@ -128,8 +128,9 @@ struct AfferentRenderer {
 
 // Internal buffer structure
 struct AfferentBuffer {
-    id<MTLBuffer> mtlBuffer;
+    __strong id<MTLBuffer> mtlBuffer;
     uint32_t count;
+    bool persistent;
 };
 
 // ============================================================================
@@ -173,6 +174,14 @@ extern size_t g_text_vertex_staging_capacity;
 struct AfferentBuffer* pool_acquire_wrapper(void);
 id<MTLBuffer> pool_acquire_buffer(id<MTLDevice> device, PooledBuffer* pool, int* count, size_t required_size, bool is_vertex);
 void pool_reset_frame(void);
+
+// Persistent buffer creation (not pooled)
+AfferentResult afferent_buffer_create_stroke_segment_persistent(
+    AfferentRendererRef renderer,
+    const AfferentStrokeSegment* segments,
+    uint32_t segment_count,
+    AfferentBufferRef* out_buffer
+);
 
 // Pipeline creation (pipeline.m)
 AfferentResult create_pipelines(struct AfferentRenderer* renderer);

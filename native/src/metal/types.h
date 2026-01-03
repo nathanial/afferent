@@ -52,10 +52,9 @@ typedef struct {
     uint32_t lineJoin;
     uint32_t segmentSubdivisions;
     uint32_t padding0;
-    float rotationCenter[2];
-    float rotation;
-    float padding1;
-} StrokePathVertexUniforms;  // Total: 48 bytes
+    float transform0[4];  // [a, b, c, d]
+    float transform1[4];  // [tx, ty, 0, 0]
+} StrokePathVertexUniforms;  // Total: 64 bytes
 
 // Stroke path fragment uniforms (matches stroke_path shader)
 typedef struct {

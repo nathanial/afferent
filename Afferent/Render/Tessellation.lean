@@ -885,14 +885,15 @@ private def evalCubicTangent (p0 c1 c2 p1 : Point) (t : Float) : Point :=
   let term3 := (p1 - c2) * (3.0 * tt)
   term1 + term2 + term3
 
-/-- Approximate cubic Bezier length by sampling. -/
-private def approximateCubicLength (p0 c1 c2 p1 : Point) (steps : Nat := 12) : Float := Id.run do
+/-- Approximate cubic Bezier length by sampling after applying a transform. -/
+private def approximateCubicLength (p0 c1 c2 p1 : Point) (transform : Transform)
+    (steps : Nat := 12) : Float := Id.run do
   let steps := if steps < 2 then 2 else steps
   let mut length := 0.0
-  let mut prev := p0
+  let mut prev := transform.apply p0
   for i in [1:steps + 1] do
     let t := i.toFloat / steps.toFloat
-    let pt := evalCubic p0 c1 c2 p1 t
+    let pt := transform.apply (evalCubic p0 c1 c2 p1 t)
     length := length + Point.distance prev pt
     prev := pt
   return length
@@ -932,22 +933,24 @@ private def segmentEndDir (seg : RawStrokeSegment) : Point :=
       let d := evalCubicTangent seg.p0 seg.c1 seg.c2 seg.p1 1.0
       normalize d.x d.y
 
-private def segmentLength (seg : RawStrokeSegment) : Float :=
+private def segmentLength (transform : Transform) (seg : RawStrokeSegment) : Float :=
   match seg.kind with
-  | .line => Point.distance seg.p0 seg.p1
-  | .cubic => approximateCubicLength seg.p0 seg.c1 seg.c2 seg.p1
+  | .line => Point.distance (transform.apply seg.p0) (transform.apply seg.p1)
+  | .cubic => approximateCubicLength seg.p0 seg.c1 seg.c2 seg.p1 transform
 
 /-- Remove degenerate segments (zero-length). -/
-private def filterDegenerateSegments (segments : Array RawStrokeSegment) : Array RawStrokeSegment := Id.run do
+private def filterDegenerateSegments (segments : Array RawStrokeSegment)
+    (transform : Transform) : Array RawStrokeSegment := Id.run do
   let mut result : Array RawStrokeSegment := #[]
   for seg in segments do
-    if segmentLength seg > 0.0001 then
+    if segmentLength transform seg > 0.0001 then
       result := result.push seg
   return result
 
 /-- Finalize raw segments into GPU-ready stroke segments (with adjacency + distances). -/
-private def finalizeStrokeSegments (segments : Array RawStrokeSegment) (closed : Bool) : Array StrokeSegment := Id.run do
-  let segments := filterDegenerateSegments segments
+private def finalizeStrokeSegments (segments : Array RawStrokeSegment) (closed : Bool)
+    (transform : Transform) : Array StrokeSegment := Id.run do
+  let segments := filterDegenerateSegments segments transform
   if segments.size == 0 then
     return #[]
 
@@ -956,7 +959,7 @@ private def finalizeStrokeSegments (segments : Array RawStrokeSegment) (closed :
 
   for i in [:segments.size] do
     let seg := segments[i]!
-    let len := segmentLength seg
+    let len := segmentLength transform seg
     let hasPrev := closed || i > 0
     let hasNext := closed || i + 1 < segments.size
     let prevIdx := if hasPrev then (if i == 0 then segments.size - 1 else i - 1) else 0
@@ -1003,11 +1006,12 @@ private def pushStrokeSegment (arr : Array Float) (seg : StrokeSegment) : Array 
 
 /-- Append finalized stroke segments into line/curve buffers. -/
 private def appendStrokeSegments (rawSegments : Array RawStrokeSegment) (closed : Bool)
+    (transform : Transform)
     (lineSegments : Array Float) (curveSegments : Array Float)
     (lineCount curveCount : Nat) : Array Float × Array Float × Nat × Nat := Id.run do
   if rawSegments.size == 0 then
     return (lineSegments, curveSegments, lineCount, curveCount)
-  let finalized := finalizeStrokeSegments rawSegments closed
+  let finalized := finalizeStrokeSegments rawSegments closed transform
   let mut lineSegs := lineSegments
   let mut curveSegs := curveSegments
   let mut lineCnt := lineCount
@@ -1026,7 +1030,8 @@ private def appendStrokeSegments (rawSegments : Array RawStrokeSegment) (closed 
 def strokeCurveSubdivisions : Nat := 16
 
 /-- Tessellate a path into GPU stroke segments (no CPU extrusion). -/
-def tessellateStrokeSegments (path : Path) (_style : StrokeStyle) : StrokePathSegments := Id.run do
+def tessellateStrokeSegments (path : Path) (_style : StrokeStyle)
+    (transform : Transform := Transform.identity) : StrokePathSegments := Id.run do
   let mut lineSegments : Array Float := #[]
   let mut curveSegments : Array Float := #[]
   let mut lineCount : Nat := 0
@@ -1042,7 +1047,8 @@ def tessellateStrokeSegments (path : Path) (_style : StrokeStyle) : StrokePathSe
     match cmd with
     | .moveTo p =>
       if rawSegments.size > 0 then
-        let (ls, cs, lc, cc) := appendStrokeSegments rawSegments closed lineSegments curveSegments lineCount curveCount
+        let (ls, cs, lc, cc) := appendStrokeSegments rawSegments closed transform
+          lineSegments curveSegments lineCount curveCount
         lineSegments := ls
         curveSegments := cs
         lineCount := lc
@@ -1111,7 +1117,8 @@ def tessellateStrokeSegments (path : Path) (_style : StrokeStyle) : StrokePathSe
           current := p1
     | .rect r =>
       if rawSegments.size > 0 then
-        let (ls, cs, lc, cc) := appendStrokeSegments rawSegments closed lineSegments curveSegments lineCount curveCount
+        let (ls, cs, lc, cc) := appendStrokeSegments rawSegments closed transform
+          lineSegments curveSegments lineCount curveCount
         lineSegments := ls
         curveSegments := cs
         lineCount := lc
@@ -1132,7 +1139,8 @@ def tessellateStrokeSegments (path : Path) (_style : StrokeStyle) : StrokePathSe
       current := p0
       subpathStart := p0
       if rawSegments.size > 0 then
-        let (ls, cs, lc, cc) := appendStrokeSegments rawSegments closed lineSegments curveSegments lineCount curveCount
+        let (ls, cs, lc, cc) := appendStrokeSegments rawSegments closed transform
+          lineSegments curveSegments lineCount curveCount
         lineSegments := ls
         curveSegments := cs
         lineCount := lc
@@ -1147,7 +1155,8 @@ def tessellateStrokeSegments (path : Path) (_style : StrokeStyle) : StrokePathSe
         closed := true
         current := subpathStart
         if rawSegments.size > 0 then
-          let (ls, cs, lc, cc) := appendStrokeSegments rawSegments closed lineSegments curveSegments lineCount curveCount
+          let (ls, cs, lc, cc) := appendStrokeSegments rawSegments closed transform
+            lineSegments curveSegments lineCount curveCount
           lineSegments := ls
           curveSegments := cs
           lineCount := lc
@@ -1157,7 +1166,8 @@ def tessellateStrokeSegments (path : Path) (_style : StrokeStyle) : StrokePathSe
         hasCurrent := true
 
   if rawSegments.size > 0 then
-    let (ls, cs, lc, cc) := appendStrokeSegments rawSegments closed lineSegments curveSegments lineCount curveCount
+    let (ls, cs, lc, cc) := appendStrokeSegments rawSegments closed transform
+      lineSegments curveSegments lineCount curveCount
     lineSegments := ls
     curveSegments := cs
     lineCount := lc

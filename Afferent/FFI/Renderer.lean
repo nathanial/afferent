@@ -41,6 +41,10 @@ opaque Buffer.createStrokeVertex (renderer : @& Renderer) (vertices : @& Array F
 @[extern "lean_afferent_buffer_create_stroke_segment"]
 opaque Buffer.createStrokeSegment (renderer : @& Renderer) (segments : @& Array Float) : IO Buffer
 
+-- Persistent stroke segments (not pooled): Array of Float, 18 per segment
+@[extern "lean_afferent_buffer_create_stroke_segment_persistent"]
+opaque Buffer.createStrokeSegmentPersistent (renderer : @& Renderer) (segments : @& Array Float) : IO Buffer
+
 -- Indices: Array of UInt32
 @[extern "lean_afferent_buffer_create_index"]
 opaque Buffer.createIndex (renderer : @& Renderer) (indices : @& Array UInt32) : IO Buffer
@@ -79,9 +83,12 @@ opaque Renderer.drawStrokePath
   (miterLimit : Float)
   (lineCap : UInt32)
   (lineJoin : UInt32)
-  (rotationCenterX : Float)
-  (rotationCenterY : Float)
-  (rotation : Float)
+  (transformA : Float)
+  (transformB : Float)
+  (transformC : Float)
+  (transformD : Float)
+  (transformTx : Float)
+  (transformTy : Float)
   (dashSegments : @& Array Float)
   (dashCount : UInt32)
   (dashOffset : Float)

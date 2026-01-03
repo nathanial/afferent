@@ -533,6 +533,69 @@ LEAN_EXPORT lean_obj_res lean_afferent_buffer_create_stroke_segment(
     return lean_io_result_mk_ok(obj);
 }
 
+// Create persistent stroke segment buffer from Float array
+LEAN_EXPORT lean_obj_res lean_afferent_buffer_create_stroke_segment_persistent(
+    lean_obj_arg renderer_obj,
+    lean_obj_arg segments_arr,
+    lean_obj_arg world
+) {
+    afferent_ensure_initialized();
+    AfferentRendererRef renderer = (AfferentRendererRef)lean_get_external_data(renderer_obj);
+
+    size_t arr_size = lean_array_size(segments_arr);
+    size_t segment_count = arr_size / 18;
+
+    if (segment_count == 0) {
+        return lean_io_result_mk_error(lean_mk_io_user_error(
+            lean_mk_string("Empty stroke segment array")));
+    }
+
+    AfferentStrokeSegment* segments = malloc(segment_count * sizeof(AfferentStrokeSegment));
+    if (!segments) {
+        return lean_io_result_mk_error(lean_mk_io_user_error(
+            lean_mk_string("Failed to allocate stroke segment memory")));
+    }
+
+    for (size_t i = 0; i < segment_count; i++) {
+        size_t base = i * 18;
+        segments[i].p0[0] = (float)lean_unbox_float(lean_array_get_core(segments_arr, base + 0));
+        segments[i].p0[1] = (float)lean_unbox_float(lean_array_get_core(segments_arr, base + 1));
+        segments[i].p1[0] = (float)lean_unbox_float(lean_array_get_core(segments_arr, base + 2));
+        segments[i].p1[1] = (float)lean_unbox_float(lean_array_get_core(segments_arr, base + 3));
+        segments[i].c1[0] = (float)lean_unbox_float(lean_array_get_core(segments_arr, base + 4));
+        segments[i].c1[1] = (float)lean_unbox_float(lean_array_get_core(segments_arr, base + 5));
+        segments[i].c2[0] = (float)lean_unbox_float(lean_array_get_core(segments_arr, base + 6));
+        segments[i].c2[1] = (float)lean_unbox_float(lean_array_get_core(segments_arr, base + 7));
+        segments[i].prevDir[0] = (float)lean_unbox_float(lean_array_get_core(segments_arr, base + 8));
+        segments[i].prevDir[1] = (float)lean_unbox_float(lean_array_get_core(segments_arr, base + 9));
+        segments[i].nextDir[0] = (float)lean_unbox_float(lean_array_get_core(segments_arr, base + 10));
+        segments[i].nextDir[1] = (float)lean_unbox_float(lean_array_get_core(segments_arr, base + 11));
+        segments[i].startDist = (float)lean_unbox_float(lean_array_get_core(segments_arr, base + 12));
+        segments[i].length = (float)lean_unbox_float(lean_array_get_core(segments_arr, base + 13));
+        segments[i].hasPrev = (float)lean_unbox_float(lean_array_get_core(segments_arr, base + 14));
+        segments[i].hasNext = (float)lean_unbox_float(lean_array_get_core(segments_arr, base + 15));
+        segments[i].kind = (float)lean_unbox_float(lean_array_get_core(segments_arr, base + 16));
+        segments[i].padding = (float)lean_unbox_float(lean_array_get_core(segments_arr, base + 17));
+    }
+
+    AfferentBufferRef buffer = NULL;
+    AfferentResult result = afferent_buffer_create_stroke_segment_persistent(
+        renderer,
+        segments,
+        (uint32_t)segment_count,
+        &buffer
+    );
+    free(segments);
+
+    if (result != AFFERENT_OK) {
+        return lean_io_result_mk_error(lean_mk_io_user_error(
+            lean_mk_string("Failed to create persistent stroke segment buffer")));
+    }
+
+    lean_object* obj = lean_alloc_external(g_buffer_class, buffer);
+    return lean_io_result_mk_ok(obj);
+}
+
 // Create index buffer from UInt32 array
 LEAN_EXPORT lean_obj_res lean_afferent_buffer_create_index(
     lean_obj_arg renderer_obj,
@@ -641,9 +704,12 @@ LEAN_EXPORT lean_obj_res lean_afferent_renderer_draw_stroke_path(
     double miter_limit,
     uint32_t line_cap,
     uint32_t line_join,
-    double rotation_center_x,
-    double rotation_center_y,
-    double rotation,
+    double transform_a,
+    double transform_b,
+    double transform_c,
+    double transform_d,
+    double transform_tx,
+    double transform_ty,
     lean_obj_arg dash_segments_arr,
     uint32_t dash_count,
     double dash_offset,
@@ -680,9 +746,12 @@ LEAN_EXPORT lean_obj_res lean_afferent_renderer_draw_stroke_path(
         (float)miter_limit,
         line_cap,
         line_join,
-        (float)rotation_center_x,
-        (float)rotation_center_y,
-        (float)rotation,
+        (float)transform_a,
+        (float)transform_b,
+        (float)transform_c,
+        (float)transform_d,
+        (float)transform_tx,
+        (float)transform_ty,
         dash_ptr,
         count,
         (float)dash_offset,
