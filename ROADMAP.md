@@ -103,20 +103,6 @@ This document tracks improvement opportunities, feature proposals, and code clea
 
 ---
 
-### [Priority: Medium] ~~Animation Easing Library~~ ✅ COMPLETED
-
-**Status:** Completed via linalg library integration (v0.0.1+).
-
-**Description:** Standard easing functions are now available through the `Linalg.Easing` module, which provides ease-in, ease-out, ease-in-out, and other common easing functions.
-
-**Usage:**
-```lean
-import Linalg.Easing
--- Use Easing.easeInOutCubic, Easing.easeOutQuad, etc.
-```
-
----
-
 ### [Priority: Medium] Multi-Window Support
 
 **Description:** Enable creating and managing multiple windows from a single application.
@@ -184,36 +170,6 @@ import Linalg.Easing
 
 ## Code Improvements
 
-### [Priority: High] ~~Non-Convex Polygon Tessellation~~ ✅ COMPLETED
-
-**Status:** Completed - implemented ear-clipping triangulation algorithm.
-
-**Resolution:** Added `triangulateEarClipping`, `triangulatePolygon`, `isConvexPolygon`, `crossProduct2D`, and `pointInTriangle` functions. The `tessellatePath` function now automatically uses ear-clipping for concave polygons and fast fan triangulation for convex ones.
-
-**Demo:** PathFeatures demo (mode 11 in Runner) showcases arrows, L-shapes, stars, and chevrons.
-
----
-
-### [Priority: High] ~~Proper arcTo Implementation~~ ✅ COMPLETED
-
-**Status:** Completed - implemented HTML5 Canvas-style arcTo geometry.
-
-**Resolution:** Added `computeArcTo` function that calculates tangent points and arc center, then generates bezier curve approximations. The `pathToPolygonWithClosed` function now properly handles arcTo commands with correct rounded corner geometry.
-
-**Demo:** PathFeatures demo shows rounded rectangles, rounded triangles, and pill shapes using arcTo.
-
----
-
-### [Priority: High] ~~Arc Transform Handling~~ ✅ COMPLETED
-
-**Status:** Completed - arcs are now converted to beziers before transformation.
-
-**Resolution:** Updated `transformPath` in `CanvasState` to convert arc and arcTo commands to bezier curves before applying transforms. This correctly handles non-uniform scaling (circles become ellipses) and rotation.
-
-**Demo:** PathFeatures demo shows circles under 2:1 and 1:2 scaling (rendering as ellipses), rotated pie slices, and combined scale+rotation on arcs.
-
----
-
 ### [Priority: Medium] Matrix4 Performance (Superseded)
 
 **Current State:** Matrix operations are now provided by the `linalg` library via `Mat4`. The old `Afferent/Render/Matrix4.lean` may be deprecated or removed in favor of `Linalg.Mat4`.
@@ -221,14 +177,6 @@ import Linalg.Easing
 **Note:** Evaluate if `Linalg.Mat4` performance is sufficient. If SIMD optimization is still needed, it should be added to the linalg library rather than Afferent.
 
 **Estimated Effort:** Potentially N/A if linalg Mat4 is sufficient
-
----
-
-### [Priority: Medium] ~~FPSCamera Clamp Function Visibility~~ ✅ COMPLETED
-
-**Status:** Completed - replaced private `clamp` with `Float.clamp` from linalg.
-
-**Resolution:** The private `clamp` helper was removed and replaced with `Float.clamp` from `Linalg.Core`.
 
 ---
 
@@ -262,22 +210,6 @@ import Linalg.Easing
 
 ---
 
-### [Priority: Low] ~~Reduce Magic Numbers in Path.lean~~ ✅ COMPLETED
-
-**Status:** Completed - defined `bezierCircleK` constant.
-
-**Resolution:** Added `Path.bezierCircleK : Float := 0.5522847498` and updated circle, ellipse, and roundedRect functions to use it.
-
----
-
-### [Priority: Low] ~~Pi Constant Consolidation~~ ✅ COMPLETED
-
-**Status:** Completed via linalg library integration.
-
-**Resolution:** All files now import `Float.pi`, `Float.twoPi`, and `Float.halfPi` from the `Linalg.Core` module instead of defining them locally. Path.lean, FPSCamera.lean, and other files have been updated to use the linalg constants.
-
----
-
 ## Code Cleanup
 
 ### [Priority: High] Remove Unused Imports
@@ -292,28 +224,6 @@ import Linalg.Easing
 
 ---
 
-### [Priority: Medium] ~~Document Vertex Layout Constants~~ ✅ COMPLETED
-
-**Status:** Completed - added vertex size constants to Tessellation.lean.
-
-**Resolution:** Added `Tessellation.vertexSize2D`, `vertexSize3D`, and `vertexSize3DTextured` constants. The Batch module now uses `vertexSize2D` for vertex count calculations.
-
----
-
-### [Priority: Medium] ~~Add More Test Coverage~~ ✅ COMPLETED
-
-**Status:** Completed - test count increased from 43 to 98 tests.
-
-**New test suites added:**
-- `CanvasStateTests.lean`: 20 tests for transform composition, inverse, state stack
-- `FontTests.lean`: 7 tests for font loading and text measurement
-- Gradient edge cases: 6 tests for empty/single stops, out-of-bounds sampling
-- Tessellation tests: 22 tests for ear-clipping, convexity detection, arcTo geometry
-
-**Remaining opportunities:** Widget rendering tests, more layout edge cases.
-
----
-
 ### [Priority: Low] Normalize Doc Comments
 
 **Issue:** Some functions have detailed doc comments while others have minimal or no documentation.
@@ -323,14 +233,6 @@ import Linalg.Easing
 **Action Required:** Add doc comments to all public functions, standardize format.
 
 **Estimated Effort:** Medium
-
----
-
-### [Priority: Low] ~~Demo Code Cleanup~~ ✅ COMPLETED
-
-**Status:** Completed - all demos now use linalg constants.
-
-**Resolution:** Updated `Demos/SpinningCubes.lean` and `examples/SpinningCubes.lean` to use `Float.pi` instead of hardcoded values.
 
 ---
 
@@ -367,172 +269,7 @@ The widget event system could benefit from a formal state machine for focus, hov
 
 ---
 
-## Quick Wins
-
-These items can be addressed quickly with minimal risk:
-
-1. ~~Define pi constant in one place~~ ✅ (done via linalg)
-2. ~~Add named constants for vertex layout sizes~~ ✅ (vertexSize2D/3D/3DTextured)
-3. ~~Add shouldBeNear tolerance parameter to test helpers~~ ✅ (already in Crucible)
-4. ~~Document all FFI function parameters~~ ✅ (Window.lean documented)
-5. ~~Add more gradient sampling tests~~ ✅ (6 edge case tests added)
-6. ~~Define named constant for bezier circle approximation~~ ✅ (bezierCircleK)
-
----
-
-## Recent Developments (December 2025)
-
-### Linalg Integration ✅
-
-The project now uses the `linalg` library for math operations, providing:
-- `Float.pi`, `Float.twoPi`, `Float.halfPi` constants
-- `Vec3`, `Mat4` types with standard operations
-- Easing functions via `Linalg.Easing`
-
-### Module Extraction ✅
-
-Several components have been extracted to separate packages for better reusability:
-- **assimptor**: 3D asset loading (Assimp wrapper)
-- **worldmap**: Map tile rendering and caching
-
-### Window Improvements ✅
-
-- Resizable windows with proper handling
-- Improved keyboard input handling
-
-### Embedded Shaders ✅
-
-Metal shaders are now embedded directly in the binary, eliminating runtime shader file loading.
-
-### Path Features ✅ (New)
-
-Implemented three high-priority code improvements:
-- **Ear-clipping triangulation**: Non-convex polygon support (arrows, L-shapes, stars)
-- **Proper arcTo**: HTML5 Canvas-style tangent arc geometry for rounded corners
-- **Arc transforms**: Arcs convert to beziers for correct non-uniform scaling
-
-New PathFeatures demo (mode 11 in Runner) showcases all three features.
-
----
-
-*Last updated: 2026-01-03* (Canvas threading eliminated)
-
----
-
-## API Ergonomics (January 2026)
-
-Based on review of afferent-demos usage patterns, these improvements would make the API easier to use.
-
-### [Priority: High] ~~Eliminate Canvas Threading Pattern~~ ✅ COMPLETED
-
-**Status:** Completed - added CanvasM wrappers for window input and frame loop.
-
-**Resolution:** Added to CanvasM namespace:
-- Window input: `getKeyCode`, `hasKeyPressed`, `clearKey`, `getPointerLock`, `setPointerLock`, `isKeyDown`, `getMouseDelta`, `getClick`, `clearClick`
-- Context access: `getRenderer`, `getWindow`, `getCurrentSize`
-- Frame loop: `runLoopM` for running render loops entirely in CanvasM
-
-**New pattern:**
-```lean
-c ← run' c do
-  resetTransform
-  setFillColor Color.white
-  fillTextXY ...
-  let renderer ← getRenderer
-  someFFICall renderer ...
-```
-
-All operations stay inside a single CanvasM block. Demo code refactored to use this pattern.
-
----
-
-### [Priority: High] ~~Named Key Constants~~ ✅ COMPLETED
-
-**Status:** Completed - added `Afferent.FFI.Key` namespace with macOS virtual key codes.
-
-**Resolution:** Added comprehensive key constants:
-```lean
--- Letters
-FFI.Key.a, FFI.Key.s, FFI.Key.d, FFI.Key.w, ...
-
--- Special keys
-FFI.Key.space, FFI.Key.escape, FFI.Key.«return», FFI.Key.tab, FFI.Key.delete
-
--- Arrow keys
-FFI.Key.left, FFI.Key.right, FFI.Key.up, FFI.Key.down
-
--- Modifiers
-FFI.Key.shift, FFI.Key.control, FFI.Key.option, FFI.Key.command
-
--- Function keys
-FFI.Key.f1 through FFI.Key.f12
-
--- Numbers
-FFI.Key.num0 through FFI.Key.num9
-```
-
-Demo code now uses `FFI.Key.space` instead of `49`, etc.
-
----
-
-### [Priority: High] ~~Flatten Context Access~~ ✅ COMPLETED (via CanvasM)
-
-**Status:** Completed - CanvasM now has direct access to window/renderer operations.
-
-**Resolution:** Inside CanvasM, you can now use:
-```lean
-c ← run' c do
-  let click ← getClick       -- was: FFI.Window.getClick c.ctx.window
-  clearClick                  -- was: FFI.Window.clearClick c.ctx.window
-  let down ← isKeyDown 13     -- was: FFI.Window.isKeyDown c.ctx.window 13
-  let renderer ← getRenderer  -- was: c.ctx.renderer
-```
-
-**Note:** Direct Canvas methods (outside CanvasM) not added, but CanvasM is the recommended pattern.
-
----
-
-### [Priority: Medium] ~~Scoped Transform Helper~~ ✅ COMPLETED
-
-**Status:** Completed - added `saved` and `withTransform` helpers to CanvasM.
-
-**Resolution:** Added two functions:
-```lean
--- Simple save/restore wrapper
-def saved (action : CanvasM α) : CanvasM α := do
-  save
-  let result ← action
-  restore
-  pure result
-
--- Transform with save/restore
-def withTransform (transform : CanvasM Unit) (action : CanvasM α) : CanvasM α := do
-  save
-  transform
-  let result ← action
-  restore
-  pure result
-```
-
-**Usage:**
-```lean
--- Before: easy to forget restore
-save
-translate 150 150
-drawSomething
-restore
-
--- After: automatic restore
-withTransform (translate 150 150) do
-  drawSomething
-
--- Or just save/restore without transform:
-saved do
-  setFillColor Color.red
-  fillRect ...
-```
-
----
+## API Ergonomics
 
 ### [Priority: Medium] Auto-Scaling Mode
 
@@ -617,26 +354,6 @@ Font.loadSystem "monospace" size  -- Generic family names
 
 ---
 
-### [Priority: Low] Color Convenience Methods
-
-**Current:**
-```lean
-Color.hsva 0.667 0.25 0.20 1.0
-Color.rgba color.r color.g color.b alpha
-```
-
-**Proposed:**
-```lean
-Color.hsv 0.667 0.25 0.20  -- alpha defaults to 1
-color.withAlpha 0.5
-color.lighter 0.2
-color.darker 0.2
-```
-
-**Affected Files:** `Afferent/Core/Color.lean`
-
----
-
 ### [Priority: Low] Simplified Widget Click Handling
 
 **Current (Interactive.lean):**
@@ -662,22 +379,12 @@ widget.onClick ce.x ce.y fun id =>
 
 ---
 
-## Summary: Quick Wins
-
-1. ~~Key constants~~ ✅ (FFI.Key namespace)
-2. ~~Flatten context access~~ ✅ (via CanvasM wrappers)
-3. ~~withTransform helper~~ ✅ (`saved` and `withTransform` functions)
-4. **Color defaults** - `Color.hsv` with alpha=1 default ⬅️ **NEXT**
-
-## Summary: Bigger Wins (More Effort)
+## Summary: Next Up
 
 1. **Canvas.run main loop** - Eliminates boilerplate, manages resources
 2. **Auto-scaling mode** - No more `* screenScale` everywhere
 3. **System font loading** - Platform-independent font names
 
-## Completed in January 2026
+---
 
-- ✅ **Eliminate Canvas Threading Pattern** - CanvasM wrappers for window input, getRenderer, runLoopM
-- ✅ **Flatten Context Access** - All window/renderer ops available in CanvasM
-- ✅ **Named Key Constants** - `FFI.Key.space`, `FFI.Key.escape`, `FFI.Key.w`, etc.
-- ✅ **Scoped Transform Helper** - `saved` and `withTransform` functions for auto save/restore
+*Last updated: 2026-01-03*

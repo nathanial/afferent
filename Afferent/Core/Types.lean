@@ -15,7 +15,24 @@ export Tincture (Color)
 
 -- Re-export Color namespace members so Color.black, Color.rgb etc. work
 namespace Color
-  export Tincture.Color (black white red green blue yellow cyan magenta orange purple transparent gray darkGray lightGray rgba rgb hsv hsva withAlpha lerp premultiply unpremultiply)
+  export Tincture.Color (
+    -- Named colors
+    black white red green blue yellow cyan magenta orange purple transparent
+    gray darkGray lightGray
+    -- Constructors
+    rgba rgb hsv hsva fromRgb8
+    -- Alpha
+    withAlpha
+    -- Color math
+    lerp premultiply unpremultiply
+    -- Adjustments (from Tincture.Adjust)
+    lighten darken saturate desaturate
+    rotateHue rotateHueDeg
+    invert grayscale sepia
+    brightness contrast
+    fade opacify
+    tint shade tone
+  )
 end Color
 
 /-- A 2D point with x and y coordinates. -/
