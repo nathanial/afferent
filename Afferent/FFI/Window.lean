@@ -33,6 +33,88 @@ opaque Window.getSize (window : @& Window) : IO (UInt32 × UInt32)
 
 /-! ## Keyboard Input -/
 
+/-! ### Key Constants
+
+macOS virtual key codes for common keys.
+Use with `Window.getKeyCode` and `Window.isKeyDown`. -/
+
+namespace Key
+  -- Letters (QWERTY layout)
+  def a : UInt16 := 0
+  def s : UInt16 := 1
+  def d : UInt16 := 2
+  def f : UInt16 := 3
+  def h : UInt16 := 4
+  def g : UInt16 := 5
+  def z : UInt16 := 6
+  def x : UInt16 := 7
+  def c : UInt16 := 8
+  def v : UInt16 := 9
+  def b : UInt16 := 11
+  def q : UInt16 := 12
+  def w : UInt16 := 13
+  def e : UInt16 := 14
+  def r : UInt16 := 15
+  def y : UInt16 := 16
+  def t : UInt16 := 17
+  def o : UInt16 := 31
+  def u : UInt16 := 32
+  def i : UInt16 := 34
+  def p : UInt16 := 35
+  def l : UInt16 := 37
+  def j : UInt16 := 38
+  def k : UInt16 := 40
+  def n : UInt16 := 45
+  def m : UInt16 := 46
+
+  -- Numbers (top row)
+  def num1 : UInt16 := 18
+  def num2 : UInt16 := 19
+  def num3 : UInt16 := 20
+  def num4 : UInt16 := 21
+  def num5 : UInt16 := 23
+  def num6 : UInt16 := 22
+  def num7 : UInt16 := 26
+  def num8 : UInt16 := 28
+  def num9 : UInt16 := 25
+  def num0 : UInt16 := 29
+
+  -- Special keys
+  def «return» : UInt16 := 36
+  def tab : UInt16 := 48
+  def space : UInt16 := 49
+  def delete : UInt16 := 51      -- Backspace
+  def escape : UInt16 := 53
+  def forwardDelete : UInt16 := 117
+
+  -- Arrow keys
+  def left : UInt16 := 123
+  def right : UInt16 := 124
+  def down : UInt16 := 125
+  def up : UInt16 := 126
+
+  -- Modifiers (left variants)
+  def shift : UInt16 := 56
+  def control : UInt16 := 59
+  def option : UInt16 := 58
+  def command : UInt16 := 55
+  def capsLock : UInt16 := 57
+
+  -- Function keys
+  def f1 : UInt16 := 122
+  def f2 : UInt16 := 120
+  def f3 : UInt16 := 99
+  def f4 : UInt16 := 118
+  def f5 : UInt16 := 96
+  def f6 : UInt16 := 97
+  def f7 : UInt16 := 98
+  def f8 : UInt16 := 100
+  def f9 : UInt16 := 101
+  def f10 : UInt16 := 109
+  def f11 : UInt16 := 103
+  def f12 : UInt16 := 111
+end Key
+
 /-- Get the key code of the most recent key press (0 if none). -/
 @[extern "lean_afferent_window_get_key_code"]
 opaque Window.getKeyCode (window : @& Window) : IO UInt16

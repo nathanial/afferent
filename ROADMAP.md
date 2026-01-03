@@ -446,25 +446,32 @@ All operations stay inside a single CanvasM block. Demo code refactored to use t
 
 ---
 
-### [Priority: High] Named Key Constants
+### [Priority: High] ~~Named Key Constants~~ ✅ COMPLETED
 
-**Current:**
+**Status:** Completed - added `Afferent.FFI.Key` namespace with macOS virtual key codes.
+
+**Resolution:** Added comprehensive key constants:
 ```lean
-if keyCode == 49 then  -- Space bar
-if keyCode == 53 then  -- Escape
-if keyCode == 124 then  -- Right arrow
+-- Letters
+FFI.Key.a, FFI.Key.s, FFI.Key.d, FFI.Key.w, ...
+
+-- Special keys
+FFI.Key.space, FFI.Key.escape, FFI.Key.«return», FFI.Key.tab, FFI.Key.delete
+
+-- Arrow keys
+FFI.Key.left, FFI.Key.right, FFI.Key.up, FFI.Key.down
+
+-- Modifiers
+FFI.Key.shift, FFI.Key.control, FFI.Key.option, FFI.Key.command
+
+-- Function keys
+FFI.Key.f1 through FFI.Key.f12
+
+-- Numbers
+FFI.Key.num0 through FFI.Key.num9
 ```
 
-**Issue:** Magic numbers, platform-specific, hard to maintain.
-
-**Proposed:**
-```lean
-if keyCode == Key.space then
-if keyCode == Key.escape then
-if keyCode == Key.right then
-```
-
-**Affected Files:** `Afferent/FFI/Window.lean` (add Key namespace with constants)
+Demo code now uses `FFI.Key.space` instead of `49`, etc.
 
 ---
 
@@ -641,9 +648,9 @@ widget.onClick ce.x ce.y fun id =>
 
 ## Summary: Quick Wins
 
-1. **Key constants** - Small change, big readability improvement ⬅️ **NEXT**
+1. ~~Key constants~~ ✅ (FFI.Key namespace)
 2. ~~Flatten context access~~ ✅ (via CanvasM wrappers)
-3. **withTransform helper** - Simple wrapper around save/restore
+3. **withTransform helper** - Simple wrapper around save/restore ⬅️ **NEXT**
 4. **Color defaults** - `Color.hsv` with alpha=1 default
 
 ## Summary: Bigger Wins (More Effort)
@@ -656,3 +663,4 @@ widget.onClick ce.x ce.y fun id =>
 
 - ✅ **Eliminate Canvas Threading Pattern** - CanvasM wrappers for window input, getRenderer, runLoopM
 - ✅ **Flatten Context Access** - All window/renderer ops available in CanvasM
+- ✅ **Named Key Constants** - `FFI.Key.space`, `FFI.Key.escape`, `FFI.Key.w`, etc.
