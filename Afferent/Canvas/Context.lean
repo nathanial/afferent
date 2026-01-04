@@ -491,16 +491,8 @@ structure Canvas where
   stateStack : StateStack
   /-- Screen scale factor (e.g., 2.0 for Retina). Used for auto-scaling mode. -/
   screenScale : Float := 1.0
-  /-- Active batch accumulator. When Some, drawing ops add to batch instead of drawing immediately. -/
-  batch : Option Batch := none
   /-- Auto-batch: always accumulates geometry, flushed at endFrame. Reduces per-draw allocations. -/
   autoBatch : Batch := Batch.withCapacity 100
-  /-- Whether auto-batching is enabled (default: true). Use CanvasM for automatic state threading. -/
-  autoBatchEnabled : Bool := true
-  /-- Pre-allocated buffer for instanced rendering (avoids per-frame allocation). -/
-  instanceBuffer : Array Float := #[]
-  /-- Capacity of instance buffer (in number of instances, not floats). -/
-  instanceBufferCapacity : Nat := 0
   /-- High-performance mutable FloatBuffer for zero-copy instanced rendering. -/
   floatBuffer : Option FFI.FloatBuffer := none
   /-- Capacity of FloatBuffer (in floats). -/
@@ -601,113 +593,10 @@ def setDotted (c : Canvas) : Canvas :=
 def setSolid (c : Canvas) : Canvas :=
   { c with stateStack := c.stateStack.setSolid }
 
-/-! ## Batching API -/
-
-/-- Start accumulating shapes into a batch instead of drawing them immediately.
-    Use `flushBatch` to draw all accumulated shapes with a single draw call. -/
-def beginBatch (c : Canvas) (capacityHint : Nat := 1000) : Canvas :=
-  { c with batch := some (Batch.withCapacity capacityHint) }
-
-/-- Flush the current batch, drawing all accumulated shapes with a single draw call.
-    Returns the canvas with no active batch. -/
-def flushBatch (c : Canvas) : IO Canvas := do
-  match c.batch with
-  | none => pure c
-  | some batch =>
-    c.ctx.drawBatch batch
-    pure { c with batch := none }
-
-/-- Check if batching is currently active (explicit batch). -/
-def isBatching (c : Canvas) : Bool :=
-  c.batch.isSome
-
-/-- Enable or disable auto-batching. When enabled (default), geometry is accumulated
-    and drawn in a single draw call at endFrame. Disable for immediate-mode rendering. -/
-def setAutoBatch (enabled : Bool) (c : Canvas) : Canvas :=
-  { c with autoBatchEnabled := enabled }
-
-/-- Check if auto-batching is enabled. -/
-def isAutoBatching (c : Canvas) : Bool :=
-  c.autoBatchEnabled
-
-/-- Execute an action with batching enabled.
-    All shapes drawn within the action are batched and drawn with a single draw call at the end. -/
-def batched (capacityHint : Nat := 1000) (action : Canvas → IO Canvas) (c : Canvas) : IO Canvas := do
-  let c := c.beginBatch capacityHint
-  let c ← action c
-  c.flushBatch
-
-/-- FASTEST PATH: Batch many rectangles with a pure function that computes geometry directly.
-    The generator function takes an index and returns (x, y, angle, halfSize, color).
-    This bypasses Canvas state entirely - no save/restore, no Transform allocations. -/
-def batchRectsBy (count : Nat)
-    (generator : Nat → Float × Float × Float × Float × Color)
-    (c : Canvas) : IO Canvas := do
-  let (w, h) ← c.ctx.getCurrentSize
-  let mut batch := Batch.withCapacity count
-  for i in [:count] do
-    let (x, y, angle, halfSize, color) := generator i
-    batch := batch.addRectDirect x y angle halfSize color w h
-  c.ctx.drawBatch batch
-  pure c
-
-/-- GPU INSTANCED: Render many rectangles with GPU-computed transforms.
-    The generator function takes an index and returns (x, y, angle, halfSize, color).
-    Transforms are computed on the GPU - maximum parallelism for large counts.
-    Use this for 1000+ rectangles for best performance.
-    Reuses a pre-allocated buffer to avoid per-frame allocation. -/
-def batchInstancedRectsBy (count : Nat)
-    (generator : Nat → Float × Float × Float × Float × Color)
-    (c : Canvas) : IO Canvas := do
-  let (canvasW, canvasH) ← c.ctx.getCurrentSize
-  let sizeModeScreen : UInt32 := 1
-  let colorModeRGBA : UInt32 := 0
-  let time := 0.0
-  let hueSpeed := 0.0
-  let transformA := 2.0 / canvasW
-  let transformB := 0.0
-  let transformC := 0.0
-  let transformD := -2.0 / canvasH
-  let transformTx := -1.0
-  let transformTy := 1.0
-  let floatCount := count * 8
-  -- Reuse existing buffer if large enough, otherwise grow it
-  let data := if c.instanceBufferCapacity >= count then
-      c.instanceBuffer
-    else
-      -- Allocate with some headroom to avoid frequent reallocation
-      Array.replicate floatCount 0.0
-  -- Fill instance data using set! for in-place mutation (8 floats per instance)
-  let mut data := data
-  for i in [:count] do
-    let (x, y, angle, halfSize, color) := generator i
-    -- Pack instance data using set! (in-place mutation)
-    let base := i * 8
-    data := data.set! base x
-    data := data.set! (base + 1) y
-    data := data.set! (base + 2) angle
-    data := data.set! (base + 3) halfSize
-    data := data.set! (base + 4) color.r
-    data := data.set! (base + 5) color.g
-    data := data.set! (base + 6) color.b
-    data := data.set! (base + 7) color.a
-  -- Single GPU draw call with instancing
-  FFI.Renderer.drawInstancedRects
-    c.ctx.renderer
-    data
-    count.toUInt32
-    transformA transformB transformC transformD transformTx transformTy
-    canvasW canvasH
-    sizeModeScreen
-    time hueSpeed
-    colorModeRGBA
-  -- Return canvas with buffer for reuse next frame
-  pure { c with instanceBuffer := data, instanceBufferCapacity := count }
-
 /-! ## Drawing operations -/
 
-/-- Fill a path using the current state. Batch-aware: adds to batch if active.
-    When auto-batching is enabled, geometry is accumulated and drawn at endFrame.
+/-- Fill a path using the current state.
+    Geometry is accumulated and drawn at endFrame.
     Note: Gradients are sampled at original path positions since gradient coordinates
     are defined in the original coordinate space. -/
 def fillPath (path : Path) (c : Canvas) : IO Canvas := do
@@ -715,40 +604,17 @@ def fillPath (path : Path) (c : Canvas) : IO Canvas := do
   let style := c.state.effectiveFillStyle
   -- Use transform directly to ensure exact 1-to-1 point correspondence after bezier flattening
   let result := Tessellation.tessellatePathWithTransform path c.state.transform style w h
-  match c.batch with
-  | some batch =>
-    pure { c with batch := some (batch.add result) }
-  | none =>
-    if c.autoBatchEnabled then
-      -- Auto-batch: accumulate in autoBatch, will be flushed at endFrame
-      pure { c with autoBatch := c.autoBatch.add result }
-    else
-      -- Immediate mode: draw directly (legacy behavior)
-      let transformedPath := c.state.transformPath path
-      c.ctx.fillPathWithStyle transformedPath style
-      pure c
+  pure { c with autoBatch := c.autoBatch.add result }
 
-/-- Fill a rectangle using the current state. Batch-aware: adds to batch if active.
+/-- Fill a rectangle using the current state.
     Uses fast path that skips Path allocation - just transforms 4 corners directly.
-    When auto-batching is enabled, geometry is accumulated and drawn at endFrame. -/
+    Geometry is accumulated and drawn at endFrame. -/
 def fillRect (rect : Rect) (c : Canvas) : IO Canvas := do
   let (w, h) ← c.ctx.getCurrentSize
   let transform := c.state.transform
   let style := c.state.effectiveFillStyle
-  match c.batch with
-  | some batch =>
-    -- Explicit batch: write directly into batch arrays
-    let batch' := batch.addTransformedRect rect transform style w h
-    pure { c with batch := some batch' }
-  | none =>
-    if c.autoBatchEnabled then
-      -- Auto-batch: accumulate in autoBatch, will be flushed at endFrame
-      let autoBatch' := c.autoBatch.addTransformedRect rect transform style w h
-      pure { c with autoBatch := autoBatch' }
-    else
-      -- Immediate mode: draw directly (legacy behavior)
-      c.ctx.fillTransformedRectWithStyle rect transform style
-      pure c
+  let autoBatch' := c.autoBatch.addTransformedRect rect transform style w h
+  pure { c with autoBatch := autoBatch' }
 
 /-- Fill a rectangle specified by x, y, width, height using current state. -/
 def fillRectXYWH (x y width height : Float) (c : Canvas) : IO Canvas :=
@@ -827,7 +693,7 @@ def drawLine (p1 p2 : Point) (c : Canvas) : IO Canvas :=
 /-- Flush the auto-batch if it has any pending geometry.
     Used internally before operations that require a different pipeline (e.g., text). -/
 private def flushAutoBatch (c : Canvas) : IO Canvas := do
-  if c.autoBatchEnabled && !c.autoBatch.isEmpty then
+  if !c.autoBatch.isEmpty then
     c.ctx.drawBatch c.autoBatch
     pure { c with autoBatch := Batch.withCapacity 100 }
   else
@@ -835,10 +701,9 @@ private def flushAutoBatch (c : Canvas) : IO Canvas := do
 
 /-- Draw text at a position with a font using the current fill color and transform.
     Note: Text uses a different shader and cannot be batched with shapes.
-    If batching is active, both explicit batch and auto-batch are flushed before drawing text. -/
+    Auto-batch is flushed before drawing text. -/
 def fillText (text : String) (pos : Point) (font : Font) (c : Canvas) : IO Canvas := do
-  -- Flush any pending batches since text uses different pipeline
-  let c ← c.flushBatch
+  -- Flush pending geometry since text uses different pipeline
   let c ← c.flushAutoBatch
   let color := c.state.effectiveFillColor
   let transform := c.state.transform
@@ -851,8 +716,7 @@ def fillTextXY (text : String) (x y : Float) (font : Font) (c : Canvas) : IO Can
 
 /-- Draw text with an explicit color (still uses current transform). -/
 def fillTextColor (text : String) (pos : Point) (font : Font) (color : Color) (c : Canvas) : IO Canvas := do
-  -- Flush any pending batches since text uses different pipeline
-  let c ← c.flushBatch
+  -- Flush pending geometry since text uses different pipeline
   let c ← c.flushAutoBatch
   let transform := c.state.transform
   c.ctx.fillTextTransformed text pos font color transform
@@ -885,14 +749,14 @@ def clearKey (c : Canvas) : IO Unit :=
 def beginFrame (clearColor : Color) (c : Canvas) : IO Bool :=
   c.ctx.beginFrame clearColor
 
-/-- End the current frame. Flushes auto-batch if enabled and presents.
+/-- End the current frame. Flushes auto-batch and presents.
     Returns updated Canvas with reset autoBatch for next frame. -/
 def endFrame (c : Canvas) : IO Canvas := do
-  -- Flush auto-batch if enabled and has geometry
-  if c.autoBatchEnabled && !c.autoBatch.isEmpty then
+  -- Flush auto-batch if has geometry
+  if !c.autoBatch.isEmpty then
     c.ctx.drawBatch c.autoBatch
   c.ctx.endFrame
-  -- Reset autoBatch for next frame (reuse capacity hint from original size)
+  -- Reset autoBatch for next frame
   pure { c with autoBatch := Batch.withCapacity 100 }
 
 /-- End the current frame (unit version for compatibility).
@@ -1119,12 +983,6 @@ def measureText (text : String) (font : Font) : CanvasM (Float × Float) := do
 def clip (rect : Rect) : CanvasM Unit := liftCanvas (Canvas.clip rect)
 def popClip : CanvasM Unit := liftCanvas Canvas.popClip
 def unclip : CanvasM Unit := liftCanvas Canvas.unclip
-
-/-! ## Batching -/
-
-def beginBatch (capacityHint : Nat := 1000) : CanvasM Unit := modifyCanvas (fun c => Canvas.beginBatch c capacityHint)
-def flushBatch : CanvasM Unit := liftCanvas Canvas.flushBatch
-def setAutoBatch (enabled : Bool) : CanvasM Unit := modifyCanvas (Canvas.setAutoBatch enabled)
 
 /-! ## Accessors -/
 
