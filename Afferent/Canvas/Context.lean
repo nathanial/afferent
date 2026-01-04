@@ -492,7 +492,7 @@ structure Canvas where
   /-- Screen scale factor (e.g., 2.0 for Retina). Used for auto-scaling mode. -/
   screenScale : Float := 1.0
   /-- Auto-batch: always accumulates geometry, flushed at endFrame. Reduces per-draw allocations. -/
-  autoBatch : Batch := Batch.withCapacity 100
+  autoBatch : Batch := Batch.withCapacity 1000
   /-- High-performance mutable FloatBuffer for zero-copy instanced rendering. -/
   floatBuffer : Option FFI.FloatBuffer := none
   /-- Capacity of FloatBuffer (in floats). -/
@@ -695,7 +695,7 @@ def drawLine (p1 p2 : Point) (c : Canvas) : IO Canvas :=
 private def flushAutoBatch (c : Canvas) : IO Canvas := do
   if !c.autoBatch.isEmpty then
     c.ctx.drawBatch c.autoBatch
-    pure { c with autoBatch := Batch.withCapacity 100 }
+    pure { c with autoBatch := Batch.withCapacity 1000 }
   else
     pure c
 
@@ -757,7 +757,7 @@ def endFrame (c : Canvas) : IO Canvas := do
     c.ctx.drawBatch c.autoBatch
   c.ctx.endFrame
   -- Reset autoBatch for next frame
-  pure { c with autoBatch := Batch.withCapacity 100 }
+  pure { c with autoBatch := Batch.withCapacity 1000 }
 
 /-- End the current frame (unit version for compatibility).
     Prefer using endFrame when you need the updated Canvas. -/
