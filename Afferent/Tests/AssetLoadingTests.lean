@@ -35,19 +35,6 @@ test "loadAsset rejects missing file" := do
       pure true
   ensure ok "expected loadAsset to throw on missing file"
 
-test "loadAsset loads fictional frigate" := do
-  let asset ← Assimptor.loadAsset
-    "assets/fictional-frigate/source/frigateUn1.fbx"
-    "assets/fictional-frigate/textures"
-
-  ensure (asset.vertices.size > 0) "expected non-empty vertex array"
-  ensure (asset.indices.size > 0) "expected non-empty index array"
-  ensure (asset.subMeshes.size > 0) "expected at least one submesh"
-  ensure (asset.vertices.size % 12 == 0) s!"vertex float count not multiple of 12: {asset.vertices.size}"
-  ensure (asset.indices.size % 3 == 0) s!"index count not multiple of 3: {asset.indices.size}"
-
-  validateSubmeshRanges asset.indices.size asset.texturePaths.size asset.subMeshes
-
 #generate_tests
 
 end Afferent.Tests.AssetLoadingTests

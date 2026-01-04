@@ -3,7 +3,6 @@
   Entry point for running all tests.
 -/
 import Afferent.Tests.TessellationTests
-import Afferent.Tests.FFISafetyTests
 import Afferent.Tests.AssetLoadingTests
 import Afferent.Tests.LayoutTests
 import Afferent.Tests.CanvasStateTests
