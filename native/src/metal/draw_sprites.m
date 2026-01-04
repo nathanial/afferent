@@ -85,45 +85,55 @@ id<MTLTexture> createMetalTexture(id<MTLDevice> device, const uint8_t* data, uin
     return texture;
 }
 
-// Draw textured sprites (positions/rotation updated each frame)
-// data: [pixelX, pixelY, rotation, halfSizePixels, alpha] × count (5 floats per sprite)
-void afferent_renderer_draw_sprites(
+static id<MTLTexture> afferent_get_sprite_texture(AfferentRendererRef renderer, AfferentTextureRef texture) {
+    id<MTLTexture> metalTex = (__bridge id<MTLTexture>)afferent_texture_get_metal_texture(texture);
+
+    if (!metalTex) {
+        const uint8_t* pixelData = afferent_texture_get_data(texture);
+        uint32_t width, height;
+        afferent_texture_get_size(texture, &width, &height);
+
+        if (!pixelData || width == 0 || height == 0) {
+            return nil;
+        }
+
+        metalTex = createMetalTexture(renderer->device, pixelData, width, height);
+        if (!metalTex) {
+            return nil;
+        }
+
+        // Store for future use (transfer ownership via __bridge_retained)
+        afferent_texture_set_metal_texture(texture, (__bridge_retained void*)metalTex);
+    }
+
+    return metalTex;
+}
+
+static void afferent_draw_textured_instances(
     AfferentRendererRef renderer,
     AfferentTextureRef texture,
     const float* data,
     uint32_t count,
+    uint32_t layout,
     float canvasWidth,
-    float canvasHeight
+    float canvasHeight,
+    float u0,
+    float v0,
+    float u1,
+    float v1
 ) {
     if (!renderer || !renderer->currentEncoder || !texture || !data || count == 0) {
         return;
     }
 
     @autoreleasepool {
-        // Get or create Metal texture for this sprite
-        id<MTLTexture> metalTex = (__bridge id<MTLTexture>)afferent_texture_get_metal_texture(texture);
-
+        id<MTLTexture> metalTex = afferent_get_sprite_texture(renderer, texture);
         if (!metalTex) {
-            // Create Metal texture from pixel data
-            const uint8_t* pixelData = afferent_texture_get_data(texture);
-            uint32_t width, height;
-            afferent_texture_get_size(texture, &width, &height);
-
-            if (!pixelData || width == 0 || height == 0) {
-                return;
-            }
-
-            metalTex = createMetalTexture(renderer->device, pixelData, width, height);
-            if (!metalTex) {
-                return;
-            }
-
-            // Store for future use (transfer ownership via __bridge_retained)
-            afferent_texture_set_metal_texture(texture, (__bridge_retained void*)metalTex);
+            return;
         }
 
-        // Acquire pooled buffer for this frame's sprite data
-        size_t dataSize = count * sizeof(SpriteInstanceData);
+        size_t stride = (layout == 0) ? 5 : 10;
+        size_t dataSize = (size_t)count * stride * sizeof(float);
         id<MTLBuffer> spriteBuffer = pool_acquire_buffer(
             renderer->device,
             g_buffer_pool.vertex_pool,
@@ -140,11 +150,20 @@ void afferent_renderer_draw_sprites(
         memcpy(spriteBuffer.contents, data, dataSize);
 
         SpriteUniforms uniforms = {
-            .canvasWidth = canvasWidth,
-            .canvasHeight = canvasHeight
+            .viewport = { canvasWidth, canvasHeight },
+            .layout = layout,
+            .padding0 = 0,
+            .uvRect = { u0, v0, u1, v1 }
         };
 
-        [renderer->currentEncoder setRenderPipelineState:renderer->spritePipelineState];
+        id<MTLRenderPipelineState> pipeline = (layout == 0)
+            ? renderer->spritePipelineState
+            : renderer->texturedSpritePipelineState;
+        if (!pipeline) {
+            return;
+        }
+
+        [renderer->currentEncoder setRenderPipelineState:pipeline];
         [renderer->currentEncoder setVertexBuffer:spriteBuffer offset:0 atIndex:0];
         [renderer->currentEncoder setVertexBytes:&uniforms length:sizeof(uniforms) atIndex:1];
         [renderer->currentEncoder setFragmentTexture:metalTex atIndex:0];
@@ -157,7 +176,32 @@ void afferent_renderer_draw_sprites(
     }
 }
 
-// Draw sprites from FloatBuffer that already contains SpriteInstanceData layout
+// Draw textured sprites (positions/rotation updated each frame)
+// data: [pixelX, pixelY, rotation, halfSizePixels, alpha] × count (5 floats per sprite)
+void afferent_renderer_draw_sprites(
+    AfferentRendererRef renderer,
+    AfferentTextureRef texture,
+    const float* data,
+    uint32_t count,
+    float canvasWidth,
+    float canvasHeight
+) {
+    afferent_draw_textured_instances(
+        renderer,
+        texture,
+        data,
+        count,
+        0,
+        canvasWidth,
+        canvasHeight,
+        0.0f,
+        0.0f,
+        1.0f,
+        1.0f
+    );
+}
+
+// Draw sprites from FloatBuffer that already contains sprite layout (5 floats)
 void afferent_renderer_draw_sprites_instance_buffer(
     AfferentRendererRef renderer,
     AfferentTextureRef texture,
@@ -167,7 +211,19 @@ void afferent_renderer_draw_sprites_instance_buffer(
     float canvasHeight
 ) {
     // Same layout as afferent_renderer_draw_sprites, so forward directly
-    afferent_renderer_draw_sprites(renderer, texture, data, count, canvasWidth, canvasHeight);
+    afferent_draw_textured_instances(
+        renderer,
+        texture,
+        data,
+        count,
+        0,
+        canvasWidth,
+        canvasHeight,
+        0.0f,
+        0.0f,
+        1.0f,
+        1.0f
+    );
 }
 
 // Release Metal texture associated with an AfferentTexture (called when texture is destroyed)
@@ -197,61 +253,51 @@ void afferent_renderer_draw_textured_rect(
         return;
     }
 
-    @autoreleasepool {
-        // Get or create Metal texture
-        id<MTLTexture> metalTex = (__bridge id<MTLTexture>)afferent_texture_get_metal_texture(texture);
-
-        if (!metalTex) {
-            const uint8_t* pixelData = afferent_texture_get_data(texture);
-            uint32_t width, height;
-            afferent_texture_get_size(texture, &width, &height);
-
-            if (!pixelData || width == 0 || height == 0) {
-                return;
-            }
-
-            metalTex = createMetalTexture(renderer->device, pixelData, width, height);
-            if (!metalTex) {
-                return;
-            }
-
-            afferent_texture_set_metal_texture(texture, (__bridge_retained void*)metalTex);
-        }
-
-        // Get texture dimensions for UV conversion
-        uint32_t texWidth, texHeight;
-        afferent_texture_get_size(texture, &texWidth, &texHeight);
-
-        TexturedRectUniforms uniforms = {
-            .srcX = srcX,
-            .srcY = srcY,
-            .srcW = srcW,
-            .srcH = srcH,
-            .dstX = dstX,
-            .dstY = dstY,
-            .dstW = dstW,
-            .dstH = dstH,
-            .texWidth = (float)texWidth,
-            .texHeight = (float)texHeight,
-            .canvasWidth = canvasWidth,
-            .canvasHeight = canvasHeight,
-            .alpha = alpha
-        };
-
-        [renderer->currentEncoder setRenderPipelineState:renderer->texturedRectPipelineState];
-        [renderer->currentEncoder setVertexBytes:&uniforms length:sizeof(uniforms) atIndex:0];
-        [renderer->currentEncoder setFragmentTexture:metalTex atIndex:0];
-        [renderer->currentEncoder setFragmentSamplerState:renderer->spriteSampler atIndex:0];
-        [renderer->currentEncoder drawPrimitives:MTLPrimitiveTypeTriangleStrip
-                                     vertexStart:0
-                                     vertexCount:4];
-        [renderer->currentEncoder setRenderPipelineState:renderer->pipelineState];
+    // Get texture dimensions for UV conversion
+    uint32_t texWidth, texHeight;
+    afferent_texture_get_size(texture, &texWidth, &texHeight);
+    if (texWidth == 0 || texHeight == 0) {
+        return;
     }
+
+    float u0 = srcX / (float)texWidth;
+    float v0 = srcY / (float)texHeight;
+    float u1 = (srcX + srcW) / (float)texWidth;
+    float v1 = (srcY + srcH) / (float)texHeight;
+
+    float centerX = dstX + dstW * 0.5f;
+    float centerY = dstY + dstH * 0.5f;
+    float halfW = dstW * 0.5f;
+    float halfH = dstH * 0.5f;
+
+    float instance[10] = {
+        centerX,
+        centerY,
+        0.0f,
+        halfW,
+        halfH,
+        u0, v0, u1, v1,
+        alpha
+    };
+
+    afferent_draw_textured_instances(
+        renderer,
+        texture,
+        instance,
+        1,
+        1,
+        canvasWidth,
+        canvasHeight,
+        0.0f,
+        0.0f,
+        1.0f,
+        1.0f
+    );
 }
 
 // Draw sprites from FloatBuffer using physics layout.
 // Buffer layout: [x, y, vx, vy, rotation] per sprite (5 floats).
-// Converted on CPU into SpriteInstanceData with uniform halfSize and alpha=1.0.
+// Converted on CPU into sprite layout with uniform halfSize and alpha=1.0.
 void afferent_renderer_draw_sprites_buffer(
     AfferentRendererRef renderer,
     AfferentTextureRef texture,
@@ -266,28 +312,13 @@ void afferent_renderer_draw_sprites_buffer(
     }
 
     @autoreleasepool {
-        // Get or create Metal texture
-        id<MTLTexture> metalTex = (__bridge id<MTLTexture>)afferent_texture_get_metal_texture(texture);
-
+        id<MTLTexture> metalTex = afferent_get_sprite_texture(renderer, texture);
         if (!metalTex) {
-            const uint8_t* pixelData = afferent_texture_get_data(texture);
-            uint32_t width, height;
-            afferent_texture_get_size(texture, &width, &height);
-
-            if (!pixelData || width == 0 || height == 0) {
-                return;
-            }
-
-            metalTex = createMetalTexture(renderer->device, pixelData, width, height);
-            if (!metalTex) {
-                return;
-            }
-
-            afferent_texture_set_metal_texture(texture, (__bridge_retained void*)metalTex);
+            return;
         }
 
-        // Convert physics layout [x, y, vx, vy, rotation] -> SpriteInstanceData
-        size_t instanceSize = count * sizeof(SpriteInstanceData);
+        // Convert physics layout [x, y, vx, vy, rotation] -> sprite layout (5 floats)
+        size_t instanceSize = (size_t)count * 5 * sizeof(float);
         id<MTLBuffer> spriteBuffer = pool_acquire_buffer(
             renderer->device,
             g_buffer_pool.vertex_pool,
@@ -301,19 +332,22 @@ void afferent_renderer_draw_sprites_buffer(
             return;
         }
 
-        SpriteInstanceData* instances = (SpriteInstanceData*)spriteBuffer.contents;
+        float* instances = (float*)spriteBuffer.contents;
         for (uint32_t i = 0; i < count; i++) {
             const float* src = data + i * 5;
-            instances[i].pixelX = src[0];
-            instances[i].pixelY = src[1];
-            instances[i].rotation = src[4];
-            instances[i].halfSizePixels = halfSize;
-            instances[i].alpha = 1.0f;
+            size_t base = (size_t)i * 5;
+            instances[base + 0] = src[0];
+            instances[base + 1] = src[1];
+            instances[base + 2] = src[4];
+            instances[base + 3] = halfSize;
+            instances[base + 4] = 1.0f;
         }
 
         SpriteUniforms uniforms = {
-            .canvasWidth = canvasWidth,
-            .canvasHeight = canvasHeight
+            .viewport = { canvasWidth, canvasHeight },
+            .layout = 0,
+            .padding0 = 0,
+            .uvRect = { 0.0f, 0.0f, 1.0f, 1.0f }
         };
 
         [renderer->currentEncoder setRenderPipelineState:renderer->spritePipelineState];
@@ -327,4 +361,28 @@ void afferent_renderer_draw_sprites_buffer(
                                    instanceCount:count];
         [renderer->currentEncoder setRenderPipelineState:renderer->pipelineState];
     }
+}
+
+// Draw textured instances with per-instance UV rects and size (10 floats per instance).
+void afferent_renderer_draw_textured_instances(
+    AfferentRendererRef renderer,
+    AfferentTextureRef texture,
+    const float* data,
+    uint32_t count,
+    float canvasWidth,
+    float canvasHeight
+) {
+    afferent_draw_textured_instances(
+        renderer,
+        texture,
+        data,
+        count,
+        1,
+        canvasWidth,
+        canvasHeight,
+        0.0f,
+        0.0f,
+        1.0f,
+        1.0f
+    );
 }

@@ -79,4 +79,25 @@ opaque Renderer.drawSpritesInstanceBuffer
   (canvasWidth : Float)
   (canvasHeight : Float) : IO Unit
 
+-- Draw textured instances with per-instance UV rects.
+-- data layout: [pixelX, pixelY, rotation, halfSizeX, halfSizeY, u0, v0, u1, v1, alpha] × count
+@[extern "lean_afferent_renderer_draw_textured_instances"]
+opaque Renderer.drawTexturedInstances
+  (renderer : @& Renderer)
+  (texture : @& Texture)
+  (data : @& Array Float)
+  (count : UInt32)
+  (canvasWidth : Float)
+  (canvasHeight : Float) : IO Unit
+
+-- Draw textured instances from FloatBuffer (layout with per-instance UV rects).
+@[extern "lean_afferent_renderer_draw_textured_instances_buffer"]
+opaque Renderer.drawTexturedInstancesBuffer
+  (renderer : @& Renderer)
+  (texture : @& Texture)
+  (buffer : @& FloatBuffer)
+  (count : UInt32)
+  (canvasWidth : Float)
+  (canvasHeight : Float) : IO Unit
+
 end Afferent.FFI

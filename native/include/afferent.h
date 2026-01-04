@@ -487,6 +487,17 @@ void afferent_renderer_draw_sprites_buffer(
     float canvasHeight
 );
 
+// Draw textured instances with per-instance UV rects
+// data layout: [pixelX, pixelY, rotation, halfSizeX, halfSizeY, u0, v0, u1, v1, alpha] × count (10 floats)
+void afferent_renderer_draw_textured_instances(
+    AfferentRendererRef renderer,
+    AfferentTextureRef texture,
+    const float* data,
+    uint32_t count,
+    float canvasWidth,
+    float canvasHeight
+);
+
 // Draw a textured rectangle with source and destination rectangles
 // Used for map tile rendering with cropping and scaling
 // srcX/Y/W/H: source rectangle in texture pixels

@@ -13,7 +13,6 @@ NSString *strokeShaderSource = nil;
 NSString *strokePathShaderSource = nil;
 NSString *shader3DSource = nil;
 NSString *shader3DTexturedSource = nil;
-NSString *texturedRectShaderSource = nil;
 
 // Set a shader source by name (called from Lean FFI)
 void afferent_set_shader_source(const char* name, const char* source) {
@@ -39,8 +38,6 @@ void afferent_set_shader_source(const char* name, const char* source) {
         shader3DSource = sourceStr;
     } else if (strcmp(name, "mesh3d_textured") == 0) {
         shader3DTexturedSource = sourceStr;
-    } else if (strcmp(name, "textured_rect") == 0) {
-        texturedRectShaderSource = sourceStr;
     }
 }
 
@@ -49,7 +46,7 @@ BOOL afferent_init_shaders(void) {
     if (shaderSource && textShaderSource && instancedShaderSource &&
         animatedShaderSource && orbitalShaderSource && spriteShaderSource &&
         strokeShaderSource && strokePathShaderSource &&
-        shader3DSource && shader3DTexturedSource && texturedRectShaderSource) {
+        shader3DSource && shader3DTexturedSource) {
         return YES;
     }
 

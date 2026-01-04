@@ -101,6 +101,16 @@ def ParticleState.updateBouncing (p : ParticleState) (dt : Float) (shapeRadius :
     arr
   { p with data }
 
+/-! ## Buffer Allocation Helpers -/
+
+/-- Create a FloatBuffer sized for instanced shapes (8 floats per particle). -/
+def ParticleState.createInstanceBuffer (p : ParticleState) : IO FFI.FloatBuffer := do
+  FFI.FloatBuffer.create (p.count.toUSize * 8)
+
+/-- Create a FloatBuffer sized for sprites (5 floats per particle). -/
+def ParticleState.createSpriteBuffer (p : ParticleState) : IO FFI.FloatBuffer := do
+  FFI.FloatBuffer.create (p.count.toUSize * 5)
+
 /-! ## Fused Update + Packing (High Performance)
 
 These functions update the particle simulation and write the render instance

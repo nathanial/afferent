@@ -52,7 +52,8 @@ struct AfferentRenderer {
     __strong id<MTLRenderPipelineState> strokePipelineState;    // Screen-space stroke pipeline
     __strong id<MTLRenderPipelineState> strokePathPipelineState; // GPU stroke path pipeline
     __strong id<MTLRenderPipelineState> textPipelineState;      // For text rendering
-    __strong id<MTLRenderPipelineState> spritePipelineState;    // For sprite/texture rendering
+    __strong id<MTLRenderPipelineState> spritePipelineState;    // Sprite layout (5-float instances)
+    __strong id<MTLRenderPipelineState> texturedSpritePipelineState; // Textured layout (10-float instances)
     // MSAA / non-MSAA variants for pipelines used in sprite benchmark
     __strong id<MTLRenderPipelineState> pipelineStateMSAA;
     __strong id<MTLRenderPipelineState> pipelineStateNoMSAA;
@@ -64,6 +65,8 @@ struct AfferentRenderer {
     __strong id<MTLRenderPipelineState> textPipelineStateNoMSAA;
     __strong id<MTLRenderPipelineState> spritePipelineStateMSAA;
     __strong id<MTLRenderPipelineState> spritePipelineStateNoMSAA;
+    __strong id<MTLRenderPipelineState> texturedSpritePipelineStateMSAA;
+    __strong id<MTLRenderPipelineState> texturedSpritePipelineStateNoMSAA;
     __strong id<MTLRenderPipelineState> instancedPipelineState; // For instanced rect rendering
     __strong id<MTLRenderPipelineState> trianglePipelineState;  // For instanced triangle rendering
     __strong id<MTLRenderPipelineState> circlePipelineState;    // For instanced circle rendering
@@ -74,10 +77,6 @@ struct AfferentRenderer {
     __strong id<MTLRenderPipelineState> orbitalPipelineState;   // For orbital particle rendering
     __strong id<MTLSamplerState> textSampler;                   // For text texture sampling
     __strong id<MTLSamplerState> spriteSampler;                 // For sprite texture sampling
-    // Textured rectangle rendering (for map tiles)
-    __strong id<MTLRenderPipelineState> texturedRectPipelineState;
-    __strong id<MTLRenderPipelineState> texturedRectPipelineStateMSAA;
-    __strong id<MTLRenderPipelineState> texturedRectPipelineStateNoMSAA;
     __strong id<MTLCommandBuffer> currentCommandBuffer;
     __strong id<MTLRenderCommandEncoder> currentEncoder;
     __strong id<CAMetalDrawable> currentDrawable;

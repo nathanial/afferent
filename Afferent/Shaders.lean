@@ -23,7 +23,7 @@ def animated : String := include_str% "../native/src/metal/shaders/animated.meta
 /-- Orbital particles shader -/
 def orbital : String := include_str% "../native/src/metal/shaders/orbital.metal"
 
-/-- Sprite/texture shader -/
+/-- Sprite/texture shader (layout0 + layout1 entry points). -/
 def sprite : String := include_str% "../native/src/metal/shaders/sprite.metal"
 
 /-- Screen-space stroke shader -/
@@ -38,9 +38,6 @@ def mesh3d : String := include_str% "../native/src/metal/shaders/mesh3d.metal"
 /-- 3D textured mesh shader -/
 def mesh3dTextured : String := include_str% "../native/src/metal/shaders/mesh3d_textured.metal"
 
-/-- Textured rectangle shader (for map tiles) -/
-def texturedRect : String := include_str% "../native/src/metal/shaders/textured_rect.metal"
-
 /-- All shader sources as (name, source) pairs for FFI initialization -/
 def all : Array (String × String) := #[
   ("basic", basic),
@@ -52,8 +49,7 @@ def all : Array (String × String) := #[
   ("stroke", stroke),
   ("stroke_path", strokePath),
   ("mesh3d", mesh3d),
-  ("mesh3d_textured", mesh3dTextured),
-  ("textured_rect", texturedRect)
+  ("mesh3d_textured", mesh3dTextured)
 ]
 
 end Afferent.Shaders

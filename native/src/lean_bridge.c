@@ -1875,6 +1875,58 @@ LEAN_EXPORT lean_obj_res lean_afferent_renderer_draw_sprites_instance_buffer(
     return lean_io_result_mk_ok(lean_box(0));
 }
 
+// Draw textured instances with per-instance UV rects
+// data layout: [pixelX, pixelY, rotation, halfSizeX, halfSizeY, u0, v0, u1, v1, alpha] × count
+LEAN_EXPORT lean_obj_res lean_afferent_renderer_draw_textured_instances(
+    lean_obj_arg renderer_obj,
+    lean_obj_arg texture_obj,
+    lean_obj_arg data_arr,
+    uint32_t count,
+    double canvasWidth,
+    double canvasHeight,
+    lean_obj_arg world
+) {
+    AfferentRendererRef renderer = (AfferentRendererRef)lean_get_external_data(renderer_obj);
+    AfferentTextureRef texture = (AfferentTextureRef)lean_get_external_data(texture_obj);
+
+    size_t arr_size = lean_array_size(data_arr);
+    float* data = malloc(arr_size * sizeof(float));
+    for (size_t i = 0; i < arr_size; i++) {
+        lean_object* elem = lean_array_get_core(data_arr, i);
+        data[i] = (float)lean_unbox_float(elem);
+    }
+
+    afferent_renderer_draw_textured_instances(renderer, texture, data, count, (float)canvasWidth, (float)canvasHeight);
+
+    free(data);
+    return lean_io_result_mk_ok(lean_box(0));
+}
+
+// Draw textured instances from FloatBuffer (layout with per-instance UV rects)
+LEAN_EXPORT lean_obj_res lean_afferent_renderer_draw_textured_instances_buffer(
+    lean_obj_arg renderer_obj,
+    lean_obj_arg texture_obj,
+    lean_obj_arg buffer_obj,
+    uint32_t count,
+    double canvasWidth,
+    double canvasHeight,
+    lean_obj_arg world
+) {
+    AfferentRendererRef renderer = (AfferentRendererRef)lean_get_external_data(renderer_obj);
+    AfferentTextureRef texture = (AfferentTextureRef)lean_get_external_data(texture_obj);
+    AfferentFloatBufferRef buffer = (AfferentFloatBufferRef)lean_get_external_data(buffer_obj);
+
+    afferent_renderer_draw_textured_instances(
+        renderer,
+        texture,
+        afferent_float_buffer_data(buffer),
+        count,
+        (float)canvasWidth,
+        (float)canvasHeight
+    );
+    return lean_io_result_mk_ok(lean_box(0));
+}
+
 // Draw a textured rectangle with source and destination rectangles
 // Used for map tile rendering with cropping and scaling
 LEAN_EXPORT lean_obj_res lean_afferent_renderer_draw_textured_rect(

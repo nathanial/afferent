@@ -103,6 +103,7 @@ void afferent_renderer_destroy(AfferentRendererRef renderer) {
             renderer->strokePipelineState = nil;
             renderer->textPipelineState = nil;
             renderer->spritePipelineState = nil;
+            renderer->texturedSpritePipelineState = nil;
             renderer->pipelineStateMSAA = nil;
             renderer->pipelineStateNoMSAA = nil;
             renderer->strokePipelineStateMSAA = nil;
@@ -111,6 +112,8 @@ void afferent_renderer_destroy(AfferentRendererRef renderer) {
             renderer->textPipelineStateNoMSAA = nil;
             renderer->spritePipelineStateMSAA = nil;
             renderer->spritePipelineStateNoMSAA = nil;
+            renderer->texturedSpritePipelineStateMSAA = nil;
+            renderer->texturedSpritePipelineStateNoMSAA = nil;
             renderer->instancedPipelineState = nil;
             renderer->trianglePipelineState = nil;
             renderer->circlePipelineState = nil;
@@ -118,9 +121,6 @@ void afferent_renderer_destroy(AfferentRendererRef renderer) {
             renderer->animatedTrianglePipelineState = nil;
             renderer->animatedCirclePipelineState = nil;
             renderer->orbitalPipelineState = nil;
-            renderer->texturedRectPipelineState = nil;
-            renderer->texturedRectPipelineStateMSAA = nil;
-            renderer->texturedRectPipelineStateNoMSAA = nil;
             renderer->pipeline3D = nil;
             renderer->pipeline3DMSAA = nil;
             renderer->pipeline3DNoMSAA = nil;
@@ -163,6 +163,7 @@ void afferent_renderer_set_msaa_enabled(AfferentRendererRef renderer, bool enabl
     renderer->strokePathPipelineState = enabled ? renderer->strokePathPipelineStateMSAA : renderer->strokePathPipelineStateNoMSAA;
     renderer->textPipelineState = enabled ? renderer->textPipelineStateMSAA : renderer->textPipelineStateNoMSAA;
     renderer->spritePipelineState = enabled ? renderer->spritePipelineStateMSAA : renderer->spritePipelineStateNoMSAA;
+    renderer->texturedSpritePipelineState = enabled ? renderer->texturedSpritePipelineStateMSAA : renderer->texturedSpritePipelineStateNoMSAA;
     renderer->pipeline3D = enabled ? renderer->pipeline3DMSAA : renderer->pipeline3DNoMSAA;
     renderer->pipeline3DOcean = enabled ? renderer->pipeline3DOceanMSAA : renderer->pipeline3DOceanNoMSAA;
 }
