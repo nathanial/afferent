@@ -120,7 +120,14 @@ static void afferent_draw_textured_instances(
     float u0,
     float v0,
     float u1,
-    float v1
+    float v1,
+    uint32_t useMatrix,
+    float transformA,
+    float transformB,
+    float transformC,
+    float transformD,
+    float transformTx,
+    float transformTy
 ) {
     if (!renderer || !renderer->currentEncoder || !texture || !data || count == 0) {
         return;
@@ -152,8 +159,10 @@ static void afferent_draw_textured_instances(
         SpriteUniforms uniforms = {
             .viewport = { canvasWidth, canvasHeight },
             .layout = layout,
-            .padding0 = 0,
-            .uvRect = { u0, v0, u1, v1 }
+            .useMatrix = useMatrix,
+            .uvRect = { u0, v0, u1, v1 },
+            .transform0 = { transformA, transformB, transformC, transformD },
+            .transform1 = { transformTx, transformTy, 0.0f, 0.0f }
         };
 
         id<MTLRenderPipelineState> pipeline = (layout == 0)
@@ -197,7 +206,44 @@ void afferent_renderer_draw_sprites(
         0.0f,
         0.0f,
         1.0f,
-        1.0f
+        1.0f,
+        0,
+        1.0f, 0.0f, 0.0f, 1.0f,
+        0.0f, 0.0f
+    );
+}
+
+// Draw sprites with a transform matrix (world-space or custom projection)
+// data: [pixelX, pixelY, rotation, halfSizePixels, alpha] × count (5 floats per sprite)
+void afferent_renderer_draw_sprites_matrix(
+    AfferentRendererRef renderer,
+    AfferentTextureRef texture,
+    const float* data,
+    uint32_t count,
+    float canvasWidth,
+    float canvasHeight,
+    float transformA,
+    float transformB,
+    float transformC,
+    float transformD,
+    float transformTx,
+    float transformTy
+) {
+    afferent_draw_textured_instances(
+        renderer,
+        texture,
+        data,
+        count,
+        0,
+        canvasWidth,
+        canvasHeight,
+        0.0f,
+        0.0f,
+        1.0f,
+        1.0f,
+        1,
+        transformA, transformB, transformC, transformD,
+        transformTx, transformTy
     );
 }
 
@@ -222,7 +268,43 @@ void afferent_renderer_draw_sprites_instance_buffer(
         0.0f,
         0.0f,
         1.0f,
-        1.0f
+        1.0f,
+        0,
+        1.0f, 0.0f, 0.0f, 1.0f,
+        0.0f, 0.0f
+    );
+}
+
+// Draw sprites from FloatBuffer with a transform matrix (world-space or custom projection)
+void afferent_renderer_draw_sprites_instance_buffer_matrix(
+    AfferentRendererRef renderer,
+    AfferentTextureRef texture,
+    const float* data,
+    uint32_t count,
+    float canvasWidth,
+    float canvasHeight,
+    float transformA,
+    float transformB,
+    float transformC,
+    float transformD,
+    float transformTx,
+    float transformTy
+) {
+    afferent_draw_textured_instances(
+        renderer,
+        texture,
+        data,
+        count,
+        0,
+        canvasWidth,
+        canvasHeight,
+        0.0f,
+        0.0f,
+        1.0f,
+        1.0f,
+        1,
+        transformA, transformB, transformC, transformD,
+        transformTx, transformTy
     );
 }
 
@@ -291,7 +373,10 @@ void afferent_renderer_draw_textured_rect(
         0.0f,
         0.0f,
         1.0f,
-        1.0f
+        1.0f,
+        0,
+        1.0f, 0.0f, 0.0f, 1.0f,
+        0.0f, 0.0f
     );
 }
 
@@ -346,8 +431,10 @@ void afferent_renderer_draw_sprites_buffer(
         SpriteUniforms uniforms = {
             .viewport = { canvasWidth, canvasHeight },
             .layout = 0,
-            .padding0 = 0,
-            .uvRect = { 0.0f, 0.0f, 1.0f, 1.0f }
+            .useMatrix = 0,
+            .uvRect = { 0.0f, 0.0f, 1.0f, 1.0f },
+            .transform0 = { 1.0f, 0.0f, 0.0f, 1.0f },
+            .transform1 = { 0.0f, 0.0f, 0.0f, 0.0f }
         };
 
         [renderer->currentEncoder setRenderPipelineState:renderer->spritePipelineState];
@@ -383,6 +470,75 @@ void afferent_renderer_draw_textured_instances(
         0.0f,
         0.0f,
         1.0f,
-        1.0f
+        1.0f,
+        0,
+        1.0f, 0.0f, 0.0f, 1.0f,
+        0.0f, 0.0f
+    );
+}
+
+// Draw textured instances with a transform matrix (world-space or custom projection).
+void afferent_renderer_draw_textured_instances_matrix(
+    AfferentRendererRef renderer,
+    AfferentTextureRef texture,
+    const float* data,
+    uint32_t count,
+    float canvasWidth,
+    float canvasHeight,
+    float transformA,
+    float transformB,
+    float transformC,
+    float transformD,
+    float transformTx,
+    float transformTy
+) {
+    afferent_draw_textured_instances(
+        renderer,
+        texture,
+        data,
+        count,
+        1,
+        canvasWidth,
+        canvasHeight,
+        0.0f,
+        0.0f,
+        1.0f,
+        1.0f,
+        1,
+        transformA, transformB, transformC, transformD,
+        transformTx, transformTy
+    );
+}
+
+// Draw textured instances from FloatBuffer with a transform matrix.
+void afferent_renderer_draw_textured_instances_buffer_matrix(
+    AfferentRendererRef renderer,
+    AfferentTextureRef texture,
+    const float* data,
+    uint32_t count,
+    float canvasWidth,
+    float canvasHeight,
+    float transformA,
+    float transformB,
+    float transformC,
+    float transformD,
+    float transformTx,
+    float transformTy
+) {
+    afferent_draw_textured_instances(
+        renderer,
+        texture,
+        data,
+        count,
+        1,
+        canvasWidth,
+        canvasHeight,
+        0.0f,
+        0.0f,
+        1.0f,
+        1.0f,
+        1,
+        transformA, transformB, transformC, transformD,
+        transformTx, transformTy
     );
 }

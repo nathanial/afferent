@@ -21,8 +21,10 @@ constant float2 kSpriteUVs[4] = {
 struct SpriteUniforms {
     float2 viewport;
     uint layout;       // 0 = sprite, 1 = textured (uv rect per instance)
-    uint padding;
+    uint useMatrix;    // 0 = pixel -> NDC, 1 = use transform matrix
     float4 uvRect;     // u0, v0, u1, v1 (used for layout 0)
+    float4 transform0; // [a, b, c, d]
+    float4 transform1; // [tx, ty, 0, 0]
 };
 
 struct SpriteInstanceData {
@@ -52,6 +54,29 @@ struct SpriteVertexOut {
     float alpha;
 };
 
+static inline float2 apply_affine(float2 p, constant SpriteUniforms& u) {
+    return float2(
+        u.transform0.x * p.x + u.transform0.z * p.y + u.transform1.x,
+        u.transform0.y * p.x + u.transform0.w * p.y + u.transform1.y
+    );
+}
+
+static inline float2 apply_linear(float2 v, constant SpriteUniforms& u) {
+    return float2(
+        u.transform0.x * v.x + u.transform0.z * v.y,
+        u.transform0.y * v.x + u.transform0.w * v.y
+    );
+}
+
+static inline float2 rotate_local(float2 v, float angle) {
+    float sinA = sin(angle);
+    float cosA = cos(angle);
+    return float2(
+        v.x * cosA - v.y * sinA,
+        v.x * sinA + v.y * cosA
+    );
+}
+
 // Layout 0: specialized sprite path (fixed layout, scalar halfSize).
 vertex SpriteVertexOut sprite_vertex_layout0(
     uint vid [[vertex_id]],
@@ -62,18 +87,21 @@ vertex SpriteVertexOut sprite_vertex_layout0(
     SpriteInstanceData inst = instances[iid];
     float2 v = kSpritePositions[vid];
 
-    // Convert pixel -> NDC
-    float2 ndcPos = float2(
-        (inst.pixelX / uniforms.viewport.x) * 2.0 - 1.0,
-        1.0 - (inst.pixelY / uniforms.viewport.y) * 2.0
-    );
-
-    // Apply rotation
-    float sinA = sin(inst.rotation);
-    float cosA = cos(inst.rotation);
-    float2 rotated = float2(v.x * cosA - v.y * sinA, v.x * sinA + v.y * cosA);
-    float ndcHalfSize = inst.halfSizePixels / uniforms.viewport.x * 2.0;
-    float2 finalPos = ndcPos + rotated * ndcHalfSize;
+    float2 rotated = rotate_local(v, inst.rotation);
+    float2 finalPos;
+    if (uniforms.useMatrix == 0) {
+        // Convert pixel -> NDC
+        float2 ndcPos = float2(
+            (inst.pixelX / uniforms.viewport.x) * 2.0 - 1.0,
+            1.0 - (inst.pixelY / uniforms.viewport.y) * 2.0
+        );
+        float ndcHalfSize = inst.halfSizePixels / uniforms.viewport.x * 2.0;
+        finalPos = ndcPos + rotated * ndcHalfSize;
+    } else {
+        float2 base = apply_affine(float2(inst.pixelX, inst.pixelY), uniforms);
+        float2 offset = rotated * inst.halfSizePixels;
+        finalPos = base + apply_linear(offset, uniforms);
+    }
 
     SpriteVertexOut out;
     out.position = float4(finalPos, 0.0, 1.0);
@@ -93,23 +121,25 @@ vertex SpriteVertexOut sprite_vertex_layout1(
     float2 v = kSpritePositions[vid];
     float2 uvBasis = kSpriteUVs[vid];
 
-    // Convert pixel -> NDC
-    float2 ndcPos = float2(
-        (inst.pixelX / uniforms.viewport.x) * 2.0 - 1.0,
-        1.0 - (inst.pixelY / uniforms.viewport.y) * 2.0
-    );
-
     // Apply rotation with non-uniform size.
     float2 local = float2(v.x * inst.halfSizeX, v.y * inst.halfSizeY);
-    float sinA = sin(inst.rotation);
-    float cosA = cos(inst.rotation);
-    float2 rotated = float2(local.x * cosA - local.y * sinA, local.x * sinA + local.y * cosA);
-
-    float2 ndcOffset = float2(
-        rotated.x * 2.0 / uniforms.viewport.x,
-        rotated.y * 2.0 / uniforms.viewport.y
-    );
-    float2 finalPos = ndcPos + ndcOffset;
+    float2 rotated = rotate_local(local, inst.rotation);
+    float2 finalPos;
+    if (uniforms.useMatrix == 0) {
+        // Convert pixel -> NDC
+        float2 ndcPos = float2(
+            (inst.pixelX / uniforms.viewport.x) * 2.0 - 1.0,
+            1.0 - (inst.pixelY / uniforms.viewport.y) * 2.0
+        );
+        float2 ndcOffset = float2(
+            rotated.x * 2.0 / uniforms.viewport.x,
+            rotated.y * 2.0 / uniforms.viewport.y
+        );
+        finalPos = ndcPos + ndcOffset;
+    } else {
+        float2 base = apply_affine(float2(inst.pixelX, inst.pixelY), uniforms);
+        finalPos = base + apply_linear(rotated, uniforms);
+    }
 
     float2 uv = float2(
         mix(inst.u0, inst.u1, uvBasis.x),

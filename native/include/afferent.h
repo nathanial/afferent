@@ -464,6 +464,23 @@ void afferent_renderer_draw_sprites(
     float canvasHeight
 );
 
+// Draw textured sprites with a transform matrix (world-space or custom projection)
+// data: [pixelX, pixelY, rotation, halfSizePixels, alpha] × count (5 floats per sprite)
+void afferent_renderer_draw_sprites_matrix(
+    AfferentRendererRef renderer,
+    AfferentTextureRef texture,
+    const float* data,
+    uint32_t count,
+    float canvasWidth,
+    float canvasHeight,
+    float transformA,
+    float transformB,
+    float transformC,
+    float transformD,
+    float transformTx,
+    float transformTy
+);
+
 // Draw sprites from FloatBuffer containing SpriteInstanceData layout
 // Buffer layout: [pixelX, pixelY, rotation, halfSizePixels, alpha] per sprite (5 floats)
 void afferent_renderer_draw_sprites_instance_buffer(
@@ -473,6 +490,23 @@ void afferent_renderer_draw_sprites_instance_buffer(
     uint32_t count,
     float canvasWidth,
     float canvasHeight
+);
+
+// Draw sprites from FloatBuffer with a transform matrix
+// Buffer layout: [pixelX, pixelY, rotation, halfSizePixels, alpha] per sprite (5 floats)
+void afferent_renderer_draw_sprites_instance_buffer_matrix(
+    AfferentRendererRef renderer,
+    AfferentTextureRef texture,
+    const float* data,
+    uint32_t count,
+    float canvasWidth,
+    float canvasHeight,
+    float transformA,
+    float transformB,
+    float transformC,
+    float transformD,
+    float transformTx,
+    float transformTy
 );
 
 // Draw sprites from FloatBuffer (zero-copy path for 1M+ sprites)
@@ -496,6 +530,40 @@ void afferent_renderer_draw_textured_instances(
     uint32_t count,
     float canvasWidth,
     float canvasHeight
+);
+
+// Draw textured instances with a transform matrix
+// data layout: [pixelX, pixelY, rotation, halfSizeX, halfSizeY, u0, v0, u1, v1, alpha] × count (10 floats)
+void afferent_renderer_draw_textured_instances_matrix(
+    AfferentRendererRef renderer,
+    AfferentTextureRef texture,
+    const float* data,
+    uint32_t count,
+    float canvasWidth,
+    float canvasHeight,
+    float transformA,
+    float transformB,
+    float transformC,
+    float transformD,
+    float transformTx,
+    float transformTy
+);
+
+// Draw textured instances from FloatBuffer with a transform matrix
+// data layout: [pixelX, pixelY, rotation, halfSizeX, halfSizeY, u0, v0, u1, v1, alpha] × count (10 floats)
+void afferent_renderer_draw_textured_instances_buffer_matrix(
+    AfferentRendererRef renderer,
+    AfferentTextureRef texture,
+    const float* data,
+    uint32_t count,
+    float canvasWidth,
+    float canvasHeight,
+    float transformA,
+    float transformB,
+    float transformC,
+    float transformD,
+    float transformTx,
+    float transformTy
 );
 
 // Draw a textured rectangle with source and destination rectangles

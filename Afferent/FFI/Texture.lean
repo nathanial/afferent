@@ -33,6 +33,17 @@ opaque Renderer.drawSprites
   (canvasWidth : Float)
   (canvasHeight : Float) : IO Unit
 
+-- Draw sprites with a transform matrix (world-space or custom projection)
+@[extern "lean_afferent_renderer_draw_sprites_matrix"]
+opaque Renderer.drawSpritesMatrix
+  (renderer : @& Renderer)
+  (texture : @& Texture)
+  (data : @& Array Float)
+  (count : UInt32)
+  (canvasWidth : Float)
+  (canvasHeight : Float)
+  (transformA transformB transformC transformD transformTx transformTy : Float) : IO Unit
+
 -- ============================================================================
 -- HIGH-PERFORMANCE SPRITE SYSTEM (FloatBuffer-based, C-side physics)
 -- For 1M+ sprites at 60fps
@@ -79,6 +90,17 @@ opaque Renderer.drawSpritesInstanceBuffer
   (canvasWidth : Float)
   (canvasHeight : Float) : IO Unit
 
+-- Draw sprites from FloatBuffer with a transform matrix
+@[extern "lean_afferent_renderer_draw_sprites_instance_buffer_matrix"]
+opaque Renderer.drawSpritesInstanceBufferMatrix
+  (renderer : @& Renderer)
+  (texture : @& Texture)
+  (buffer : @& FloatBuffer)
+  (count : UInt32)
+  (canvasWidth : Float)
+  (canvasHeight : Float)
+  (transformA transformB transformC transformD transformTx transformTy : Float) : IO Unit
+
 -- Draw textured instances with per-instance UV rects.
 -- data layout: [pixelX, pixelY, rotation, halfSizeX, halfSizeY, u0, v0, u1, v1, alpha] × count
 @[extern "lean_afferent_renderer_draw_textured_instances"]
@@ -90,6 +112,17 @@ opaque Renderer.drawTexturedInstances
   (canvasWidth : Float)
   (canvasHeight : Float) : IO Unit
 
+-- Draw textured instances with a transform matrix.
+@[extern "lean_afferent_renderer_draw_textured_instances_matrix"]
+opaque Renderer.drawTexturedInstancesMatrix
+  (renderer : @& Renderer)
+  (texture : @& Texture)
+  (data : @& Array Float)
+  (count : UInt32)
+  (canvasWidth : Float)
+  (canvasHeight : Float)
+  (transformA transformB transformC transformD transformTx transformTy : Float) : IO Unit
+
 -- Draw textured instances from FloatBuffer (layout with per-instance UV rects).
 @[extern "lean_afferent_renderer_draw_textured_instances_buffer"]
 opaque Renderer.drawTexturedInstancesBuffer
@@ -99,5 +132,16 @@ opaque Renderer.drawTexturedInstancesBuffer
   (count : UInt32)
   (canvasWidth : Float)
   (canvasHeight : Float) : IO Unit
+
+-- Draw textured instances from FloatBuffer with a transform matrix.
+@[extern "lean_afferent_renderer_draw_textured_instances_buffer_matrix"]
+opaque Renderer.drawTexturedInstancesBufferMatrix
+  (renderer : @& Renderer)
+  (texture : @& Texture)
+  (buffer : @& FloatBuffer)
+  (count : UInt32)
+  (canvasWidth : Float)
+  (canvasHeight : Float)
+  (transformA transformB transformC transformD transformTx transformTy : Float) : IO Unit
 
 end Afferent.FFI

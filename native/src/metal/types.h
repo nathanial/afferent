@@ -142,8 +142,10 @@ typedef struct {
 typedef struct {
     float viewport[2];
     uint32_t layout;
-    uint32_t padding0;
+    uint32_t useMatrix;
     float uvRect[4];
+    float transform0[4];
+    float transform1[4];
 } SpriteUniforms;
 
 // 3D scene uniforms structure (matches shader)
