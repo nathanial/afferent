@@ -6,8 +6,6 @@
 NSString *shaderSource = nil;
 NSString *textShaderSource = nil;
 NSString *instancedShaderSource = nil;
-NSString *animatedShaderSource = nil;
-NSString *orbitalShaderSource = nil;
 NSString *spriteShaderSource = nil;
 NSString *strokeShaderSource = nil;
 NSString *strokePathShaderSource = nil;
@@ -23,10 +21,6 @@ void afferent_set_shader_source(const char* name, const char* source) {
         textShaderSource = sourceStr;
     } else if (strcmp(name, "instanced") == 0) {
         instancedShaderSource = sourceStr;
-    } else if (strcmp(name, "animated") == 0) {
-        animatedShaderSource = sourceStr;
-    } else if (strcmp(name, "orbital") == 0) {
-        orbitalShaderSource = sourceStr;
     } else if (strcmp(name, "sprite") == 0) {
         spriteShaderSource = sourceStr;
     } else if (strcmp(name, "stroke") == 0) {
@@ -41,8 +35,7 @@ void afferent_set_shader_source(const char* name, const char* source) {
 BOOL afferent_init_shaders(void) {
     // Verify all shaders were set from Lean
     if (shaderSource && textShaderSource && instancedShaderSource &&
-        animatedShaderSource && orbitalShaderSource && spriteShaderSource &&
-        strokeShaderSource && strokePathShaderSource &&
+        spriteShaderSource && strokeShaderSource && strokePathShaderSource &&
         shader3DSource) {
         return YES;
     }

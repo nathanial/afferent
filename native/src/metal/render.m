@@ -8,7 +8,6 @@
 #import "pipeline.m"
 #import "draw_2d.m"
 #import "draw_text.m"
-#import "draw_animated.m"
 #import "draw_sprites.m"
 #import "draw_3d.m"
 
@@ -68,18 +67,6 @@ AfferentResult afferent_renderer_create(
         renderer->depthWidth = 0;
         renderer->depthHeight = 0;
 
-        // Initialize animated buffer pointers to nil
-        renderer->animatedRectBuffer = nil;
-        renderer->animatedTriangleBuffer = nil;
-        renderer->animatedCircleBuffer = nil;
-        renderer->orbitalBuffer = nil;
-        renderer->animatedRectCount = 0;
-        renderer->animatedTriangleCount = 0;
-        renderer->animatedCircleCount = 0;
-        renderer->orbitalCount = 0;
-        renderer->orbitalCenterX = 0;
-        renderer->orbitalCenterY = 0;
-
         *out_renderer = renderer;
         return AFFERENT_OK;
     }
@@ -117,10 +104,6 @@ void afferent_renderer_destroy(AfferentRendererRef renderer) {
             renderer->instancedPipelineState = nil;
             renderer->trianglePipelineState = nil;
             renderer->circlePipelineState = nil;
-            renderer->animatedRectPipelineState = nil;
-            renderer->animatedTrianglePipelineState = nil;
-            renderer->animatedCirclePipelineState = nil;
-            renderer->orbitalPipelineState = nil;
             renderer->pipeline3D = nil;
             renderer->pipeline3DMSAA = nil;
             renderer->pipeline3DNoMSAA = nil;
@@ -136,10 +119,6 @@ void afferent_renderer_destroy(AfferentRendererRef renderer) {
             renderer->texturedMeshSampler = nil;
 
             renderer->oceanIndexBuffer = nil;
-            renderer->animatedRectBuffer = nil;
-            renderer->animatedTriangleBuffer = nil;
-            renderer->animatedCircleBuffer = nil;
-            renderer->orbitalBuffer = nil;
 
             renderer->commandQueue = nil;
             renderer->device = nil;

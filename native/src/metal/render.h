@@ -70,11 +70,6 @@ struct AfferentRenderer {
     __strong id<MTLRenderPipelineState> instancedPipelineState; // For instanced rect rendering
     __strong id<MTLRenderPipelineState> trianglePipelineState;  // For instanced triangle rendering
     __strong id<MTLRenderPipelineState> circlePipelineState;    // For instanced circle rendering
-    // Animated pipelines (GPU-side animation)
-    __strong id<MTLRenderPipelineState> animatedRectPipelineState;
-    __strong id<MTLRenderPipelineState> animatedTrianglePipelineState;
-    __strong id<MTLRenderPipelineState> animatedCirclePipelineState;
-    __strong id<MTLRenderPipelineState> orbitalPipelineState;   // For orbital particle rendering
     __strong id<MTLSamplerState> textSampler;                   // For text texture sampling
     __strong id<MTLSamplerState> spriteSampler;                 // For sprite texture sampling
     __strong id<MTLCommandBuffer> currentCommandBuffer;
@@ -108,18 +103,6 @@ struct AfferentRenderer {
     MTLClearColor clearColor;
     float screenWidth;   // Current screen dimensions for text rendering
     float screenHeight;
-    // Persistent buffers for animated rendering (uploaded once, reused every frame)
-    __strong id<MTLBuffer> animatedRectBuffer;
-    __strong id<MTLBuffer> animatedTriangleBuffer;
-    __strong id<MTLBuffer> animatedCircleBuffer;
-    __strong id<MTLBuffer> orbitalBuffer;
-    uint32_t animatedRectCount;
-    uint32_t animatedTriangleCount;
-    uint32_t animatedCircleCount;
-    uint32_t orbitalCount;
-    // Orbital center (stored at upload time)
-    float orbitalCenterX;
-    float orbitalCenterY;
 };
 
 // Internal buffer structure

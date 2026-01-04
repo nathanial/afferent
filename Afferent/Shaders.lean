@@ -17,12 +17,6 @@ def text : String := include_str% "../native/src/metal/shaders/text.metal"
 /-- Instanced shapes shader (rects, triangles, circles) -/
 def instanced : String := include_str% "../native/src/metal/shaders/instanced.metal"
 
-/-- GPU-side animated shapes shader -/
-def animated : String := include_str% "../native/src/metal/shaders/animated.metal"
-
-/-- Orbital particles shader -/
-def orbital : String := include_str% "../native/src/metal/shaders/orbital.metal"
-
 /-- Sprite/texture shader (layout0 + layout1 entry points). -/
 def sprite : String := include_str% "../native/src/metal/shaders/sprite.metal"
 
@@ -40,8 +34,6 @@ def all : Array (String × String) := #[
   ("basic", basic),
   ("text", text),
   ("instanced", instanced),
-  ("animated", animated),
-  ("orbital", orbital),
   ("sprite", sprite),
   ("stroke", stroke),
   ("stroke_path", strokePath),

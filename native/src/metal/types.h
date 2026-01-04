@@ -86,47 +86,6 @@ typedef struct {
     float padding3;
 } StrokePathFragmentUniforms;  // Total: 80 bytes
 
-// Animated instance data structure (matches shader) - 24 bytes
-typedef struct {
-    float pixelPos[2];      // Position in pixel coordinates (8 bytes)
-    float hueBase;          // Base hue 0-1 (4 bytes)
-    float halfSizePixels;   // Half size in pixels (4 bytes)
-    float phaseOffset;      // Per-particle phase offset (4 bytes)
-    float spinSpeed;        // Spin speed multiplier (4 bytes)
-} AnimatedInstanceData;  // Total: 24 bytes
-
-// Animation uniforms structure (matches shader)
-typedef struct {
-    float time;
-    float canvasWidth;
-    float canvasHeight;
-    float padding;
-} AnimationUniforms;
-
-// Orbital instance data structure (matches shader) - 32 bytes
-typedef struct {
-    float phase;           // Initial angle offset (4 bytes)
-    float baseRadius;      // Base orbit radius in pixels (4 bytes)
-    float orbitSpeed;      // Orbit angular speed (4 bytes)
-    float phaseX3;         // Phase for radius wobble (4 bytes)
-    float phase2;          // Phase for spin rotation (4 bytes)
-    float hueBase;         // Base color hue 0-1 (4 bytes)
-    float halfSizePixels;  // Half size in pixels (4 bytes)
-    float padding;         // Align to 32 bytes (4 bytes)
-} OrbitalInstanceData;  // Total: 32 bytes
-
-// Orbital uniforms structure (matches shader)
-typedef struct {
-    float time;
-    float centerX;
-    float centerY;
-    float canvasWidth;
-    float canvasHeight;
-    float radiusWobble;
-    float padding1;
-    float padding2;
-} OrbitalUniforms;
-
 // Sprite instance data structure (matches shader) - 20 bytes
 typedef struct {
     float pixelX;           // Position X in pixels

@@ -153,7 +153,6 @@ afferent/
         │   ├── pipeline.m     # Metal pipeline & shaders
         │   ├── draw_2d.m      # 2D shape rendering
         │   ├── draw_3d.m      # 3D mesh rendering
-        │   ├── draw_animated.m # GPU-side animations
         │   ├── draw_sprites.m # Sprite rendering
         │   ├── draw_text.m    # Text rendering
         │   └── shaders/       # Metal Shading Language files
@@ -276,13 +275,6 @@ Stream large instanced batches without Array allocation:
 ```lean
 let buf ← FloatBuffer.create (count * 8)
 Render.Dynamic.drawRectsAnimated renderer particles buf halfSize t spinSpeed
-```
-
-### Animated Rendering
-Upload static data once, GPU animates with time uniform:
-```lean
-let buf ← renderer.createAnimatedBuffer staticData
-renderer.drawAnimatedCircles buf count time screenWidth screenHeight
 ```
 
 ### Instanced Rendering

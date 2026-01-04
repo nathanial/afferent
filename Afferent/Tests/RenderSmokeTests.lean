@@ -34,8 +34,6 @@ test "shader registry includes expected names and non-empty sources" := do
     "basic",
     "text",
     "instanced",
-    "animated",
-    "orbital",
     "sprite",
     "stroke",
     "stroke_path",

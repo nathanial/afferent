@@ -21,12 +21,6 @@ extern NSString *textShaderSource;
 // Instanced shapes shader (rects, triangles, circles)
 extern NSString *instancedShaderSource;
 
-// GPU-side animated shapes shader
-extern NSString *animatedShaderSource;
-
-// Orbital particles shader
-extern NSString *orbitalShaderSource;
-
 // Sprite/texture shader
 extern NSString *spriteShaderSource;
 
