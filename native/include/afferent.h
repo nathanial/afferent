@@ -207,53 +207,15 @@ void afferent_renderer_draw_stroke_path(
     float a
 );
 
-// Instanced rectangle drawing (GPU-accelerated transforms)
+// Instanced shape drawing (GPU-accelerated transforms)
+// shape_type: 0=rect, 1=triangle, 2=circle
 // instance_data: array of 8 floats per instance:
 //   pos.x, pos.y, angle, halfSize, r, g, b, a
 // transform: column-major affine (a, b, c, d, tx, ty)
 // sizeMode: 0 = world (offset transformed by matrix), 1 = screen (pixel size)
-void afferent_renderer_draw_instanced_rects(
+void afferent_renderer_draw_instanced_shapes(
     AfferentRendererRef renderer,
-    const float* instance_data,
-    uint32_t instance_count,
-    float transform_a,
-    float transform_b,
-    float transform_c,
-    float transform_d,
-    float transform_tx,
-    float transform_ty,
-    float viewport_width,
-    float viewport_height,
-    uint32_t size_mode,
-    float time,
-    float hue_speed,
-    uint32_t color_mode
-);
-
-// Instanced triangle drawing (GPU-accelerated transforms)
-// instance_data: same format as rects (8 floats per instance)
-void afferent_renderer_draw_instanced_triangles(
-    AfferentRendererRef renderer,
-    const float* instance_data,
-    uint32_t instance_count,
-    float transform_a,
-    float transform_b,
-    float transform_c,
-    float transform_d,
-    float transform_tx,
-    float transform_ty,
-    float viewport_width,
-    float viewport_height,
-    uint32_t size_mode,
-    float time,
-    float hue_speed,
-    uint32_t color_mode
-);
-
-// Instanced circle drawing (smooth circles via fragment shader)
-// instance_data: same format as rects (8 floats per instance)
-void afferent_renderer_draw_instanced_circles(
-    AfferentRendererRef renderer,
+    uint32_t shape_type,
     const float* instance_data,
     uint32_t instance_count,
     float transform_a,

@@ -155,10 +155,12 @@ void afferent_renderer_draw_stroke_path(
     [renderer->currentEncoder setRenderPipelineState:renderer->pipelineState];
 }
 
-// Draw instanced rectangles - GPU computes transforms
+// Draw instanced shapes - GPU computes transforms
+// shape_type: 0=rect, 1=triangle, 2=circle
 // instance_data: array of 8 floats per instance (pos.x, pos.y, angle, halfSize, r, g, b, a)
-void afferent_renderer_draw_instanced_rects(
+void afferent_renderer_draw_instanced_shapes(
     AfferentRendererRef renderer,
+    uint32_t shape_type,
     const float* instance_data,
     uint32_t instance_count,
     float transform_a,
@@ -178,82 +180,29 @@ void afferent_renderer_draw_instanced_rects(
         return;
     }
 
-    @autoreleasepool {
-        // Create buffer for instance data
-        size_t data_size = instance_count * sizeof(InstanceData);
-        id<MTLBuffer> instanceBuffer = pool_acquire_buffer(
-            renderer->device,
-            g_buffer_pool.vertex_pool,
-            &g_buffer_pool.vertex_pool_count,
-            data_size,
-            true
-        );
+    // Select pipeline, vertex count, and primitive type based on shape
+    id<MTLRenderPipelineState> pipeline;
+    uint32_t vertexCount;
+    MTLPrimitiveType primType;
 
-        if (!instanceBuffer) {
-            NSLog(@"Failed to create instance buffer");
+    switch (shape_type) {
+        case 0: // rect
+            pipeline = renderer->instancedPipelineState;
+            vertexCount = 4;
+            primType = MTLPrimitiveTypeTriangleStrip;
+            break;
+        case 1: // triangle
+            pipeline = renderer->trianglePipelineState;
+            vertexCount = 3;
+            primType = MTLPrimitiveTypeTriangle;
+            break;
+        case 2: // circle
+            pipeline = renderer->circlePipelineState;
+            vertexCount = 4;
+            primType = MTLPrimitiveTypeTriangleStrip;
+            break;
+        default:
             return;
-        }
-
-        // Copy instance data
-        memcpy(instanceBuffer.contents, instance_data, data_size);
-
-        InstancedUniforms u;
-        u.transform0[0] = transform_a;
-        u.transform0[1] = transform_b;
-        u.transform0[2] = transform_c;
-        u.transform0[3] = transform_d;
-        u.transform1[0] = transform_tx;
-        u.transform1[1] = transform_ty;
-        u.transform1[2] = 0.0f;
-        u.transform1[3] = 0.0f;
-        u.viewport[0] = viewport_width;
-        u.viewport[1] = viewport_height;
-        u.time = time;
-        u.hueSpeed = hue_speed;
-        u.sizeMode = size_mode;
-        u.colorMode = color_mode;
-        u.padding0 = 0.0f;
-        u.padding1 = 0.0f;
-
-        // Switch to instanced pipeline
-        [renderer->currentEncoder setRenderPipelineState:renderer->instancedPipelineState];
-
-        // Bind instance buffer
-        [renderer->currentEncoder setVertexBuffer:instanceBuffer offset:0 atIndex:0];
-        [renderer->currentEncoder setVertexBytes:&u length:sizeof(InstancedUniforms) atIndex:1];
-
-        // Draw: 4 vertices per quad (triangle strip would be 4, but we use 2 triangles = 6 indices)
-        // Actually we use drawPrimitives with triangle strip for simplicity
-        [renderer->currentEncoder drawPrimitives:MTLPrimitiveTypeTriangleStrip
-                                     vertexStart:0
-                                     vertexCount:4
-                                   instanceCount:instance_count];
-
-        // Switch back to basic pipeline
-        [renderer->currentEncoder setRenderPipelineState:renderer->pipelineState];
-    }
-}
-
-// Draw instanced triangles - GPU computes transforms
-void afferent_renderer_draw_instanced_triangles(
-    AfferentRendererRef renderer,
-    const float* instance_data,
-    uint32_t instance_count,
-    float transform_a,
-    float transform_b,
-    float transform_c,
-    float transform_d,
-    float transform_tx,
-    float transform_ty,
-    float viewport_width,
-    float viewport_height,
-    uint32_t size_mode,
-    float time,
-    float hue_speed,
-    uint32_t color_mode
-) {
-    if (!renderer || !renderer->currentEncoder || !instance_data || instance_count == 0) {
-        return;
     }
 
     @autoreleasepool {
@@ -267,7 +216,6 @@ void afferent_renderer_draw_instanced_triangles(
         );
 
         if (!instanceBuffer) {
-            NSLog(@"Failed to create triangle instance buffer");
             return;
         }
 
@@ -291,85 +239,13 @@ void afferent_renderer_draw_instanced_triangles(
         u.padding0 = 0.0f;
         u.padding1 = 0.0f;
 
-        [renderer->currentEncoder setRenderPipelineState:renderer->trianglePipelineState];
+        [renderer->currentEncoder setRenderPipelineState:pipeline];
         [renderer->currentEncoder setVertexBuffer:instanceBuffer offset:0 atIndex:0];
         [renderer->currentEncoder setVertexBytes:&u length:sizeof(InstancedUniforms) atIndex:1];
 
-        // Draw: 3 vertices per triangle
-        [renderer->currentEncoder drawPrimitives:MTLPrimitiveTypeTriangle
+        [renderer->currentEncoder drawPrimitives:primType
                                      vertexStart:0
-                                     vertexCount:3
-                                   instanceCount:instance_count];
-
-        [renderer->currentEncoder setRenderPipelineState:renderer->pipelineState];
-    }
-}
-
-// Draw instanced circles - smooth circles via fragment shader
-void afferent_renderer_draw_instanced_circles(
-    AfferentRendererRef renderer,
-    const float* instance_data,
-    uint32_t instance_count,
-    float transform_a,
-    float transform_b,
-    float transform_c,
-    float transform_d,
-    float transform_tx,
-    float transform_ty,
-    float viewport_width,
-    float viewport_height,
-    uint32_t size_mode,
-    float time,
-    float hue_speed,
-    uint32_t color_mode
-) {
-    if (!renderer || !renderer->currentEncoder || !instance_data || instance_count == 0) {
-        return;
-    }
-
-    @autoreleasepool {
-        size_t data_size = instance_count * sizeof(InstanceData);
-        id<MTLBuffer> instanceBuffer = pool_acquire_buffer(
-            renderer->device,
-            g_buffer_pool.vertex_pool,
-            &g_buffer_pool.vertex_pool_count,
-            data_size,
-            true
-        );
-
-        if (!instanceBuffer) {
-            NSLog(@"Failed to create circle instance buffer");
-            return;
-        }
-
-        memcpy(instanceBuffer.contents, instance_data, data_size);
-
-        InstancedUniforms u;
-        u.transform0[0] = transform_a;
-        u.transform0[1] = transform_b;
-        u.transform0[2] = transform_c;
-        u.transform0[3] = transform_d;
-        u.transform1[0] = transform_tx;
-        u.transform1[1] = transform_ty;
-        u.transform1[2] = 0.0f;
-        u.transform1[3] = 0.0f;
-        u.viewport[0] = viewport_width;
-        u.viewport[1] = viewport_height;
-        u.time = time;
-        u.hueSpeed = hue_speed;
-        u.sizeMode = size_mode;
-        u.colorMode = color_mode;
-        u.padding0 = 0.0f;
-        u.padding1 = 0.0f;
-
-        [renderer->currentEncoder setRenderPipelineState:renderer->circlePipelineState];
-        [renderer->currentEncoder setVertexBuffer:instanceBuffer offset:0 atIndex:0];
-        [renderer->currentEncoder setVertexBytes:&u length:sizeof(InstancedUniforms) atIndex:1];
-
-        // Draw: 4 vertices per quad (triangle strip)
-        [renderer->currentEncoder drawPrimitives:MTLPrimitiveTypeTriangleStrip
-                                     vertexStart:0
-                                     vertexCount:4
+                                     vertexCount:vertexCount
                                    instanceCount:instance_count];
 
         [renderer->currentEncoder setRenderPipelineState:renderer->pipelineState];

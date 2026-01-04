@@ -768,77 +768,13 @@ LEAN_EXPORT lean_obj_res lean_afferent_renderer_draw_stroke_path(
 static float* g_instance_buffer = NULL;
 static size_t g_instance_buffer_capacity = 0;
 
-// Draw instanced rectangles - GPU-accelerated transforms
+// Draw instanced shapes - GPU-accelerated transforms
+// shape_type: 0=rect, 1=triangle, 2=circle
 // instance_data_arr: Array Float with 8 floats per instance
 //   (pos.x, pos.y, angle, halfSize, r, g, b, a)
-LEAN_EXPORT lean_obj_res lean_afferent_renderer_draw_instanced_rects(
+LEAN_EXPORT lean_obj_res lean_afferent_renderer_draw_instanced_shapes(
     lean_obj_arg renderer_obj,
-    lean_obj_arg instance_data_arr,
-    uint32_t instance_count,
-    double transform_a,
-    double transform_b,
-    double transform_c,
-    double transform_d,
-    double transform_tx,
-    double transform_ty,
-    double viewport_width,
-    double viewport_height,
-    uint32_t size_mode,
-    double time,
-    double hue_speed,
-    uint32_t color_mode,
-    lean_obj_arg world
-) {
-    AfferentRendererRef renderer = (AfferentRendererRef)lean_get_external_data(renderer_obj);
-
-    size_t arr_size = lean_array_size(instance_data_arr);
-    size_t expected_size = (size_t)instance_count * 8;
-
-    if (arr_size < expected_size || instance_count == 0) {
-        return lean_io_result_mk_ok(lean_box(0));  // Silent fail on invalid input
-    }
-
-    // Reuse or grow the static buffer
-    if (arr_size > g_instance_buffer_capacity) {
-        free(g_instance_buffer);
-        g_instance_buffer = malloc(arr_size * sizeof(float));
-        g_instance_buffer_capacity = g_instance_buffer ? arr_size : 0;
-    }
-
-    if (!g_instance_buffer) {
-        return lean_io_result_mk_ok(lean_box(0));
-    }
-
-    // Convert Lean array to float array (reusing buffer)
-    for (size_t i = 0; i < arr_size; i++) {
-        g_instance_buffer[i] = (float)lean_unbox_float(lean_array_get_core(instance_data_arr, i));
-    }
-
-    afferent_renderer_draw_instanced_rects(
-        renderer,
-        g_instance_buffer,
-        instance_count,
-        (float)transform_a,
-        (float)transform_b,
-        (float)transform_c,
-        (float)transform_d,
-        (float)transform_tx,
-        (float)transform_ty,
-        (float)viewport_width,
-        (float)viewport_height,
-        size_mode,
-        (float)time,
-        (float)hue_speed,
-        color_mode
-    );
-    // Don't free - reuse next frame
-
-    return lean_io_result_mk_ok(lean_box(0));
-}
-
-// Draw instanced triangles - GPU-accelerated transforms
-LEAN_EXPORT lean_obj_res lean_afferent_renderer_draw_instanced_triangles(
-    lean_obj_arg renderer_obj,
+    uint32_t shape_type,
     lean_obj_arg instance_data_arr,
     uint32_t instance_count,
     double transform_a,
@@ -878,71 +814,9 @@ LEAN_EXPORT lean_obj_res lean_afferent_renderer_draw_instanced_triangles(
         g_instance_buffer[i] = (float)lean_unbox_float(lean_array_get_core(instance_data_arr, i));
     }
 
-    afferent_renderer_draw_instanced_triangles(
+    afferent_renderer_draw_instanced_shapes(
         renderer,
-        g_instance_buffer,
-        instance_count,
-        (float)transform_a,
-        (float)transform_b,
-        (float)transform_c,
-        (float)transform_d,
-        (float)transform_tx,
-        (float)transform_ty,
-        (float)viewport_width,
-        (float)viewport_height,
-        size_mode,
-        (float)time,
-        (float)hue_speed,
-        color_mode
-    );
-
-    return lean_io_result_mk_ok(lean_box(0));
-}
-
-// Draw instanced circles - smooth circles via fragment shader
-LEAN_EXPORT lean_obj_res lean_afferent_renderer_draw_instanced_circles(
-    lean_obj_arg renderer_obj,
-    lean_obj_arg instance_data_arr,
-    uint32_t instance_count,
-    double transform_a,
-    double transform_b,
-    double transform_c,
-    double transform_d,
-    double transform_tx,
-    double transform_ty,
-    double viewport_width,
-    double viewport_height,
-    uint32_t size_mode,
-    double time,
-    double hue_speed,
-    uint32_t color_mode,
-    lean_obj_arg world
-) {
-    AfferentRendererRef renderer = (AfferentRendererRef)lean_get_external_data(renderer_obj);
-
-    size_t arr_size = lean_array_size(instance_data_arr);
-    size_t expected_size = (size_t)instance_count * 8;
-
-    if (arr_size < expected_size || instance_count == 0) {
-        return lean_io_result_mk_ok(lean_box(0));
-    }
-
-    if (arr_size > g_instance_buffer_capacity) {
-        free(g_instance_buffer);
-        g_instance_buffer = malloc(arr_size * sizeof(float));
-        g_instance_buffer_capacity = g_instance_buffer ? arr_size : 0;
-    }
-
-    if (!g_instance_buffer) {
-        return lean_io_result_mk_ok(lean_box(0));
-    }
-
-    for (size_t i = 0; i < arr_size; i++) {
-        g_instance_buffer[i] = (float)lean_unbox_float(lean_array_get_core(instance_data_arr, i));
-    }
-
-    afferent_renderer_draw_instanced_circles(
-        renderer,
+        shape_type,
         g_instance_buffer,
         instance_count,
         (float)transform_a,
@@ -1430,8 +1304,10 @@ LEAN_EXPORT lean_obj_res lean_afferent_particles_update_bouncing_and_write_circl
 }
 
 // Draw instanced shapes directly from FloatBuffer (zero-copy path)
-LEAN_EXPORT lean_obj_res lean_afferent_renderer_draw_instanced_rects_buffer(
+// shape_type: 0=rect, 1=triangle, 2=circle
+LEAN_EXPORT lean_obj_res lean_afferent_renderer_draw_instanced_shapes_buffer(
     lean_obj_arg renderer_obj,
+    uint32_t shape_type,
     lean_obj_arg buffer_obj,
     uint32_t instance_count,
     double transform_a,
@@ -1451,91 +1327,9 @@ LEAN_EXPORT lean_obj_res lean_afferent_renderer_draw_instanced_rects_buffer(
     AfferentRendererRef renderer = (AfferentRendererRef)lean_get_external_data(renderer_obj);
     AfferentFloatBufferRef buffer = (AfferentFloatBufferRef)lean_get_external_data(buffer_obj);
 
-    // Direct pointer pass - no conversion needed!
-    afferent_renderer_draw_instanced_rects(
+    afferent_renderer_draw_instanced_shapes(
         renderer,
-        afferent_float_buffer_data(buffer),
-        instance_count,
-        (float)transform_a,
-        (float)transform_b,
-        (float)transform_c,
-        (float)transform_d,
-        (float)transform_tx,
-        (float)transform_ty,
-        (float)viewport_width,
-        (float)viewport_height,
-        size_mode,
-        (float)time,
-        (float)hue_speed,
-        color_mode
-    );
-    return lean_io_result_mk_ok(lean_box(0));
-}
-
-LEAN_EXPORT lean_obj_res lean_afferent_renderer_draw_instanced_triangles_buffer(
-    lean_obj_arg renderer_obj,
-    lean_obj_arg buffer_obj,
-    uint32_t instance_count,
-    double transform_a,
-    double transform_b,
-    double transform_c,
-    double transform_d,
-    double transform_tx,
-    double transform_ty,
-    double viewport_width,
-    double viewport_height,
-    uint32_t size_mode,
-    double time,
-    double hue_speed,
-    uint32_t color_mode,
-    lean_obj_arg world
-) {
-    AfferentRendererRef renderer = (AfferentRendererRef)lean_get_external_data(renderer_obj);
-    AfferentFloatBufferRef buffer = (AfferentFloatBufferRef)lean_get_external_data(buffer_obj);
-
-    afferent_renderer_draw_instanced_triangles(
-        renderer,
-        afferent_float_buffer_data(buffer),
-        instance_count,
-        (float)transform_a,
-        (float)transform_b,
-        (float)transform_c,
-        (float)transform_d,
-        (float)transform_tx,
-        (float)transform_ty,
-        (float)viewport_width,
-        (float)viewport_height,
-        size_mode,
-        (float)time,
-        (float)hue_speed,
-        color_mode
-    );
-    return lean_io_result_mk_ok(lean_box(0));
-}
-
-LEAN_EXPORT lean_obj_res lean_afferent_renderer_draw_instanced_circles_buffer(
-    lean_obj_arg renderer_obj,
-    lean_obj_arg buffer_obj,
-    uint32_t instance_count,
-    double transform_a,
-    double transform_b,
-    double transform_c,
-    double transform_d,
-    double transform_tx,
-    double transform_ty,
-    double viewport_width,
-    double viewport_height,
-    uint32_t size_mode,
-    double time,
-    double hue_speed,
-    uint32_t color_mode,
-    lean_obj_arg world
-) {
-    AfferentRendererRef renderer = (AfferentRendererRef)lean_get_external_data(renderer_obj);
-    AfferentFloatBufferRef buffer = (AfferentFloatBufferRef)lean_get_external_data(buffer_obj);
-
-    afferent_renderer_draw_instanced_circles(
-        renderer,
+        shape_type,
         afferent_float_buffer_data(buffer),
         instance_count,
         (float)transform_a,

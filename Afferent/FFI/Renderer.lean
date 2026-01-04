@@ -94,13 +94,15 @@ opaque Renderer.drawStrokePath
   (dashOffset : Float)
   (r g b a : Float) : IO Unit
 
--- Instanced rectangle drawing (GPU-accelerated transforms)
+-- Instanced shape drawing (GPU-accelerated transforms)
+-- shapeType: 0=rect, 1=triangle, 2=circle
 -- instanceData: Array of 8 floats per instance (pos.x, pos.y, angle, halfSize, r, g, b, a)
 -- sizeMode: 0 = world (offset transformed by matrix), 1 = screen (pixel size)
 -- colorMode: 0 = RGBA, 1 = HSV(time-based)
-@[extern "lean_afferent_renderer_draw_instanced_rects"]
-opaque Renderer.drawInstancedRects
+@[extern "lean_afferent_renderer_draw_instanced_shapes"]
+opaque Renderer.drawInstancedShapes
   (renderer : @& Renderer)
+  (shapeType : UInt32)
   (instanceData : @& Array Float)
   (instanceCount : UInt32)
   (transformA transformB transformC transformD transformTx transformTy : Float)
@@ -109,35 +111,18 @@ opaque Renderer.drawInstancedRects
   (time hueSpeed : Float)
   (colorMode : UInt32) : IO Unit
 
--- Instanced triangle drawing (GPU-accelerated transforms)
--- instanceData: Array of 8 floats per instance (pos.x, pos.y, angle, halfSize, r, g, b, a)
--- sizeMode: 0 = world (offset transformed by matrix), 1 = screen (pixel size)
--- colorMode: 0 = RGBA, 1 = HSV(time-based)
-@[extern "lean_afferent_renderer_draw_instanced_triangles"]
-opaque Renderer.drawInstancedTriangles
-  (renderer : @& Renderer)
-  (instanceData : @& Array Float)
-  (instanceCount : UInt32)
-  (transformA transformB transformC transformD transformTx transformTy : Float)
-  (viewportWidth viewportHeight : Float)
-  (sizeMode : UInt32)
-  (time hueSpeed : Float)
-  (colorMode : UInt32) : IO Unit
+-- Convenience wrappers for type safety
+def Renderer.drawInstancedRects (r : Renderer) (d : Array Float) (n : UInt32)
+    (a b c d' tx ty vw vh : Float) (sm : UInt32) (t hs : Float) (cm : UInt32) : IO Unit :=
+  r.drawInstancedShapes 0 d n a b c d' tx ty vw vh sm t hs cm
 
--- Instanced circle drawing (smooth circles via fragment shader)
--- instanceData: Array of 8 floats per instance (pos.x, pos.y, angle, halfSize, r, g, b, a)
--- sizeMode: 0 = world (offset transformed by matrix), 1 = screen (pixel size)
--- colorMode: 0 = RGBA, 1 = HSV(time-based)
-@[extern "lean_afferent_renderer_draw_instanced_circles"]
-opaque Renderer.drawInstancedCircles
-  (renderer : @& Renderer)
-  (instanceData : @& Array Float)
-  (instanceCount : UInt32)
-  (transformA transformB transformC transformD transformTx transformTy : Float)
-  (viewportWidth viewportHeight : Float)
-  (sizeMode : UInt32)
-  (time hueSpeed : Float)
-  (colorMode : UInt32) : IO Unit
+def Renderer.drawInstancedTriangles (r : Renderer) (d : Array Float) (n : UInt32)
+    (a b c d' tx ty vw vh : Float) (sm : UInt32) (t hs : Float) (cm : UInt32) : IO Unit :=
+  r.drawInstancedShapes 1 d n a b c d' tx ty vw vh sm t hs cm
+
+def Renderer.drawInstancedCircles (r : Renderer) (d : Array Float) (n : UInt32)
+    (a b c d' tx ty vw vh : Float) (sm : UInt32) (t hs : Float) (cm : UInt32) : IO Unit :=
+  r.drawInstancedShapes 2 d n a b c d' tx ty vw vh sm t hs cm
 
 -- Scissor rect for clipping
 @[extern "lean_afferent_renderer_set_scissor"]
@@ -149,9 +134,11 @@ opaque Renderer.setScissor
 opaque Renderer.resetScissor (renderer : @& Renderer) : IO Unit
 
 -- Draw instanced shapes directly from FloatBuffer (zero-copy path)
-@[extern "lean_afferent_renderer_draw_instanced_rects_buffer"]
-opaque Renderer.drawInstancedRectsBuffer
+-- shapeType: 0=rect, 1=triangle, 2=circle
+@[extern "lean_afferent_renderer_draw_instanced_shapes_buffer"]
+opaque Renderer.drawInstancedShapesBuffer
   (renderer : @& Renderer)
+  (shapeType : UInt32)
   (buffer : @& FloatBuffer)
   (instanceCount : UInt32)
   (transformA transformB transformC transformD transformTx transformTy : Float)
@@ -160,27 +147,18 @@ opaque Renderer.drawInstancedRectsBuffer
   (time hueSpeed : Float)
   (colorMode : UInt32) : IO Unit
 
-@[extern "lean_afferent_renderer_draw_instanced_triangles_buffer"]
-opaque Renderer.drawInstancedTrianglesBuffer
-  (renderer : @& Renderer)
-  (buffer : @& FloatBuffer)
-  (instanceCount : UInt32)
-  (transformA transformB transformC transformD transformTx transformTy : Float)
-  (viewportWidth viewportHeight : Float)
-  (sizeMode : UInt32)
-  (time hueSpeed : Float)
-  (colorMode : UInt32) : IO Unit
+-- Convenience wrappers for type safety (FloatBuffer variants)
+def Renderer.drawInstancedRectsBuffer (r : Renderer) (buf : FloatBuffer) (n : UInt32)
+    (a b c d' tx ty vw vh : Float) (sm : UInt32) (t hs : Float) (cm : UInt32) : IO Unit :=
+  r.drawInstancedShapesBuffer 0 buf n a b c d' tx ty vw vh sm t hs cm
 
-@[extern "lean_afferent_renderer_draw_instanced_circles_buffer"]
-opaque Renderer.drawInstancedCirclesBuffer
-  (renderer : @& Renderer)
-  (buffer : @& FloatBuffer)
-  (instanceCount : UInt32)
-  (transformA transformB transformC transformD transformTx transformTy : Float)
-  (viewportWidth viewportHeight : Float)
-  (sizeMode : UInt32)
-  (time hueSpeed : Float)
-  (colorMode : UInt32) : IO Unit
+def Renderer.drawInstancedTrianglesBuffer (r : Renderer) (buf : FloatBuffer) (n : UInt32)
+    (a b c d' tx ty vw vh : Float) (sm : UInt32) (t hs : Float) (cm : UInt32) : IO Unit :=
+  r.drawInstancedShapesBuffer 1 buf n a b c d' tx ty vw vh sm t hs cm
+
+def Renderer.drawInstancedCirclesBuffer (r : Renderer) (buf : FloatBuffer) (n : UInt32)
+    (a b c d' tx ty vw vh : Float) (sm : UInt32) (t hs : Float) (cm : UInt32) : IO Unit :=
+  r.drawInstancedShapesBuffer 2 buf n a b c d' tx ty vw vh sm t hs cm
 
 -- ============================================================================
 -- TEXTURED RECTANGLE RENDERING - Map tile rendering with source/dest rects
