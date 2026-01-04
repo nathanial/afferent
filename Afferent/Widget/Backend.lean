@@ -4,9 +4,11 @@
   Converts abstract RenderCommands to Metal-backed drawing calls.
 -/
 import Afferent.Canvas.Context
+import Afferent.Core.Path
 import Afferent.Text.Font
 import Afferent.Text.Measurer
 import Arbor
+import Arbor.Core.Path
 
 namespace Afferent.Widget
 
@@ -37,6 +39,35 @@ def polygonToPath (points : Array Arbor.Point) : Afferent.Path :=
 /-- Convert Arbor Color to Afferent Color.
     Arbor uses Tincture.Color which is the same as Afferent's Color. -/
 def toAfferentColor (c : Arbor.Color) : Afferent.Color := c
+
+/-- Convert Arbor FillRule to Afferent FillRule. -/
+def toAfferentFillRule (rule : Arbor.FillRule) : Afferent.FillRule :=
+  match rule with
+  | .nonZero => .nonZero
+  | .evenOdd => .evenOdd
+
+/-- Convert Arbor Path to Afferent Path. -/
+def toAfferentPath (path : Arbor.Path) : Afferent.Path :=
+  let base := Afferent.Path.empty
+  let built := path.commands.foldl (init := base) fun acc cmd =>
+    match cmd with
+    | .moveTo p =>
+      acc.moveTo (toAfferentPoint p)
+    | .lineTo p =>
+      acc.lineTo (toAfferentPoint p)
+    | .quadraticCurveTo cp p =>
+      acc.quadraticCurveTo (toAfferentPoint cp) (toAfferentPoint p)
+    | .bezierCurveTo cp1 cp2 p =>
+      acc.bezierCurveTo (toAfferentPoint cp1) (toAfferentPoint cp2) (toAfferentPoint p)
+    | .arcTo p1 p2 radius =>
+      acc.arcTo (toAfferentPoint p1) (toAfferentPoint p2) radius
+    | .arc center radius startAngle endAngle counterclockwise =>
+      acc.arc (toAfferentPoint center) radius startAngle endAngle counterclockwise
+    | .rect r =>
+      acc.rect (toAfferentRect r)
+    | .closePath =>
+      acc.closePath
+  built.withFillRule (toAfferentFillRule path.fillRule)
 
 /-- Execute a single RenderCommand using CanvasM.
     Requires a FontRegistry to resolve FontIds to Font handles. -/
@@ -101,6 +132,17 @@ def executeCommand (reg : FontRegistry) (cmd : Arbor.RenderCommand) : CanvasM Un
       CanvasM.strokePath path
     else
       pure ()
+
+  | .fillPath path color =>
+    let afferentPath := toAfferentPath path
+    CanvasM.setFillColor (toAfferentColor color)
+    CanvasM.fillPath afferentPath
+
+  | .strokePath path color lineWidth =>
+    let afferentPath := toAfferentPath path
+    CanvasM.setStrokeColor (toAfferentColor color)
+    CanvasM.setLineWidth lineWidth
+    CanvasM.strokePath afferentPath
 
   | .pushClip rect =>
     let afferentRect := toAfferentRect rect
