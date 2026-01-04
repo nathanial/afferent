@@ -491,4 +491,113 @@ def drawSpritesFromBuffer (renderer : FFI.Renderer) (texture : FFI.Texture)
   -- halfSize is ignored (kept for API compatibility).
   FFI.Renderer.drawSpritesInstanceBuffer renderer texture buffer count screenWidth screenHeight
 
+/-! ## Orbital Particle System
+
+Particles that orbit around a center point. Each particle has:
+- phase: initial angle offset
+- radius: distance from center
+- speed: angular velocity (can be negative for reverse orbit)
+- hue: base color hue for HSV animation
+- size: half-size of the rendered shape -/
+
+/-- Orbital particle state. Each particle orbits around a center point. -/
+structure OrbitalState where
+  /-- Per-particle orbital parameters: phase, radius, speed, hue, size (5 floats) -/
+  params : FloatArray
+  /-- Number of particles -/
+  count : Nat
+  /-- Center of orbit X coordinate -/
+  centerX : Float
+  /-- Center of orbit Y coordinate -/
+  centerY : Float
+  /-- Screen width for coordinate conversion -/
+  screenWidth : Float
+  /-- Screen height for coordinate conversion -/
+  screenHeight : Float
+  deriving Inhabited
+
+/-- Create orbital particles with random parameters.
+    - count: number of particles
+    - centerX, centerY: orbit center
+    - minRadius, maxRadius: range for orbit radius
+    - speedMin, speedMax: range for angular velocity
+    - sizeMin, sizeMax: range for particle size
+    - screenWidth, screenHeight: screen dimensions
+    - seed: random seed for deterministic generation -/
+def OrbitalState.create (count : Nat) (centerX centerY : Float)
+    (minRadius maxRadius : Float) (speedMin speedMax : Float)
+    (sizeMin sizeMax : Float) (screenWidth screenHeight : Float)
+    (seed : Nat) : OrbitalState :=
+  let twoPi : Float := 6.283185307
+  let params := Id.run do
+    let mut arr := FloatArray.emptyWithCapacity (count * 5)
+    let mut s := seed
+    for i in [:count] do
+      -- Phase: random angle 0..2π
+      s := (s * 1103515245 + 12345) % (2^31)
+      let phase := (s.toFloat / 2147483648.0) * twoPi
+      -- Radius: random in range
+      s := (s * 1103515245 + 12345) % (2^31)
+      let radius := minRadius + (s.toFloat / 2147483648.0) * (maxRadius - minRadius)
+      -- Speed: random in range, with random direction
+      s := (s * 1103515245 + 12345) % (2^31)
+      let baseSpeed := speedMin + (s.toFloat / 2147483648.0) * (speedMax - speedMin)
+      s := (s * 1103515245 + 12345) % (2^31)
+      let dir : Float := if s % 2 == 0 then 1.0 else -1.0
+      let speed := baseSpeed * dir
+      -- Hue: evenly distributed
+      let hue := i.toFloat / count.toFloat
+      -- Size: random in range
+      s := (s * 1103515245 + 12345) % (2^31)
+      let size := sizeMin + (s.toFloat / 2147483648.0) * (sizeMax - sizeMin)
+      arr := arr.push phase
+      arr := arr.push radius
+      arr := arr.push speed
+      arr := arr.push hue
+      arr := arr.push size
+    arr
+  { params, count, centerX, centerY, screenWidth, screenHeight }
+
+/-- Write orbital particle positions to a FloatBuffer for instanced rendering.
+    Computes x, y positions and rotation from orbital parameters at time t.
+    Format: [x, y, rotation, size, hue, 0, 0, 1] per particle (8 floats) -/
+def writeOrbitalToBuffer (orbital : OrbitalState) (buffer : FFI.FloatBuffer)
+    (t : Float) : IO Unit := do
+  -- Hoist struct field accesses out of the loop for performance
+  let params := orbital.params
+  let centerX := orbital.centerX
+  let centerY := orbital.centerY
+  let count := orbital.count
+  for i in [:count] do
+    let base := i * 5
+    let phase := params.get! base
+    let radius := params.get! (base + 1)
+    let speed := params.get! (base + 2)
+    let hue := params.get! (base + 3)
+    let size := params.get! (base + 4)
+    -- Compute position from orbital motion
+    let angle := phase + t * speed
+    let x := centerX + radius * Float.cos angle
+    let y := centerY + radius * Float.sin angle
+    -- Rotation follows orbital angle
+    let rot := angle
+    -- Write to buffer: [x, y, rotation, size, hue, 0, 0, 1]
+    let bufIndex : USize := (i * 8).toUSize
+    FFI.FloatBuffer.setVec8 buffer bufIndex x y rot size hue 0.0 0.0 1.0
+
+/-- Draw orbital particles as rectangles. -/
+def drawOrbitalRects (renderer : FFI.Renderer) (orbital : OrbitalState)
+    (buffer : FFI.FloatBuffer) (t : Float) : IO Unit := do
+  writeOrbitalToBuffer orbital buffer t
+  let (a, b, c, d, tx, ty) := pixelToClipParams orbital.screenWidth orbital.screenHeight
+  FFI.Renderer.drawInstancedRectsBuffer
+    renderer
+    buffer
+    orbital.count.toUInt32
+    a b c d tx ty
+    orbital.screenWidth orbital.screenHeight
+    sizeModeScreen
+    t dynamicHueSpeed
+    colorModeHSV
+
 end Afferent.Render.Dynamic
