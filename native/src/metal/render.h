@@ -72,9 +72,6 @@ struct AfferentRenderer {
     __strong id<MTLRenderPipelineState> animatedTrianglePipelineState;
     __strong id<MTLRenderPipelineState> animatedCirclePipelineState;
     __strong id<MTLRenderPipelineState> orbitalPipelineState;   // For orbital particle rendering
-    __strong id<MTLRenderPipelineState> dynamicCirclePipelineState;  // For dynamic position circles
-    __strong id<MTLRenderPipelineState> dynamicRectPipelineState;    // For dynamic position rects
-    __strong id<MTLRenderPipelineState> dynamicTrianglePipelineState; // For dynamic position triangles
     __strong id<MTLSamplerState> textSampler;                   // For text texture sampling
     __strong id<MTLSamplerState> spriteSampler;                 // For sprite texture sampling
     // Textured rectangle rendering (for map tiles)

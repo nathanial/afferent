@@ -271,10 +271,11 @@ buf.setVec5 index x y size rotation alpha
 renderer.drawSpritesFromBuffer texture buf count
 ```
 
-### Dynamic Rendering
-CPU provides positions, GPU computes colors and coordinates:
+### Instanced Streaming
+Stream large instanced batches without Array allocation:
 ```lean
-renderer.drawDynamicCircles floatBuffer count screenWidth screenHeight
+let buf ← FloatBuffer.create (count * 8)
+Render.Dynamic.drawRectsAnimated renderer particles buf halfSize t spinSpeed
 ```
 
 ### Animated Rendering

@@ -118,9 +118,6 @@ void afferent_renderer_destroy(AfferentRendererRef renderer) {
             renderer->animatedTrianglePipelineState = nil;
             renderer->animatedCirclePipelineState = nil;
             renderer->orbitalPipelineState = nil;
-            renderer->dynamicCirclePipelineState = nil;
-            renderer->dynamicRectPipelineState = nil;
-            renderer->dynamicTrianglePipelineState = nil;
             renderer->texturedRectPipelineState = nil;
             renderer->texturedRectPipelineStateMSAA = nil;
             renderer->texturedRectPipelineStateNoMSAA = nil;

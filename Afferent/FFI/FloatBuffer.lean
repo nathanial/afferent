@@ -43,6 +43,21 @@ opaque FloatBuffer.writeSpritesFromParticles
   (rotation : Float)
   (alpha : Float) : IO Unit
 
+-- Bulk-write instanced shape data from particles into a FloatBuffer.
+-- particleData layout: [x, y, vx, vy, hue] per particle (5 floats).
+-- Writes InstanceData layout: [x, y, rotation, halfSize, hue, 0, 0, 1] (8 floats).
+-- rotationMode: 0 = uniform rotation, 1 = animated (time * spinSpeed + hue * 2π).
+@[extern "lean_afferent_float_buffer_write_instanced_from_particles"]
+opaque FloatBuffer.writeInstancedFromParticles
+  (buffer : @& FloatBuffer)
+  (particleData : @& FloatArray)
+  (count : UInt32)
+  (halfSize : Float)
+  (rotation : Float)
+  (time : Float)
+  (spinSpeed : Float)
+  (rotationMode : UInt32) : IO Unit
+
 namespace Particles
 
 -- Update bouncing physics and write sprite instance data in the same pass.
@@ -58,8 +73,8 @@ opaque updateBouncingAndWriteSprites
   (screenHeight : Float)
   (spriteBuffer : @& FloatBuffer) : IO FloatArray
 
--- Update bouncing physics and write dynamic-circle instance data in the same pass.
--- circleBuffer layout: [x, y, hueBase, radius] per particle (4 floats).
+-- Update bouncing physics and write instanced circle data in the same pass.
+-- circleBuffer layout: [x, y, angle=0, radius, hueBase, 0, 0, 1] per particle (8 floats).
 @[extern "lean_afferent_particles_update_bouncing_and_write_circles"]
 opaque updateBouncingAndWriteCircles
   (particleData : FloatArray)

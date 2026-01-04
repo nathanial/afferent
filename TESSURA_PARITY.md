@@ -8,9 +8,9 @@ This document compares Afferent's rendering architecture to Tessura (a high-perf
 
 | Aspect | Afferent (Metal/Lean) | Tessura (WebGL/TypeScript) |
 |--------|----------------------|---------------------------|
-| **Stroke width** | CPU-expanded to triangles | GPU screen-space (constant pixels) |
+| **Stroke width** | GPU screen-space extrusion | GPU screen-space (constant pixels) |
 | **Batching** | Simple merge by call order | Style-keyed batching + z-index sort |
-| **Tessellation** | Custom ear-clipping | earcut library (proven, handles holes) |
+| **Tessellation** | Earcut port (holes supported) | earcut library (proven, handles holes) |
 | **Dynamic buffers** | FloatBuffer (C-allocated) | DynamicBuffer with auto-grow + type upgrade |
 | **Shader count** | 12 specialized shaders | 4 general shaders |
 | **Immediate mode** | Batch accumulation | Canvas 2D API with deferred flush |
@@ -21,44 +21,7 @@ This document compares Afferent's rendering architecture to Tessura (a high-perf
 
 ## High-Priority Improvements
 
-### 1. Screen-Space Stroke Width
-
-**Problem:** Afferent expands strokes on CPU into triangles at a fixed world-space width. When zooming, strokes scale with the scene rather than remaining a constant pixel width.
-
-**Tessura's Approach:**
-```glsl
-// Vertex shader computes extrusion in screen space
-// Stroke stays constant pixels regardless of zoom
-in vec2 a_position;      // Base line position
-in vec2 a_normal;        // Extrusion direction
-in float a_side;         // Miter scale (+/- for left/right)
-
-uniform float u_halfWidth;
-uniform vec2 u_viewport;
-
-// Extrusion computed on GPU:
-offset = normal * side * halfWidth * 2.0 / viewport;
-```
-
-**Solution for Afferent:**
-1. Create new stroke vertex format: `[x, y, nx, ny, miterScale]` (5 floats)
-2. Add `stroke.metal` shader that receives viewport size uniform
-3. Compute final extrusion in vertex shader
-4. Pass color as uniform (not per-vertex) for solid strokes
-
-**Benefits:**
-- Constant-pixel strokes at any zoom level
-- Better visual quality for maps, CAD, diagrams
-- Reduced CPU tessellation work
-
-**Affected Files:**
-- `native/src/metal/stroke.metal` (new)
-- `Afferent/Render/Tessellation.lean` (new stroke vertex format)
-- `Afferent/FFI/Renderer.lean` (new draw function)
-
----
-
-### 2. Style-Based Batch Sorting
+### 1. Style-Based Batch Sorting
 
 **Problem:** Afferent merges geometry in draw order but doesn't group by style. This causes unnecessary state changes (color uniform updates, shader switches) between draw calls.
 
@@ -108,7 +71,7 @@ structure BatchGroup where
 
 ---
 
-### 3. Separate Fill Vertex Format
+### 2. Separate Fill Vertex Format
 
 **Problem:** Afferent uses 6 floats per vertex (position + RGBA color) even for solid-color fills. This is 3x the bandwidth needed.
 
@@ -155,42 +118,7 @@ structure StrokeVertex where
 
 ---
 
-### 4. Improved Triangulation Algorithm
-
-**Problem:** Afferent's ear-clipping algorithm is O(n²) worst-case and doesn't handle polygons with holes.
-
-**Tessura's Approach:**
-Uses the earcut library which:
-- Has O(n log n) average-case complexity
-- Handles holes natively via hole index array
-- Is battle-tested on millions of real-world polygons
-- Uses z-order curve for spatial locality
-
-**Solution for Afferent:**
-
-Option A: Port earcut algorithm to Lean
-- ~500 lines of code
-- Well-documented algorithm
-- Pure functional implementation possible
-
-Option B: FFI to C earcut implementation
-- Faster implementation
-- Less Lean code to maintain
-- Requires marshalling polygon data
-
-**Key earcut features to implement:**
-1. Flatten polygon + holes to single coordinate array
-2. Track hole start indices
-3. Use z-order curve for ear candidate sorting
-4. Handle degenerate cases (collinear points, self-intersection)
-
-**Affected Files:**
-- `Afferent/Render/Earcut.lean` (new module)
-- `Afferent/Render/Tessellation.lean` (use new triangulator)
-
----
-
-### 5. Z-Index Layer System
+### 3. Z-Index Layer System
 
 **Problem:** Afferent renders in draw order. Complex scenes with overlapping elements require careful ordering by the application.
 
@@ -239,7 +167,7 @@ def flushBatches (batches : Array BatchGroup) : IO Unit := do
 
 ## Medium-Priority Improvements
 
-### 6. Dynamic Buffer Growth Strategy
+### 4. Dynamic Buffer Growth Strategy
 
 **Tessura's DynamicBuffer:**
 - Grows 2x when capacity exceeded
@@ -260,17 +188,16 @@ def DynamicBatch.ensureCapacity (b : DynamicBatch) (verts indices : Nat) : IO Dy
   -- Upgrade index type if vertex count > 65535
 ```
 
-### 7. Shader Consolidation
+### 5. Shader Consolidation
 
 **Current:** 12 specialized shaders
 **Target:** 6-8 shaders with better reuse
 
 Consolidation opportunities:
-- `dynamic_circle/rect/triangle.metal` → one `dynamic_shape.metal` with shape type uniform
 - `instanced.metal` handles rectangles; could extend for circles/triangles via vertex buffer
 - Keep specialized shaders only where GPU-specific optimization is needed
 
-### 8. Frustum Culling for Large Scenes
+### 6. Frustum Culling for Large Scenes
 
 **Tessura's Approach:**
 - Tile-based spatial partitioning
@@ -301,14 +228,12 @@ These aspects are already strong and should be preserved:
 
 | Priority | Item | Impact | Effort |
 |----------|------|--------|--------|
-| 1 | Screen-space strokes | Visual quality | Medium |
-| 2 | Style-keyed batching | Performance | Medium |
-| 3 | Separate fill vertex format | Bandwidth | Small |
-| 4 | Better triangulation | Robustness + speed | Medium |
-| 5 | Z-index sorting | Correctness | Small |
-| 6 | Dynamic buffer growth | Memory efficiency | Small |
-| 7 | Shader consolidation | Maintainability | Medium |
-| 8 | Frustum culling | Large scene perf | Large |
+| 1 | Style-keyed batching | Performance | Medium |
+| 2 | Separate fill vertex format | Bandwidth | Small |
+| 3 | Z-index sorting | Correctness | Small |
+| 4 | Dynamic buffer growth | Memory efficiency | Small |
+| 5 | Shader consolidation | Maintainability | Medium |
+| 6 | Frustum culling | Large scene perf | Large |
 
 ---
 
@@ -320,8 +245,8 @@ Based on Tessura's capabilities:
 |--------|------------------|--------|
 | Solid rectangles/frame | ~10,000 | 100,000+ |
 | Draw calls/frame | O(shapes) | O(unique styles) |
-| Stroke quality | World-space | Screen-space |
-| Polygon holes | Not supported | Supported |
+| Stroke quality | Screen-space | Screen-space |
+| Polygon holes | Supported | Supported |
 | Memory growth | Per-shape alloc | Pooled buffers |
 
 ---
@@ -340,4 +265,4 @@ Key files to study:
 
 ---
 
-*Last updated: 2026-01-03*
+*Last updated: 2026-01-04*

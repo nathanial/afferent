@@ -27,15 +27,6 @@ extern NSString *animatedShaderSource;
 // Orbital particles shader
 extern NSString *orbitalShaderSource;
 
-// Dynamic circle shader
-extern NSString *dynamicCircleShaderSource;
-
-// Dynamic rect shader
-extern NSString *dynamicRectShaderSource;
-
-// Dynamic triangle shader
-extern NSString *dynamicTriangleShaderSource;
-
 // Sprite/texture shader
 extern NSString *spriteShaderSource;
 

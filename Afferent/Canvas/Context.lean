@@ -660,6 +660,16 @@ def batchInstancedRectsBy (count : Nat)
     (generator : Nat → Float × Float × Float × Float × Color)
     (c : Canvas) : IO Canvas := do
   let (canvasW, canvasH) ← c.ctx.getCurrentSize
+  let sizeModeScreen : UInt32 := 1
+  let colorModeRGBA : UInt32 := 0
+  let time := 0.0
+  let hueSpeed := 0.0
+  let transformA := 2.0 / canvasW
+  let transformB := 0.0
+  let transformC := 0.0
+  let transformD := -2.0 / canvasH
+  let transformTx := -1.0
+  let transformTy := 1.0
   let floatCount := count * 8
   -- Reuse existing buffer if large enough, otherwise grow it
   let data := if c.instanceBufferCapacity >= count then
@@ -671,23 +681,26 @@ def batchInstancedRectsBy (count : Nat)
   let mut data := data
   for i in [:count] do
     let (x, y, angle, halfSize, color) := generator i
-    -- Convert position to NDC
-    let ndcX := (x / canvasW) * 2.0 - 1.0
-    let ndcY := 1.0 - (y / canvasH) * 2.0
-    -- Convert halfSize to NDC (use width for uniform scale)
-    let ndcHalfSize := halfSize / canvasW * 2.0
     -- Pack instance data using set! (in-place mutation)
     let base := i * 8
-    data := data.set! base ndcX
-    data := data.set! (base + 1) ndcY
+    data := data.set! base x
+    data := data.set! (base + 1) y
     data := data.set! (base + 2) angle
-    data := data.set! (base + 3) ndcHalfSize
+    data := data.set! (base + 3) halfSize
     data := data.set! (base + 4) color.r
     data := data.set! (base + 5) color.g
     data := data.set! (base + 6) color.b
     data := data.set! (base + 7) color.a
   -- Single GPU draw call with instancing
-  FFI.Renderer.drawInstancedRects c.ctx.renderer data count.toUInt32
+  FFI.Renderer.drawInstancedRects
+    c.ctx.renderer
+    data
+    count.toUInt32
+    transformA transformB transformC transformD transformTx transformTy
+    canvasW canvasH
+    sizeModeScreen
+    time hueSpeed
+    colorModeRGBA
   -- Return canvas with buffer for reuse next frame
   pure { c with instanceBuffer := data, instanceBufferCapacity := count }
 

@@ -13,11 +13,27 @@ typedef struct {
 
 // Instance data structure (matches shader) - 32 bytes packed
 typedef struct __attribute__((packed)) {
-    float pos[2];       // Center position in NDC (8 bytes)
+    float pos[2];       // Center position (world or NDC) (8 bytes)
     float angle;        // Rotation angle in radians (4 bytes)
-    float halfSize;     // Half side length in NDC (4 bytes)
+    float halfSize;     // Half side length (world or pixels) (4 bytes)
     float color[4];     // RGBA (16 bytes)
 } InstanceData;  // Total: 32 bytes
+
+// Instanced uniforms structure (matches instanced shader)
+// transform0 = [a, b, c, d], transform1 = [tx, ty, 0, 0]
+// sizeMode: 0 = world, 1 = screen (pixel size)
+// colorMode: 0 = RGBA, 1 = HSV (time-based)
+typedef struct {
+    float transform0[4];
+    float transform1[4];
+    float viewport[2];
+    float time;
+    float hueSpeed;
+    uint32_t sizeMode;
+    uint32_t colorMode;
+    float padding0;
+    float padding1;
+} InstancedUniforms;  // Total: 64 bytes
 
 // Stroke uniforms structure (matches stroke shader)
 typedef struct {
@@ -110,56 +126,6 @@ typedef struct {
     float padding1;
     float padding2;
 } OrbitalUniforms;
-
-// Dynamic circle data structure (matches shader) - 16 bytes
-typedef struct {
-    float pixelX;           // Position X in pixels (4 bytes)
-    float pixelY;           // Position Y in pixels (4 bytes)
-    float hueBase;          // Base color hue 0-1 (4 bytes)
-    float radiusPixels;     // Radius in pixels (4 bytes)
-} DynamicCircleData;  // Total: 16 bytes
-
-// Dynamic circle uniforms structure (matches shader)
-typedef struct {
-    float time;
-    float canvasWidth;
-    float canvasHeight;
-    float hueSpeed;
-} DynamicCircleUniforms;
-
-// Dynamic rect data structure (matches shader) - 20 bytes
-typedef struct {
-    float pixelX;           // Position X in pixels
-    float pixelY;           // Position Y in pixels
-    float hueBase;          // Base color hue 0-1
-    float halfSizePixels;   // Half size in pixels
-    float rotation;         // Rotation angle in radians
-} DynamicRectData;  // Total: 20 bytes
-
-// Dynamic rect uniforms structure (matches shader)
-typedef struct {
-    float time;
-    float canvasWidth;
-    float canvasHeight;
-    float hueSpeed;
-} DynamicRectUniforms;
-
-// Dynamic triangle data structure (matches shader) - 20 bytes
-typedef struct {
-    float pixelX;           // Position X in pixels
-    float pixelY;           // Position Y in pixels
-    float hueBase;          // Base color hue 0-1
-    float halfSizePixels;   // Half size in pixels
-    float rotation;         // Rotation angle in radians
-} DynamicTriangleData;  // Total: 20 bytes
-
-// Dynamic triangle uniforms structure (matches shader)
-typedef struct {
-    float time;
-    float canvasWidth;
-    float canvasHeight;
-    float hueSpeed;
-} DynamicTriangleUniforms;
 
 // Sprite instance data structure (matches shader) - 20 bytes
 typedef struct {

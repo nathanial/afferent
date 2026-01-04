@@ -156,11 +156,23 @@ void afferent_renderer_draw_stroke_path(
 }
 
 // Draw instanced rectangles - GPU computes transforms
-// instance_data: array of 9 floats per instance (pos.x, pos.y, sin, cos, halfSize, r, g, b, a)
+// instance_data: array of 8 floats per instance (pos.x, pos.y, angle, halfSize, r, g, b, a)
 void afferent_renderer_draw_instanced_rects(
     AfferentRendererRef renderer,
     const float* instance_data,
-    uint32_t instance_count
+    uint32_t instance_count,
+    float transform_a,
+    float transform_b,
+    float transform_c,
+    float transform_d,
+    float transform_tx,
+    float transform_ty,
+    float viewport_width,
+    float viewport_height,
+    uint32_t size_mode,
+    float time,
+    float hue_speed,
+    uint32_t color_mode
 ) {
     if (!renderer || !renderer->currentEncoder || !instance_data || instance_count == 0) {
         return;
@@ -185,11 +197,30 @@ void afferent_renderer_draw_instanced_rects(
         // Copy instance data
         memcpy(instanceBuffer.contents, instance_data, data_size);
 
+        InstancedUniforms u;
+        u.transform0[0] = transform_a;
+        u.transform0[1] = transform_b;
+        u.transform0[2] = transform_c;
+        u.transform0[3] = transform_d;
+        u.transform1[0] = transform_tx;
+        u.transform1[1] = transform_ty;
+        u.transform1[2] = 0.0f;
+        u.transform1[3] = 0.0f;
+        u.viewport[0] = viewport_width;
+        u.viewport[1] = viewport_height;
+        u.time = time;
+        u.hueSpeed = hue_speed;
+        u.sizeMode = size_mode;
+        u.colorMode = color_mode;
+        u.padding0 = 0.0f;
+        u.padding1 = 0.0f;
+
         // Switch to instanced pipeline
         [renderer->currentEncoder setRenderPipelineState:renderer->instancedPipelineState];
 
         // Bind instance buffer
         [renderer->currentEncoder setVertexBuffer:instanceBuffer offset:0 atIndex:0];
+        [renderer->currentEncoder setVertexBytes:&u length:sizeof(InstancedUniforms) atIndex:1];
 
         // Draw: 4 vertices per quad (triangle strip would be 4, but we use 2 triangles = 6 indices)
         // Actually we use drawPrimitives with triangle strip for simplicity
@@ -207,7 +238,19 @@ void afferent_renderer_draw_instanced_rects(
 void afferent_renderer_draw_instanced_triangles(
     AfferentRendererRef renderer,
     const float* instance_data,
-    uint32_t instance_count
+    uint32_t instance_count,
+    float transform_a,
+    float transform_b,
+    float transform_c,
+    float transform_d,
+    float transform_tx,
+    float transform_ty,
+    float viewport_width,
+    float viewport_height,
+    uint32_t size_mode,
+    float time,
+    float hue_speed,
+    uint32_t color_mode
 ) {
     if (!renderer || !renderer->currentEncoder || !instance_data || instance_count == 0) {
         return;
@@ -230,8 +273,27 @@ void afferent_renderer_draw_instanced_triangles(
 
         memcpy(instanceBuffer.contents, instance_data, data_size);
 
+        InstancedUniforms u;
+        u.transform0[0] = transform_a;
+        u.transform0[1] = transform_b;
+        u.transform0[2] = transform_c;
+        u.transform0[3] = transform_d;
+        u.transform1[0] = transform_tx;
+        u.transform1[1] = transform_ty;
+        u.transform1[2] = 0.0f;
+        u.transform1[3] = 0.0f;
+        u.viewport[0] = viewport_width;
+        u.viewport[1] = viewport_height;
+        u.time = time;
+        u.hueSpeed = hue_speed;
+        u.sizeMode = size_mode;
+        u.colorMode = color_mode;
+        u.padding0 = 0.0f;
+        u.padding1 = 0.0f;
+
         [renderer->currentEncoder setRenderPipelineState:renderer->trianglePipelineState];
         [renderer->currentEncoder setVertexBuffer:instanceBuffer offset:0 atIndex:0];
+        [renderer->currentEncoder setVertexBytes:&u length:sizeof(InstancedUniforms) atIndex:1];
 
         // Draw: 3 vertices per triangle
         [renderer->currentEncoder drawPrimitives:MTLPrimitiveTypeTriangle
@@ -247,7 +309,19 @@ void afferent_renderer_draw_instanced_triangles(
 void afferent_renderer_draw_instanced_circles(
     AfferentRendererRef renderer,
     const float* instance_data,
-    uint32_t instance_count
+    uint32_t instance_count,
+    float transform_a,
+    float transform_b,
+    float transform_c,
+    float transform_d,
+    float transform_tx,
+    float transform_ty,
+    float viewport_width,
+    float viewport_height,
+    uint32_t size_mode,
+    float time,
+    float hue_speed,
+    uint32_t color_mode
 ) {
     if (!renderer || !renderer->currentEncoder || !instance_data || instance_count == 0) {
         return;
@@ -270,8 +344,27 @@ void afferent_renderer_draw_instanced_circles(
 
         memcpy(instanceBuffer.contents, instance_data, data_size);
 
+        InstancedUniforms u;
+        u.transform0[0] = transform_a;
+        u.transform0[1] = transform_b;
+        u.transform0[2] = transform_c;
+        u.transform0[3] = transform_d;
+        u.transform1[0] = transform_tx;
+        u.transform1[1] = transform_ty;
+        u.transform1[2] = 0.0f;
+        u.transform1[3] = 0.0f;
+        u.viewport[0] = viewport_width;
+        u.viewport[1] = viewport_height;
+        u.time = time;
+        u.hueSpeed = hue_speed;
+        u.sizeMode = size_mode;
+        u.colorMode = color_mode;
+        u.padding0 = 0.0f;
+        u.padding1 = 0.0f;
+
         [renderer->currentEncoder setRenderPipelineState:renderer->circlePipelineState];
         [renderer->currentEncoder setVertexBuffer:instanceBuffer offset:0 atIndex:0];
+        [renderer->currentEncoder setVertexBytes:&u length:sizeof(InstancedUniforms) atIndex:1];
 
         // Draw: 4 vertices per quad (triangle strip)
         [renderer->currentEncoder drawPrimitives:MTLPrimitiveTypeTriangleStrip

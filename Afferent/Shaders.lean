@@ -23,15 +23,6 @@ def animated : String := include_str% "../native/src/metal/shaders/animated.meta
 /-- Orbital particles shader -/
 def orbital : String := include_str% "../native/src/metal/shaders/orbital.metal"
 
-/-- Dynamic circle shader -/
-def dynamicCircle : String := include_str% "../native/src/metal/shaders/dynamic_circle.metal"
-
-/-- Dynamic rect shader -/
-def dynamicRect : String := include_str% "../native/src/metal/shaders/dynamic_rect.metal"
-
-/-- Dynamic triangle shader -/
-def dynamicTriangle : String := include_str% "../native/src/metal/shaders/dynamic_triangle.metal"
-
 /-- Sprite/texture shader -/
 def sprite : String := include_str% "../native/src/metal/shaders/sprite.metal"
 
@@ -57,9 +48,6 @@ def all : Array (String × String) := #[
   ("instanced", instanced),
   ("animated", animated),
   ("orbital", orbital),
-  ("dynamic_circle", dynamicCircle),
-  ("dynamic_rect", dynamicRect),
-  ("dynamic_triangle", dynamicTriangle),
   ("sprite", sprite),
   ("stroke", stroke),
   ("stroke_path", strokePath),

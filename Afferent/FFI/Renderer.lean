@@ -96,27 +96,48 @@ opaque Renderer.drawStrokePath
 
 -- Instanced rectangle drawing (GPU-accelerated transforms)
 -- instanceData: Array of 8 floats per instance (pos.x, pos.y, angle, halfSize, r, g, b, a)
+-- sizeMode: 0 = world (offset transformed by matrix), 1 = screen (pixel size)
+-- colorMode: 0 = RGBA, 1 = HSV(time-based)
 @[extern "lean_afferent_renderer_draw_instanced_rects"]
 opaque Renderer.drawInstancedRects
   (renderer : @& Renderer)
   (instanceData : @& Array Float)
-  (instanceCount : UInt32) : IO Unit
+  (instanceCount : UInt32)
+  (transformA transformB transformC transformD transformTx transformTy : Float)
+  (viewportWidth viewportHeight : Float)
+  (sizeMode : UInt32)
+  (time hueSpeed : Float)
+  (colorMode : UInt32) : IO Unit
 
 -- Instanced triangle drawing (GPU-accelerated transforms)
 -- instanceData: Array of 8 floats per instance (pos.x, pos.y, angle, halfSize, r, g, b, a)
+-- sizeMode: 0 = world (offset transformed by matrix), 1 = screen (pixel size)
+-- colorMode: 0 = RGBA, 1 = HSV(time-based)
 @[extern "lean_afferent_renderer_draw_instanced_triangles"]
 opaque Renderer.drawInstancedTriangles
   (renderer : @& Renderer)
   (instanceData : @& Array Float)
-  (instanceCount : UInt32) : IO Unit
+  (instanceCount : UInt32)
+  (transformA transformB transformC transformD transformTx transformTy : Float)
+  (viewportWidth viewportHeight : Float)
+  (sizeMode : UInt32)
+  (time hueSpeed : Float)
+  (colorMode : UInt32) : IO Unit
 
 -- Instanced circle drawing (smooth circles via fragment shader)
 -- instanceData: Array of 8 floats per instance (pos.x, pos.y, angle, halfSize, r, g, b, a)
+-- sizeMode: 0 = world (offset transformed by matrix), 1 = screen (pixel size)
+-- colorMode: 0 = RGBA, 1 = HSV(time-based)
 @[extern "lean_afferent_renderer_draw_instanced_circles"]
 opaque Renderer.drawInstancedCircles
   (renderer : @& Renderer)
   (instanceData : @& Array Float)
-  (instanceCount : UInt32) : IO Unit
+  (instanceCount : UInt32)
+  (transformA transformB transformC transformD transformTx transformTy : Float)
+  (viewportWidth viewportHeight : Float)
+  (sizeMode : UInt32)
+  (time hueSpeed : Float)
+  (colorMode : UInt32) : IO Unit
 
 -- Scissor rect for clipping
 @[extern "lean_afferent_renderer_set_scissor"]
@@ -132,19 +153,34 @@ opaque Renderer.resetScissor (renderer : @& Renderer) : IO Unit
 opaque Renderer.drawInstancedRectsBuffer
   (renderer : @& Renderer)
   (buffer : @& FloatBuffer)
-  (instanceCount : UInt32) : IO Unit
+  (instanceCount : UInt32)
+  (transformA transformB transformC transformD transformTx transformTy : Float)
+  (viewportWidth viewportHeight : Float)
+  (sizeMode : UInt32)
+  (time hueSpeed : Float)
+  (colorMode : UInt32) : IO Unit
 
 @[extern "lean_afferent_renderer_draw_instanced_triangles_buffer"]
 opaque Renderer.drawInstancedTrianglesBuffer
   (renderer : @& Renderer)
   (buffer : @& FloatBuffer)
-  (instanceCount : UInt32) : IO Unit
+  (instanceCount : UInt32)
+  (transformA transformB transformC transformD transformTx transformTy : Float)
+  (viewportWidth viewportHeight : Float)
+  (sizeMode : UInt32)
+  (time hueSpeed : Float)
+  (colorMode : UInt32) : IO Unit
 
 @[extern "lean_afferent_renderer_draw_instanced_circles_buffer"]
 opaque Renderer.drawInstancedCirclesBuffer
   (renderer : @& Renderer)
   (buffer : @& FloatBuffer)
-  (instanceCount : UInt32) : IO Unit
+  (instanceCount : UInt32)
+  (transformA transformB transformC transformD transformTx transformTy : Float)
+  (viewportWidth viewportHeight : Float)
+  (sizeMode : UInt32)
+  (time hueSpeed : Float)
+  (colorMode : UInt32) : IO Unit
 
 -- ============================================================================
 -- ANIMATED RENDERING - GPU-side animation for maximum performance
@@ -206,55 +242,6 @@ opaque Renderer.uploadOrbitalParticles
 opaque Renderer.drawOrbitalParticles
   (renderer : @& Renderer)
   (time : Float) : IO Unit
-
--- ============================================================================
--- DYNAMIC CIRCLE RENDERING - CPU positions, GPU color/NDC
--- Positions updated each frame, HSV->RGB and pixel->NDC done on GPU
--- Data format: [pixelX, pixelY, hueBase, radiusPixels] × count (4 floats per circle)
--- ============================================================================
-
--- Draw dynamic circles (called every frame with position data)
-@[extern "lean_afferent_renderer_draw_dynamic_circles"]
-opaque Renderer.drawDynamicCircles
-  (renderer : @& Renderer)
-  (data : @& Array Float)
-  (count : UInt32)
-  (time : Float)
-  (canvasWidth : Float)
-  (canvasHeight : Float) : IO Unit
-
--- Draw dynamic circles directly from a FloatBuffer containing the expected layout
--- (no Lean Array boxing/unboxing).
-@[extern "lean_afferent_renderer_draw_dynamic_circles_buffer"]
-opaque Renderer.drawDynamicCirclesBuffer
-  (renderer : @& Renderer)
-  (buffer : @& FloatBuffer)
-  (count : UInt32)
-  (time : Float)
-  (canvasWidth : Float)
-  (canvasHeight : Float) : IO Unit
-
--- Draw dynamic rects (called every frame with position data)
--- data: [pixelX, pixelY, hueBase, halfSizePixels, rotation] × count (5 floats per rect)
-@[extern "lean_afferent_renderer_draw_dynamic_rects"]
-opaque Renderer.drawDynamicRects
-  (renderer : @& Renderer)
-  (data : @& Array Float)
-  (count : UInt32)
-  (time : Float)
-  (canvasWidth : Float)
-  (canvasHeight : Float) : IO Unit
-
--- Draw dynamic triangles (called every frame with position data)
--- data: [pixelX, pixelY, hueBase, halfSizePixels, rotation] × count (5 floats per triangle)
-@[extern "lean_afferent_renderer_draw_dynamic_triangles"]
-opaque Renderer.drawDynamicTriangles
-  (renderer : @& Renderer)
-  (data : @& Array Float)
-  (count : UInt32)
-  (time : Float)
-  (canvasWidth : Float)
-  (canvasHeight : Float) : IO Unit
 
 -- ============================================================================
 -- TEXTURED RECTANGLE RENDERING - Map tile rendering with source/dest rects

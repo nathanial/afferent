@@ -775,6 +775,18 @@ LEAN_EXPORT lean_obj_res lean_afferent_renderer_draw_instanced_rects(
     lean_obj_arg renderer_obj,
     lean_obj_arg instance_data_arr,
     uint32_t instance_count,
+    double transform_a,
+    double transform_b,
+    double transform_c,
+    double transform_d,
+    double transform_tx,
+    double transform_ty,
+    double viewport_width,
+    double viewport_height,
+    uint32_t size_mode,
+    double time,
+    double hue_speed,
+    uint32_t color_mode,
     lean_obj_arg world
 ) {
     AfferentRendererRef renderer = (AfferentRendererRef)lean_get_external_data(renderer_obj);
@@ -802,7 +814,23 @@ LEAN_EXPORT lean_obj_res lean_afferent_renderer_draw_instanced_rects(
         g_instance_buffer[i] = (float)lean_unbox_float(lean_array_get_core(instance_data_arr, i));
     }
 
-    afferent_renderer_draw_instanced_rects(renderer, g_instance_buffer, instance_count);
+    afferent_renderer_draw_instanced_rects(
+        renderer,
+        g_instance_buffer,
+        instance_count,
+        (float)transform_a,
+        (float)transform_b,
+        (float)transform_c,
+        (float)transform_d,
+        (float)transform_tx,
+        (float)transform_ty,
+        (float)viewport_width,
+        (float)viewport_height,
+        size_mode,
+        (float)time,
+        (float)hue_speed,
+        color_mode
+    );
     // Don't free - reuse next frame
 
     return lean_io_result_mk_ok(lean_box(0));
@@ -813,6 +841,18 @@ LEAN_EXPORT lean_obj_res lean_afferent_renderer_draw_instanced_triangles(
     lean_obj_arg renderer_obj,
     lean_obj_arg instance_data_arr,
     uint32_t instance_count,
+    double transform_a,
+    double transform_b,
+    double transform_c,
+    double transform_d,
+    double transform_tx,
+    double transform_ty,
+    double viewport_width,
+    double viewport_height,
+    uint32_t size_mode,
+    double time,
+    double hue_speed,
+    uint32_t color_mode,
     lean_obj_arg world
 ) {
     AfferentRendererRef renderer = (AfferentRendererRef)lean_get_external_data(renderer_obj);
@@ -838,7 +878,23 @@ LEAN_EXPORT lean_obj_res lean_afferent_renderer_draw_instanced_triangles(
         g_instance_buffer[i] = (float)lean_unbox_float(lean_array_get_core(instance_data_arr, i));
     }
 
-    afferent_renderer_draw_instanced_triangles(renderer, g_instance_buffer, instance_count);
+    afferent_renderer_draw_instanced_triangles(
+        renderer,
+        g_instance_buffer,
+        instance_count,
+        (float)transform_a,
+        (float)transform_b,
+        (float)transform_c,
+        (float)transform_d,
+        (float)transform_tx,
+        (float)transform_ty,
+        (float)viewport_width,
+        (float)viewport_height,
+        size_mode,
+        (float)time,
+        (float)hue_speed,
+        color_mode
+    );
 
     return lean_io_result_mk_ok(lean_box(0));
 }
@@ -848,6 +904,18 @@ LEAN_EXPORT lean_obj_res lean_afferent_renderer_draw_instanced_circles(
     lean_obj_arg renderer_obj,
     lean_obj_arg instance_data_arr,
     uint32_t instance_count,
+    double transform_a,
+    double transform_b,
+    double transform_c,
+    double transform_d,
+    double transform_tx,
+    double transform_ty,
+    double viewport_width,
+    double viewport_height,
+    uint32_t size_mode,
+    double time,
+    double hue_speed,
+    uint32_t color_mode,
     lean_obj_arg world
 ) {
     AfferentRendererRef renderer = (AfferentRendererRef)lean_get_external_data(renderer_obj);
@@ -873,7 +941,23 @@ LEAN_EXPORT lean_obj_res lean_afferent_renderer_draw_instanced_circles(
         g_instance_buffer[i] = (float)lean_unbox_float(lean_array_get_core(instance_data_arr, i));
     }
 
-    afferent_renderer_draw_instanced_circles(renderer, g_instance_buffer, instance_count);
+    afferent_renderer_draw_instanced_circles(
+        renderer,
+        g_instance_buffer,
+        instance_count,
+        (float)transform_a,
+        (float)transform_b,
+        (float)transform_c,
+        (float)transform_d,
+        (float)transform_tx,
+        (float)transform_ty,
+        (float)viewport_width,
+        (float)viewport_height,
+        size_mode,
+        (float)time,
+        (float)hue_speed,
+        color_mode
+    );
 
     return lean_io_result_mk_ok(lean_box(0));
 }
@@ -1129,6 +1213,66 @@ LEAN_EXPORT lean_obj_res lean_afferent_float_buffer_write_sprites_from_particles
     return lean_io_result_mk_ok(lean_box(0));
 }
 
+// Bulk-write instanced shape data from Lean particle array into a FloatBuffer.
+// particle_data_arr layout: [x, y, vx, vy, hue] per particle (5 doubles).
+// Writes InstanceData layout into buffer: [x, y, rotation, halfSize, hue, 0, 0, 1].
+// rotation_mode: 0 = uniform rotation, 1 = animated (time * spinSpeed + hue * 2π).
+LEAN_EXPORT lean_obj_res lean_afferent_float_buffer_write_instanced_from_particles(
+    lean_obj_arg buffer_obj,
+    lean_obj_arg particle_data_arr,
+    uint32_t count,
+    double halfSize,
+    double rotation,
+    double time,
+    double spinSpeed,
+    uint32_t rotation_mode,
+    lean_obj_arg world
+) {
+    AfferentFloatBufferRef buffer = (AfferentFloatBufferRef)lean_get_external_data(buffer_obj);
+
+    size_t arr_size = (size_t)lean_unbox(lean_float_array_size(particle_data_arr));
+    size_t expected_size = (size_t)count * 5;
+    if (count == 0 || arr_size < expected_size) {
+        return lean_io_result_mk_ok(lean_box(0));
+    }
+
+    size_t out_needed = (size_t)count * 8;
+    if (!buffer || afferent_float_buffer_capacity(buffer) < out_needed) {
+        return lean_io_result_mk_ok(lean_box(0));
+    }
+
+    const double* src = lean_float_array_cptr(particle_data_arr);
+    float* out = (float*)afferent_float_buffer_data(buffer);
+    float h = (float)halfSize;
+    float rot = (float)rotation;
+    float t = (float)time;
+    float spin = (float)spinSpeed;
+    const float two_pi = 6.283185307f;
+
+    for (uint32_t i = 0; i < count; i++) {
+        size_t base = (size_t)i * 5;
+        float x = (float)src[base];
+        float y = (float)src[base + 1];
+        float hue = (float)src[base + 4];
+        float angle = rot;
+        if (rotation_mode == 1) {
+            angle = t * spin + hue * two_pi;
+        }
+
+        size_t o = (size_t)i * 8;
+        out[o + 0] = x;
+        out[o + 1] = y;
+        out[o + 2] = angle;
+        out[o + 3] = h;
+        out[o + 4] = hue;
+        out[o + 5] = 0.0f;
+        out[o + 6] = 0.0f;
+        out[o + 7] = 1.0f;
+    }
+
+    return lean_io_result_mk_ok(lean_box(0));
+}
+
 // ============================================================================
 // FUSED PHYSICS + PACKING (FloatArray particle state -> FloatBuffer instances)
 // ============================================================================
@@ -1208,8 +1352,8 @@ LEAN_EXPORT lean_obj_res lean_afferent_particles_update_bouncing_and_write_sprit
     return lean_io_result_mk_ok(particle_data_arr);
 }
 
-// Update bouncing physics in-place and write dynamic circle data to FloatBuffer.
-// circle_buffer: FloatBuffer [x, y, hueBase, radius] per particle (4 floats).
+// Update bouncing physics in-place and write instanced circle data to FloatBuffer.
+// circle_buffer: FloatBuffer [x, y, angle=0, radius, hueBase, 0, 0, 1] per particle (8 floats).
 LEAN_EXPORT lean_obj_res lean_afferent_particles_update_bouncing_and_write_circles(
     lean_obj_arg particle_data_arr,
     uint32_t count,
@@ -1237,7 +1381,7 @@ LEAN_EXPORT lean_obj_res lean_afferent_particles_update_bouncing_and_write_circl
     }
 
     AfferentFloatBufferRef circle_buffer = (AfferentFloatBufferRef)lean_get_external_data(circle_buffer_obj);
-    size_t out_needed = (size_t)count * 4;
+    size_t out_needed = (size_t)count * 8;
     if (!circle_buffer || afferent_float_buffer_capacity(circle_buffer) < out_needed) {
         return lean_io_result_mk_ok(particle_data_arr);
     }
@@ -1271,11 +1415,15 @@ LEAN_EXPORT lean_obj_res lean_afferent_particles_update_bouncing_and_write_circl
         p[base + 2] = vx;
         p[base + 3] = vy;
 
-        size_t o = (size_t)i * 4;
+        size_t o = (size_t)i * 8;
         out[o + 0] = (float)x;
         out[o + 1] = (float)y;
-        out[o + 2] = (float)hue;
+        out[o + 2] = 0.0f;
         out[o + 3] = rad;
+        out[o + 4] = (float)hue;
+        out[o + 5] = 0.0f;
+        out[o + 6] = 0.0f;
+        out[o + 7] = 1.0f;
     }
 
     return lean_io_result_mk_ok(particle_data_arr);
@@ -1286,6 +1434,18 @@ LEAN_EXPORT lean_obj_res lean_afferent_renderer_draw_instanced_rects_buffer(
     lean_obj_arg renderer_obj,
     lean_obj_arg buffer_obj,
     uint32_t instance_count,
+    double transform_a,
+    double transform_b,
+    double transform_c,
+    double transform_d,
+    double transform_tx,
+    double transform_ty,
+    double viewport_width,
+    double viewport_height,
+    uint32_t size_mode,
+    double time,
+    double hue_speed,
+    uint32_t color_mode,
     lean_obj_arg world
 ) {
     AfferentRendererRef renderer = (AfferentRendererRef)lean_get_external_data(renderer_obj);
@@ -1295,7 +1455,19 @@ LEAN_EXPORT lean_obj_res lean_afferent_renderer_draw_instanced_rects_buffer(
     afferent_renderer_draw_instanced_rects(
         renderer,
         afferent_float_buffer_data(buffer),
-        instance_count
+        instance_count,
+        (float)transform_a,
+        (float)transform_b,
+        (float)transform_c,
+        (float)transform_d,
+        (float)transform_tx,
+        (float)transform_ty,
+        (float)viewport_width,
+        (float)viewport_height,
+        size_mode,
+        (float)time,
+        (float)hue_speed,
+        color_mode
     );
     return lean_io_result_mk_ok(lean_box(0));
 }
@@ -1304,6 +1476,18 @@ LEAN_EXPORT lean_obj_res lean_afferent_renderer_draw_instanced_triangles_buffer(
     lean_obj_arg renderer_obj,
     lean_obj_arg buffer_obj,
     uint32_t instance_count,
+    double transform_a,
+    double transform_b,
+    double transform_c,
+    double transform_d,
+    double transform_tx,
+    double transform_ty,
+    double viewport_width,
+    double viewport_height,
+    uint32_t size_mode,
+    double time,
+    double hue_speed,
+    uint32_t color_mode,
     lean_obj_arg world
 ) {
     AfferentRendererRef renderer = (AfferentRendererRef)lean_get_external_data(renderer_obj);
@@ -1312,7 +1496,19 @@ LEAN_EXPORT lean_obj_res lean_afferent_renderer_draw_instanced_triangles_buffer(
     afferent_renderer_draw_instanced_triangles(
         renderer,
         afferent_float_buffer_data(buffer),
-        instance_count
+        instance_count,
+        (float)transform_a,
+        (float)transform_b,
+        (float)transform_c,
+        (float)transform_d,
+        (float)transform_tx,
+        (float)transform_ty,
+        (float)viewport_width,
+        (float)viewport_height,
+        size_mode,
+        (float)time,
+        (float)hue_speed,
+        color_mode
     );
     return lean_io_result_mk_ok(lean_box(0));
 }
@@ -1321,6 +1517,18 @@ LEAN_EXPORT lean_obj_res lean_afferent_renderer_draw_instanced_circles_buffer(
     lean_obj_arg renderer_obj,
     lean_obj_arg buffer_obj,
     uint32_t instance_count,
+    double transform_a,
+    double transform_b,
+    double transform_c,
+    double transform_d,
+    double transform_tx,
+    double transform_ty,
+    double viewport_width,
+    double viewport_height,
+    uint32_t size_mode,
+    double time,
+    double hue_speed,
+    uint32_t color_mode,
     lean_obj_arg world
 ) {
     AfferentRendererRef renderer = (AfferentRendererRef)lean_get_external_data(renderer_obj);
@@ -1329,7 +1537,19 @@ LEAN_EXPORT lean_obj_res lean_afferent_renderer_draw_instanced_circles_buffer(
     afferent_renderer_draw_instanced_circles(
         renderer,
         afferent_float_buffer_data(buffer),
-        instance_count
+        instance_count,
+        (float)transform_a,
+        (float)transform_b,
+        (float)transform_c,
+        (float)transform_d,
+        (float)transform_tx,
+        (float)transform_ty,
+        (float)viewport_width,
+        (float)viewport_height,
+        size_mode,
+        (float)time,
+        (float)hue_speed,
+        color_mode
     );
     return lean_io_result_mk_ok(lean_box(0));
 }
@@ -1474,110 +1694,6 @@ LEAN_EXPORT lean_obj_res lean_afferent_renderer_draw_orbital_particles(
 ) {
     AfferentRendererRef renderer = (AfferentRendererRef)lean_get_external_data(renderer_obj);
     afferent_renderer_draw_orbital_particles(renderer, (float)time);
-    return lean_io_result_mk_ok(lean_box(0));
-}
-
-// Draw dynamic circles (positions from CPU, color + NDC from GPU)
-// data: [pixelX, pixelY, hueBase, radiusPixels] × count (4 floats per circle)
-LEAN_EXPORT lean_obj_res lean_afferent_renderer_draw_dynamic_circles(
-    lean_obj_arg renderer_obj,
-    lean_obj_arg data_arr,
-    uint32_t count,
-    double time,
-    double canvasWidth,
-    double canvasHeight,
-    lean_obj_arg world
-) {
-    AfferentRendererRef renderer = (AfferentRendererRef)lean_get_external_data(renderer_obj);
-
-    // Extract float array data - 4 floats per circle
-    size_t arr_size = lean_array_size(data_arr);
-    float* data = malloc(arr_size * sizeof(float));
-    for (size_t i = 0; i < arr_size; i++) {
-        lean_object* elem = lean_array_get_core(data_arr, i);
-        data[i] = (float)lean_unbox_float(elem);
-    }
-
-    afferent_renderer_draw_dynamic_circles(renderer, data, count, (float)time, (float)canvasWidth, (float)canvasHeight);
-
-    free(data);
-    return lean_io_result_mk_ok(lean_box(0));
-}
-
-// Draw dynamic circles directly from FloatBuffer (no conversion)
-LEAN_EXPORT lean_obj_res lean_afferent_renderer_draw_dynamic_circles_buffer(
-    lean_obj_arg renderer_obj,
-    lean_obj_arg buffer_obj,
-    uint32_t count,
-    double time,
-    double canvasWidth,
-    double canvasHeight,
-    lean_obj_arg world
-) {
-    AfferentRendererRef renderer = (AfferentRendererRef)lean_get_external_data(renderer_obj);
-    AfferentFloatBufferRef buffer = (AfferentFloatBufferRef)lean_get_external_data(buffer_obj);
-    afferent_renderer_draw_dynamic_circles(
-        renderer,
-        afferent_float_buffer_data(buffer),
-        count,
-        (float)time,
-        (float)canvasWidth,
-        (float)canvasHeight
-    );
-    return lean_io_result_mk_ok(lean_box(0));
-}
-
-// Draw dynamic rects (positions/rotation from CPU, color + NDC from GPU)
-// data: [pixelX, pixelY, hueBase, halfSizePixels, rotation] × count (5 floats per rect)
-LEAN_EXPORT lean_obj_res lean_afferent_renderer_draw_dynamic_rects(
-    lean_obj_arg renderer_obj,
-    lean_obj_arg data_arr,
-    uint32_t count,
-    double time,
-    double canvasWidth,
-    double canvasHeight,
-    lean_obj_arg world
-) {
-    AfferentRendererRef renderer = (AfferentRendererRef)lean_get_external_data(renderer_obj);
-
-    // Extract float array data - 5 floats per rect
-    size_t arr_size = lean_array_size(data_arr);
-    float* data = malloc(arr_size * sizeof(float));
-    for (size_t i = 0; i < arr_size; i++) {
-        lean_object* elem = lean_array_get_core(data_arr, i);
-        data[i] = (float)lean_unbox_float(elem);
-    }
-
-    afferent_renderer_draw_dynamic_rects(renderer, data, count, (float)time, (float)canvasWidth, (float)canvasHeight);
-
-    free(data);
-    return lean_io_result_mk_ok(lean_box(0));
-}
-
-// Draw dynamic triangles (positions/rotation from CPU, color + NDC from GPU)
-// data: [pixelX, pixelY, hueBase, halfSizePixels, rotation] × count (5 floats per triangle)
-LEAN_EXPORT lean_obj_res lean_afferent_renderer_draw_dynamic_triangles(
-    lean_obj_arg renderer_obj,
-    lean_obj_arg data_arr,
-    uint32_t count,
-    double time,
-    double canvasWidth,
-    double canvasHeight,
-    lean_obj_arg world
-) {
-    AfferentRendererRef renderer = (AfferentRendererRef)lean_get_external_data(renderer_obj);
-
-    // Extract float array data - 5 floats per triangle
-    size_t arr_size = lean_array_size(data_arr);
-    float* data = malloc(arr_size * sizeof(float));
-    for (size_t i = 0; i < arr_size; i++) {
-        lean_object* elem = lean_array_get_core(data_arr, i);
-        data[i] = (float)lean_unbox_float(elem);
-    }
-
-    afferent_renderer_draw_dynamic_triangles(renderer, data, count, (float)time, (float)canvasWidth, (float)canvasHeight);
-
-    free(data);
     return lean_io_result_mk_ok(lean_box(0));
 }
 

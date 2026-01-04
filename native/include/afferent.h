@@ -209,11 +209,25 @@ void afferent_renderer_draw_stroke_path(
 
 // Instanced rectangle drawing (GPU-accelerated transforms)
 // instance_data: array of 8 floats per instance:
-//   pos.x, pos.y (NDC), angle, halfSize (NDC), r, g, b, a
+//   pos.x, pos.y, angle, halfSize, r, g, b, a
+// transform: column-major affine (a, b, c, d, tx, ty)
+// sizeMode: 0 = world (offset transformed by matrix), 1 = screen (pixel size)
 void afferent_renderer_draw_instanced_rects(
     AfferentRendererRef renderer,
     const float* instance_data,
-    uint32_t instance_count
+    uint32_t instance_count,
+    float transform_a,
+    float transform_b,
+    float transform_c,
+    float transform_d,
+    float transform_tx,
+    float transform_ty,
+    float viewport_width,
+    float viewport_height,
+    uint32_t size_mode,
+    float time,
+    float hue_speed,
+    uint32_t color_mode
 );
 
 // Instanced triangle drawing (GPU-accelerated transforms)
@@ -221,7 +235,19 @@ void afferent_renderer_draw_instanced_rects(
 void afferent_renderer_draw_instanced_triangles(
     AfferentRendererRef renderer,
     const float* instance_data,
-    uint32_t instance_count
+    uint32_t instance_count,
+    float transform_a,
+    float transform_b,
+    float transform_c,
+    float transform_d,
+    float transform_tx,
+    float transform_ty,
+    float viewport_width,
+    float viewport_height,
+    uint32_t size_mode,
+    float time,
+    float hue_speed,
+    uint32_t color_mode
 );
 
 // Instanced circle drawing (smooth circles via fragment shader)
@@ -229,7 +255,19 @@ void afferent_renderer_draw_instanced_triangles(
 void afferent_renderer_draw_instanced_circles(
     AfferentRendererRef renderer,
     const float* instance_data,
-    uint32_t instance_count
+    uint32_t instance_count,
+    float transform_a,
+    float transform_b,
+    float transform_c,
+    float transform_d,
+    float transform_tx,
+    float transform_ty,
+    float viewport_width,
+    float viewport_height,
+    uint32_t size_mode,
+    float time,
+    float hue_speed,
+    uint32_t color_mode
 );
 
 // Scissor rect for clipping (in pixel coordinates)
@@ -386,44 +424,6 @@ void afferent_renderer_upload_orbital_particles(
 void afferent_renderer_draw_orbital_particles(
     AfferentRendererRef renderer,
     float time
-);
-
-// ============================================================================
-// Dynamic circle rendering - CPU positions, GPU color/NDC conversion
-// Positions updated each frame, HSV->RGB and pixel->NDC done on GPU
-// ============================================================================
-
-// Draw dynamic circles (called every frame with position data)
-// data: [pixelX, pixelY, hueBase, radiusPixels] × count (4 floats per circle)
-void afferent_renderer_draw_dynamic_circles(
-    AfferentRendererRef renderer,
-    const float* data,
-    uint32_t count,
-    float time,
-    float canvasWidth,
-    float canvasHeight
-);
-
-// Draw dynamic rects (called every frame with position data)
-// data: [pixelX, pixelY, hueBase, halfSizePixels, rotation] × count (5 floats per rect)
-void afferent_renderer_draw_dynamic_rects(
-    AfferentRendererRef renderer,
-    const float* data,
-    uint32_t count,
-    float time,
-    float canvasWidth,
-    float canvasHeight
-);
-
-// Draw dynamic triangles (called every frame with position data)
-// data: [pixelX, pixelY, hueBase, halfSizePixels, rotation] × count (5 floats per triangle)
-void afferent_renderer_draw_dynamic_triangles(
-    AfferentRendererRef renderer,
-    const float* data,
-    uint32_t count,
-    float time,
-    float canvasWidth,
-    float canvasHeight
 );
 
 // ============================================================================
