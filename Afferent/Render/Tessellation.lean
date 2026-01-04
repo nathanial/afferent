@@ -6,6 +6,7 @@ import Afferent.Core.Types
 import Afferent.Core.Path
 import Afferent.Core.Paint
 import Afferent.Core.Transform
+import Afferent.Render.Earcut
 
 
 namespace Afferent
@@ -262,8 +263,173 @@ def pathToPolygonWithClosed (path : Path) (tolerance : Float := 0.5) : Array Poi
   return (points, isClosed)
 
 /-- Convert a path to an array of polygon vertices (flatten all curves). -/
+private def trimDuplicateTail (ring : Array Point) : Array Point := Id.run do
+  if ring.size < 2 then
+    return ring
+  let first := ring[0]!
+  let last := ring[ring.size - 1]!
+  if first == last then
+    let mut trimmed : Array Point := Array.mkEmpty (ring.size - 1)
+    for i in [:ring.size - 1] do
+      trimmed := trimmed.push ring[i]!
+    return trimmed
+  return ring
+
+/-- Convert a path to an array of polygon vertices (flatten all curves). -/
 def pathToPolygon (path : Path) (tolerance : Float := 0.5) : Array Point :=
-  (pathToPolygonWithClosed path tolerance).1
+  let points := (pathToPolygonWithClosed path tolerance).1
+  trimDuplicateTail points
+
+/-- Convert a path to an array of rings (each ring is a flattened subpath). -/
+def pathToRings (path : Path) (tolerance : Float := 0.5) : Array (Array Point) := Id.run do
+  let mut rings : Array (Array Point) := #[]
+  let mut ring : Array Point := #[]
+  let mut current := Point.zero
+  let mut subpathStart := Point.zero
+  let mut hasCurrent := false
+
+  for cmd in path.commands do
+    match cmd with
+    | .moveTo p =>
+      if ring.size >= 3 then
+        let trimmed := trimDuplicateTail ring
+        if trimmed.size >= 3 then
+          rings := rings.push trimmed
+      ring := #[]
+      hasCurrent := true
+      current := p
+      subpathStart := p
+      ring := ring.push p
+    | .lineTo p =>
+      if !hasCurrent then
+        hasCurrent := true
+        current := p
+        subpathStart := p
+        ring := ring.push p
+      else
+        if ring.isEmpty then
+          ring := ring.push current
+        ring := ring.push p
+        current := p
+    | .quadraticCurveTo cp p =>
+      if !hasCurrent then
+        hasCurrent := true
+        current := p
+        subpathStart := p
+        ring := ring.push p
+      else
+        if ring.isEmpty then
+          ring := ring.push current
+        let flat := flattenQuadraticBezier current cp p tolerance
+        for pt in flat do
+          ring := ring.push pt
+        current := p
+    | .bezierCurveTo cp1 cp2 p =>
+      if !hasCurrent then
+        hasCurrent := true
+        current := p
+        subpathStart := p
+        ring := ring.push p
+      else
+        if ring.isEmpty then
+          ring := ring.push current
+        let flat := flattenCubicBezier current cp1 cp2 p tolerance
+        for pt in flat do
+          ring := ring.push pt
+        current := p
+    | .arc center radius startAngle endAngle counterclockwise =>
+      if !hasCurrent then
+        let endPt := Point.mk'
+          (center.x + radius * Float.cos endAngle)
+          (center.y + radius * Float.sin endAngle)
+        hasCurrent := true
+        current := endPt
+        subpathStart := endPt
+        ring := ring.push endPt
+      else
+        if ring.isEmpty then
+          ring := ring.push current
+        let beziers := Path.arcToBeziers center radius startAngle endAngle counterclockwise
+        let mut arcCurrent := current
+        for (cp1, cp2, endPt) in beziers do
+          let flat := flattenCubicBezier arcCurrent cp1 cp2 endPt tolerance
+          for pt in flat do
+            ring := ring.push pt
+          arcCurrent := endPt
+        current := arcCurrent
+    | .arcTo p1 p2 radius =>
+      if !hasCurrent then
+        hasCurrent := true
+        current := p1
+        subpathStart := p1
+        ring := ring.push p1
+      else
+        match computeArcTo current p1 p2 radius with
+        | some (t1, beziers, t2) =>
+          if ring.isEmpty then
+            ring := ring.push current
+          if Point.distance current t1 > 0.0001 then
+            ring := ring.push t1
+          let mut arcCurrent := t1
+          for (cp1, cp2, endPt) in beziers do
+            let flat := flattenCubicBezier arcCurrent cp1 cp2 endPt tolerance
+            for pt in flat do
+              ring := ring.push pt
+            arcCurrent := endPt
+          current := t2
+        | none =>
+          if ring.isEmpty then
+            ring := ring.push current
+          ring := ring.push p1
+          current := p1
+    | .rect rect =>
+      if ring.size >= 3 then
+        let trimmed := trimDuplicateTail ring
+        if trimmed.size >= 3 then
+          rings := rings.push trimmed
+      ring := #[]
+      let tl := rect.topLeft
+      let tr := rect.topRight
+      let br := rect.bottomRight
+      let bl := rect.bottomLeft
+      rings := rings.push (trimDuplicateTail #[tl, tr, br, bl])
+      current := tl
+      subpathStart := tl
+      hasCurrent := true
+    | .closePath =>
+      if ring.size >= 3 then
+        let trimmed := trimDuplicateTail ring
+        if trimmed.size >= 3 then
+          rings := rings.push trimmed
+      ring := #[]
+      current := subpathStart
+      hasCurrent := true
+
+  if ring.size >= 3 then
+    let trimmed := trimDuplicateTail ring
+    if trimmed.size >= 3 then
+      rings := rings.push trimmed
+  ring := #[]
+  return rings
+
+private def flattenRings (rings : Array (Array Point)) : Array Point × Array Nat := Id.run do
+  let mut points : Array Point := #[]
+  let mut holes : Array Nat := #[]
+  for i in [:rings.size] do
+    let ring := rings[i]!
+    if ring.size >= 3 then
+      if i > 0 then
+        holes := holes.push points.size
+      for p in ring do
+        points := points.push p
+  return (points, holes)
+
+private def pointsToData (points : Array Point) : Array Float := Id.run do
+  let mut data : Array Float := Array.mkEmpty (points.size * 2)
+  for p in points do
+    data := data.push p.x
+    data := data.push p.y
+  return data
 
 /-- Simple fan triangulation for convex polygons.
     Triangulates from first vertex to all other vertices. -/
@@ -277,136 +443,14 @@ def triangulateConvexFan (numVertices : Nat) : Array UInt32 := Id.run do
     indices := indices.push (i + 1).toUInt32
   return indices
 
-/-! ## Ear-Clipping Triangulation for Non-Convex Polygons -/
-
-/-- Compute 2D cross product (z-component of 3D cross product).
-    Positive result means counter-clockwise turn from (a→b) to (a→c). -/
-def crossProduct2D (a b c : Point) : Float :=
-  (b.x - a.x) * (c.y - a.y) - (b.y - a.y) * (c.x - a.x)
-
-/-- Check if point p is inside triangle (a, b, c) using barycentric coordinates.
-    Returns true if point is strictly inside (not on edge). -/
-def pointInTriangle (p a b c : Point) : Bool :=
-  let d1 := crossProduct2D p a b
-  let d2 := crossProduct2D p b c
-  let d3 := crossProduct2D p c a
-  let hasNeg := d1 < 0 || d2 < 0 || d3 < 0
-  let hasPos := d1 > 0 || d2 > 0 || d3 > 0
-  !(hasNeg && hasPos)
-
-/-- Check if polygon is convex (all cross products have the same sign). -/
-def isConvexPolygon (vertices : Array Point) : Bool := Id.run do
-  if vertices.size < 3 then return true
-  let mut sign : Option Bool := none
-  for i in [:vertices.size] do
-    let a := vertices[i]!
-    let b := vertices[(i + 1) % vertices.size]!
-    let c := vertices[(i + 2) % vertices.size]!
-    let cross := crossProduct2D a b c
-    if cross.abs > 0.0001 then  -- Ignore nearly collinear
-      let isPositive := cross > 0
-      match sign with
-      | none => sign := some isPositive
-      | some s => if s != isPositive then return false
-  return true
-
-/-- Compute signed area of polygon (positive for CCW, negative for CW in standard coords).
-    Note: In screen coordinates (y-down), the sign is flipped. -/
-def signedPolygonArea (vertices : Array Point) : Float := Id.run do
-  if vertices.size < 3 then return 0.0
-  let mut area := 0.0
-  for i in [:vertices.size] do
-    let j := (i + 1) % vertices.size
-    area := area + vertices[i]!.x * vertices[j]!.y
-    area := area - vertices[j]!.x * vertices[i]!.y
-  return area / 2.0
-
-/-- Check if vertex at index i is an "ear" that can be clipped.
-    An ear is a vertex where:
-    1. The triangle formed with neighbors is oriented correctly (convex vertex)
-    2. No other vertices are inside that triangle
-    The `expectPositive` parameter indicates the expected sign of cross products
-    for convex vertices (depends on polygon winding order). -/
-private def isEar (vertices : Array Point) (remaining : Array Nat) (idx : Nat)
-    (expectPositive : Bool) : Bool := Id.run do
-  if remaining.size < 3 then return false
-  let prevIdx := (idx + remaining.size - 1) % remaining.size
-  let nextIdx := (idx + 1) % remaining.size
-  let a := vertices[remaining[prevIdx]!]!
-  let b := vertices[remaining[idx]!]!
-  let c := vertices[remaining[nextIdx]!]!
-  -- Check if this is a convex vertex (sign depends on winding order)
-  let cross := crossProduct2D a b c
-  let isConvex := if expectPositive then cross > 0 else cross < 0
-  if !isConvex then return false  -- Reflex vertex, not an ear
-  -- Check that no other vertices are inside this triangle
-  for i in [:remaining.size] do
-    if i != prevIdx && i != idx && i != nextIdx then
-      let p := vertices[remaining[i]!]!
-      if pointInTriangle p a b c then return false
-  return true
-
-/-- Triangulate a simple polygon using ear clipping algorithm.
-    Works for both convex and concave polygons, regardless of winding order. -/
-def triangulateEarClipping (vertices : Array Point) : Array UInt32 := Id.run do
+/-- Triangulate a polygon using earcut (handles concave shapes). -/
+def triangulatePolygon (vertices : Array Point) : Array UInt32 := Id.run do
   if vertices.size < 3 then return #[]
-
-  -- Detect winding order using signed area
-  -- Positive area = CCW (expect positive cross products for convex vertices)
-  -- Negative area = CW (expect negative cross products for convex vertices)
-  let area := signedPolygonArea vertices
-  let expectPositive := area > 0
-
-  let numTriangles := vertices.size - 2
-  let mut indices : Array UInt32 := Array.mkEmpty (numTriangles * 3)
-  let mut remaining : Array Nat := Array.range vertices.size
-
-  let mut iterations := 0
-  let maxIterations := vertices.size * vertices.size  -- Safety limit
-
-  while remaining.size > 3 && iterations < maxIterations do
-    iterations := iterations + 1
-    let mut foundEar := false
-    let mut earIdx : Nat := 0
-
-    for i in [:remaining.size] do
-      if isEar vertices remaining i expectPositive then
-        earIdx := i
-        foundEar := true
-        break
-
-    if foundEar then
-      -- Clip this ear: add triangle and remove vertex
-      let i := earIdx
-      let prevIdx := (i + remaining.size - 1) % remaining.size
-      let nextIdx := (i + 1) % remaining.size
-      indices := indices.push remaining[prevIdx]!.toUInt32
-      indices := indices.push remaining[i]!.toUInt32
-      indices := indices.push remaining[nextIdx]!.toUInt32
-      -- Remove the element at index i
-      let mut newRemaining : Array Nat := Array.mkEmpty (remaining.size - 1)
-      for j in [:remaining.size] do
-        if j != i then
-          newRemaining := newRemaining.push remaining[j]!
-      remaining := newRemaining
-    else
-      -- No ear found - polygon may be degenerate, fall back to fan
-      return triangulateConvexFan vertices.size
-
-  -- Add the final triangle
-  if remaining.size == 3 then
-    indices := indices.push remaining[0]!.toUInt32
-    indices := indices.push remaining[1]!.toUInt32
-    indices := indices.push remaining[2]!.toUInt32
-
-  return indices
-
-/-- Smart triangulation: use fast fan for convex polygons, ear-clipping for concave. -/
-def triangulatePolygon (vertices : Array Point) : Array UInt32 :=
-  if isConvexPolygon vertices then
-    triangulateConvexFan vertices.size
-  else
-    triangulateEarClipping vertices
+  let mut data : Array Float := Array.mkEmpty (vertices.size * 2)
+  for p in vertices do
+    data := data.push p.x
+    data := data.push p.y
+  return Earcut.earcut data #[]
 
 /-- Tessellate a rectangle into two triangles. -/
 def tessellateRect (r : Rect) (color : Color) : TessellationResult :=
@@ -428,8 +472,8 @@ def tessellateRect (r : Rect) (color : Color) : TessellationResult :=
 /-- Tessellate a path with a solid color.
     Works for both convex and non-convex simple polygons. -/
 def tessellatePath (path : Path) (color : Color) (tolerance : Float := 0.5) : TessellationResult := Id.run do
-  let points := pathToPolygon path tolerance
-
+  let rings := pathToRings path tolerance
+  let (points, holes) := flattenRings rings
   if points.size < 3 then
     return { vertices := #[], indices := #[] }
 
@@ -443,7 +487,8 @@ def tessellatePath (path : Path) (color : Color) (tolerance : Float := 0.5) : Te
     vertices := vertices.push color.b
     vertices := vertices.push color.a
 
-  let indices := triangulatePolygon points
+  let data := pointsToData points
+  let indices := Earcut.earcut data holes
   return { vertices, indices }
 
 /-- Tessellate a convex path with a solid color.
@@ -479,8 +524,8 @@ def tessellateRectNDC (r : Rect) (color : Color) (screenWidth screenHeight : Flo
     Works for both convex and non-convex simple polygons. -/
 def tessellatePathNDC (path : Path) (color : Color)
     (screenWidth screenHeight : Float) (tolerance : Float := 0.5) : TessellationResult := Id.run do
-  let points := pathToPolygon path tolerance
-
+  let rings := pathToRings path tolerance
+  let (points, holes) := flattenRings rings
   if points.size < 3 then
     return { vertices := #[], indices := #[] }
 
@@ -495,7 +540,8 @@ def tessellatePathNDC (path : Path) (color : Color)
     vertices := vertices.push color.b
     vertices := vertices.push color.a
 
-  let indices := triangulatePolygon points
+  let data := pointsToData points
+  let indices := Earcut.earcut data holes
   return { vertices, indices }
 
 /-- Tessellate a convex path with pixel coordinates, converting to NDC.
@@ -583,8 +629,8 @@ def sampleFillStyle (style : FillStyle) (p : Point) : Color :=
     Handles both convex and non-convex polygons. -/
 def tessellateConvexPathFillNDC (path : Path) (style : FillStyle)
     (screenWidth screenHeight : Float) (tolerance : Float := 0.5) : TessellationResult := Id.run do
-  let points := pathToPolygon path tolerance
-
+  let rings := pathToRings path tolerance
+  let (points, holes) := flattenRings rings
   if points.size < 3 then
     return { vertices := #[], indices := #[] }
 
@@ -600,8 +646,8 @@ def tessellateConvexPathFillNDC (path : Path) (style : FillStyle)
     vertices := vertices.push color.b
     vertices := vertices.push color.a
 
-  -- Use triangulatePolygon which handles both convex and non-convex shapes
-  let indices := triangulatePolygon points
+  let data := pointsToData points
+  let indices := Earcut.earcut data holes
   return { vertices, indices }
 
 /-- Compute the centroid of a set of points. -/
@@ -709,10 +755,10 @@ def tessellateConvexPathFillNDCWithOriginal (originalPath transformedPath : Path
     For radial gradients, adds a center vertex to ensure proper color interpolation. -/
 def tessellatePathWithTransform (originalPath : Path) (transform : Transform) (style : FillStyle)
     (screenWidth screenHeight : Float) (tolerance : Float := 0.5) : TessellationResult := Id.run do
-  -- Flatten only the original path once
-  let originalPoints := pathToPolygon originalPath tolerance
+  -- Flatten only the original path once (supports holes)
+  let rings := pathToRings originalPath tolerance
+  let (originalPoints, holes) := flattenRings rings
   let numPoints := originalPoints.size
-
   if numPoints < 3 then
     return { vertices := #[], indices := #[] }
 
@@ -724,7 +770,7 @@ def tessellatePathWithTransform (originalPath : Path) (transform : Transform) (s
     | .gradient (.radial _ _ _) => true
     | _ => false
 
-  if isRadialGradient then
+  if isRadialGradient && holes.isEmpty then
     -- For radial gradients: add center vertex and create fan triangles from center
     let originalCenter := computeCentroid originalPoints
     let transformedCenter := transform.apply originalCenter
@@ -776,8 +822,8 @@ def tessellatePathWithTransform (originalPath : Path) (transform : Transform) (s
       vertices := vertices.push color.b
       vertices := vertices.push color.a
 
-    -- Use triangulatePolygon which handles both convex and non-convex shapes
-    let indices := triangulatePolygon transformedPoints
+    let data := pointsToData transformedPoints
+    let indices := Earcut.earcut data holes
     return { vertices, indices }
 
 /-- Tessellate a rectangle with a fill style (solid or gradient), converting to NDC. -/

@@ -346,154 +346,7 @@ test "tessellateStrokeSegments marks closed paths as adjacent" := do
   shouldBeNear hasPrev 1.0
   shouldBeNear hasNext 1.0
 
-/-! ## Polygon Convexity Tests -/
-
-test "isConvexPolygon returns true for square" := do
-  let square := #[
-    Point.mk' 0 0,
-    Point.mk' 100 0,
-    Point.mk' 100 100,
-    Point.mk' 0 100
-  ]
-  ensure (isConvexPolygon square) "Square should be convex"
-
-test "isConvexPolygon returns true for triangle" := do
-  let triangle := #[
-    Point.mk' 50 0,
-    Point.mk' 100 100,
-    Point.mk' 0 100
-  ]
-  ensure (isConvexPolygon triangle) "Triangle should be convex"
-
-test "isConvexPolygon returns false for concave arrow" := do
-  -- Arrow shape pointing up with notch at bottom
-  let arrow := #[
-    Point.mk' 50 0,      -- top
-    Point.mk' 100 50,    -- right
-    Point.mk' 75 50,     -- right notch
-    Point.mk' 75 100,    -- right bottom
-    Point.mk' 25 100,    -- left bottom
-    Point.mk' 25 50,     -- left notch
-    Point.mk' 0 50       -- left
-  ]
-  ensure (!isConvexPolygon arrow) "Arrow shape should be concave"
-
-test "isConvexPolygon returns false for L-shape" := do
-  let lShape := #[
-    Point.mk' 0 0,
-    Point.mk' 80 0,
-    Point.mk' 80 30,
-    Point.mk' 30 30,
-    Point.mk' 30 100,
-    Point.mk' 0 100
-  ]
-  ensure (!isConvexPolygon lShape) "L-shape should be concave"
-
-test "isConvexPolygon returns true for degenerate (< 3 points)" := do
-  -- With less than 3 points, we can't have a concave polygon
-  ensure (isConvexPolygon #[]) "Empty should be considered convex"
-  ensure (isConvexPolygon #[Point.mk' 0 0]) "Single point should be convex"
-  ensure (isConvexPolygon #[Point.mk' 0 0, Point.mk' 100 0]) "Line should be convex"
-
-/-! ## Cross Product Tests -/
-
-test "crossProduct2D positive for CCW turn" := do
-  let a := Point.mk' 0 0
-  let b := Point.mk' 100 0
-  let c := Point.mk' 100 100
-  let cross := crossProduct2D a b c
-  ensure (cross > 0) s!"CCW turn should have positive cross product, got {cross}"
-
-test "crossProduct2D negative for CW turn" := do
-  let a := Point.mk' 0 0
-  let b := Point.mk' 100 0
-  let c := Point.mk' 100 (-100)
-  let cross := crossProduct2D a b c
-  ensure (cross < 0) s!"CW turn should have negative cross product, got {cross}"
-
-test "crossProduct2D zero for collinear points" := do
-  let a := Point.mk' 0 0
-  let b := Point.mk' 50 0
-  let c := Point.mk' 100 0
-  let cross := crossProduct2D a b c
-  shouldBeNear cross 0.0
-
-/-! ## Point In Triangle Tests -/
-
-test "pointInTriangle returns true for center point" := do
-  let a := Point.mk' 0 0
-  let b := Point.mk' 100 0
-  let c := Point.mk' 50 100
-  let center := Point.mk' 50 33
-  ensure (pointInTriangle center a b c) "Center should be inside triangle"
-
-test "pointInTriangle returns false for point outside" := do
-  let a := Point.mk' 0 0
-  let b := Point.mk' 100 0
-  let c := Point.mk' 50 100
-  let outside := Point.mk' 200 200
-  ensure (!pointInTriangle outside a b c) "Point outside should not be in triangle"
-
-test "pointInTriangle handles edge cases" := do
-  let a := Point.mk' 0 0
-  let b := Point.mk' 100 0
-  let c := Point.mk' 50 100
-  -- Point on vertex (may or may not be considered inside depending on implementation)
-  let _onVertex := Point.mk' 0 0
-  -- Point clearly outside
-  let farOut := Point.mk' (-100) (-100)
-  ensure (!pointInTriangle farOut a b c) "Far point should not be in triangle"
-
-/-! ## Ear Clipping Triangulation Tests -/
-
-test "triangulateEarClipping on triangle produces 1 triangle" := do
-  let triangle := #[
-    Point.mk' 0 0,
-    Point.mk' 100 0,
-    Point.mk' 50 100
-  ]
-  let indices := triangulateEarClipping triangle
-  ensure (indices.size == 3) s!"Triangle should produce 3 indices, got {indices.size}"
-
-test "triangulateEarClipping on square produces 2 triangles" := do
-  let square := #[
-    Point.mk' 0 0,
-    Point.mk' 100 0,
-    Point.mk' 100 100,
-    Point.mk' 0 100
-  ]
-  let indices := triangulateEarClipping square
-  ensure (indices.size == 6) s!"Square should produce 6 indices (2 triangles), got {indices.size}"
-
-test "triangulateEarClipping on concave arrow produces correct triangles" := do
-  -- 7-sided concave polygon should produce 5 triangles
-  let arrow := #[
-    Point.mk' 50 0,
-    Point.mk' 100 50,
-    Point.mk' 75 50,
-    Point.mk' 75 100,
-    Point.mk' 25 100,
-    Point.mk' 25 50,
-    Point.mk' 0 50
-  ]
-  let indices := triangulateEarClipping arrow
-  -- n-2 triangles for n vertices = 5 triangles = 15 indices
-  ensure (indices.size == 15) s!"7-vertex polygon should produce 15 indices, got {indices.size}"
-
-test "triangulateEarClipping on L-shape produces correct triangles" := do
-  let lShape := #[
-    Point.mk' 0 0,
-    Point.mk' 80 0,
-    Point.mk' 80 30,
-    Point.mk' 30 30,
-    Point.mk' 30 100,
-    Point.mk' 0 100
-  ]
-  let indices := triangulateEarClipping lShape
-  -- 6 vertices → 4 triangles → 12 indices
-  ensure (indices.size == 12) s!"L-shape should produce 12 indices, got {indices.size}"
-
-test "triangulatePolygon uses fan for convex, ear-clipping for concave" := do
+test "triangulatePolygon handles convex and concave polygons" := do
   let square := #[
     Point.mk' 0 0,
     Point.mk' 100 0,
@@ -514,6 +367,16 @@ test "triangulatePolygon uses fan for convex, ear-clipping for concave" := do
   let arrowIndices := triangulatePolygon arrow
   ensure (squareIndices.size == 6) s!"Square: expected 6 indices, got {squareIndices.size}"
   ensure (arrowIndices.size == 15) s!"Arrow: expected 15 indices, got {arrowIndices.size}"
+
+test "tessellatePath handles holes via earcut" := do
+  let outer := Rect.mk' 0 0 100 100
+  let inner := Rect.mk' 25 25 50 50
+  let path := Path.empty
+    |>.rect outer
+    |>.rect inner
+  let result := tessellatePath path Color.red
+  ensure (result.vertices.size == 8 * 6) s!"Expected 48 floats, got {result.vertices.size}"
+  ensure (result.indices.size == 24) s!"Expected 24 indices, got {result.indices.size}"
 
 /-! ## arcTo Geometry Tests -/
 
@@ -701,95 +564,6 @@ test "star shape tessellation produces valid triangles" := do
     ensure (idx.toNat < points.size) s!"Index {idx} out of bounds (points.size={points.size})"
   -- Expected triangle count: 10-2 = 8 triangles = 24 indices
   ensure (indices.size == 24) s!"Expected 24 indices for star, got {indices.size}"
-
-/-! ## Winding Order Tests -/
-
-test "signedPolygonArea positive for CCW polygon" := do
-  -- Counter-clockwise square (in standard coords)
-  let ccwSquare := #[
-    Point.mk' 0 0,
-    Point.mk' 100 0,
-    Point.mk' 100 100,
-    Point.mk' 0 100
-  ]
-  let area := signedPolygonArea ccwSquare
-  ensure (area > 0) s!"CCW polygon should have positive area, got {area}"
-
-test "signedPolygonArea negative for CW polygon" := do
-  -- Clockwise square (in standard coords)
-  let cwSquare := #[
-    Point.mk' 0 0,
-    Point.mk' 0 100,
-    Point.mk' 100 100,
-    Point.mk' 100 0
-  ]
-  let area := signedPolygonArea cwSquare
-  ensure (area < 0) s!"CW polygon should have negative area, got {area}"
-
-test "signedPolygonArea handles degenerate cases" := do
-  ensure (signedPolygonArea #[] == 0.0) "Empty polygon should have zero area"
-  ensure (signedPolygonArea #[Point.mk' 0 0] == 0.0) "Single point should have zero area"
-  ensure (signedPolygonArea #[Point.mk' 0 0, Point.mk' 100 0] == 0.0) "Line should have zero area"
-
-test "flattened circle has consistent winding" := do
-  let circlePath := Path.circle ⟨0, 0⟩ 50
-  let points := pathToPolygon circlePath 0.5
-  let area := signedPolygonArea points
-  -- Circle beziers produce a specific winding - just verify it's consistent (non-zero)
-  ensure (area.abs > 100) s!"Circle should have significant area, got {area}"
-
-test "flattened heart has consistent winding" := do
-  let heartPath := Path.heart ⟨0, 0⟩ 50
-  let points := pathToPolygon heartPath 0.5
-  let area := signedPolygonArea points
-  -- Heart beziers produce a specific winding - just verify it's consistent (non-zero)
-  ensure (area.abs > 100) s!"Heart should have significant area, got {area}"
-
-/-! ## Regression Tests for Recent Fixes -/
-
-test "triangulateEarClipping handles CW polygon" := do
-  -- Clockwise square - should still triangulate correctly after winding fix
-  let cwSquare := #[
-    Point.mk' 0 0,
-    Point.mk' 0 100,
-    Point.mk' 100 100,
-    Point.mk' 100 0
-  ]
-  let indices := triangulateEarClipping cwSquare
-  -- Should produce 2 triangles = 6 indices
-  ensure (indices.size == 6) s!"CW square should produce 6 indices, got {indices.size}"
-  -- Verify all indices are in bounds
-  for idx in indices do
-    ensure (idx.toNat < 4) s!"Index {idx} out of bounds for 4-vertex polygon"
-
-test "triangulateEarClipping handles CW concave polygon" := do
-  -- Clockwise L-shape (reverse of the CCW version)
-  let cwLShape := #[
-    Point.mk' 0 0,
-    Point.mk' 0 100,
-    Point.mk' 30 100,
-    Point.mk' 30 30,
-    Point.mk' 80 30,
-    Point.mk' 80 0
-  ]
-  let indices := triangulateEarClipping cwLShape
-  -- 6 vertices → 4 triangles → 12 indices
-  ensure (indices.size == 12) s!"CW L-shape should produce 12 indices, got {indices.size}"
-  -- Verify all indices are in bounds
-  for idx in indices do
-    ensure (idx.toNat < 6) s!"Index {idx} out of bounds for 6-vertex polygon"
-
-test "270-degree arc has correct winding for ear-clipping" := do
-  -- The "45+scale" arc case - verify winding detection works
-  let arcPath := Path.arcPath ⟨0, 0⟩ 35 0 (Float.pi * 1.5) false
-  let points := pathToPolygon arcPath 0.5
-  let area := signedPolygonArea points
-  -- Area should be non-zero (we handle both CW and CCW)
-  ensure (area.abs > 10) s!"270-degree arc should have significant area, got {area}"
-  -- Triangulation should work regardless of winding
-  let indices := triangulatePolygon points
-  let expectedTriangles := points.size - 2
-  ensure (indices.size / 3 == expectedTriangles) s!"Expected {expectedTriangles} triangles, got {indices.size / 3}"
 
 test "semicircle tessellation produces valid triangles" := do
   let semiPath := Path.semicircle ⟨100, 100⟩ 50
