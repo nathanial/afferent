@@ -39,8 +39,7 @@ test "shader registry includes expected names and non-empty sources" := do
     "sprite",
     "stroke",
     "stroke_path",
-    "mesh3d",
-    "mesh3d_textured"
+    "mesh3d"
   ]
   for name in expected do
     match shaderSource? name with
@@ -60,6 +59,7 @@ test "core shader entry points exist" := do
   shouldContainSubstr sprite "sprite_fragment"
   let mesh3d := (shaderSource? "mesh3d").getD ""
   shouldContainSubstr mesh3d "vertex_main_3d"
+  shouldContainSubstr mesh3d "vertex_main_3d_textured"
   shouldContainSubstr mesh3d "fragment_main_3d"
 
 private def mkParticles : Render.Dynamic.ParticleState :=

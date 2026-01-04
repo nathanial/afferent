@@ -158,7 +158,12 @@ typedef struct {
     float fogStart;           // Fog start distance (4 bytes)
     float fogColor[3];        // Fog color RGB (12 bytes)
     float fogEnd;             // Fog end distance (4 bytes)
-} Scene3DUniforms;  // Total: 176 bytes
+    float uvScale[2];         // UV tiling scale (8 bytes)
+    float uvOffset[2];        // UV offset (8 bytes)
+    uint32_t useTexture;      // 1 = sample diffuse texture, 0 = ignore (4 bytes)
+    uint32_t padding0;        // Alignment padding (4 bytes)
+    float padding1[2];        // Alignment padding (8 bytes)
+} Scene3DUniforms;  // Total: 208 bytes
 
 // Ocean projected-grid uniforms
 typedef struct {
@@ -169,20 +174,5 @@ typedef struct {
     float waveA[4][4]; // (dirX, dirZ, k, omegaSpeed)
     float waveB[4][4]; // (amplitude, ak, 0, 0)
 } OceanProjectedUniforms;
-
-// 3D Textured scene uniforms structure (matches shader)
-// Same as Scene3DUniforms with texture tiling options
-typedef struct {
-    float modelViewProj[16];  // MVP matrix (64 bytes)
-    float modelMatrix[16];    // Model matrix (64 bytes)
-    float lightDir[3];        // Light direction (12 bytes)
-    float ambient;            // Ambient factor (4 bytes)
-    float cameraPos[3];       // Camera position for fog (12 bytes)
-    float fogStart;           // Fog start distance (4 bytes)
-    float fogColor[3];        // Fog color RGB (12 bytes)
-    float fogEnd;             // Fog end distance (4 bytes)
-    float uvScale[2];         // UV tiling scale (8 bytes) - default (1,1)
-    float uvOffset[2];        // UV offset (8 bytes) - default (0,0)
-} Scene3DTexturedUniforms;  // Total: 192 bytes
 
 #endif // AFFERENT_METAL_TYPES_H

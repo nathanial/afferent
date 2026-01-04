@@ -9,12 +9,22 @@ struct Vertex3DIn {
     float4 color [[attribute(2)]];
 };
 
-// 3D Vertex output
+// 3D Textured Vertex input (matches AfferentVertex3DTextured layout)
+// 12 floats per vertex: position(3) + normal(3) + uv(2) + color(4)
+struct Vertex3DTexturedIn {
+    float3 position [[attribute(0)]];
+    float3 normal [[attribute(1)]];
+    float2 uv [[attribute(2)]];
+    float4 color [[attribute(3)]];
+};
+
+// 3D Vertex output (shared for textured + untextured)
 struct Vertex3DOut {
     float4 position [[position]];
     float3 worldNormal;
     float3 worldPos;    // World position for fog calculation
     float2 oceanBaseXZ; // Undisplaced ocean XZ (world), for stable seam clipping
+    float2 uv;
     float4 color;
 };
 
@@ -29,6 +39,11 @@ struct Scene3DUniforms {
     float fogStart;           // Distance where fog begins
     packed_float3 fogColor;   // Fog color (RGB)
     float fogEnd;             // Distance where fog is fully opaque
+    float2 uvScale;           // UV tiling scale (default 1,1)
+    float2 uvOffset;          // UV offset (default 0,0)
+    uint useTexture;          // 1 = sample diffuse texture, 0 = ignore
+    uint padding0;
+    float2 padding1;
 };
 
 vertex Vertex3DOut vertex_main_3d(
@@ -42,6 +57,21 @@ vertex Vertex3DOut vertex_main_3d(
     // Pass world position for fog calculation
     out.worldPos = (uniforms.modelMatrix * float4(in.position, 1.0)).xyz;
     out.oceanBaseXZ = float2(0.0, 0.0);
+    out.uv = float2(0.0, 0.0);
+    out.color = in.color;
+    return out;
+}
+
+vertex Vertex3DOut vertex_main_3d_textured(
+    Vertex3DTexturedIn in [[stage_in]],
+    constant Scene3DUniforms& uniforms [[buffer(1)]]
+) {
+    Vertex3DOut out;
+    out.position = uniforms.modelViewProj * float4(in.position, 1.0);
+    out.worldNormal = (uniforms.modelMatrix * float4(in.normal, 0.0)).xyz;
+    out.worldPos = (uniforms.modelMatrix * float4(in.position, 1.0)).xyz;
+    out.oceanBaseXZ = float2(0.0, 0.0);
+    out.uv = in.uv * uniforms.uvScale + uniforms.uvOffset;
     out.color = in.color;
     return out;
 }
@@ -271,12 +301,20 @@ vertex Vertex3DOut vertex_ocean_projected_waves(
 
 fragment float4 fragment_main_3d(
     Vertex3DOut in [[stage_in]],
-    constant Scene3DUniforms& uniforms [[buffer(0)]]
+    constant Scene3DUniforms& uniforms [[buffer(0)]],
+    texture2d<float> diffuseTexture [[texture(0)]],
+    sampler texSampler [[sampler(0)]]
 ) {
+    float4 baseColor = in.color;
+    if (uniforms.useTexture != 0) {
+        float4 texColor = diffuseTexture.sample(texSampler, in.uv);
+        baseColor *= texColor;
+    }
+
     float3 N = normalize(in.worldNormal);
     float3 L = normalize(uniforms.lightDir);
     float diffuse = max(0.0, dot(N, L));
-    float3 litColor = in.color.rgb * (uniforms.ambient + (1.0 - uniforms.ambient) * diffuse);
+    float3 litColor = baseColor.rgb * (uniforms.ambient + (1.0 - uniforms.ambient) * diffuse);
 
     // Linear fog based on distance from camera
     // When fogEnd <= fogStart, fog is disabled (fogFactor = 1.0 means no fog)
@@ -285,7 +323,7 @@ fragment float4 fragment_main_3d(
     float fogFactor = (fogRange > 0.0) ? clamp((uniforms.fogEnd - dist) / fogRange, 0.0, 1.0) : 1.0;
     float3 finalColor = mix(float3(uniforms.fogColor), litColor, fogFactor);
 
-    return float4(finalColor, in.color.a);
+    return float4(finalColor, baseColor.a);
 }
 
 fragment float4 fragment_ocean_3d(

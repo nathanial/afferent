@@ -644,9 +644,10 @@ AfferentResult create_pipelines(struct AfferentRenderer* renderer) {
 
     id<MTLFunction> vertex3DFunction = [library3D newFunctionWithName:@"vertex_main_3d"];
     id<MTLFunction> vertexOceanFunction = [library3D newFunctionWithName:@"vertex_ocean_projected_waves"];
+    id<MTLFunction> vertex3DTexturedFunction = [library3D newFunctionWithName:@"vertex_main_3d_textured"];
     id<MTLFunction> fragment3DFunction = [library3D newFunctionWithName:@"fragment_main_3d"];
 
-    if (!vertex3DFunction || !vertexOceanFunction || !fragment3DFunction) {
+    if (!vertex3DFunction || !vertexOceanFunction || !vertex3DTexturedFunction || !fragment3DFunction) {
         NSLog(@"Failed to find 3D shader functions");
         return AFFERENT_ERROR_PIPELINE_FAILED;
     }
@@ -742,22 +743,6 @@ AfferentResult create_pipelines(struct AfferentRenderer* renderer) {
     // ====================================================================
     // Create textured 3D rendering pipeline (for loaded assets)
     // ====================================================================
-    id<MTLLibrary> library3DTextured = [renderer->device newLibraryWithSource:shader3DTexturedSource
-                                                                       options:nil
-                                                                         error:&error];
-    if (!library3DTextured) {
-        NSLog(@"Textured 3D shader compilation failed: %@", error);
-        return AFFERENT_ERROR_PIPELINE_FAILED;
-    }
-
-    id<MTLFunction> vertex3DTexturedFunction = [library3DTextured newFunctionWithName:@"vertex_main_3d_textured"];
-    id<MTLFunction> fragment3DTexturedFunction = [library3DTextured newFunctionWithName:@"fragment_main_3d_textured"];
-
-    if (!vertex3DTexturedFunction || !fragment3DTexturedFunction) {
-        NSLog(@"Failed to find textured 3D shader functions");
-        return AFFERENT_ERROR_PIPELINE_FAILED;
-    }
-
     // Create textured 3D vertex descriptor
     // 12 floats per vertex: position(3) + normal(3) + uv(2) + color(4) = 48 bytes
     MTLVertexDescriptor *vertex3DTexturedDescriptor = [[MTLVertexDescriptor alloc] init];
@@ -788,7 +773,7 @@ AfferentResult create_pipelines(struct AfferentRenderer* renderer) {
 
     MTLRenderPipelineDescriptor *pipeline3DTexturedDesc = [[MTLRenderPipelineDescriptor alloc] init];
     pipeline3DTexturedDesc.vertexFunction = vertex3DTexturedFunction;
-    pipeline3DTexturedDesc.fragmentFunction = fragment3DTexturedFunction;
+    pipeline3DTexturedDesc.fragmentFunction = fragment3DFunction;
     pipeline3DTexturedDesc.vertexDescriptor = vertex3DTexturedDescriptor;
     pipeline3DTexturedDesc.colorAttachments[0].pixelFormat = MTLPixelFormatBGRA8Unorm;
     pipeline3DTexturedDesc.depthAttachmentPixelFormat = MTLPixelFormatDepth32Float;

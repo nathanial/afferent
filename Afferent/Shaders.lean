@@ -32,11 +32,8 @@ def stroke : String := include_str% "../native/src/metal/shaders/stroke.metal"
 /-- Screen-space stroke path shader (segment-based) -/
 def strokePath : String := include_str% "../native/src/metal/shaders/stroke_path.metal"
 
-/-- 3D mesh shader with lighting and fog -/
+/-- 3D mesh shader with lighting, fog, and optional texturing -/
 def mesh3d : String := include_str% "../native/src/metal/shaders/mesh3d.metal"
-
-/-- 3D textured mesh shader -/
-def mesh3dTextured : String := include_str% "../native/src/metal/shaders/mesh3d_textured.metal"
 
 /-- All shader sources as (name, source) pairs for FFI initialization -/
 def all : Array (String × String) := #[
@@ -48,8 +45,7 @@ def all : Array (String × String) := #[
   ("sprite", sprite),
   ("stroke", stroke),
   ("stroke_path", strokePath),
-  ("mesh3d", mesh3d),
-  ("mesh3d_textured", mesh3dTextured)
+  ("mesh3d", mesh3d)
 ]
 
 end Afferent.Shaders

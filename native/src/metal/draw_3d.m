@@ -182,6 +182,7 @@ void afferent_renderer_draw_mesh_3d(
 
         // Set up uniforms
         Scene3DUniforms uniforms;
+        memset(&uniforms, 0, sizeof(uniforms));
         memcpy(uniforms.modelViewProj, mvp_matrix, 64);
         memcpy(uniforms.modelMatrix, model_matrix, 64);
         memcpy(uniforms.lightDir, light_dir, 12);
@@ -195,6 +196,11 @@ void afferent_renderer_draw_mesh_3d(
         uniforms.fogColor[0] = 0.5f;
         uniforms.fogColor[1] = 0.5f;
         uniforms.fogColor[2] = 0.5f;
+        uniforms.uvScale[0] = 1.0f;
+        uniforms.uvScale[1] = 1.0f;
+        uniforms.uvOffset[0] = 0.0f;
+        uniforms.uvOffset[1] = 0.0f;
+        uniforms.useTexture = 0;
 
         // Configure encoder for 3D rendering
         [renderer->currentEncoder setRenderPipelineState:renderer->pipeline3D];
@@ -269,6 +275,7 @@ void afferent_renderer_draw_mesh_3d_with_fog(
 
         // Set up uniforms with fog parameters
         Scene3DUniforms uniforms;
+        memset(&uniforms, 0, sizeof(uniforms));
         memcpy(uniforms.modelViewProj, mvp_matrix, 64);
         memcpy(uniforms.modelMatrix, model_matrix, 64);
         memcpy(uniforms.lightDir, light_dir, 12);
@@ -277,6 +284,11 @@ void afferent_renderer_draw_mesh_3d_with_fog(
         uniforms.fogStart = fog_start;
         memcpy(uniforms.fogColor, fog_color, 12);
         uniforms.fogEnd = fog_end;
+        uniforms.uvScale[0] = 1.0f;
+        uniforms.uvScale[1] = 1.0f;
+        uniforms.uvOffset[0] = 0.0f;
+        uniforms.uvOffset[1] = 0.0f;
+        uniforms.useTexture = 0;
 
         // Configure encoder for 3D rendering
         [renderer->currentEncoder setRenderPipelineState:renderer->pipeline3D];
@@ -382,7 +394,8 @@ void afferent_renderer_draw_mesh_3d_textured(
         memcpy(indexBuffer.contents, indices + index_offset, index_size);
 
         // Set up uniforms with fog and UV parameters
-        Scene3DTexturedUniforms uniforms;
+        Scene3DUniforms uniforms;
+        memset(&uniforms, 0, sizeof(uniforms));
         memcpy(uniforms.modelViewProj, mvp_matrix, 64);
         memcpy(uniforms.modelMatrix, model_matrix, 64);
         memcpy(uniforms.lightDir, light_dir, 12);
@@ -396,6 +409,7 @@ void afferent_renderer_draw_mesh_3d_textured(
         uniforms.uvScale[1] = 1.0f;
         uniforms.uvOffset[0] = 0.0f;
         uniforms.uvOffset[1] = 0.0f;
+        uniforms.useTexture = 1;
 
         // Configure encoder for textured 3D rendering
         [renderer->currentEncoder setRenderPipelineState:renderer->pipeline3DTextured];
