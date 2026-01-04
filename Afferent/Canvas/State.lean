@@ -7,12 +7,8 @@ import Afferent.Core.Path
 import Afferent.Core.Transform
 import Afferent.Core.Paint
 import Afferent.Render.Tessellation
-import Collimator.Prelude
-
 
 namespace Afferent
-
-open Collimator
 
 /-- Canvas drawing state that can be saved and restored. -/
 structure CanvasState where
@@ -40,23 +36,6 @@ def default : CanvasState :=
     clipStack := #[] }
 
 instance : Inhabited CanvasState := ⟨default⟩
-
-/-! ## Lenses for CanvasState fields -/
-
-def transformLens : Lens' CanvasState Transform :=
-  lens' (fun s => s.transform) (fun s t => { s with transform := t })
-
-def fillStyleLens : Lens' CanvasState FillStyle :=
-  lens' (fun s => s.fillStyle) (fun s f => { s with fillStyle := f })
-
-def strokeStyleLens : Lens' CanvasState StrokeStyle :=
-  lens' (fun s => s.strokeStyle) (fun s ss => { s with strokeStyle := ss })
-
-def globalAlphaLens : Lens' CanvasState Float :=
-  lens' (fun s => s.globalAlpha) (fun s a => { s with globalAlpha := a })
-
-def clipStackLens : Lens' CanvasState (Array (Rect × Transform)) :=
-  lens' (fun s => s.clipStack) (fun s cs => { s with clipStack := cs })
 
 /-! ## Transform operations -/
 
@@ -398,27 +377,6 @@ def setSolid : StateStack → StateStack :=
 
 def resetTransform : StateStack → StateStack :=
   modify CanvasState.resetTransform
-
-/-! ## Lenses for StateStack -/
-
-def currentLens : Lens' StateStack CanvasState :=
-  lens' (fun s => s.current) (fun s c => { s with current := c })
-
-def savedLens : Lens' StateStack (List CanvasState) :=
-  lens' (fun s => s.saved) (fun s l => { s with saved := l })
-
-/-- Composed lens to access transform through the stack. -/
-def transformLens : Lens' StateStack Transform :=
-  -- Manual composition since we need to go through two lenses
-  lens'
-    (fun s => s.current.transform)
-    (fun s t => { s with current := { s.current with transform := t } })
-
-/-- Composed lens to access fill style through the stack. -/
-def fillStyleLens : Lens' StateStack FillStyle :=
-  lens'
-    (fun s => s.current.fillStyle)
-    (fun s f => { s with current := { s.current with fillStyle := f } })
 
 end StateStack
 

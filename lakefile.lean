@@ -5,7 +5,6 @@ open System (FilePath)
 package afferent where
   version := v!"0.1.0"
 
-require collimator from git "https://github.com/nathanial/collimator" @ "v0.0.2"
 require crucible from git "https://github.com/nathanial/crucible" @ "v0.0.1"
 require tincture from git "https://github.com/nathanial/tincture" @ "v0.0.1"
 require trellis from git "https://github.com/nathanial/trellis" @ "v0.0.1"
