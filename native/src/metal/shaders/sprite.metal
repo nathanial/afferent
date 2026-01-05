@@ -95,7 +95,10 @@ vertex SpriteVertexOut sprite_vertex_layout0(
             (inst.pixelX / uniforms.viewport.x) * 2.0 - 1.0,
             1.0 - (inst.pixelY / uniforms.viewport.y) * 2.0
         );
-        float ndcHalfSize = inst.halfSizePixels / uniforms.viewport.x * 2.0;
+        float2 ndcHalfSize = float2(
+            inst.halfSizePixels / uniforms.viewport.x * 2.0,
+            inst.halfSizePixels / uniforms.viewport.y * 2.0
+        );
         finalPos = ndcPos + rotated * ndcHalfSize;
     } else {
         float2 base = apply_affine(float2(inst.pixelX, inst.pixelY), uniforms);
