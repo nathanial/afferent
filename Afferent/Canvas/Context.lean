@@ -7,7 +7,6 @@ import Afferent.Core.Path
 import Afferent.Core.Transform
 import Afferent.Core.Paint
 import Afferent.Canvas.State
-import Afferent.Render.Tessellation
 import Afferent.Render.Dynamic
 import Afferent.Text.Font
 import Afferent.FFI
@@ -393,18 +392,6 @@ def strokeRoundedRect (ctx : DrawContext) (rect : Rect) (cornerRadius : Float) (
 def drawLine (ctx : DrawContext) (p1 p2 : Point) (color : Color) (lineWidth : Float := 1.0) : IO Unit :=
   ctx.strokePathSimple (Path.empty |>.moveTo p1 |>.lineTo p2) color lineWidth
 
-/-! ## Batch Drawing -/
-
-/-- Draw all geometry accumulated in a batch with a single draw call.
-    This is much faster than issuing separate draw calls for each shape. -/
-def drawBatch (ctx : DrawContext) (batch : Batch) : IO Unit := do
-  if batch.isEmpty then return
-  let vertexBuffer ← FFI.Buffer.createVertex ctx.renderer batch.vertices
-  let indexBuffer ← FFI.Buffer.createIndex ctx.renderer batch.indices
-  ctx.renderer.drawTriangles vertexBuffer indexBuffer batch.indexCount.toUInt32
-  FFI.Buffer.destroy indexBuffer
-  FFI.Buffer.destroy vertexBuffer
-
 /-! ## Text Rendering -/
 
 /-- Draw text at a position with a font, color, and transform.
@@ -486,14 +473,12 @@ deriving Repr, Inhabited
 
 /-! ## Stateful Canvas - Higher-level API with automatic state management -/
 
-/-- A canvas with built-in state management and optional batching. -/
+/-- A canvas with built-in state management. -/
 structure Canvas where
   ctx : DrawContext
   stateStack : StateStack
   /-- Screen scale factor (e.g., 2.0 for Retina). Used for auto-scaling mode. -/
   screenScale : Float := 1.0
-  /-- Auto-batch: always accumulates geometry, flushed at endFrame. Reduces per-draw allocations. -/
-  autoBatch : Batch := Batch.withCapacity 1000
   /-- High-performance mutable FloatBuffer for zero-copy instanced rendering. -/
   floatBuffer : Option FFI.FloatBuffer := none
   /-- Capacity of FloatBuffer (in floats). -/
@@ -596,40 +581,29 @@ def setSolid (c : Canvas) : Canvas :=
 
 /-! ## Drawing operations -/
 
-/-- Fill a path using the current state.
-    Geometry is accumulated and drawn at endFrame.
-    Note: Gradients are sampled at original path positions since gradient coordinates
-    are defined in the original coordinate space. -/
+/-- Fill a path using the current state. -/
 def fillPath (path : Path) (c : Canvas) : IO Canvas := do
-  let (w, h) ← c.ctx.getCurrentSize
-  let style := c.state.effectiveFillStyle
-  -- Use transform directly to ensure exact 1-to-1 point correspondence after bezier flattening
-  let result := Tessellation.tessellatePathWithTransform path c.state.transform style w h
-  pure { c with autoBatch := c.autoBatch.add result }
+  c.ctx.fillPathWithState path c.state
+  pure c
 
-/-- Fill a rectangle using the current state.
-    Uses fast path that skips Path allocation - just transforms 4 corners directly.
-    Geometry is accumulated and drawn at endFrame. -/
+/-- Fill a rectangle using the current state. -/
 def fillRect (rect : Rect) (c : Canvas) : IO Canvas := do
-  let (w, h) ← c.ctx.getCurrentSize
-  let transform := c.state.transform
-  let style := c.state.effectiveFillStyle
-  let autoBatch' := c.autoBatch.addTransformedRect rect transform style w h
-  pure { c with autoBatch := autoBatch' }
+  c.ctx.fillRectWithState rect c.state
+  pure c
 
 /-- Fill a rectangle specified by x, y, width, height using current state. -/
 def fillRectXYWH (x y width height : Float) (c : Canvas) : IO Canvas :=
   c.fillRect (Rect.mk' x y width height)
 
-/-- Fill a circle using the current state. Batch-aware: adds to batch if active. -/
+/-- Fill a circle using the current state. -/
 def fillCircle (center : Point) (radius : Float) (c : Canvas) : IO Canvas :=
   c.fillPath (Path.circle center radius)
 
-/-- Fill an ellipse using the current state. Batch-aware: adds to batch if active. -/
+/-- Fill an ellipse using the current state. -/
 def fillEllipse (center : Point) (radiusX radiusY : Float) (c : Canvas) : IO Canvas :=
   c.fillPath (Path.ellipse center radiusX radiusY)
 
-/-- Fill a rounded rectangle using the current state. Batch-aware: adds to batch if active. -/
+/-- Fill a rounded rectangle using the current state. -/
 def fillRoundedRect (rect : Rect) (cornerRadius : Float) (c : Canvas) : IO Canvas :=
   c.fillPath (Path.roundedRect rect cornerRadius)
 
@@ -691,15 +665,6 @@ def drawLine (p1 p2 : Point) (c : Canvas) : IO Canvas :=
 
 /-! ## Text operations -/
 
-/-- Flush the auto-batch if it has any pending geometry.
-    Used internally before operations that require a different pipeline (e.g., text). -/
-private def flushAutoBatch (c : Canvas) : IO Canvas := do
-  if !c.autoBatch.isEmpty then
-    c.ctx.drawBatch c.autoBatch
-    pure { c with autoBatch := Batch.withCapacity 1000 }
-  else
-    pure c
-
 /-- Ensure floatBuffer has at least the required capacity (in floats).
     Returns updated Canvas with properly sized buffer. -/
 private def ensureFloatBufferCapacity (requiredFloats : Nat) (c : Canvas) : IO Canvas := do
@@ -718,8 +683,6 @@ private def ensureFloatBufferCapacity (requiredFloats : Nat) (c : Canvas) : IO C
     Note: Text uses a different shader and cannot be batched with shapes.
     Auto-batch is flushed before drawing text. -/
 def fillText (text : String) (pos : Point) (font : Font) (c : Canvas) : IO Canvas := do
-  -- Flush pending geometry since text uses different pipeline
-  let c ← c.flushAutoBatch
   let color := c.state.effectiveFillColor
   let transform := c.state.transform
   c.ctx.fillTextTransformed text pos font color transform
@@ -731,8 +694,6 @@ def fillTextXY (text : String) (x y : Float) (font : Font) (c : Canvas) : IO Can
 
 /-- Draw text with an explicit color (still uses current transform). -/
 def fillTextColor (text : String) (pos : Point) (font : Font) (color : Color) (c : Canvas) : IO Canvas := do
-  -- Flush pending geometry since text uses different pipeline
-  let c ← c.flushAutoBatch
   let transform := c.state.transform
   c.ctx.fillTextTransformed text pos font color transform
   pure c
@@ -764,15 +725,10 @@ def clearKey (c : Canvas) : IO Unit :=
 def beginFrame (clearColor : Color) (c : Canvas) : IO Bool :=
   c.ctx.beginFrame clearColor
 
-/-- End the current frame. Flushes auto-batch and presents.
-    Returns updated Canvas with reset autoBatch for next frame. -/
+/-- End the current frame. Presents the drawable. -/
 def endFrame (c : Canvas) : IO Canvas := do
-  -- Flush auto-batch if has geometry
-  if !c.autoBatch.isEmpty then
-    c.ctx.drawBatch c.autoBatch
   c.ctx.endFrame
-  -- Reset autoBatch for next frame
-  pure { c with autoBatch := Batch.withCapacity 1000 }
+  pure c
 
 /-- End the current frame (unit version for compatibility).
     Prefer using endFrame when you need the updated Canvas. -/
@@ -813,11 +769,8 @@ private def applyEffectiveScissor (c : Canvas) : IO Unit := do
 
 /-- Push a clip rectangle onto the clip stack. The rect coordinates are in the
     current coordinate system (after any transforms). The clip will be transformed
-    by the CURRENT canvas transform, so clipping respects translate/scale/rotate.
-    Flushes any pending auto-batch geometry before setting the scissor. -/
+    by the CURRENT canvas transform, so clipping respects translate/scale/rotate. -/
 def clip (rect : Rect) (c : Canvas) : IO Canvas := do
-  -- Flush pending geometry so it renders without the new clip
-  let c ← c.flushAutoBatch
   -- Push clip with current transform onto the stack
   let c := c.modifyState (·.pushClip rect)
   -- Apply effective scissor
@@ -825,20 +778,15 @@ def clip (rect : Rect) (c : Canvas) : IO Canvas := do
   pure c
 
 /-- Pop the most recent clip rectangle from the clip stack.
-    Restores the previous clip state (or disables clipping if stack is empty).
-    Flushes any pending auto-batch geometry before updating the scissor. -/
+    Restores the previous clip state (or disables clipping if stack is empty). -/
 def popClip (c : Canvas) : IO Canvas := do
-  let c ← c.flushAutoBatch
   let c := c.modifyState (·.popClip)
   c.applyEffectiveScissor
   pure c
 
 /-- Remove all clipping and restore full viewport.
-    Clears the entire clip stack.
-    Flushes any pending auto-batch geometry before resetting the scissor. -/
+    Clears the entire clip stack. -/
 def unclip (c : Canvas) : IO Canvas := do
-  -- Flush pending geometry so it renders with the current clip
-  let c ← c.flushAutoBatch
   let c := c.modifyState (·.clearClipStack)
   c.ctx.resetScissor
   pure c
@@ -881,7 +829,6 @@ exposing buffer management to callers. -/
     - t: Current time (used for HSV color animation) -/
 def fillDynamicCircles (particles : Render.Dynamic.ParticleState)
     (radius t : Float) (c : Canvas) : IO Canvas := do
-  let c ← c.flushAutoBatch
   let c ← c.ensureFloatBufferCapacity (particles.count * 8)
   match c.floatBuffer with
   | some buf =>
@@ -896,7 +843,6 @@ def fillDynamicCircles (particles : Render.Dynamic.ParticleState)
     - t: Current time (used for HSV color animation) -/
 def fillDynamicRects (particles : Render.Dynamic.ParticleState)
     (halfSize rotation t : Float) (c : Canvas) : IO Canvas := do
-  let c ← c.flushAutoBatch
   let c ← c.ensureFloatBufferCapacity (particles.count * 8)
   match c.floatBuffer with
   | some buf =>
@@ -911,7 +857,6 @@ def fillDynamicRects (particles : Render.Dynamic.ParticleState)
     - spinSpeed: Rotation speed multiplier -/
 def fillDynamicRectsAnimated (particles : Render.Dynamic.ParticleState)
     (halfSize t spinSpeed : Float) (c : Canvas) : IO Canvas := do
-  let c ← c.flushAutoBatch
   let c ← c.ensureFloatBufferCapacity (particles.count * 8)
   match c.floatBuffer with
   | some buf =>
@@ -926,7 +871,6 @@ def fillDynamicRectsAnimated (particles : Render.Dynamic.ParticleState)
     - t: Current time (used for HSV color animation) -/
 def fillDynamicTriangles (particles : Render.Dynamic.ParticleState)
     (halfSize rotation t : Float) (c : Canvas) : IO Canvas := do
-  let c ← c.flushAutoBatch
   let c ← c.ensureFloatBufferCapacity (particles.count * 8)
   match c.floatBuffer with
   | some buf =>
@@ -941,7 +885,6 @@ def fillDynamicTriangles (particles : Render.Dynamic.ParticleState)
     - spinSpeed: Rotation speed multiplier -/
 def fillDynamicTrianglesAnimated (particles : Render.Dynamic.ParticleState)
     (halfSize t spinSpeed : Float) (c : Canvas) : IO Canvas := do
-  let c ← c.flushAutoBatch
   let c ← c.ensureFloatBufferCapacity (particles.count * 8)
   match c.floatBuffer with
   | some buf =>
@@ -958,7 +901,6 @@ def fillDynamicTrianglesAnimated (particles : Render.Dynamic.ParticleState)
     - alpha: Opacity (default 1.0) -/
 def fillDynamicSprites (texture : FFI.Texture) (particles : Render.Dynamic.ParticleState)
     (halfSize : Float) (rotation : Float := 0.0) (alpha : Float := 1.0) (c : Canvas) : IO Canvas := do
-  let c ← c.flushAutoBatch
   -- Sprites use 5 floats per instance (x, y, rotation, halfSize, alpha)
   let c ← c.ensureFloatBufferCapacity (particles.count * 5)
   match c.floatBuffer with
@@ -973,7 +915,6 @@ def fillDynamicSprites (texture : FFI.Texture) (particles : Render.Dynamic.Parti
     - orbital: OrbitalState containing orbital parameters
     - t: Current time (controls orbital position and HSV animation) -/
 def fillOrbitalRects (orbital : Render.Dynamic.OrbitalState) (t : Float) (c : Canvas) : IO Canvas := do
-  let c ← c.flushAutoBatch
   let c ← c.ensureFloatBufferCapacity (orbital.count * 8)
   match c.floatBuffer with
   | some buf =>
