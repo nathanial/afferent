@@ -2,7 +2,7 @@
   Afferent Widget System
   Declarative, display-only widget system for building UIs.
 
-  This module re-exports Arbor (the renderer-agnostic widget library) and provides
+  This module re-exports Afferent.Arbor (the renderer-agnostic widget library) and provides
   the Afferent rendering backend that converts Arbor RenderCommands to Metal-backed
   CanvasM drawing calls.
 
@@ -12,7 +12,7 @@
   import Afferent.Widget
 
   open Afferent.Widget
-  open Arbor
+  open Afferent.Arbor
 
   def myUI (fontId : FontId) : Widget := build do
     column (gap := 16) (style := { backgroundColor := some (Color.gray 0.2), padding := EdgeInsets.uniform 24 }) #[
@@ -29,14 +29,14 @@
   ```
 -/
 
--- Re-export Arbor widget system
-import Arbor
+-- Re-export Arbor widget system (now under Afferent.Arbor)
+import Afferent.Arbor
 
 -- Afferent-specific backend that renders Arbor widgets via CanvasM
 import Afferent.Widget.Backend
 import Afferent.Text.Measurer
 
 -- Note: After importing this module, you can use:
--- - Arbor.* for widget types and DSL (Widget, build, row, column, etc.)
+-- - Afferent.Arbor.* for widget types and DSL (Widget, build, row, column, etc.)
 -- - Afferent.FontRegistry, Afferent.runWithFonts for font management
 -- - Afferent.Widget.renderArborWidget for rendering

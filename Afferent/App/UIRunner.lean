@@ -5,13 +5,13 @@
 import Afferent.Canvas.Context
 import Afferent.Text.Measurer
 import Afferent.Widget
-import Arbor.App.UI
-import Arbor.Widget.Measure
+import Afferent.Arbor.App.UI
+import Afferent.Arbor.Widget.Measure
 import Trellis
 
 namespace Afferent.App
 
-open Arbor
+open Afferent.Arbor
 
 inductive LayoutMode where
   | centeredIntrinsic
@@ -37,14 +37,14 @@ private def layoutUI (reg : FontRegistry) (widget : Widget) (mode : LayoutMode)
     (screenW screenH : Float) : IO LayoutInfo := do
   match mode with
   | .centeredIntrinsic =>
-    let (intrW, intrH) ← runWithFonts reg (Arbor.intrinsicSize widget)
-    let measureResult ← runWithFonts reg (Arbor.measureWidget widget intrW intrH)
+    let (intrW, intrH) ← runWithFonts reg (Afferent.Arbor.intrinsicSize widget)
+    let measureResult ← runWithFonts reg (Afferent.Arbor.measureWidget widget intrW intrH)
     let layouts := Trellis.layout measureResult.node intrW intrH
     let offsetX := (screenW - intrW) / 2
     let offsetY := (screenH - intrH) / 2
     pure { widget := measureResult.widget, layouts, offsetX, offsetY, renderWidth := intrW, renderHeight := intrH }
   | .fullscreen =>
-    let measureResult ← runWithFonts reg (Arbor.measureWidget widget screenW screenH)
+    let measureResult ← runWithFonts reg (Afferent.Arbor.measureWidget widget screenW screenH)
     let layouts := Trellis.layout measureResult.node screenW screenH
     pure { widget := measureResult.widget, layouts, offsetX := 0, offsetY := 0, renderWidth := screenW, renderHeight := screenH }
 

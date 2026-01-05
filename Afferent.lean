@@ -37,6 +37,10 @@ import Afferent.Layout
 -- Widget system
 import Afferent.Widget
 
+-- Arbor / Canopy (now bundled under Afferent)
+import Afferent.Arbor
+import Afferent.Canopy
+
 -- App runtime helpers
 import Afferent.App.UIRunner
 

@@ -3,7 +3,7 @@
   Implementation of Arbor's TextMeasurer typeclass for FreeType fonts.
 -/
 import Afferent.Text.Font
-import Arbor.Core.TextMeasurer
+import Afferent.Arbor.Core.TextMeasurer
 
 namespace Afferent
 
@@ -22,8 +22,8 @@ namespace FontRegistry
 def empty : FontRegistry := ⟨#[], none⟩
 
 /-- Register a font and return its FontId. -/
-def register (reg : FontRegistry) (font : Font) (name : String) : FontRegistry × Arbor.FontId :=
-  let id : Arbor.FontId := ⟨reg.fonts.size, name, font.size.toFloat⟩
+def register (reg : FontRegistry) (font : Font) (name : String) : FontRegistry × Afferent.Arbor.FontId :=
+  let id : Afferent.Arbor.FontId := ⟨reg.fonts.size, name, font.size.toFloat⟩
   let newReg := { reg with fonts := reg.fonts.push font }
   (newReg, id)
 
@@ -32,7 +32,7 @@ def setDefault (reg : FontRegistry) (font : Font) : FontRegistry :=
   { reg with defaultFont := some font }
 
 /-- Look up a Font by FontId. Returns default font if not found. -/
-def get (reg : FontRegistry) (fontId : Arbor.FontId) : Option Font :=
+def get (reg : FontRegistry) (fontId : Afferent.Arbor.FontId) : Option Font :=
   reg.fonts[fontId.id]? <|> reg.defaultFont
 
 end FontRegistry
@@ -42,7 +42,7 @@ abbrev FontReaderT (m : Type → Type) := ReaderT FontRegistry m
 
 /-- TextMeasurer instance for FontReaderT IO.
     This allows Arbor's text measurement functions to work with Afferent's fonts. -/
-instance : Arbor.TextMeasurer (FontReaderT IO) where
+instance : Afferent.Arbor.TextMeasurer (FontReaderT IO) where
   measureText text fontId := do
     let reg ← read
     match reg.get fontId with
@@ -77,7 +77,7 @@ def runWithFonts {α : Type} (reg : FontRegistry) (m : FontReaderT IO α) : IO �
   m.run reg
 
 /-- Convenience: create a registry with a single font as both registered and default. -/
-def withFont (font : Font) (name : String := "default") : IO (FontRegistry × Arbor.FontId) := do
+def withFont (font : Font) (name : String := "default") : IO (FontRegistry × Afferent.Arbor.FontId) := do
   let (reg, fontId) := FontRegistry.empty.register font name
   let reg := reg.setDefault font
   pure (reg, fontId)

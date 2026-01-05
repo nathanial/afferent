@@ -7,24 +7,24 @@ import Afferent.Canvas.Context
 import Afferent.Core.Path
 import Afferent.Text.Font
 import Afferent.Text.Measurer
-import Arbor
-import Arbor.Core.Path
+import Afferent.Arbor
+import Afferent.Arbor.Core.Path
 
 namespace Afferent.Widget
 
 open Afferent
-open Arbor
+open Afferent.Arbor
 
 /-- Convert Arbor Rect to Afferent Rect. -/
-def toAfferentRect (r : Arbor.Rect) : Afferent.Rect :=
+def toAfferentRect (r : Afferent.Arbor.Rect) : Afferent.Rect :=
   Afferent.Rect.mk' r.origin.x r.origin.y r.size.width r.size.height
 
 /-- Convert Arbor Point to Afferent Point. -/
-def toAfferentPoint (p : Arbor.Point) : Afferent.Point :=
+def toAfferentPoint (p : Afferent.Arbor.Point) : Afferent.Point :=
   Afferent.Point.mk' p.x p.y
 
 /-- Convert a polygon to an Afferent Path. -/
-def polygonToPath (points : Array Arbor.Point) : Afferent.Path :=
+def polygonToPath (points : Array Afferent.Arbor.Point) : Afferent.Path :=
   Id.run do
     if points.size > 0 then
       let first := points[0]!
@@ -38,16 +38,16 @@ def polygonToPath (points : Array Arbor.Point) : Afferent.Path :=
 
 /-- Convert Arbor Color to Afferent Color.
     Arbor uses Tincture.Color which is the same as Afferent's Color. -/
-def toAfferentColor (c : Arbor.Color) : Afferent.Color := c
+def toAfferentColor (c : Afferent.Arbor.Color) : Afferent.Color := c
 
 /-- Convert Arbor FillRule to Afferent FillRule. -/
-def toAfferentFillRule (rule : Arbor.FillRule) : Afferent.FillRule :=
+def toAfferentFillRule (rule : Afferent.Arbor.FillRule) : Afferent.FillRule :=
   match rule with
   | .nonZero => .nonZero
   | .evenOdd => .evenOdd
 
 /-- Convert Arbor Path to Afferent Path. -/
-def toAfferentPath (path : Arbor.Path) : Afferent.Path :=
+def toAfferentPath (path : Afferent.Arbor.Path) : Afferent.Path :=
   let base := Afferent.Path.empty
   let built := path.commands.foldl (init := base) fun acc cmd =>
     match cmd with
@@ -71,7 +71,7 @@ def toAfferentPath (path : Arbor.Path) : Afferent.Path :=
 
 /-- Execute a single RenderCommand using CanvasM.
     Requires a FontRegistry to resolve FontIds to Font handles. -/
-def executeCommand (reg : FontRegistry) (cmd : Arbor.RenderCommand) : CanvasM Unit := do
+def executeCommand (reg : FontRegistry) (cmd : Afferent.Arbor.RenderCommand) : CanvasM Unit := do
   match cmd with
   | .fillRect rect color cornerRadius =>
     let afferentRect := toAfferentRect rect
@@ -164,7 +164,7 @@ def executeCommand (reg : FontRegistry) (cmd : Arbor.RenderCommand) : CanvasM Un
     CanvasM.restore
 
 /-- Execute an array of RenderCommands using CanvasM. -/
-def executeCommands (reg : FontRegistry) (cmds : Array Arbor.RenderCommand) : CanvasM Unit := do
+def executeCommands (reg : FontRegistry) (cmds : Array Afferent.Arbor.RenderCommand) : CanvasM Unit := do
   for cmd in cmds do
     executeCommand reg cmd
 
@@ -176,10 +176,10 @@ def executeCommands (reg : FontRegistry) (cmds : Array Arbor.RenderCommand) : Ca
     2. Compute layout using Trellis
     3. Collect render commands
     4. Execute commands using CanvasM -/
-def renderArborWidget (reg : FontRegistry) (widget : Arbor.Widget)
+def renderArborWidget (reg : FontRegistry) (widget : Afferent.Arbor.Widget)
     (availWidth availHeight : Float) : CanvasM Unit := do
   -- Measure widget and get layout nodes
-  let measureResult ← runWithFonts reg (Arbor.measureWidget widget availWidth availHeight)
+  let measureResult ← runWithFonts reg (Afferent.Arbor.measureWidget widget availWidth availHeight)
   let layoutNode := measureResult.node
   let measuredWidget := measureResult.widget
 
@@ -187,27 +187,27 @@ def renderArborWidget (reg : FontRegistry) (widget : Arbor.Widget)
   let layouts := Trellis.layout layoutNode availWidth availHeight
 
   -- Collect render commands
-  let commands := Arbor.collectCommands measuredWidget layouts
+  let commands := Afferent.Arbor.collectCommands measuredWidget layouts
 
   -- Execute commands
   executeCommands reg commands
 
 /-- Convenience function to render a widget built with Arbor's DSL.
     Takes a WidgetBuilder and executes the full render pipeline. -/
-def renderArborBuilder (reg : FontRegistry) (builder : Arbor.WidgetBuilder)
+def renderArborBuilder (reg : FontRegistry) (builder : Afferent.Arbor.WidgetBuilder)
     (availWidth availHeight : Float) : CanvasM Unit := do
-  let widget := Arbor.build builder
+  let widget := Afferent.Arbor.build builder
   renderArborWidget reg widget availWidth availHeight
 
 /-- Render an Arbor widget tree centered on screen.
     Computes intrinsic size and offsets rendering to center the widget. -/
-def renderArborWidgetCentered (reg : FontRegistry) (widget : Arbor.Widget)
+def renderArborWidgetCentered (reg : FontRegistry) (widget : Afferent.Arbor.Widget)
     (screenWidth screenHeight : Float) : CanvasM Unit := do
   -- Measure widget to get intrinsic size
-  let (intrinsicWidth, intrinsicHeight) ← runWithFonts reg (Arbor.intrinsicSize widget)
+  let (intrinsicWidth, intrinsicHeight) ← runWithFonts reg (Afferent.Arbor.intrinsicSize widget)
 
   -- Measure widget for layout
-  let measureResult ← runWithFonts reg (Arbor.measureWidget widget intrinsicWidth intrinsicHeight)
+  let measureResult ← runWithFonts reg (Afferent.Arbor.measureWidget widget intrinsicWidth intrinsicHeight)
   let layoutNode := measureResult.node
   let measuredWidget := measureResult.widget
 
@@ -219,7 +219,7 @@ def renderArborWidgetCentered (reg : FontRegistry) (widget : Arbor.Widget)
   let offsetY := (screenHeight - intrinsicHeight) / 2
 
   -- Collect render commands
-  let commands := Arbor.collectCommands measuredWidget layouts
+  let commands := Afferent.Arbor.collectCommands measuredWidget layouts
 
   -- Save state, translate, render, restore
   CanvasM.save
@@ -229,14 +229,14 @@ def renderArborWidgetCentered (reg : FontRegistry) (widget : Arbor.Widget)
 
 /-- Render an Arbor widget tree centered with debug borders.
     Shows colored borders around each layout cell for debugging. -/
-def renderArborWidgetDebug (reg : FontRegistry) (widget : Arbor.Widget)
+def renderArborWidgetDebug (reg : FontRegistry) (widget : Afferent.Arbor.Widget)
     (screenWidth screenHeight : Float)
-    (borderColor : Arbor.Color := ⟨0.5, 1.0, 0.5, 0.5⟩) : CanvasM Unit := do
+    (borderColor : Afferent.Arbor.Color := ⟨0.5, 1.0, 0.5, 0.5⟩) : CanvasM Unit := do
   -- Measure widget to get intrinsic size
-  let (intrinsicWidth, intrinsicHeight) ← runWithFonts reg (Arbor.intrinsicSize widget)
+  let (intrinsicWidth, intrinsicHeight) ← runWithFonts reg (Afferent.Arbor.intrinsicSize widget)
 
   -- Measure widget for layout
-  let measureResult ← runWithFonts reg (Arbor.measureWidget widget intrinsicWidth intrinsicHeight)
+  let measureResult ← runWithFonts reg (Afferent.Arbor.measureWidget widget intrinsicWidth intrinsicHeight)
   let layoutNode := measureResult.node
   let measuredWidget := measureResult.widget
 
@@ -248,7 +248,7 @@ def renderArborWidgetDebug (reg : FontRegistry) (widget : Arbor.Widget)
   let offsetY := (screenHeight - intrinsicHeight) / 2
 
   -- Collect render commands with debug borders
-  let commands := Arbor.collectCommandsWithDebug measuredWidget layouts borderColor
+  let commands := Afferent.Arbor.collectCommandsWithDebug measuredWidget layouts borderColor
 
   -- Save state, translate, render, restore
   CanvasM.save
