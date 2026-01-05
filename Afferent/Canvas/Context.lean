@@ -539,6 +539,9 @@ def scale (sx sy : Float) (c : Canvas) : Canvas :=
 def scaleUniform (s : Float) (c : Canvas) : Canvas :=
   { c with stateStack := c.stateStack.scaleUniform s }
 
+def setBaseTransform (t : Transform) (c : Canvas) : Canvas :=
+  { c with stateStack := c.stateStack.setBaseTransform t }
+
 def resetTransform (c : Canvas) : Canvas :=
   { c with stateStack := c.stateStack.resetTransform }
 

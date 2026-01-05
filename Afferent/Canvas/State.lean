@@ -14,6 +14,8 @@ namespace Afferent
 structure CanvasState where
   /-- Current transformation matrix. -/
   transform : Transform
+  /-- Base transform used by resetTransform. -/
+  baseTransform : Transform
   /-- Current fill style. -/
   fillStyle : FillStyle
   /-- Current stroke style. -/
@@ -30,6 +32,7 @@ namespace CanvasState
 /-- Default canvas state with identity transform and black fill/stroke. -/
 def default : CanvasState :=
   { transform := Transform.identity
+    baseTransform := Transform.identity
     fillStyle := .solid Color.black
     strokeStyle := StrokeStyle.default
     globalAlpha := 1.0
@@ -59,9 +62,13 @@ def scaleUniform (s : Float) (state : CanvasState) : CanvasState :=
 def setTransform (t : Transform) (state : CanvasState) : CanvasState :=
   { state with transform := t }
 
-/-- Reset the transform to identity. -/
+/-- Set the base transform used by resetTransform (also updates current transform). -/
+def setBaseTransform (t : Transform) (state : CanvasState) : CanvasState :=
+  { state with baseTransform := t, transform := t }
+
+/-- Reset the transform to the base transform. -/
 def resetTransform (state : CanvasState) : CanvasState :=
-  { state with transform := Transform.identity }
+  { state with transform := state.baseTransform }
 
 /-! ## Style operations -/
 
@@ -335,6 +342,9 @@ def scale (sx sy : Float) : StateStack → StateStack :=
 
 def scaleUniform (s : Float) : StateStack → StateStack :=
   modify (CanvasState.scaleUniform s)
+
+def setBaseTransform (t : Transform) : StateStack → StateStack :=
+  modify (CanvasState.setBaseTransform t)
 
 def setFillColor (c : Color) : StateStack → StateStack :=
   modify (CanvasState.setFillColor c)
