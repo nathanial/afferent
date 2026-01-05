@@ -985,6 +985,7 @@ def translate (dx dy : Float) : CanvasM Unit := modifyCanvas (Canvas.translate d
 def rotate (angle : Float) : CanvasM Unit := modifyCanvas (Canvas.rotate angle)
 def scale (sx sy : Float) : CanvasM Unit := modifyCanvas (Canvas.scale sx sy)
 def scaleUniform (s : Float) : CanvasM Unit := modifyCanvas (Canvas.scaleUniform s)
+def setBaseTransform (t : Transform) : CanvasM Unit := modifyCanvas (Canvas.setBaseTransform t)
 def resetTransform : CanvasM Unit := modifyCanvas Canvas.resetTransform
 def resetState : CanvasM Unit := modifyCanvas Canvas.resetState
 def resetStateAndScissor : CanvasM Unit := liftCanvas Canvas.resetStateAndScissor

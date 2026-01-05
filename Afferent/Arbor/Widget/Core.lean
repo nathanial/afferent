@@ -5,6 +5,7 @@
 import Afferent.Arbor.Core.Types
 import Afferent.Arbor.Render.Command
 import Trellis
+import Afferent.Canvas.Context
 
 namespace Afferent.Arbor
 
@@ -90,6 +91,8 @@ structure CustomSpec where
   measure : Float → Float → (Float × Float)
   /-- Collect render commands given computed layout. -/
   collect : Trellis.ComputedLayout → RenderCommands
+  /-- Optional CanvasM draw hook for backend-specific rendering. -/
+  draw : Option (Trellis.ComputedLayout → Afferent.CanvasM Unit) := none
   /-- Optional custom hit test (true if point is inside widget). -/
   hitTest : Option (Trellis.ComputedLayout → Point → Bool) := none
 
@@ -98,6 +101,7 @@ namespace CustomSpec
 def default : CustomSpec :=
   { measure := fun _ _ => (0, 0)
     collect := fun _ => #[]
+    draw := none
     hitTest := none }
 
 end CustomSpec

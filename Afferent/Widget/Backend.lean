@@ -194,6 +194,23 @@ def executeCommands (reg : FontRegistry) (cmds : Array Afferent.Arbor.RenderComm
   for cmd in cmds do
     executeCommand reg cmd
 
+partial def renderCustomWidgets (w : Afferent.Arbor.Widget) (layouts : Trellis.LayoutResult) : CanvasM Unit := do
+  match layouts.get w.id with
+  | none => pure ()
+  | some layout =>
+      match w with
+      | .custom _ _ _ spec =>
+          match spec.draw with
+          | some draw => draw layout
+          | none => pure ()
+      | .flex _ _ _ _ children
+      | .grid _ _ _ _ children =>
+          for child in children do
+            renderCustomWidgets child layouts
+      | .scroll _ _ _ _ _ _ child =>
+          renderCustomWidgets child layouts
+      | _ => pure ()
+
 /-- Render an Arbor widget tree using CanvasM.
     This is the main entry point for rendering Arbor widgets with Afferent's Metal backend.
 
@@ -217,6 +234,17 @@ def renderArborWidget (reg : FontRegistry) (widget : Afferent.Arbor.Widget)
 
   -- Execute commands
   executeCommands reg commands
+
+/-- Render an Arbor widget tree and run any custom CanvasM draw hooks. -/
+def renderArborWidgetWithCustom (reg : FontRegistry) (widget : Afferent.Arbor.Widget)
+    (availWidth availHeight : Float) : CanvasM Unit := do
+  let measureResult ← runWithFonts reg (Afferent.Arbor.measureWidget widget availWidth availHeight)
+  let layoutNode := measureResult.node
+  let measuredWidget := measureResult.widget
+  let layouts := Trellis.layout layoutNode availWidth availHeight
+  let commands := Afferent.Arbor.collectCommands measuredWidget layouts
+  executeCommands reg commands
+  renderCustomWidgets measuredWidget layouts
 
 /-- Convenience function to render a widget built with Arbor's DSL.
     Takes a WidgetBuilder and executes the full render pipeline. -/
