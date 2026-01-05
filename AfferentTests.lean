@@ -8,6 +8,7 @@ import Afferent.Tests.LayoutTests
 import Afferent.Tests.CanvasStateTests
 import Afferent.Tests.FontTests
 import Afferent.Tests.RenderSmokeTests
+import Afferent.Tests.ContentScaleTests
 import Crucible
 
 open Crucible

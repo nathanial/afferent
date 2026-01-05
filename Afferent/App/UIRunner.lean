@@ -40,12 +40,16 @@ private def layoutUI (reg : FontRegistry) (widget : Widget) (mode : LayoutMode)
     let (intrW, intrH) ← runWithFonts reg (Afferent.Arbor.intrinsicSize widget)
     let measureResult ← runWithFonts reg (Afferent.Arbor.measureWidget widget intrW intrH)
     let layouts := Trellis.layout measureResult.node intrW intrH
+    -- Apply content scale metadata for containers with contentScale
+    let layouts ← runWithFonts reg (Afferent.Arbor.applyContentScale measureResult.widget layouts)
     let offsetX := (screenW - intrW) / 2
     let offsetY := (screenH - intrH) / 2
     pure { widget := measureResult.widget, layouts, offsetX, offsetY, renderWidth := intrW, renderHeight := intrH }
   | .fullscreen =>
     let measureResult ← runWithFonts reg (Afferent.Arbor.measureWidget widget screenW screenH)
     let layouts := Trellis.layout measureResult.node screenW screenH
+    -- Apply content scale metadata for containers with contentScale
+    let layouts ← runWithFonts reg (Afferent.Arbor.applyContentScale measureResult.widget layouts)
     pure { widget := measureResult.widget, layouts, offsetX := 0, offsetY := 0, renderWidth := screenW, renderHeight := screenH }
 
 private def buildPointerEvents (window : FFI.Window) (offsetX offsetY : Float)

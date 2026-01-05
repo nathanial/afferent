@@ -84,6 +84,71 @@ def collectSingleLineText (contentRect : Trellis.LayoutRect) (text : String)
   let verticalOffset := (contentRect.height - lineHeight) / 2
   CollectM.emit (.fillText text x (contentRect.y + verticalOffset + ascender) font color)
 
+/-- Compute the bounding box of children from their layouts. -/
+def computeChildrenBounds (children : Array Widget) (layouts : Trellis.LayoutResult)
+    : Trellis.LayoutRect :=
+  let (minX, minY, maxX, maxY) := children.foldl (init := (1000000.0, 1000000.0, -1000000.0, -1000000.0))
+    fun (minX, minY, maxX, maxY) child =>
+      match layouts.get child.id with
+      | some computed =>
+        let r := computed.borderRect
+        (min minX r.x, min minY r.y, max maxX (r.x + r.width), max maxY (r.y + r.height))
+      | none => (minX, minY, maxX, maxY)
+  if minX == 1000000.0 then
+    { x := 0, y := 0, width := 0, height := 0 }
+  else
+    { x := minX, y := minY, width := maxX - minX, height := maxY - minY }
+
+mutual
+/-- Collect render commands for scaled children.
+    Applies clip, translate, and scale transforms before rendering children.
+
+    The transform maps from children's intrinsic bounding box to the
+    container's available space with proper scaling and centering.
+
+    Children are laid out with relaxed constraints during measure, so they
+    have their intrinsic size. Trellis positions them within the container,
+    potentially extending beyond contentRect if larger than available space.
+
+    Transform sequence:
+    1. Compute children's actual bounding box from layouts
+    2. Translate to final position (contentRect origin + anchor offset)
+    3. Scale by computed factors
+    4. Translate children's bounding box to origin
+-/
+partial def collectScaledChildren (contentRect : Trellis.LayoutRect)
+    (m : Trellis.ScaleMetadata)
+    (children : Array Widget)
+    (layouts : Trellis.LayoutResult) : CollectM Unit := do
+  -- Clip to content area
+  let clipRect : Rect := ⟨⟨contentRect.x, contentRect.y⟩, ⟨contentRect.width, contentRect.height⟩⟩
+  CollectM.emit (.pushClip clipRect)
+  CollectM.emit .save
+
+  -- Compute the actual bounding box of children from their layouts.
+  -- This may differ from contentRect if children are larger (e.g., centered overflow)
+  let childBounds := computeChildrenBounds children layouts
+
+  -- Apply transforms: translate to final position, scale, translate children to origin
+  -- T1 * S * T2 where:
+  -- T2 = translate(-childBounds.x, -childBounds.y): move children so their bounding box is at origin
+  -- S = scale(scaleX, scaleY): scale the content
+  -- T1 = translate(contentRect.x + offsetX, contentRect.y + offsetY): position at anchor
+  CollectM.emit (.pushTranslate (contentRect.x + m.offsetX) (contentRect.y + m.offsetY))
+  CollectM.emit (.pushScale m.scaleX m.scaleY)
+  CollectM.emit (.pushTranslate (-childBounds.x) (-childBounds.y))
+
+  -- Render children (they have absolute coordinates that we're transforming)
+  for child in children do
+    collectWidget child layouts
+
+  -- Pop transforms in reverse order
+  CollectM.emit .popTransform  -- translate to origin
+  CollectM.emit .popTransform  -- scale
+  CollectM.emit .popTransform  -- translate to final position
+  CollectM.emit .restore
+  CollectM.emit .popClip
+
 /-- Collect render commands for a widget tree using computed layout positions.
     The widget should have been measured (text layouts computed) before calling this.
     Returns an array of RenderCommands that can be executed by any backend. -/
@@ -115,13 +180,23 @@ partial def collectWidget (w : Widget) (layouts : Trellis.LayoutResult) : Collec
 
   | .flex _ _ _ style children =>
     collectBoxStyle borderRect style
-    for child in children do
-      collectWidget child layouts
+    match computed.scaleMetadata with
+    | some m =>
+      -- Apply content scale transforms
+      collectScaledChildren contentRect m children layouts
+    | none =>
+      for child in children do
+        collectWidget child layouts
 
   | .grid _ _ _ style children =>
     collectBoxStyle borderRect style
-    for child in children do
-      collectWidget child layouts
+    match computed.scaleMetadata with
+    | some m =>
+      -- Apply content scale transforms
+      collectScaledChildren contentRect m children layouts
+    | none =>
+      for child in children do
+        collectWidget child layouts
 
   | .scroll _ _ style scrollState _ _ child =>
     -- Render background
@@ -142,6 +217,8 @@ partial def collectWidget (w : Widget) (layouts : Trellis.LayoutResult) : Collec
     CollectM.emit .popTransform
     CollectM.emit .restore
     CollectM.emit .popClip
+
+end  -- mutual
 
 /-- Collect render commands for a widget tree.
     This is the main entry point for converting a widget tree to render commands. -/
