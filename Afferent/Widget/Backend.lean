@@ -82,6 +82,16 @@ def executeCommand (reg : FontRegistry) (cmd : Afferent.Arbor.RenderCommand) : C
       CanvasM.setFillColor (toAfferentColor color)
       CanvasM.fillRect afferentRect
 
+  | .fillRectStyle rect style cornerRadius =>
+    let afferentRect := toAfferentRect rect
+    CanvasM.save
+    CanvasM.setFillStyle style
+    if cornerRadius > 0 then
+      CanvasM.fillRoundedRect afferentRect cornerRadius
+    else
+      CanvasM.fillRect afferentRect
+    CanvasM.restore
+
   | .strokeRect rect color lineWidth cornerRadius =>
     let afferentRect := toAfferentRect rect
     CanvasM.setStrokeColor (toAfferentColor color)
@@ -138,6 +148,13 @@ def executeCommand (reg : FontRegistry) (cmd : Afferent.Arbor.RenderCommand) : C
     CanvasM.setFillColor (toAfferentColor color)
     CanvasM.fillPath afferentPath
 
+  | .fillPathStyle path style =>
+    let afferentPath := toAfferentPath path
+    CanvasM.save
+    CanvasM.setFillStyle style
+    CanvasM.fillPath afferentPath
+    CanvasM.restore
+
   | .strokePath path color lineWidth =>
     let afferentPath := toAfferentPath path
     CanvasM.setStrokeColor (toAfferentColor color)
@@ -152,7 +169,16 @@ def executeCommand (reg : FontRegistry) (cmd : Afferent.Arbor.RenderCommand) : C
     CanvasM.unclip
 
   | .pushTranslate dx dy =>
+    CanvasM.save
     CanvasM.translate dx dy
+
+  | .pushRotate angle =>
+    CanvasM.save
+    CanvasM.rotate angle
+
+  | .pushScale sx sy =>
+    CanvasM.save
+    CanvasM.scale sx sy
 
   | .popTransform =>
     CanvasM.restore

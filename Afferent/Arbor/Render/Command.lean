@@ -4,6 +4,7 @@
 -/
 import Afferent.Arbor.Core.Types
 import Afferent.Arbor.Core.Path
+import Afferent.Core.Paint
 
 namespace Afferent.Arbor
 
@@ -27,6 +28,9 @@ inductive RenderCommand where
   /-- Fill a rectangle with a solid color. -/
   | fillRect (rect : Rect) (color : Color) (cornerRadius : Float := 0)
 
+  /-- Fill a rectangle with a gradient or solid fill style. -/
+  | fillRectStyle (rect : Rect) (style : Afferent.FillStyle) (cornerRadius : Float := 0)
+
   /-- Stroke a rectangle outline. -/
   | strokeRect (rect : Rect) (color : Color) (lineWidth : Float) (cornerRadius : Float := 0)
 
@@ -46,6 +50,9 @@ inductive RenderCommand where
   /-- Fill a path with a solid color. -/
   | fillPath (path : Path) (color : Color)
 
+  /-- Fill a path with a gradient or solid fill style. -/
+  | fillPathStyle (path : Path) (style : Afferent.FillStyle)
+
   /-- Stroke a path outline. -/
   | strokePath (path : Path) (color : Color) (lineWidth : Float)
 
@@ -57,6 +64,12 @@ inductive RenderCommand where
 
   /-- Push a translation transform. -/
   | pushTranslate (dx dy : Float)
+
+  /-- Push a rotation transform. -/
+  | pushRotate (angle : Float)
+
+  /-- Push a scaling transform. -/
+  | pushScale (sx sy : Float)
 
   /-- Pop the top transform from the stack. -/
   | popTransform
@@ -73,6 +86,10 @@ namespace RenderCommand
 /-- Create a filled rectangle command. -/
 def fill (x y w h : Float) (color : Color) (radius : Float := 0) : RenderCommand :=
   .fillRect (Rect.mk' x y w h) color radius
+
+/-- Create a filled rectangle command with a fill style. -/
+def fillStyle (x y w h : Float) (style : Afferent.FillStyle) (radius : Float := 0) : RenderCommand :=
+  .fillRectStyle (Rect.mk' x y w h) style radius
 
 /-- Create a stroked rectangle command. -/
 def stroke (x y w h : Float) (color : Color) (lineWidth : Float) (radius : Float := 0) : RenderCommand :=

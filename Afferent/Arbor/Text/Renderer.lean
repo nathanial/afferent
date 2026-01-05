@@ -10,6 +10,7 @@ import Afferent.Arbor.Render.Collect
 import Afferent.Arbor.Widget.Core
 import Afferent.Arbor.Widget.Measure
 import Afferent.Arbor.Core.TextMeasurer
+import Afferent.Core.Paint
 import Trellis
 
 namespace Afferent.Arbor.Text
@@ -109,6 +110,26 @@ def executeCommand (state : RenderState) (cmd : RenderCommand) : RenderState :=
       let canvas := state.canvas.fillRect x y w h ch
       { state with canvas }
 
+  | .fillRectStyle rect style cornerRadius =>
+    let color := Afferent.FillStyle.toColor style
+    let (x, y) := state.toCanvasCoords rect.x rect.y
+    let w := rect.width.toUInt32.toNat
+    let h := rect.height.toUInt32.toNat
+    let ch := colorToFillChar color
+    if cornerRadius > 0 && w >= 2 && h >= 2 then
+      let canvas := state.canvas
+        |> (·.fillRect (x + 1) y (w - 2) 1 ch)           -- Top edge
+        |> (·.fillRect (x + 1) (y + h - 1) (w - 2) 1 ch) -- Bottom edge
+        |> (·.fillRect x (y + 1) w (h - 2) ch)           -- Middle rows
+        |> (·.setChar x y '╭')
+        |> (·.setChar (x + w - 1) y '╮')
+        |> (·.setChar x (y + h - 1) '╰')
+        |> (·.setChar (x + w - 1) (y + h - 1) '╯')
+      { state with canvas }
+    else
+      let canvas := state.canvas.fillRect x y w h ch
+      { state with canvas }
+
   | .strokeRect rect _color _lineWidth cornerRadius =>
     let (x, y) := state.toCanvasCoords rect.x rect.y
     let w := rect.width.toUInt32.toNat
@@ -168,6 +189,10 @@ def executeCommand (state : RenderState) (cmd : RenderCommand) : RenderState :=
     -- Path rendering not supported in text mode
     state
 
+  | .fillPathStyle _path _style =>
+    -- Path rendering not supported in text mode
+    state
+
   | .strokePath _path _color _lineWidth =>
     -- Path rendering not supported in text mode
     state
@@ -180,6 +205,12 @@ def executeCommand (state : RenderState) (cmd : RenderCommand) : RenderState :=
 
   | .pushTranslate dx dy =>
     state.pushTransform.translate dx dy
+
+  | .pushRotate _angle =>
+    state.pushTransform
+
+  | .pushScale _sx _sy =>
+    state.pushTransform
 
   | .popTransform =>
     state.popTransform
