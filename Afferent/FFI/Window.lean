@@ -27,6 +27,10 @@ opaque Window.shouldClose (window : @& Window) : IO Bool
 @[extern "lean_afferent_window_poll_events"]
 opaque Window.pollEvents (window : @& Window) : IO Unit
 
+/-- Run the native event loop (blocks until stopped). -/
+@[extern "lean_afferent_window_run_event_loop"]
+opaque Window.runEventLoop (window : @& Window) : IO Unit
+
 /-- Get the current window size as (width, height) in pixels. -/
 @[extern "lean_afferent_window_get_size"]
 opaque Window.getSize (window : @& Window) : IO (UInt32 × UInt32)

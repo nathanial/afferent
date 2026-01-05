@@ -13,6 +13,13 @@ import Afferent.FFI
 
 namespace Afferent
 
+private def runWithEventLoop (window : FFI.Window) (loop : IO Unit) : IO Unit := do
+  let task ← IO.asTask (prio := .dedicated) loop
+  window.runEventLoop
+  match task.get with
+  | .ok _ => pure ()
+  | .error err => throw err
+
 /-- Drawing context that wraps FFI renderer with high-level API. -/
 structure DrawContext where
   window : FFI.Window
@@ -68,6 +75,10 @@ def shouldClose (ctx : DrawContext) : IO Bool :=
 /-- Poll window events. -/
 def pollEvents (ctx : DrawContext) : IO Unit :=
   ctx.window.pollEvents
+
+/-- Run the native event loop (blocks until stopped). -/
+def runEventLoop (ctx : DrawContext) : IO Unit :=
+  ctx.window.runEventLoop
 
 /-- Get the last key code pressed (only valid if hasKeyPressed is true). -/
 def getKeyCode (ctx : DrawContext) : IO UInt16 :=
@@ -414,12 +425,13 @@ def measureText (_ : DrawContext) (text : String) (font : Font) : IO (Float × F
 
 /-- Run a render loop until the window is closed. -/
 def runLoop (ctx : DrawContext) (clearColor : Color) (draw : DrawContext → IO Unit) : IO Unit := do
-  while !(← ctx.shouldClose) do
-    ctx.pollEvents
-    let ok ← ctx.beginFrame clearColor
-    if ok then
-      draw ctx
-      ctx.endFrame
+  let render := do
+    while !(← ctx.shouldClose) do
+      let ok ← ctx.beginFrame clearColor
+      if ok then
+        draw ctx
+        ctx.endFrame
+  runWithEventLoop ctx.window render
 
 /-! ## Stateful Drawing API -/
 
@@ -443,13 +455,14 @@ def fillCircleWithState (ctx : DrawContext) (center : Point) (radius : Float) (s
     The draw function receives a mutable StateStack reference. -/
 def runStatefulLoop (ctx : DrawContext) (clearColor : Color)
     (draw : DrawContext → StateStack → IO StateStack) : IO Unit := do
-  let mut stack := StateStack.new
-  while !(← ctx.shouldClose) do
-    ctx.pollEvents
-    let ok ← ctx.beginFrame clearColor
-    if ok then
-      stack ← draw ctx stack
-      ctx.endFrame
+  let render := do
+    let mut stack := StateStack.new
+    while !(← ctx.shouldClose) do
+      let ok ← ctx.beginFrame clearColor
+      if ok then
+        stack ← draw ctx stack
+        ctx.endFrame
+  runWithEventLoop ctx.window render
 
 end DrawContext
 
@@ -710,6 +723,9 @@ def shouldClose (c : Canvas) : IO Bool :=
 def pollEvents (c : Canvas) : IO Unit :=
   c.ctx.pollEvents
 
+def runEventLoop (c : Canvas) : IO Unit :=
+  c.ctx.runEventLoop
+
 /-- Get the last key code pressed (only valid if hasKeyPressed is true). Common codes: Space=49, Escape=53, P=35 -/
 def getKeyCode (c : Canvas) : IO UInt16 :=
   c.ctx.getKeyCode
@@ -794,27 +810,29 @@ def unclip (c : Canvas) : IO Canvas := do
 /-- Run a render loop with a Canvas that maintains state across frames.
     The draw function can return a modified Canvas with updated state. -/
 def runLoop (c : Canvas) (clearColor : Color) (draw : Canvas → IO Canvas) : IO Unit := do
-  let mut canvas := c
-  while !(← canvas.shouldClose) do
-    canvas.pollEvents
-    let ok ← canvas.beginFrame clearColor
-    if ok then
-      canvas ← draw canvas
-      canvas ← canvas.endFrame
+  let render := do
+    let mut canvas := c
+    while !(← canvas.shouldClose) do
+      let ok ← canvas.beginFrame clearColor
+      if ok then
+        canvas ← draw canvas
+        canvas ← canvas.endFrame
+  runWithEventLoop c.ctx.window render
 
 /-- Run a render loop with time parameter (in seconds since start).
     The draw function receives canvas and elapsed time. -/
 def runLoopWithTime (c : Canvas) (clearColor : Color) (draw : Canvas → Float → IO Canvas) : IO Unit := do
-  let startTime ← IO.monoMsNow
-  let mut canvas := c
-  while !(← canvas.shouldClose) do
-    canvas.pollEvents
-    let ok ← canvas.beginFrame clearColor
-    if ok then
-      let now ← IO.monoMsNow
-      let elapsed := (now - startTime).toFloat / 1000.0  -- Convert ms to seconds
-      canvas ← draw canvas elapsed
-      canvas ← canvas.endFrame
+  let render := do
+    let startTime ← IO.monoMsNow
+    let mut canvas := c
+    while !(← canvas.shouldClose) do
+      let ok ← canvas.beginFrame clearColor
+      if ok then
+        let now ← IO.monoMsNow
+        let elapsed := (now - startTime).toFloat / 1000.0  -- Convert ms to seconds
+        canvas ← draw canvas elapsed
+        canvas ← canvas.endFrame
+  runWithEventLoop c.ctx.window render
 
 /-! ## Dynamic Particle Rendering
 
@@ -1127,16 +1145,17 @@ def getWindow : CanvasM FFI.Window := do return (← get).ctx.window
     The render function receives elapsed time in seconds and handles all drawing.
     Frame begin/end and polling are handled automatically. -/
 def runLoopM (c : Canvas) (clearColor : Color) (render : Float → CanvasM Unit) : IO Unit := do
-  let startTime ← IO.monoMsNow
-  let mut canvas := c
-  while !(← canvas.shouldClose) do
-    canvas.pollEvents
-    let ok ← canvas.beginFrame clearColor
-    if ok then
-      let now ← IO.monoMsNow
-      let elapsed := (now - startTime).toFloat / 1000.0
-      canvas ← run' canvas (render elapsed)
-      canvas ← canvas.endFrame
+  let renderLoop := do
+    let startTime ← IO.monoMsNow
+    let mut canvas := c
+    while !(← canvas.shouldClose) do
+      let ok ← canvas.beginFrame clearColor
+      if ok then
+        let now ← IO.monoMsNow
+        let elapsed := (now - startTime).toFloat / 1000.0
+        canvas ← run' canvas (render elapsed)
+        canvas ← canvas.endFrame
+  runWithEventLoop c.ctx.window renderLoop
 
 end CanvasM
 
@@ -1176,23 +1195,24 @@ def run (config : CanvasConfig) (frame : Float → Float → CanvasM Unit) : IO 
   let physWidth := (config.width * screenScale).toUInt32
   let physHeight := (config.height * screenScale).toUInt32
   let canvas ← Canvas.createWithScale physWidth physHeight config.title screenScale
-  let startTime ← IO.monoMsNow
-  let mut lastTime := startTime
-  let mut c := canvas
-  while !(← c.shouldClose) do
-    c.pollEvents
-    let ok ← c.beginFrame config.clearColor
-    if ok then
-      let now ← IO.monoMsNow
-      let elapsed := (now - startTime).toFloat / 1000.0
-      let dt := (now - lastTime).toFloat / 1000.0
-      lastTime := now
-      -- Auto-scaling: apply screen scale transform so user works in logical pixels
-      c ← CanvasM.run' c do
-        CanvasM.resetTransform
-        CanvasM.scale screenScale screenScale
-        frame elapsed dt
-      c ← c.endFrame
+  let renderLoop := do
+    let startTime ← IO.monoMsNow
+    let mut lastTime := startTime
+    let mut c := canvas
+    while !(← c.shouldClose) do
+      let ok ← c.beginFrame config.clearColor
+      if ok then
+        let now ← IO.monoMsNow
+        let elapsed := (now - startTime).toFloat / 1000.0
+        let dt := (now - lastTime).toFloat / 1000.0
+        lastTime := now
+        -- Auto-scaling: apply screen scale transform so user works in logical pixels
+        c ← CanvasM.run' c do
+          CanvasM.resetTransform
+          CanvasM.scale screenScale screenScale
+          frame elapsed dt
+        c ← c.endFrame
+  runWithEventLoop canvas.ctx.window renderLoop
 
 end Canvas
 

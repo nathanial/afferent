@@ -71,31 +71,36 @@ private def buildPointerEvents (window : FFI.Window) (offsetX offsetY : Float)
   pure (events, leftDown)
 
 def run (canvas : Canvas) (fontReg : FontRegistry) (initial : Model) (app : UIApp Model Msg) : IO Unit := do
-  let mut c := canvas
-  let mut model := initial
-  let mut capture : CaptureState := {}
-  let mut prevLeftDown := false
-  while !(← c.shouldClose) do
-    c.pollEvents
-    let ok ← c.beginFrame app.background
-    if ok then
-      let ui := app.view model
-      let (screenW, screenH) ← c.ctx.getCurrentSize
-      let layoutInfo ← layoutUI fontReg ui.widget app.layout screenW screenH
-      let (events, leftDown) ←
-        buildPointerEvents c.ctx.window layoutInfo.offsetX layoutInfo.offsetY prevLeftDown app.sendHover
-      prevLeftDown := leftDown
-      for ev in events do
-        let (cap', msgs) := dispatchEvent ev layoutInfo.widget layoutInfo.layouts ui.handlers capture
-        capture := cap'
-        model := msgs.foldl (fun s m => app.update m s) model
+  let renderLoop := do
+    let mut c := canvas
+    let mut model := initial
+    let mut capture : CaptureState := {}
+    let mut prevLeftDown := false
+    while !(← c.shouldClose) do
+      let ok ← c.beginFrame app.background
+      if ok then
+        let ui := app.view model
+        let (screenW, screenH) ← c.ctx.getCurrentSize
+        let layoutInfo ← layoutUI fontReg ui.widget app.layout screenW screenH
+        let (events, leftDown) ←
+          buildPointerEvents c.ctx.window layoutInfo.offsetX layoutInfo.offsetY prevLeftDown app.sendHover
+        prevLeftDown := leftDown
+        for ev in events do
+          let (cap', msgs) := dispatchEvent ev layoutInfo.widget layoutInfo.layouts ui.handlers capture
+          capture := cap'
+          model := msgs.foldl (fun s m => app.update m s) model
 
-      c ← CanvasM.run' c do
-        match app.layout with
-        | .centeredIntrinsic =>
-          Afferent.Widget.renderArborWidgetCentered fontReg ui.widget screenW screenH
-        | .fullscreen =>
-          Afferent.Widget.renderArborWidget fontReg ui.widget screenW screenH
-      c ← c.endFrame
+        c ← CanvasM.run' c do
+          match app.layout with
+          | .centeredIntrinsic =>
+            Afferent.Widget.renderArborWidgetCentered fontReg ui.widget screenW screenH
+          | .fullscreen =>
+            Afferent.Widget.renderArborWidget fontReg ui.widget screenW screenH
+        c ← c.endFrame
+  let task ← IO.asTask (prio := .dedicated) renderLoop
+  canvas.ctx.window.runEventLoop
+  match task.get with
+  | .ok _ => pure ()
+  | .error err => throw err
 
 end Afferent.App

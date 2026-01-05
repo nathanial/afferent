@@ -94,6 +94,8 @@ static inline void afferent_window_push_click(struct AfferentWindow *w, uint8_t 
         self.metalLayer.frame = self.bounds;
         // Enable vsync for smooth animation
         self.metalLayer.displaySyncEnabled = YES;
+        // Avoid blocking the render loop while waiting for a drawable.
+        self.metalLayer.allowsNextDrawableTimeout = NO;
         // Triple buffering for smoother frame pacing
         self.metalLayer.maximumDrawableCount = 3;
         // Anchor content to top-left, don't scale when window resizes
@@ -102,6 +104,8 @@ static inline void afferent_window_push_click(struct AfferentWindow *w, uint8_t 
         if (contentsScale <= 0.0) contentsScale = 1.0;
         self.metalLayer.contentsScale = contentsScale;
         self.layer = self.metalLayer;
+        // Ensure layer contents are redrawn during live resize.
+        self.layerContentsRedrawPolicy = NSViewLayerContentsRedrawDuringViewResize;
 
         // Fixed drawable at requested pixel size - Lean code uses pixel coordinates.
         self.fixedDrawableSize = drawableSize;
@@ -352,6 +356,7 @@ static inline void afferent_window_push_click(struct AfferentWindow *w, uint8_t 
 
 - (BOOL)windowShouldClose:(NSWindow *)sender {
     self.shouldClose = YES;
+    [NSApp stop:nil];
     return NO;  // Don't actually close, let Lean handle it
 }
 
@@ -526,15 +531,32 @@ bool afferent_window_should_close(AfferentWindowRef window) {
 
 void afferent_window_poll_events(AfferentWindowRef window) {
     @autoreleasepool {
-        NSEvent *event;
-        while ((event = [NSApp nextEventMatchingMask:NSEventMaskAny
-                                           untilDate:nil
-                                              inMode:NSDefaultRunLoopMode
-                                             dequeue:YES])) {
+        (void)window;
+        const int maxEvents = 64;
+        NSDate *now = [NSDate distantPast];
+        for (int i = 0; i < maxEvents; i++) {
+            NSEvent *event = [NSApp nextEventMatchingMask:NSEventMaskAny
+                                               untilDate:now
+                                                  inMode:NSDefaultRunLoopMode
+                                                 dequeue:YES];
+            if (!event) {
+                event = [NSApp nextEventMatchingMask:NSEventMaskAny
+                                           untilDate:now
+                                              inMode:NSEventTrackingRunLoopMode
+                                             dequeue:YES];
+            }
+            if (!event) {
+                break;
+            }
             [NSApp sendEvent:event];
             [NSApp updateWindows];
         }
     }
+}
+
+void afferent_window_run_event_loop(AfferentWindowRef window) {
+    (void)window;
+    [NSApp run];
 }
 
 void afferent_window_get_size(AfferentWindowRef window, uint32_t* width, uint32_t* height) {

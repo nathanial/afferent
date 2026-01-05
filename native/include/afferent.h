@@ -83,6 +83,7 @@ AfferentResult afferent_window_create(
 void afferent_window_destroy(AfferentWindowRef window);
 bool afferent_window_should_close(AfferentWindowRef window);
 void afferent_window_poll_events(AfferentWindowRef window);
+void afferent_window_run_event_loop(AfferentWindowRef window);
 void afferent_window_get_size(AfferentWindowRef window, uint32_t* width, uint32_t* height);
 
 // Keyboard input

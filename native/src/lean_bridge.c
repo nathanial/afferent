@@ -150,6 +150,13 @@ LEAN_EXPORT lean_obj_res lean_afferent_window_poll_events(lean_obj_arg window_ob
     return lean_io_result_mk_ok(lean_box(0));
 }
 
+// Window run event loop (blocks until stopped)
+LEAN_EXPORT lean_obj_res lean_afferent_window_run_event_loop(lean_obj_arg window_obj, lean_obj_arg world) {
+    AfferentWindowRef window = (AfferentWindowRef)lean_get_external_data(window_obj);
+    afferent_window_run_event_loop(window);
+    return lean_io_result_mk_ok(lean_box(0));
+}
+
 // Window get size - returns (width, height) as UInt32 × UInt32
 LEAN_EXPORT lean_obj_res lean_afferent_window_get_size(lean_obj_arg window_obj, lean_obj_arg world) {
     AfferentWindowRef window = (AfferentWindowRef)lean_get_external_data(window_obj);
