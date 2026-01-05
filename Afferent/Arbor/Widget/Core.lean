@@ -55,10 +55,14 @@ structure BoxStyle where
   cornerRadius : Float := 0
   padding : Trellis.EdgeInsets := {}
   margin : Trellis.EdgeInsets := {}
+  width : Trellis.Dimension := .auto    -- explicit width (auto, length, or percent)
+  height : Trellis.Dimension := .auto   -- explicit height (auto, length, or percent)
   minWidth : Option Float := none
   maxWidth : Option Float := none
   minHeight : Option Float := none
   maxHeight : Option Float := none
+  /-- Flex item properties (grow, shrink, basis, alignSelf) when this widget is a flex child -/
+  flexItem : Option Trellis.FlexItem := none
 deriving Repr, BEq, Inhabited
 
 namespace BoxStyle

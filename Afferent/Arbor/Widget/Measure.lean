@@ -12,14 +12,37 @@ namespace Afferent.Arbor
 
 /-- Convert BoxStyle to Trellis.BoxConstraints. -/
 def styleToBoxConstraints (style : BoxStyle) : Trellis.BoxConstraints :=
-  { width := .auto
-    height := .auto
+  { width := style.width
+    height := style.height
     minWidth := style.minWidth.getD 0
     maxWidth := style.maxWidth
     minHeight := style.minHeight.getD 0
     maxHeight := style.maxHeight
     margin := style.margin
     padding := style.padding }
+
+/-- Extract BoxStyle from a Widget (if it has one). -/
+def widgetBoxStyle : Widget → Option BoxStyle
+  | .flex _ _ _ style _ => some style
+  | .grid _ _ _ style _ => some style
+  | .rect _ _ style => some style
+  | .custom _ _ style _ => some style
+  | .scroll _ _ style _ _ _ _ => some style
+  | .text .. => none
+  | .spacer .. => none
+
+/-- Set the ItemKind on a LayoutNode. -/
+def setItemKind (node : Trellis.LayoutNode) (item : Trellis.ItemKind) : Trellis.LayoutNode :=
+  node.withItem item
+
+/-- Apply flexItem from BoxStyle to a LayoutNode if present. -/
+def applyFlexItem (node : Trellis.LayoutNode) (style : Option BoxStyle) : Trellis.LayoutNode :=
+  match style with
+  | some s =>
+    match s.flexItem with
+    | some fi => setItemKind node (.flexChild fi)
+    | none => node
+  | none => node
 
 /-- Result of measuring a widget: the LayoutNode and the updated widget (with computed TextLayout). -/
 structure MeasureResult where
@@ -77,12 +100,14 @@ partial def measureWidget {M : Type → Type} [Monad M] [TextMeasurer M] (w : Wi
 
   | .flex id name props style children =>
     let box := styleToBoxConstraints style
-    -- Recursively measure children
+    -- Recursively measure children, applying flexItem properties
     let mut childNodes : Array Trellis.LayoutNode := #[]
     let mut updatedChildren : Array Widget := #[]
     for child in children do
       let result ← measureWidget child availWidth availHeight
-      childNodes := childNodes.push result.node
+      -- Apply flexItem from child's BoxStyle if present
+      let nodeWithItem := applyFlexItem result.node (widgetBoxStyle child)
+      childNodes := childNodes.push nodeWithItem
       updatedChildren := updatedChildren.push result.widget
     -- Store an intrinsic content size on the container so parent flex/grid layout
     -- can size this node based on its children (avoids collapsing to 0).
