@@ -86,6 +86,23 @@ def withPadding (p : Float) : BoxStyle :=
 def card (bg : Color) (p : Float) : BoxStyle :=
   { backgroundColor := some bg, padding := Trellis.EdgeInsets.uniform p }
 
+/-- Style that grows to fill available space. -/
+def grow (factor : Float := 1) : BoxStyle :=
+  { flexItem := some (Trellis.FlexItem.growing factor) }
+
+/-- Full width (100%). -/
+def fullWidth : BoxStyle := { width := .percent 1.0 }
+
+/-- Full height (100%). -/
+def fullHeight : BoxStyle := { height := .percent 1.0 }
+
+/-- Full size (100% x 100%). -/
+def fill : BoxStyle := { width := .percent 1.0, height := .percent 1.0 }
+
+/-- Growing and full height (common pattern). -/
+def growFill : BoxStyle :=
+  { flexItem := some (Trellis.FlexItem.growing 1), height := .percent 1.0 }
+
 end BoxStyle
 
 /-- Custom widget specification.

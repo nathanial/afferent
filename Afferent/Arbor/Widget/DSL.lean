@@ -160,6 +160,42 @@ def spaceAround (direction : Trellis.FlexDirection := .row) (style : BoxStyle :=
   let cs ← children.mapM fun b => b
   pure (.flex wid none props style cs)
 
+/-- Create a row with both axes centered. -/
+def rowCenter (gap : Float := 0) (style : BoxStyle := {})
+    (children : Array WidgetBuilder) : WidgetBuilder := do
+  let wid ← freshId
+  let props := { Trellis.FlexContainer.default with
+    direction := .row, justifyContent := .center, alignItems := .center, gap }
+  let cs ← children.mapM fun b => b
+  pure (.flex wid none props style cs)
+
+/-- Create a column with both axes centered. -/
+def colCenter (gap : Float := 0) (style : BoxStyle := {})
+    (children : Array WidgetBuilder) : WidgetBuilder := do
+  let wid ← freshId
+  let props := { Trellis.FlexContainer.default with
+    direction := .column, justifyContent := .center, alignItems := .center, gap }
+  let cs ← children.mapM fun b => b
+  pure (.flex wid none props style cs)
+
+/-- Create a row with space-between alignment. -/
+def rowSpaceBetween (gap : Float := 0) (style : BoxStyle := {})
+    (children : Array WidgetBuilder) : WidgetBuilder := do
+  let wid ← freshId
+  let props := { Trellis.FlexContainer.default with
+    direction := .row, justifyContent := .spaceBetween, gap }
+  let cs ← children.mapM fun b => b
+  pure (.flex wid none props style cs)
+
+/-- Create a column with space-between alignment. -/
+def colSpaceBetween (gap : Float := 0) (style : BoxStyle := {})
+    (children : Array WidgetBuilder) : WidgetBuilder := do
+  let wid ← freshId
+  let props := { Trellis.FlexContainer.default with
+    direction := .column, justifyContent := .spaceBetween, gap }
+  let cs ← children.mapM fun b => b
+  pure (.flex wid none props style cs)
+
 /-! ## Grid Container Widgets -/
 
 /-- Create a grid with n equal columns. -/
@@ -263,5 +299,113 @@ def buildFrom (startId : Nat) (builder : WidgetBuilder) : Widget :=
 /-- Run a builder and get both the widget and final state. -/
 def buildWithState (builder : WidgetBuilder) : Widget × BuilderState :=
   builder.run {}
+
+/-! ## Monadic Child Builder
+
+The `ChildBuilder` monad allows building widget children using do-notation:
+
+```
+row (gap := 10) {} do
+  text' "Hello" font
+  text' "World" font
+  column (gap := 5) {} do
+    text' "Nested" font
+```
+
+Instead of the array style:
+
+```
+row (gap := 10) {} #[
+  text' "Hello" font,
+  text' "World" font,
+  column (gap := 5) {} #[
+    text' "Nested" font
+  ]
+]
+```
+-/
+
+/-- Child builder monad that accumulates widgets using StateT. -/
+abbrev ChildBuilder := StateT (Array Widget) (StateM BuilderState)
+
+/-- Coerce a WidgetBuilder to a ChildBuilder that emits the widget as a child.
+    This enables using widget builders directly in do-notation. -/
+instance : Coe WidgetBuilder (ChildBuilder Unit) where
+  coe builder := do
+    let widget ← StateT.lift builder
+    modify fun arr => arr.push widget
+
+/-- Run a ChildBuilder and extract the children array. -/
+def runChildren (cb : ChildBuilder Unit) : StateM BuilderState (Array Widget) := do
+  let ((), children) ← cb.run #[]
+  pure children
+
+
+/-! ## Monadic Container Builders
+
+These builders use `ChildBuilder Unit` for do-notation children.
+Use `row`/`column` with `#[...]` arrays for the traditional style.
+-/
+
+/-- Create a horizontal flex row with monadic children. -/
+def hbox (gap : Float := 0) (style : BoxStyle := {}) (children : ChildBuilder Unit) : WidgetBuilder := do
+  let wid ← freshId
+  let props := Trellis.FlexContainer.row gap
+  let cs ← runChildren children
+  pure (.flex wid none props style cs)
+
+/-- Create a vertical flex column with monadic children. -/
+def vbox (gap : Float := 0) (style : BoxStyle := {}) (children : ChildBuilder Unit) : WidgetBuilder := do
+  let wid ← freshId
+  let props := Trellis.FlexContainer.column gap
+  let cs ← runChildren children
+  pure (.flex wid none props style cs)
+
+/-- Create a flex row with custom properties and monadic children. -/
+def hboxWith (props : Trellis.FlexContainer) (style : BoxStyle := {}) (children : ChildBuilder Unit) : WidgetBuilder := do
+  let wid ← freshId
+  let cs ← runChildren children
+  pure (.flex wid none { props with direction := .row } style cs)
+
+/-- Create a flex column with custom properties and monadic children. -/
+def vboxWith (props : Trellis.FlexContainer) (style : BoxStyle := {}) (children : ChildBuilder Unit) : WidgetBuilder := do
+  let wid ← freshId
+  let cs ← runChildren children
+  pure (.flex wid none { props with direction := .column } style cs)
+
+/-- Create a row with horizontal centering (main axis only). -/
+def hcenter (gap : Float := 0) (style : BoxStyle := {}) (children : ChildBuilder Unit) : WidgetBuilder := do
+  let wid ← freshId
+  let props := { Trellis.FlexContainer.row gap with justifyContent := .center }
+  let cs ← runChildren children
+  pure (.flex wid none props style cs)
+
+/-- Create a column with vertical centering (main axis only). -/
+def vcenter (gap : Float := 0) (style : BoxStyle := {}) (children : ChildBuilder Unit) : WidgetBuilder := do
+  let wid ← freshId
+  let props := { Trellis.FlexContainer.column gap with justifyContent := .center }
+  let cs ← runChildren children
+  pure (.flex wid none props style cs)
+
+/-- Create a row with space-between alignment and monadic children. -/
+def hspaced (style : BoxStyle := {}) (children : ChildBuilder Unit) : WidgetBuilder := do
+  let wid ← freshId
+  let props := { Trellis.FlexContainer.default with direction := .row, justifyContent := .spaceBetween }
+  let cs ← runChildren children
+  pure (.flex wid none props style cs)
+
+/-- Create a column with space-between alignment and monadic children. -/
+def vspaced (style : BoxStyle := {}) (children : ChildBuilder Unit) : WidgetBuilder := do
+  let wid ← freshId
+  let props := { Trellis.FlexContainer.default with direction := .column, justifyContent := .spaceBetween }
+  let cs ← runChildren children
+  pure (.flex wid none props style cs)
+
+/-- Create a grid with n equal columns and monadic children. -/
+def gridbox (columns : Nat) (gap : Float := 0) (style : BoxStyle := {}) (children : ChildBuilder Unit) : WidgetBuilder := do
+  let wid ← freshId
+  let props := Trellis.GridContainer.columns columns gap
+  let cs ← runChildren children
+  pure (.grid wid none props style cs)
 
 end Afferent.Arbor

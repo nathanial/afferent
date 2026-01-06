@@ -41,3 +41,6 @@ import Afferent.Arbor.App.UI
 import Afferent.Arbor.Text.Canvas
 import Afferent.Arbor.Text.Mode
 import Afferent.Arbor.Text.Renderer
+
+-- CSS-like styling DSL
+import Afferent.Arbor.Style.CSS
