@@ -11,13 +11,18 @@ size_t g_text_vertex_staging_capacity = 0;
 // Get a wrapper struct from the pool (or allocate if pool is empty)
 struct AfferentBuffer* pool_acquire_wrapper(void) {
     if (g_buffer_pool.wrapper_pool_used < g_buffer_pool.wrapper_pool_count) {
-        return g_buffer_pool.wrapper_pool[g_buffer_pool.wrapper_pool_used++];
+        struct AfferentBuffer* wrapper = g_buffer_pool.wrapper_pool[g_buffer_pool.wrapper_pool_used++];
+        wrapper->pooled = true;
+        return wrapper;
     }
     // Pool exhausted, allocate new and try to add to pool
     struct AfferentBuffer* wrapper = malloc(sizeof(struct AfferentBuffer));
     if (g_buffer_pool.wrapper_pool_count < WRAPPER_POOL_SIZE) {
         g_buffer_pool.wrapper_pool[g_buffer_pool.wrapper_pool_count++] = wrapper;
         g_buffer_pool.wrapper_pool_used++;
+        wrapper->pooled = true;
+    } else {
+        wrapper->pooled = false;
     }
     return wrapper;
 }

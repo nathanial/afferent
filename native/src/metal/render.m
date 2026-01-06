@@ -392,6 +392,7 @@ AfferentResult afferent_buffer_create_stroke_segment_persistent(
         buffer->count = segment_count;
         buffer->mtlBuffer = mtlBuffer;
         buffer->persistent = true;
+        buffer->pooled = false;
         *out_buffer = buffer;
         return AFFERENT_OK;
     }

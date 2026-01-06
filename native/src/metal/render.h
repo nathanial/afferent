@@ -110,6 +110,7 @@ struct AfferentBuffer {
     __strong id<MTLBuffer> mtlBuffer;
     uint32_t count;
     bool persistent;
+    bool pooled;
 };
 
 // ============================================================================

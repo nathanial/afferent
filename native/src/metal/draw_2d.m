@@ -6,7 +6,7 @@ void afferent_buffer_destroy(AfferentBufferRef buffer) {
         return;
     }
     // Pooled buffers are kept for reuse. Persistent buffers are owned here.
-    if (buffer->persistent) {
+    if (buffer->persistent || !buffer->pooled) {
         buffer->mtlBuffer = nil;
         free(buffer);
     }
