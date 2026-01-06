@@ -672,6 +672,9 @@ void afferent_window_clear_click(AfferentWindowRef window) {
 void afferent_window_set_pointer_lock(AfferentWindowRef window, bool locked) {
     if (!window) return;
 
+    if (window->pointerLocked == locked) {
+        return;
+    }
     window->pointerLocked = locked;
     if (locked) {
         // Disable mouse-cursor association (mouse moves don't move cursor)
