@@ -980,7 +980,12 @@ def liftCanvas (f : Canvas → IO Canvas) : CanvasM Unit := do
 /-! ## Transform operations -/
 
 def save : CanvasM Unit := modifyCanvas Canvas.save
-def restore : CanvasM Unit := modifyCanvas Canvas.restore
+def restore : CanvasM Unit := do
+  modifyCanvas Canvas.restore
+  -- Ensure scissor matches the restored clip stack.
+  liftCanvas (fun c => do
+    Canvas.applyEffectiveScissor c
+    pure c)
 def translate (dx dy : Float) : CanvasM Unit := modifyCanvas (Canvas.translate dx dy)
 def rotate (angle : Float) : CanvasM Unit := modifyCanvas (Canvas.rotate angle)
 def scale (sx sy : Float) : CanvasM Unit := modifyCanvas (Canvas.scale sx sy)

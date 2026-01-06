@@ -24,6 +24,8 @@ void afferent_renderer_draw_triangles(
 
     // Ensure we're using the basic pipeline (not text pipeline)
     [renderer->currentEncoder setRenderPipelineState:renderer->pipelineState];
+    // Disable depth testing for 2D rendering (may have been enabled by 3D)
+    [renderer->currentEncoder setDepthStencilState:renderer->depthStateDisabled];
 
     [renderer->currentEncoder setVertexBuffer:vertex_buffer->mtlBuffer offset:0 atIndex:0];
 
@@ -62,6 +64,8 @@ void afferent_renderer_draw_stroke(
     uniforms.color[3] = a;
 
     [renderer->currentEncoder setRenderPipelineState:renderer->strokePipelineState];
+    // Disable depth testing for 2D rendering (may have been enabled by 3D)
+    [renderer->currentEncoder setDepthStencilState:renderer->depthStateDisabled];
     [renderer->currentEncoder setVertexBuffer:vertex_buffer->mtlBuffer offset:0 atIndex:0];
     [renderer->currentEncoder setVertexBytes:&uniforms length:sizeof(StrokeUniforms) atIndex:1];
     [renderer->currentEncoder setFragmentBytes:&uniforms length:sizeof(StrokeUniforms) atIndex:1];
@@ -142,6 +146,8 @@ void afferent_renderer_draw_stroke_path(
     f.padding3 = 0.0f;
 
     [renderer->currentEncoder setRenderPipelineState:renderer->strokePathPipelineState];
+    // Disable depth testing for 2D rendering (may have been enabled by 3D)
+    [renderer->currentEncoder setDepthStencilState:renderer->depthStateDisabled];
     [renderer->currentEncoder setVertexBuffer:segment_buffer->mtlBuffer offset:0 atIndex:0];
     [renderer->currentEncoder setVertexBytes:&v length:sizeof(StrokePathVertexUniforms) atIndex:1];
     [renderer->currentEncoder setFragmentBytes:&f length:sizeof(StrokePathFragmentUniforms) atIndex:1];
@@ -240,6 +246,8 @@ void afferent_renderer_draw_instanced_shapes(
         u.padding1 = 0.0f;
 
         [renderer->currentEncoder setRenderPipelineState:pipeline];
+        // Disable depth testing for 2D rendering (may have been enabled by 3D)
+        [renderer->currentEncoder setDepthStencilState:renderer->depthStateDisabled];
         [renderer->currentEncoder setVertexBuffer:instanceBuffer offset:0 atIndex:0];
         [renderer->currentEncoder setVertexBytes:&u length:sizeof(InstancedUniforms) atIndex:1];
 

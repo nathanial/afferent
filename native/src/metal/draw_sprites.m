@@ -173,6 +173,8 @@ static void afferent_draw_textured_instances(
         }
 
         [renderer->currentEncoder setRenderPipelineState:pipeline];
+        // Disable depth testing for 2D rendering (may have been enabled by 3D)
+        [renderer->currentEncoder setDepthStencilState:renderer->depthStateDisabled];
         [renderer->currentEncoder setVertexBuffer:spriteBuffer offset:0 atIndex:0];
         [renderer->currentEncoder setVertexBytes:&uniforms length:sizeof(uniforms) atIndex:1];
         [renderer->currentEncoder setFragmentTexture:metalTex atIndex:0];
@@ -438,6 +440,8 @@ void afferent_renderer_draw_sprites_buffer(
         };
 
         [renderer->currentEncoder setRenderPipelineState:renderer->spritePipelineState];
+        // Disable depth testing for 2D rendering (may have been enabled by 3D)
+        [renderer->currentEncoder setDepthStencilState:renderer->depthStateDisabled];
         [renderer->currentEncoder setVertexBuffer:spriteBuffer offset:0 atIndex:0];
         [renderer->currentEncoder setVertexBytes:&uniforms length:sizeof(uniforms) atIndex:1];
         [renderer->currentEncoder setFragmentTexture:metalTex atIndex:0];
