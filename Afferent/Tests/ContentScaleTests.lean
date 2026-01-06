@@ -7,6 +7,7 @@ import Afferent.Arbor.Widget.Core
 import Afferent.Arbor.Widget.Measure
 import Afferent.Arbor.Widget.DSL
 import Afferent.Arbor.Text.Renderer
+import Afferent.Arbor.Event.HitTest
 import Afferent.Arbor.Render.Collect
 import Trellis
 
@@ -260,6 +261,23 @@ test "scale metadata offset for topLeft anchor" := do
   -- TopLeft anchor means offset = (0, 0)
   shouldBeNear m.offsetX 0.0
   shouldBeNear m.offsetY 0.0
+
+test "hitTest accounts for contentScale offset when scale is 1.0" := do
+  -- Container 200x200, child 100x100, allowUpscale=false -> scale=1, offset=50.
+  -- Hit test should reflect the centered content, not the unshifted child layout.
+  let widget := Widget.flex 1 none FlexContainer.column
+    { contentScale := some { mode := .contain, allowUpscale := false } }
+    #[Widget.rect 2 none { minWidth := some 100, minHeight := some 100 }]
+
+  let result : MeasureResult := (measureWidget (M := TestM) widget 10000 10000 : TestM _)
+  let layouts := Trellis.layout result.node 200 200
+  let layoutsWithScale : Trellis.LayoutResult := (applyContentScale (M := TestM) result.widget layouts : TestM _)
+
+  -- Point is inside the centered 100x100 content (50..150), but outside unshifted (0..100).
+  match hitTestId result.widget layoutsWithScale 140 140 with
+  | some 2 => pure ()
+  | some other => ensure false s!"Expected hit on child 2, got {other}"
+  | none => ensure false "Expected hit on child 2, got none"
 
 /-! ## Render Command Tests -/
 

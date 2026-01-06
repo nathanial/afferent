@@ -79,7 +79,8 @@ def transformPoint (t : HitTransform) (x y : Float) : Float × Float :=
   -- Then invert scale transform:
   -- Rendering does: translate(cx + ox, cy + oy) * scale(sx, sy) * translate(-childBoundsX, -childBoundsY) * p
   -- Inverse: ((screen - cx - ox) / sx) + childBoundsX, ((screen - cy - oy) / sy) + childBoundsY
-  if t.scaleX == 1.0 && t.scaleY == 1.0 then
+  if t.scaleX == 1.0 && t.scaleY == 1.0 &&
+      t.scaleOffsetX == 0.0 && t.scaleOffsetY == 0.0 then
     (scrolledX, scrolledY)
   else
     let localX := (scrolledX - t.scaleOriginX - t.scaleOffsetX) / t.scaleX + t.scaleOriginX
