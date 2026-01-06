@@ -44,6 +44,15 @@ def applyFlexItem (node : Trellis.LayoutNode) (style : Option BoxStyle) : Trelli
     | none => node
   | none => node
 
+/-- Apply gridItem from BoxStyle to a LayoutNode if present. -/
+def applyGridItem (node : Trellis.LayoutNode) (style : Option BoxStyle) : Trellis.LayoutNode :=
+  match style with
+  | some s =>
+    match s.gridItem with
+    | some gi => setItemKind node (.gridChild gi)
+    | none => node
+  | none => node
+
 /-- Result of measuring a widget: the LayoutNode and the updated widget (with computed TextLayout). -/
 structure MeasureResult where
   node : Trellis.LayoutNode
@@ -76,12 +85,23 @@ def fixToContentSize (n : Trellis.LayoutNode) : Trellis.LayoutNode :=
     minWidth := newMinWidth
     minHeight := newMinHeight
   }
-  -- Set shrink=0 and alignSelf=flexStart so Trellis doesn't shrink or stretch
-  fixedNode.withItem (.flexChild {
-    Trellis.FlexItem.default with
-    shrink := 0
-    alignSelf := some .flexStart  -- Prevent stretch from overriding cross size
-  })
+  -- Set shrink=0 and alignSelf=flexStart so Trellis doesn't shrink or stretch.
+  -- Preserve grid items when present.
+  let item :=
+    match n.item with
+    | .gridChild props => .gridChild props
+    | .flexChild props =>
+        .flexChild { props with
+          shrink := 0
+          alignSelf := some .flexStart
+        }
+    | .none =>
+        .flexChild {
+          Trellis.FlexItem.default with
+          shrink := 0
+          alignSelf := some .flexStart  -- Prevent stretch from overriding cross size
+        }
+  fixedNode.withItem item
 
 /-- Measure a widget tree and convert to LayoutNode tree.
     Also computes and stores TextLayout for text widgets.
@@ -183,8 +203,10 @@ partial def measureWidget {M : Type → Type} [Monad M] [TextMeasurer M] (w : Wi
     let mut updatedChildren : Array Widget := #[]
     for child in children do
       let result ← measureWidget child childAvailW childAvailH
+      -- Apply gridItem from child's BoxStyle if present
+      let nodeWithItem := applyGridItem result.node (widgetBoxStyle child)
       -- For contentScale containers, fix children to their intrinsic size
-      let finalNode := if hasContentScale then fixToContentSize result.node else result.node
+      let finalNode := if hasContentScale then fixToContentSize nodeWithItem else nodeWithItem
       childNodes := childNodes.push finalNode
       updatedChildren := updatedChildren.push result.widget
     -- Store an intrinsic content size on the container so parent flex/grid layout
