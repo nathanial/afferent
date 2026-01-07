@@ -1373,6 +1373,40 @@ def addRectDirect (batch : Batch) (x y angle halfSize : Float) (color : Color)
 
   { vertices, indices, vertexCount := batch.vertexCount + 4 }
 
+/-- FAST PATH: Add an axis-aligned rectangle directly to the batch.
+    No rotation computation - optimized for UI elements like terminal cells.
+    x, y: top-left corner position; width, height: rectangle dimensions -/
+def addAxisAlignedRect (batch : Batch) (x y width height : Float) (color : Color)
+    (screenWidth screenHeight : Float) : Batch :=
+  -- Compute corner positions
+  let right := x + width
+  let bottom := y + height
+
+  -- Convert to NDC inline
+  let toNdcX := fun px => (px / screenWidth) * 2.0 - 1.0
+  let toNdcY := fun py => 1.0 - (py / screenHeight) * 2.0
+
+  let tlNdcX := toNdcX x;     let tlNdcY := toNdcY y
+  let trNdcX := toNdcX right; let trNdcY := toNdcY y
+  let brNdcX := toNdcX right; let brNdcY := toNdcY bottom
+  let blNdcX := toNdcX x;     let blNdcY := toNdcY bottom
+
+  let baseIdx := batch.vertexCount.toUInt32
+
+  -- 4 vertices × 6 floats each (x, y, r, g, b, a)
+  let vertices := batch.vertices
+    |>.push tlNdcX |>.push tlNdcY |>.push color.r |>.push color.g |>.push color.b |>.push color.a
+    |>.push trNdcX |>.push trNdcY |>.push color.r |>.push color.g |>.push color.b |>.push color.a
+    |>.push brNdcX |>.push brNdcY |>.push color.r |>.push color.g |>.push color.b |>.push color.a
+    |>.push blNdcX |>.push blNdcY |>.push color.r |>.push color.g |>.push color.b |>.push color.a
+
+  -- Two triangles: (TL,TR,BR) and (TL,BR,BL)
+  let indices := batch.indices
+    |>.push baseIdx |>.push (baseIdx + 1) |>.push (baseIdx + 2)
+    |>.push baseIdx |>.push (baseIdx + 2) |>.push (baseIdx + 3)
+
+  { vertices, indices, vertexCount := batch.vertexCount + 4 }
+
 /-- Check if the batch is empty. -/
 def isEmpty (batch : Batch) : Bool := batch.vertices.size == 0
 
