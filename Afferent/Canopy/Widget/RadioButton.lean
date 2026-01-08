@@ -56,10 +56,12 @@ def radioButtonVisual (name : String) (labelText : String) (theme : Theme)
       backgroundColor := some circleBg
     }
 
-  namedRow name (gap := 8) (style := {}) #[
-    radioCircle,
-    text' labelText theme.font theme.text .left
-  ]
+  -- Use custom flex container with alignItems := .center to prevent stretching
+  let wid ← freshId
+  let props : Trellis.FlexContainer := { Trellis.FlexContainer.row 8 with alignItems := .center }
+  let circle ← radioCircle
+  let label ← text' labelText theme.font theme.text .left
+  pure (.flex wid (some name) props {} #[circle, label])
 
 /-- Create an interactive radio button (UIBuilder version).
     - `name`: Unique name for state tracking

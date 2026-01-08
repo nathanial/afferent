@@ -87,19 +87,19 @@ def checkbox {Msg : Type} (name : String) (labelText : String)
 
   -- Build visual structure: row with checkbox box + label
   UIBuilder.lift do
-    row (gap := 8) {} #[
-      -- Checkbox box with checkmark
-      custom (Checkbox.boxSpec state.checked state.hovered theme boxSize) {
-        minWidth := some boxSize
-        minHeight := some boxSize
-        cornerRadius := 4
-        borderColor := some borderColor
-        borderWidth := if state.focused then 2 else 1
-        backgroundColor := some boxBg
-      },
-      -- Label text
-      text' labelText theme.font theme.text .left
-    ]
+    -- Use custom flex container with alignItems := .center to prevent stretching
+    let wid ← freshId
+    let props : Trellis.FlexContainer := { Trellis.FlexContainer.row 8 with alignItems := .center }
+    let checkboxBox ← custom (Checkbox.boxSpec state.checked state.hovered theme boxSize) {
+      minWidth := some boxSize
+      minHeight := some boxSize
+      cornerRadius := 4
+      borderColor := some borderColor
+      borderWidth := if state.focused then 2 else 1
+      backgroundColor := some boxBg
+    }
+    let label ← text' labelText theme.font theme.text .left
+    pure (.flex wid none props {} #[checkboxBox, label])
 
 /-- Create a checkbox without a label (box only). -/
 def checkboxOnly {Msg : Type} (name : String)
