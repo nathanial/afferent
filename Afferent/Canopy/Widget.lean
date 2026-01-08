@@ -9,3 +9,4 @@ import Afferent.Canopy.Widget.Checkbox
 import Afferent.Canopy.Widget.TextInput
 import Afferent.Canopy.Widget.RadioButton
 import Afferent.Canopy.Widget.Switch
+import Afferent.Canopy.Widget.Slider
