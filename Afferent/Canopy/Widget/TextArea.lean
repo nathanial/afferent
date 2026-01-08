@@ -358,9 +358,12 @@ def areaSpec (renderState : TextAreaRenderState) (placeholder : String) (showPla
     let clipRect := Arbor.Rect.mk' rect.x rect.y rect.width viewportHeight
     let clipCmd := RenderCommand.pushClip clipRect
 
+    -- Use actual font ascender for baseline positioning
+    let ascender := theme.font.ascender
+
     let textCmds := if showPlaceholder then
       -- Render placeholder
-      let textY := rect.y + lineHeight * 0.8
+      let textY := rect.y + ascender
       #[RenderCommand.fillText placeholder rect.x textY theme.font theme.textMuted]
     else
       -- Render each visible line
@@ -371,7 +374,7 @@ def areaSpec (renderState : TextAreaRenderState) (placeholder : String) (showPla
           let lineY := rect.y + i.toFloat * lineHeight - scrollOffsetY
           -- Only render if line is visible
           if lineY + lineHeight >= rect.y && lineY < rect.y + viewportHeight then
-            let textY := lineY + lineHeight * 0.8  -- Baseline position
+            let textY := lineY + ascender  -- Baseline position from actual font metrics
             some (RenderCommand.fillText line.text rect.x textY theme.font theme.text)
           else
             none

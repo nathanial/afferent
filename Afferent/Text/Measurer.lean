@@ -21,9 +21,16 @@ namespace FontRegistry
 
 def empty : FontRegistry := ⟨#[], none⟩
 
-/-- Register a font and return its FontId. -/
+/-- Register a font and return its FontId with actual metrics. -/
 def register (reg : FontRegistry) (font : Font) (name : String) : FontRegistry × Afferent.Arbor.FontId :=
-  let id : Afferent.Arbor.FontId := ⟨reg.fonts.size, name, font.size.toFloat⟩
+  let id : Afferent.Arbor.FontId := {
+    id := reg.fonts.size
+    name := name
+    size := font.size.toFloat
+    lineHeight := font.lineHeight
+    ascender := font.ascender
+    descender := font.descender
+  }
   let newReg := { reg with fonts := reg.fonts.push font }
   (newReg, id)
 

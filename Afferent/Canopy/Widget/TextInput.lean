@@ -81,20 +81,19 @@ namespace TextInput
 def inputSpec (displayText : String) (placeholder : String) (showPlaceholder : Bool)
     (cursorPixelX : Float) (focused : Bool) (theme : Theme) : CustomSpec := {
   measure := fun availW _ =>
-    let textWidth := displayText.length.toFloat * 8  -- Approximate char width for sizing
-    let minW := if textWidth < (availW - 24) then textWidth else (availW - 24)
-    let width := if 200 > minW then 200 else minW
-    -- Height based on font line height (font.size * 1.2) plus small padding
-    let lineHeight := theme.font.size * 1.2
+    -- Use actual font metrics for sizing
+    let lineHeight := theme.font.lineHeight
     let height := lineHeight + 4
+    -- Width uses available space (actual text measurement happens elsewhere)
+    let width := max 200 (availW - 24)
     (width, height)
   collect := fun layout =>
     let rect := layout.contentRect
     let text := if showPlaceholder then placeholder else displayText
     let textColor := if showPlaceholder then theme.textMuted else theme.text
-    -- Vertical centering using same formula as regular text widgets
-    let lineHeight := theme.font.size * 1.2
-    let ascender := lineHeight * 0.8
+    -- Vertical centering using actual font metrics
+    let lineHeight := theme.font.lineHeight
+    let ascender := theme.font.ascender
     let verticalOffset := (rect.height - lineHeight) / 2
     let textY := rect.y + verticalOffset + ascender
     let textCmd := RenderCommand.fillText text rect.x textY theme.font textColor
@@ -149,6 +148,10 @@ def textInputVisual (name : String) (theme : Theme)
   let bgColor := if state.disabled then colors.backgroundDisabled else colors.background
   let borderColor := if state.focused then colors.borderFocused else colors.border
 
+  -- Calculate minHeight from actual font metrics + padding
+  let verticalPadding := theme.padding * 0.5 * 2  -- top + bottom
+  let minHeight := theme.font.lineHeight + verticalPadding + 4
+
   let style : BoxStyle := {
     backgroundColor := some bgColor
     borderColor := some borderColor
@@ -156,7 +159,7 @@ def textInputVisual (name : String) (theme : Theme)
     cornerRadius := theme.cornerRadius
     padding := Trellis.EdgeInsets.symmetric theme.padding (theme.padding * 0.5)
     minWidth := some 200
-    minHeight := some 40
+    minHeight := some minHeight
   }
 
   let showPlaceholder := state.value.isEmpty && !state.focused
