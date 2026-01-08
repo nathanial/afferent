@@ -81,16 +81,24 @@ def inputSpec (displayText : String) (placeholder : String) (showPlaceholder : B
     let textWidth := displayText.length.toFloat * 8  -- Approximate char width
     let minW := if textWidth < (availW - 24) then textWidth else (availW - 24)
     let width := if 200 > minW then 200 else minW
-    (width, 20)
+    -- Height based on font line height (font.size * 1.2) plus small padding
+    let lineHeight := theme.font.size * 1.2
+    let height := lineHeight + 4
+    (width, height)
   collect := fun layout =>
     let rect := layout.contentRect
     let text := if showPlaceholder then placeholder else displayText
     let textColor := if showPlaceholder then theme.textMuted else theme.text
-    let textCmd := RenderCommand.fillText text rect.x (rect.y + 14) theme.font textColor
+    -- Vertical centering using same formula as regular text widgets
+    let lineHeight := theme.font.size * 1.2
+    let ascender := lineHeight * 0.8
+    let verticalOffset := (rect.height - lineHeight) / 2
+    let textY := rect.y + verticalOffset + ascender
+    let textCmd := RenderCommand.fillText text rect.x textY theme.font textColor
     if focused then
       let cursorX := rect.x + cursorPos.toFloat * 8  -- Approximate
-      let cursorY := rect.y + 2
-      let cursorH := rect.height - 4
+      let cursorY := rect.y + verticalOffset
+      let cursorH := lineHeight
       let cursorCmd := RenderCommand.fillRect (Arbor.Rect.mk' cursorX cursorY 2 cursorH) theme.focusRing 0
       #[textCmd, cursorCmd]
     else
@@ -121,23 +129,15 @@ def handleKeyPress (e : KeyEvent) (state : TextInputState) (maxLen : Option Nat)
 
 end TextInput
 
-/-- Create a text input field.
-    - `name`: Unique name for state tracking
-    - `onValueChange`: Message to emit when value changes
+/-- Build the visual representation of a text input (WidgetBuilder version).
+    Use this when you need just the visual widget without UIBuilder event handling.
+    - `name`: Widget name for hit testing
     - `theme`: Theme for styling
     - `state`: Current text input state
     - `placeholder`: Placeholder text when empty
-    - `maxLength`: Optional maximum character length
 -/
-def textInput {Msg : Type} (name : String)
-    (onValueChange : String → Msg)
-    (theme : Theme)
-    (state : TextInputState := {})
-    (placeholder : String := "")
-    (maxLength : Option Nat := none)
-    : UIBuilder (TextInputMsg Msg) Widget := do
-  let wid ← UIBuilder.freshId
-
+def textInputVisual (name : String) (theme : Theme)
+    (state : TextInputState) (placeholder : String := "") : WidgetBuilder := do
   let colors := theme.input
   let bgColor := if state.disabled then colors.backgroundDisabled else colors.background
   let borderColor := if state.focused then colors.borderFocused else colors.border
@@ -153,6 +153,27 @@ def textInput {Msg : Type} (name : String)
   }
 
   let showPlaceholder := state.value.isEmpty && !state.focused
+
+  namedCenter name (style := style) do
+    custom (TextInput.inputSpec state.value placeholder showPlaceholder
+            state.cursor state.focused theme) {}
+
+/-- Create a text input field (UIBuilder version with event handling).
+    - `name`: Unique name for state tracking
+    - `onValueChange`: Message to emit when value changes
+    - `theme`: Theme for styling
+    - `state`: Current text input state
+    - `placeholder`: Placeholder text when empty
+    - `maxLength`: Optional maximum character length
+-/
+def textInput {Msg : Type} (name : String)
+    (onValueChange : String → Msg)
+    (theme : Theme)
+    (state : TextInputState := {})
+    (placeholder : String := "")
+    (maxLength : Option Nat := none)
+    : UIBuilder (TextInputMsg Msg) Widget := do
+  let wid ← UIBuilder.freshId
 
   -- Register event handlers
   UIBuilder.register wid fun _ event =>
@@ -173,11 +194,7 @@ def textInput {Msg : Type} (name : String)
         else {}
     | _ => {}
 
-  -- Build visual structure
-  UIBuilder.lift do
-    box style
-    -- Note: For a proper implementation, we'd use a custom widget here
-    -- that renders both the text and cursor. For now, we use a simple box
-    -- and rely on the demo to show the value.
+  -- Build visual structure using textInputVisual
+  UIBuilder.lift (textInputVisual name theme state placeholder)
 
 end Afferent.Canopy
