@@ -14,6 +14,8 @@ open Afferent.Arbor
 structure TextInputState extends WidgetState where
   value : String := ""
   cursor : Nat := 0
+  /-- Pre-computed cursor X position in pixels (for accurate positioning with proportional fonts). -/
+  cursorPixelX : Float := 0
 deriving Repr, BEq, Inhabited
 
 namespace TextInputState
@@ -74,11 +76,12 @@ deriving Repr
 
 namespace TextInput
 
-/-- Custom spec for text input rendering with cursor. -/
+/-- Custom spec for text input rendering with cursor.
+    cursorPixelX is the pre-computed cursor position in pixels (measured from text start). -/
 def inputSpec (displayText : String) (placeholder : String) (showPlaceholder : Bool)
-    (cursorPos : Nat) (focused : Bool) (theme : Theme) : CustomSpec := {
+    (cursorPixelX : Float) (focused : Bool) (theme : Theme) : CustomSpec := {
   measure := fun availW _ =>
-    let textWidth := displayText.length.toFloat * 8  -- Approximate char width
+    let textWidth := displayText.length.toFloat * 8  -- Approximate char width for sizing
     let minW := if textWidth < (availW - 24) then textWidth else (availW - 24)
     let width := if 200 > minW then 200 else minW
     -- Height based on font line height (font.size * 1.2) plus small padding
@@ -96,7 +99,7 @@ def inputSpec (displayText : String) (placeholder : String) (showPlaceholder : B
     let textY := rect.y + verticalOffset + ascender
     let textCmd := RenderCommand.fillText text rect.x textY theme.font textColor
     if focused then
-      let cursorX := rect.x + cursorPos.toFloat * 8  -- Approximate
+      let cursorX := rect.x + cursorPixelX  -- Use pre-computed cursor position
       let cursorY := rect.y + verticalOffset
       let cursorH := lineHeight
       let cursorCmd := RenderCommand.fillRect (Arbor.Rect.mk' cursorX cursorY 2 cursorH) theme.focusRing 0
@@ -154,9 +157,16 @@ def textInputVisual (name : String) (theme : Theme)
 
   let showPlaceholder := state.value.isEmpty && !state.focused
 
-  namedCenter name (style := style) do
-    custom (TextInput.inputSpec state.value placeholder showPlaceholder
-            state.cursor state.focused theme) {}
+  -- Use left-aligned flex container (not centered) for text input content
+  let wid ← freshId
+  let props : Trellis.FlexContainer := {
+    direction := .row
+    justifyContent := .flexStart  -- Left align horizontally
+    alignItems := .center         -- Center vertically
+  }
+  let child ← custom (TextInput.inputSpec state.value placeholder showPlaceholder
+          state.cursorPixelX state.focused theme) {}
+  pure (.flex wid (some name) props style #[child])
 
 /-- Create a text input field (UIBuilder version with event handling).
     - `name`: Unique name for state tracking
