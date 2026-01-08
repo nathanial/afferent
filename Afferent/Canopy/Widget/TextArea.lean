@@ -4,6 +4,7 @@
 -/
 import Afferent.Canopy.Core
 import Afferent.Canopy.Theme
+import Afferent.Text.Font
 
 namespace Afferent.Canopy
 
@@ -17,8 +18,23 @@ structure WrappedLine where
   startIdx : Nat
   /-- End index in original string (exclusive). -/
   endIdx : Nat
-  /-- Width of this line in pixels. -/
+  /-- Measured width of this line in pixels. -/
   width : Float
+deriving Repr, BEq, Inhabited
+
+/-- Pre-computed rendering state for TextArea.
+    This is computed during event handling where we have Font access. -/
+structure TextAreaRenderState where
+  /-- Wrapped lines with measured widths. -/
+  wrappedLines : Array WrappedLine := #[]
+  /-- Pre-computed cursor X position in pixels (relative to line start). -/
+  cursorPixelX : Float := 0
+  /-- Pre-computed cursor Y position in pixels (relative to content area). -/
+  cursorPixelY : Float := 0
+  /-- Line height from font metrics. -/
+  lineHeight : Float := 20.0
+  /-- Content padding. -/
+  padding : Float := 8.0
 deriving Repr, BEq, Inhabited
 
 /-- Extended state for text area widgets. -/
@@ -29,6 +45,8 @@ structure TextAreaState extends WidgetState where
   scrollOffsetY : Float := 0
   /-- Target column for up/down navigation (preserves column when moving through shorter lines). -/
   targetColumn : Option Nat := none
+  /-- Pre-computed rendering state (updated during event handling). -/
+  renderState : TextAreaRenderState := {}
 deriving Repr, BEq, Inhabited
 
 namespace TextAreaState
@@ -83,15 +101,6 @@ end TextAreaState
 
 namespace TextArea
 
-/-- Default dimensions for text area. -/
-structure Dimensions where
-  charWidth : Float := 8.0  -- Approximate character width
-  lineHeight : Float := 20.0
-  padding : Float := 8.0
-deriving Repr, Inhabited
-
-def defaultDimensions : Dimensions := {}
-
 /-- Find the cursor's position within wrapped lines.
     Returns (lineIndex, columnInLine). -/
 def cursorToLineCol (cursor : Nat) (lines : Array WrappedLine) : Nat × Nat :=
@@ -126,85 +135,6 @@ def lineColToCursor (lineIdx : Nat) (col : Nat) (lines : Array WrappedLine) : Na
     let line := lines[lineIdx]!
     let maxCol := line.endIdx - line.startIdx
     line.startIdx + min col maxCol
-
-/-- Get pixel position (x, y) for cursor rendering.
-    Returns (pixelX, pixelY) relative to content area. -/
-def cursorPixelPosition (cursor : Nat) (lines : Array WrappedLine)
-    (dims : Dimensions := defaultDimensions) : Float × Float :=
-  let (lineIdx, col) := cursorToLineCol cursor lines
-  let x := col.toFloat * dims.charWidth
-  let y := lineIdx.toFloat * dims.lineHeight
-  (x, y)
-
-/-- Wrap text into lines that fit within maxWidth.
-    Handles both hard newlines and soft word wrapping. -/
-def wrapText (text : String) (maxWidth : Float)
-    (dims : Dimensions := defaultDimensions) : Array WrappedLine := Id.run do
-  if text.isEmpty then
-    return #[{ text := "", startIdx := 0, endIdx := 0, width := 0 }]
-
-  let mut result : Array WrappedLine := #[]
-  let mut currentIdx : Nat := 0
-  let chars := text.toList
-
-  while currentIdx < chars.length do
-    -- Find end of current line (either newline or need to wrap)
-    let mut lineEnd := currentIdx
-    let mut lastWordEnd := currentIdx
-    let mut lineWidth : Float := 0
-
-    while lineEnd < chars.length do
-      let c := chars[lineEnd]!
-
-      -- Hard newline - end line here
-      if c == '\n' then
-        break
-
-      -- Check if adding this char exceeds width
-      let charWidth := dims.charWidth
-      if lineWidth + charWidth > maxWidth && lineEnd > currentIdx then
-        -- Need to wrap - prefer wrapping at word boundary
-        if lastWordEnd > currentIdx then
-          lineEnd := lastWordEnd
-        break
-
-      lineWidth := lineWidth + charWidth
-
-      -- Track word boundaries (space marks end of word)
-      if c == ' ' then
-        lastWordEnd := lineEnd + 1
-
-      lineEnd := lineEnd + 1
-
-    -- Extract the line text
-    let lineChars := chars.drop currentIdx |>.take (lineEnd - currentIdx)
-    let lineText := String.ofList lineChars
-    let finalLineWidth := lineChars.length.toFloat * dims.charWidth
-
-    -- Handle newline character
-    let nextIdx := if lineEnd < chars.length && chars[lineEnd]! == '\n'
-      then lineEnd + 1
-      else lineEnd
-
-    result := result.push {
-      text := lineText
-      startIdx := currentIdx
-      endIdx := nextIdx
-      width := finalLineWidth
-    }
-
-    currentIdx := nextIdx
-
-  -- Ensure at least one empty line if text ends with newline
-  if chars.length > 0 && chars[chars.length - 1]! == '\n' then
-    result := result.push {
-      text := ""
-      startIdx := chars.length
-      endIdx := chars.length
-      width := 0
-    }
-
-  result
 
 /-- Move cursor up one line. -/
 def moveCursorUp (s : TextAreaState) (lines : Array WrappedLine) : TextAreaState :=
@@ -246,10 +176,10 @@ def moveCursorLineEnd (s : TextAreaState) (lines : Array WrappedLine) : TextArea
     s
 
 /-- Ensure cursor is visible by adjusting scroll offset. -/
-def scrollToCursor (s : TextAreaState) (lines : Array WrappedLine)
-    (viewportHeight : Float) (dims : Dimensions := defaultDimensions) : TextAreaState :=
-  let (_, cursorY) := cursorPixelPosition s.cursor lines dims
-  let cursorBottom := cursorY + dims.lineHeight
+def scrollToCursor (s : TextAreaState) (viewportHeight : Float) : TextAreaState :=
+  let cursorY := s.renderState.cursorPixelY
+  let lineHeight := s.renderState.lineHeight
+  let cursorBottom := cursorY + lineHeight
 
   let newScrollY :=
     if cursorY < s.scrollOffsetY then
@@ -263,9 +193,10 @@ def scrollToCursor (s : TextAreaState) (lines : Array WrappedLine)
 
   { s with scrollOffsetY := max 0 newScrollY }
 
-/-- Handle key press for text area. -/
-def handleKeyPress (e : KeyEvent) (state : TextAreaState)
-    (lines : Array WrappedLine) (maxLen : Option Nat := none) : TextAreaState :=
+/-- Handle key press for text area.
+    Returns updated state (without render state - call computeRenderState after). -/
+def handleKeyPress (e : KeyEvent) (state : TextAreaState) (maxLen : Option Nat := none) : TextAreaState :=
+  let lines := state.renderState.wrappedLines
   if e.modifiers.cmd then
     match e.key with
     | .left => moveCursorLineStart state lines
@@ -297,15 +228,131 @@ def handleKeyPress (e : KeyEvent) (state : TextAreaState)
     | .«end» => moveCursorLineEnd state lines
     | _ => state
 
+/-- Wrap text into lines that fit within maxWidth using actual font measurements.
+    This is an IO function because it needs to measure text. -/
+def wrapTextMeasured (font : Afferent.Font) (text : String) (maxWidth : Float)
+    : IO (Array WrappedLine) := do
+  if text.isEmpty then
+    return #[{ text := "", startIdx := 0, endIdx := 0, width := 0 }]
+
+  let mut result : Array WrappedLine := #[]
+  let mut currentIdx : Nat := 0
+  let chars := text.toList
+
+  while currentIdx < chars.length do
+    -- Find end of current line (either newline or need to wrap)
+    let mut lineEnd := currentIdx
+    let mut lastWordEnd := currentIdx
+    let mut lastWordWidth : Float := 0
+
+    while lineEnd < chars.length do
+      let c := chars[lineEnd]!
+
+      -- Hard newline - end line here
+      if c == '\n' then
+        break
+
+      -- Measure the current line segment
+      let lineChars := chars.drop currentIdx |>.take (lineEnd - currentIdx + 1)
+      let lineText := String.ofList lineChars
+      let (lineWidth, _) ← font.measureText lineText
+
+      -- Check if adding this char exceeds width
+      if lineWidth > maxWidth && lineEnd > currentIdx then
+        -- Need to wrap - prefer wrapping at word boundary
+        if lastWordEnd > currentIdx then
+          lineEnd := lastWordEnd
+        break
+
+      -- Track word boundaries (space marks end of word)
+      if c == ' ' then
+        lastWordEnd := lineEnd + 1
+        lastWordWidth := lineWidth
+
+      lineEnd := lineEnd + 1
+
+    -- Extract the line text and measure it
+    let lineChars := chars.drop currentIdx |>.take (lineEnd - currentIdx)
+    let lineText := String.ofList lineChars
+    let (lineWidth, _) ← font.measureText lineText
+
+    -- Handle newline character
+    let nextIdx := if lineEnd < chars.length && chars[lineEnd]! == '\n'
+      then lineEnd + 1
+      else lineEnd
+
+    result := result.push {
+      text := lineText
+      startIdx := currentIdx
+      endIdx := nextIdx
+      width := lineWidth
+    }
+
+    currentIdx := nextIdx
+
+  -- Ensure at least one empty line if text ends with newline
+  if chars.length > 0 && chars[chars.length - 1]! == '\n' then
+    result := result.push {
+      text := ""
+      startIdx := chars.length
+      endIdx := chars.length
+      width := 0
+    }
+
+  return result
+
+/-- Compute the pre-computed rendering state for a TextArea.
+    This must be called during event handling (where we have Font access)
+    after any change to the text value or cursor position.
+    - `font`: The font used for text rendering
+    - `state`: The current text area state
+    - `contentWidth`: Available width for text content (widget width - padding * 2)
+    - `padding`: Content padding in pixels -/
+def computeRenderState (font : Afferent.Font) (state : TextAreaState)
+    (contentWidth : Float) (padding : Float := 8.0) : IO TextAreaState := do
+  -- Get font metrics
+  let lineHeight := font.lineHeight
+
+  -- Wrap text with actual measurements
+  let wrappedLines ← wrapTextMeasured font state.value contentWidth
+
+  -- Find cursor position
+  let (lineIdx, colInLine) := cursorToLineCol state.cursor wrappedLines
+
+  -- Measure text before cursor on the current line to get exact X position
+  let cursorPixelX ← do
+    if lineIdx < wrappedLines.size then
+      let line := wrappedLines[lineIdx]!
+      let textBeforeCursor := line.text.take colInLine
+      let (width, _) ← font.measureText textBeforeCursor
+      pure width
+    else
+      pure 0.0
+
+  -- Calculate cursor Y position
+  let cursorPixelY := lineIdx.toFloat * lineHeight
+
+  let renderState : TextAreaRenderState := {
+    wrappedLines
+    cursorPixelX
+    cursorPixelY
+    lineHeight
+    padding
+  }
+
+  return { state with renderState }
+
 /-- Custom spec for text area rendering with multi-line text and cursor. -/
-def areaSpec (lines : Array WrappedLine) (placeholder : String) (showPlaceholder : Bool)
-    (cursor : Nat) (scrollOffsetY : Float) (focused : Bool) (theme : Theme)
-    (viewportHeight : Float) (dims : Dimensions := defaultDimensions) : CustomSpec := {
+def areaSpec (renderState : TextAreaRenderState) (placeholder : String) (showPlaceholder : Bool)
+    (scrollOffsetY : Float) (focused : Bool) (theme : Theme)
+    (viewportHeight : Float) : CustomSpec := {
   measure := fun availW _ =>
-    let contentHeight := lines.size.toFloat * dims.lineHeight
-    (availW, contentHeight)
+    -- Return viewport height, not content height - scrolling handles overflow
+    (availW, viewportHeight)
   collect := fun layout =>
     let rect := layout.contentRect
+    let lineHeight := renderState.lineHeight
+    let lines := renderState.wrappedLines
 
     -- Clip to viewport
     let clipRect := Arbor.Rect.mk' rect.x rect.y rect.width viewportHeight
@@ -313,7 +360,7 @@ def areaSpec (lines : Array WrappedLine) (placeholder : String) (showPlaceholder
 
     let textCmds := if showPlaceholder then
       -- Render placeholder
-      let textY := rect.y + dims.lineHeight * 0.8
+      let textY := rect.y + lineHeight * 0.8
       #[RenderCommand.fillText placeholder rect.x textY theme.font theme.textMuted]
     else
       -- Render each visible line
@@ -321,10 +368,10 @@ def areaSpec (lines : Array WrappedLine) (placeholder : String) (showPlaceholder
       indices.filterMap fun i =>
         match lines[i]? with
         | some line =>
-          let lineY := rect.y + i.toFloat * dims.lineHeight - scrollOffsetY
+          let lineY := rect.y + i.toFloat * lineHeight - scrollOffsetY
           -- Only render if line is visible
-          if lineY + dims.lineHeight >= rect.y && lineY < rect.y + viewportHeight then
-            let textY := lineY + dims.lineHeight * 0.8  -- Baseline position
+          if lineY + lineHeight >= rect.y && lineY < rect.y + viewportHeight then
+            let textY := lineY + lineHeight * 0.8  -- Baseline position
             some (RenderCommand.fillText line.text rect.x textY theme.font theme.text)
           else
             none
@@ -332,12 +379,11 @@ def areaSpec (lines : Array WrappedLine) (placeholder : String) (showPlaceholder
 
     -- Render cursor if focused
     let cursorCmd := if focused then
-      let (cursorX, cursorY) := cursorPixelPosition cursor lines dims
-      let cursorScreenX := rect.x + cursorX
-      let cursorScreenY := rect.y + cursorY - scrollOffsetY
+      let cursorScreenX := rect.x + renderState.cursorPixelX
+      let cursorScreenY := rect.y + renderState.cursorPixelY - scrollOffsetY
       -- Only render cursor if visible
-      if cursorScreenY + dims.lineHeight >= rect.y && cursorScreenY < rect.y + viewportHeight then
-        let cursorRect := Arbor.Rect.mk' cursorScreenX cursorScreenY 2 dims.lineHeight
+      if cursorScreenY + lineHeight >= rect.y && cursorScreenY < rect.y + viewportHeight then
+        let cursorRect := Arbor.Rect.mk' cursorScreenX cursorScreenY 2 lineHeight
         #[RenderCommand.fillRect cursorRect theme.focusRing 0]
       else
         #[]
@@ -353,7 +399,7 @@ end TextArea
 /-- Build the visual representation of a text area.
     - `name`: Widget name for hit testing
     - `theme`: Theme for styling
-    - `state`: Current text area state
+    - `state`: Current text area state (must have pre-computed renderState)
     - `placeholder`: Placeholder text when empty
     - `width`: Widget width in pixels
     - `height`: Widget height in pixels (viewport height)
@@ -364,23 +410,22 @@ def textAreaVisual (name : String) (theme : Theme)
   let colors := theme.input
   let bgColor := if state.disabled then colors.backgroundDisabled else colors.background
   let borderColor := if state.focused then colors.borderFocused else colors.border
-  let dims := TextArea.defaultDimensions
+  let padding := state.renderState.padding
 
   let style : BoxStyle := {
     backgroundColor := some bgColor
     borderColor := some borderColor
     borderWidth := if state.focused then 2 else 1
     cornerRadius := theme.cornerRadius
-    padding := Trellis.EdgeInsets.uniform dims.padding
+    padding := Trellis.EdgeInsets.uniform padding
     minWidth := some width
     minHeight := some height
     maxHeight := some height
   }
 
-  let contentWidth := width - dims.padding * 2
-  let contentHeight := height - dims.padding * 2
+  let contentWidth := width - padding * 2
+  let contentHeight := height - padding * 2
   let showPlaceholder := state.value.isEmpty && !state.focused
-  let lines := TextArea.wrapText state.value contentWidth dims
 
   let wid ← freshId
   let props : Trellis.FlexContainer := {
@@ -389,8 +434,8 @@ def textAreaVisual (name : String) (theme : Theme)
     alignItems := .stretch
   }
 
-  let child ← custom (TextArea.areaSpec lines placeholder showPlaceholder
-      state.cursor state.scrollOffsetY state.focused theme contentHeight dims) {
+  let child ← custom (TextArea.areaSpec state.renderState placeholder showPlaceholder
+      state.scrollOffsetY state.focused theme contentHeight) {
     width := .length contentWidth
   }
 
