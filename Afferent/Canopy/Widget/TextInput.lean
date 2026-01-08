@@ -122,6 +122,10 @@ def handleKeyPress (e : KeyEvent) (state : TextInputState) (maxLen : Option Nat)
         match maxLen with
         | some max => if state.value.length >= max then state else state.insertChar c
         | none => state.insertChar c
+    | .space =>
+        match maxLen with
+        | some max => if state.value.length >= max then state else state.insertChar ' '
+        | none => state.insertChar ' '
     | .backspace => state.deleteBackward
     | .delete => state.deleteForward
     | .left => state.moveCursorLeft
