@@ -80,13 +80,12 @@ namespace TextInput
     cursorPixelX is the pre-computed cursor position in pixels (measured from text start). -/
 def inputSpec (displayText : String) (placeholder : String) (showPlaceholder : Bool)
     (cursorPixelX : Float) (focused : Bool) (theme : Theme) : CustomSpec := {
-  measure := fun availW _ =>
+  measure := fun _ _ =>
     -- Use actual font metrics for sizing
     let lineHeight := theme.font.lineHeight
     let height := lineHeight + 4
-    -- Width uses available space (actual text measurement happens elsewhere)
-    let width := max 200 (availW - 24)
-    (width, height)
+    -- Return minimum intrinsic width (container's minWidth handles actual sizing)
+    (0, height)
   collect := fun layout =>
     let rect := layout.contentRect
     let text := if showPlaceholder then placeholder else displayText

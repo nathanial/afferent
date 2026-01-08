@@ -345,10 +345,10 @@ def computeRenderState (font : Afferent.Font) (state : TextAreaState)
 /-- Custom spec for text area rendering with multi-line text and cursor. -/
 def areaSpec (renderState : TextAreaRenderState) (placeholder : String) (showPlaceholder : Bool)
     (scrollOffsetY : Float) (focused : Bool) (theme : Theme)
-    (viewportHeight : Float) : CustomSpec := {
-  measure := fun availW _ =>
-    -- Return viewport height, not content height - scrolling handles overflow
-    (availW, viewportHeight)
+    (viewportWidth viewportHeight : Float) : CustomSpec := {
+  measure := fun _ _ =>
+    -- Return fixed viewport dimensions (container handles actual sizing)
+    (viewportWidth, viewportHeight)
   collect := fun layout =>
     let rect := layout.contentRect
     let lineHeight := renderState.lineHeight
@@ -438,7 +438,7 @@ def textAreaVisual (name : String) (theme : Theme)
   }
 
   let child ← custom (TextArea.areaSpec state.renderState placeholder showPlaceholder
-      state.scrollOffsetY state.focused theme contentHeight) {
+      state.scrollOffsetY state.focused theme contentWidth contentHeight) {
     width := .length contentWidth
   }
 
