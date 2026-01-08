@@ -40,22 +40,14 @@ def widgetBoxStyle : Widget → Option BoxStyle
 def setItemKind (node : Trellis.LayoutNode) (item : Trellis.ItemKind) : Trellis.LayoutNode :=
   node.withItem item
 
-/-- Apply flexItem from BoxStyle to a LayoutNode.
-    Sets shrink=0 by default so widgets don't shrink below content size.
-    Exception: items with grow > 0 keep shrink=1 since they're meant to be flexible. -/
+/-- Apply flexItem from BoxStyle to a LayoutNode if present. -/
 def applyFlexItem (node : Trellis.LayoutNode) (style : Option BoxStyle) : Trellis.LayoutNode :=
-  let baseItem : Trellis.FlexItem := { shrink := 0 }
-  let item := match style with
-    | some s =>
-      match s.flexItem with
-      | some fi =>
-        -- If item wants to grow, keep default shrink behavior (flexible)
-        -- Otherwise, prevent shrinking below content size
-        if fi.grow > 0 then fi
-        else { fi with shrink := 0 }
-      | none => baseItem
-    | none => baseItem
-  setItemKind node (.flexChild item)
+  match style with
+  | some s =>
+    match s.flexItem with
+    | some fi => setItemKind node (.flexChild fi)
+    | none => node
+  | none => node
 
 /-- Apply gridItem from BoxStyle to a LayoutNode if present. -/
 def applyGridItem (node : Trellis.LayoutNode) (style : Option BoxStyle) : Trellis.LayoutNode :=
@@ -135,14 +127,7 @@ partial def measureWidget {M : Type → Type} [Monad M] [TextMeasurer M] (w : Wi
           measureSingleLine font content
 
     let contentSize := Trellis.ContentSize.mk' textLayout.maxWidth textLayout.totalHeight
-    -- Create BoxConstraints with minWidth/minHeight to prevent shrinking below content size
-    let box : Trellis.BoxConstraints := {
-      minWidth := textLayout.maxWidth
-      minHeight := textLayout.totalHeight
-    }
-    let node := Trellis.LayoutNode.leaf id contentSize box
-    -- Set shrink=0 so text doesn't shrink below content size
-    let node := node.withItem (.flexChild { shrink := 0 })
+    let node := Trellis.LayoutNode.leaf id contentSize
     let updatedWidget := Widget.text id name content font color align maxWidthOpt (some textLayout)
     pure ⟨node, updatedWidget⟩
 
@@ -151,14 +136,10 @@ partial def measureWidget {M : Type → Type} [Monad M] [TextMeasurer M] (w : Wi
     let contentW := style.minWidth.getD 0
     let contentH := style.minHeight.getD 0
     let node := Trellis.LayoutNode.leaf id (Trellis.ContentSize.mk' contentW contentH) box
-    -- Apply flexItem from style, defaulting to shrink=0
-    let node := applyFlexItem node (some style)
     pure ⟨node, w⟩
 
   | .spacer id _ width height =>
     let node := Trellis.LayoutNode.leaf id (Trellis.ContentSize.mk' width height)
-    -- Spacers default to shrink=0
-    let node := node.withItem (.flexChild { shrink := 0 })
     pure ⟨node, w⟩
 
   | .custom id _ style spec =>
@@ -167,8 +148,6 @@ partial def measureWidget {M : Type → Type} [Monad M] [TextMeasurer M] (w : Wi
     let contentW := max measuredW box.minWidth
     let contentH := max measuredH box.minHeight
     let node := Trellis.LayoutNode.leaf id (Trellis.ContentSize.mk' contentW contentH) box
-    -- Apply flexItem from style, defaulting to shrink=0
-    let node := applyFlexItem node (some style)
     pure ⟨node, w⟩
 
   | .flex id name props style children =>
@@ -213,18 +192,8 @@ partial def measureWidget {M : Type → Type} [Monad M] [TextMeasurer M] (w : Wi
     let contentW := max rawContentW box.minWidth
     let contentH := max rawContentH box.minHeight
 
-    -- Only set minWidth/minHeight for containers that don't have grow > 0
-    -- Containers with grow are meant to be flexible and shouldn't have forced min sizes
-    let hasGrow : Bool := match style.flexItem with
-      | some fi => fi.grow > 0
-      | none => false
-    let updatedBox := if hasGrow then box else { box with
-      minWidth := max box.minWidth contentW
-      minHeight := max box.minHeight contentH
-    }
-
     let node :=
-      Trellis.LayoutNode.mk id updatedBox (.flex props) .none (some (Trellis.ContentSize.mk' contentW contentH)) childNodes
+      Trellis.LayoutNode.mk id box (.flex props) .none (some (Trellis.ContentSize.mk' contentW contentH)) childNodes
     let updatedWidget := Widget.flex id name props style updatedChildren
     pure ⟨node, updatedWidget⟩
 
@@ -272,18 +241,8 @@ partial def measureWidget {M : Type → Type} [Monad M] [TextMeasurer M] (w : Wi
     let contentW := max rawContentW box.minWidth
     let contentH := max rawContentH box.minHeight
 
-    -- Only set minWidth/minHeight for containers that don't have grow > 0
-    -- Containers with grow are meant to be flexible and shouldn't have forced min sizes
-    let hasGrow : Bool := match style.flexItem with
-      | some fi => fi.grow > 0
-      | none => false
-    let updatedBox := if hasGrow then box else { box with
-      minWidth := max box.minWidth contentW
-      minHeight := max box.minHeight contentH
-    }
-
     let node :=
-      Trellis.LayoutNode.mk id updatedBox (.grid props) .none (some (Trellis.ContentSize.mk' contentW contentH)) childNodes
+      Trellis.LayoutNode.mk id box (.grid props) .none (some (Trellis.ContentSize.mk' contentW contentH)) childNodes
     let updatedWidget := Widget.grid id name props style updatedChildren
     pure ⟨node, updatedWidget⟩
 
