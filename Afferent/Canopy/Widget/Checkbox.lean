@@ -32,7 +32,7 @@ def checkmarkPath (x y size : Float) : Arbor.Path :=
     |>.lineTo p3
 
 /-- Custom spec for checkbox box rendering. -/
-def boxSpec (checked : Bool) (hovered : Bool) (theme : Theme) (size : Float) : CustomSpec := {
+def boxSpec (checked : Bool) (_hovered : Bool) (theme : Theme) (size : Float) : CustomSpec := {
   measure := fun _ _ => (size, size)
   collect := fun layout =>
     let rect := layout.contentRect
