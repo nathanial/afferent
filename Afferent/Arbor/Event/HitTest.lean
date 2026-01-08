@@ -133,27 +133,89 @@ def isInsideScaledHitArea (layout : Trellis.ComputedLayout) (m : Trellis.ScaleMe
     -- Use the full container bounds
     layout.borderRect.contains adjX adjY
 
+/-- Information about an absolute positioned widget for priority hit testing. -/
+structure AbsoluteWidgetInfo where
+  widget : Widget
+  path : Array WidgetId
+  transform : HitTransform
+deriving Inhabited
+
+/-- Collect all absolute positioned widgets from the tree with their paths.
+    Returns them in document order (later = rendered on top). -/
+partial def collectAbsoluteWidgets (widget : Widget) (layouts : Trellis.LayoutResult)
+    : Array AbsoluteWidgetInfo :=
+  collectHelper widget #[] HitTransform.zero
+where
+  collectHelper (w : Widget) (path : Array WidgetId) (transform : HitTransform)
+      : Array AbsoluteWidgetInfo :=
+    let currentPath := path.push w.id
+
+    -- Compute child transform
+    let childTransform := match layouts.get w.id with
+      | some layout =>
+        match w with
+        | .scroll _ _ _ scrollState _ _ _ =>
+          transform.addScroll scrollState.offsetX scrollState.offsetY
+        | .flex _ _ _ _ children | .grid _ _ _ _ children =>
+          match layout.scaleMetadata with
+          | some m =>
+            let (boundsX, boundsY) := computeChildBoundsOrigin children layouts
+            transform.withScale m layout.contentRect boundsX boundsY
+          | none => transform
+        | _ => transform
+      | none => transform
+
+    -- Collect from children, keeping absolute widgets separate
+    w.children.foldl (init := #[]) fun acc child =>
+      -- Recursively collect from child
+      let childAbsolutes := collectHelper child currentPath childTransform
+      let acc := acc ++ childAbsolutes
+      -- If this child is absolute, add it to the result (after its children for z-order)
+      if isAbsoluteWidgetForHit child then
+        acc.push { widget := child, path := currentPath, transform := childTransform }
+      else
+        acc
+
 /-- Perform hit testing on a widget tree.
     Returns the topmost widget at (x, y) in canvas coordinates.
 
     Z-order is determined by render order: children are rendered after parents,
     and later children are rendered after earlier children (thus appear on top).
-    To find the topmost hit, we traverse children in reverse order. -/
+
+    Absolute positioned elements are rendered on top of flow siblings, so we
+    check all absolute elements first (in reverse document order for z-priority),
+    then fall back to normal tree traversal. -/
 partial def hitTest (widget : Widget) (layouts : Trellis.LayoutResult)
     (x y : Float) : Option HitTestResult :=
-  hitTestHelper widget layouts x y #[] HitTransform.zero
-where
-  hitTestHelper (w : Widget) (layouts : Trellis.LayoutResult)
-      (x y : Float) (path : Array WidgetId) (transform : HitTransform)
-      : Option HitTestResult := do
-    -- Get this widget's layout
-    let layout ← layouts.get w.id
+  -- First pass: check all absolute positioned widgets (they render on top)
+  let absolutes := collectAbsoluteWidgets widget layouts
+  -- Check in reverse order (last in document = topmost)
+  let rec checkAbsolutes (i : Nat) : Option HitTestResult :=
+    if i >= absolutes.size then
+      none
+    else
+      let idx := absolutes.size - 1 - i
+      match absolutes[idx]? with
+      | some info =>
+        match hitTestAbsolute info.widget layouts x y info.path info.transform with
+        | some result => some result
+        | none => checkAbsolutes (i + 1)
+      | none => checkAbsolutes (i + 1)
 
-    -- Transform coordinates using current transform
+  match checkAbsolutes 0 with
+  | some result => some result
+  | none =>
+    -- Second pass: normal tree traversal (excluding absolute widgets we already checked)
+    hitTestHelper widget layouts x y #[] HitTransform.zero false
+where
+  /-- Hit test an absolute widget and its children. -/
+  hitTestAbsolute (w : Widget) (layouts : Trellis.LayoutResult)
+      (x y : Float) (parentPath : Array WidgetId) (transform : HitTransform)
+      : Option HitTestResult := do
+    let layout ← layouts.get w.id
     let (adjX, adjY) := transform.transformPoint x y
 
-    -- Check if point is within this widget's bounds
-    -- For containers with scale metadata, use special hit area logic
+    -- Check if point is inside this absolute widget's bounds
     let inside := match layout.scaleMetadata with
       | some m => isInsideScaledHitArea layout m adjX adjY
       | none =>
@@ -163,6 +225,65 @@ where
             | some hit => hit layout ⟨adjX, adjY⟩
             | none => layout.borderRect.contains adjX adjY
         | _ => layout.borderRect.contains adjX adjY
+
+    if !inside then
+      none
+
+    let currentPath := parentPath.push w.id
+
+    -- Compute child transform
+    let childTransform := match w with
+      | .scroll _ _ _ scrollState _ _ _ =>
+        transform.addScroll scrollState.offsetX scrollState.offsetY
+      | .flex _ _ _ _ children | .grid _ _ _ _ children =>
+        match layout.scaleMetadata with
+        | some m =>
+          let (boundsX, boundsY) := computeChildBoundsOrigin children layouts
+          transform.withScale m layout.contentRect boundsX boundsY
+        | none => transform
+      | _ => transform
+
+    -- Check children (use normal hit test helper for children)
+    let children := orderChildrenForHit w.children
+    let rec checkChildren (i : Nat) : Option HitTestResult :=
+      if i >= children.size then
+        none
+      else
+        let childIdx := children.size - 1 - i
+        match children[childIdx]? with
+        | some child =>
+          match hitTestHelper child layouts x y currentPath childTransform true with
+          | some result => some result
+          | none => checkChildren (i + 1)
+        | none => checkChildren (i + 1)
+
+    match checkChildren 0 with
+    | some result => some result
+    | none => some { widgetId := w.id, path := currentPath, layout }
+
+  /-- Normal tree traversal hit test.
+      skipAbsolute: if true, skip absolute widgets (they were already checked in first pass) -/
+  hitTestHelper (w : Widget) (layouts : Trellis.LayoutResult)
+      (x y : Float) (path : Array WidgetId) (transform : HitTransform)
+      (skipAbsolute : Bool) : Option HitTestResult := do
+    -- Get this widget's layout
+    let layout ← layouts.get w.id
+
+    -- Transform coordinates using current transform
+    let (adjX, adjY) := transform.transformPoint x y
+
+    -- Check if point is within this widget's bounds
+    let inside := match layout.scaleMetadata with
+      | some m => isInsideScaledHitArea layout m adjX adjY
+      | none =>
+        match w with
+        | .custom _ _ _ spec =>
+            match spec.hitTest with
+            | some hit => hit layout ⟨adjX, adjY⟩
+            | none => layout.borderRect.contains adjX adjY
+        | _ => layout.borderRect.contains adjX adjY
+
+    -- Clip to bounds (restore original behavior for normal traversal)
     if !inside then
       none
 
@@ -181,7 +302,12 @@ where
       | _ => transform
 
     -- Check children in reverse order (last rendered = topmost)
-    let children := orderChildrenForHit w.children
+    -- Skip absolute children if we already checked them in the first pass
+    let children := if skipAbsolute then
+      w.children.filter (fun c => !isAbsoluteWidgetForHit c)
+    else
+      orderChildrenForHit w.children
+
     let rec checkChildren (i : Nat) : Option HitTestResult :=
       if i >= children.size then
         none
@@ -189,16 +315,14 @@ where
         let childIdx := children.size - 1 - i
         match children[childIdx]? with
         | some child =>
-          match hitTestHelper child layouts x y currentPath childTransform with
+          match hitTestHelper child layouts x y currentPath childTransform skipAbsolute with
           | some result => some result
           | none => checkChildren (i + 1)
         | none => checkChildren (i + 1)
 
     match checkChildren 0 with
     | some result => some result
-    | none =>
-      -- No child was hit, so this widget is the hit
-      some { widgetId := w.id, path := currentPath, layout }
+    | none => some { widgetId := w.id, path := currentPath, layout }
 
 /-- Hit test and return just the path for bubbling (root to target). -/
 def hitTestPath (widget : Widget) (layouts : Trellis.LayoutResult)
