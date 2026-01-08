@@ -62,6 +62,11 @@ structure BoxStyle where
   maxWidth : Option Float := none
   minHeight : Option Float := none
   maxHeight : Option Float := none
+  position : Trellis.Position := .static
+  top : Option Float := none
+  right : Option Float := none
+  bottom : Option Float := none
+  left : Option Float := none
   /-- Flex item properties (grow, shrink, basis, alignSelf) when this widget is a flex child -/
   flexItem : Option Trellis.FlexItem := none
   /-- Content scaling for containers (contain, cover, stretch). -/

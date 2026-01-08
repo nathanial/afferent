@@ -205,11 +205,18 @@ def dropdownVisual (name : String) (triggerName : String)
       menuItems := menuItems.push itemWidget
 
     -- Menu container with border
+    let menuOffset := dims.itemHeight + 4
+    let menuHeight := dims.itemHeight * options.size.toFloat
     let menuStyle : BoxStyle := {
       backgroundColor := some theme.input.background
       borderColor := some theme.input.border
       borderWidth := 1
       cornerRadius := theme.cornerRadius
+      width := .percent 1.0
+      height := .length menuHeight
+      position := .absolute
+      top := some menuOffset
+      left := some 0
       -- No padding - items handle their own padding
     }
 
@@ -224,7 +231,7 @@ def dropdownVisual (name : String) (triggerName : String)
     let outerWid ← freshId
     let outerProps : Trellis.FlexContainer := {
       direction := .column
-      gap := 4
+      gap := 0
     }
     pure (.flex outerWid (some name) outerProps {} #[trigger, menu])
   else

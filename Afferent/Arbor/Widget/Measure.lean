@@ -18,6 +18,11 @@ def styleToBoxConstraints (style : BoxStyle) : Trellis.BoxConstraints :=
     maxWidth := style.maxWidth
     minHeight := style.minHeight.getD 0
     maxHeight := style.maxHeight
+    position := style.position
+    top := style.top
+    right := style.right
+    bottom := style.bottom
+    left := style.left
     margin := style.margin
     padding := style.padding }
 
@@ -169,17 +174,18 @@ partial def measureWidget {M : Type → Type} [Monad M] [TextMeasurer M] (w : Wi
     let padding := style.padding
     let gap := props.gap
     let isColumn := !props.direction.isHorizontal
-    let childSizes := childNodes.map nodeContentSize
+    let flowNodes := childNodes.filter (fun n => n.box.position != .absolute)
+    let childSizes := flowNodes.map nodeContentSize
     let (rawContentW, rawContentH) :=
       if isColumn then
         let maxWidth := childSizes.foldl (fun acc (cw, _) => max acc cw) 0
         let totalHeight := childSizes.foldl (fun acc (_, ch) => acc + ch) 0
-        let gaps := if childNodes.size > 1 then gap * (childNodes.size - 1).toFloat else 0
+        let gaps := if flowNodes.size > 1 then gap * (flowNodes.size - 1).toFloat else 0
         (maxWidth + padding.horizontal, totalHeight + gaps + padding.vertical)
       else
         let totalWidth := childSizes.foldl (fun acc (cw, _) => acc + cw) 0
         let maxHeight := childSizes.foldl (fun acc (_, ch) => max acc ch) 0
-        let gaps := if childNodes.size > 1 then gap * (childNodes.size - 1).toFloat else 0
+        let gaps := if flowNodes.size > 1 then gap * (flowNodes.size - 1).toFloat else 0
         (totalWidth + gaps + padding.horizontal, maxHeight + padding.vertical)
 
     -- Apply min constraints to content size so parent containers respect our minimum size
@@ -217,8 +223,9 @@ partial def measureWidget {M : Type → Type} [Monad M] [TextMeasurer M] (w : Wi
     let colGap := props.columnGap
     let rowGap := props.rowGap
 
-    let childSizes := childNodes.map nodeContentSize
-    let numRows := (childNodes.size + numCols - 1) / numCols
+    let flowNodes := childNodes.filter (fun n => n.box.position != .absolute)
+    let childSizes := flowNodes.map nodeContentSize
+    let numRows := (flowNodes.size + numCols - 1) / numCols
     let mut maxColWidth : Float := 0
     let mut maxRowHeight : Float := 0
     for (cw, ch) in childSizes do

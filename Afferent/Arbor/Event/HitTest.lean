@@ -89,6 +89,21 @@ def transformPoint (t : HitTransform) (x y : Float) : Float × Float :=
 
 end HitTransform
 
+def isAbsoluteWidgetForHit (w : Widget) : Bool :=
+  match w.style? with
+  | some style => style.position == .absolute
+  | none => false
+
+def orderChildrenForHit (children : Array Widget) : Array Widget := Id.run do
+  let mut flow : Array Widget := #[]
+  let mut abs : Array Widget := #[]
+  for child in children do
+    if isAbsoluteWidgetForHit child then
+      abs := abs.push child
+    else
+      flow := flow.push child
+  flow ++ abs
+
 /-- Compute the bounding box origin of children from their layouts. -/
 def computeChildBoundsOrigin (children : Array Widget) (layouts : Trellis.LayoutResult)
     : Float × Float :=
@@ -166,7 +181,7 @@ where
       | _ => transform
 
     -- Check children in reverse order (last rendered = topmost)
-    let children := w.children
+    let children := orderChildrenForHit w.children
     let rec checkChildren (i : Nat) : Option HitTestResult :=
       if i >= children.size then
         none
@@ -238,7 +253,7 @@ where
           | _ => transform
 
         -- Collect hits from children (in reverse order, topmost first)
-        let children := w.children
+        let children := orderChildrenForHit w.children
         let rec collectFromChildren (i : Nat) (acc : Array HitTestResult) : Array HitTestResult :=
           if i >= children.size then
             acc

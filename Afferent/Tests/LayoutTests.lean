@@ -4,6 +4,8 @@
 -/
 import Afferent.Tests.Framework
 import Afferent.Layout
+import Afferent.Arbor.Widget.Core
+import Afferent.Arbor.Widget.Measure
 import Trellis
 
 namespace Afferent.Tests.LayoutTests
@@ -11,6 +13,7 @@ namespace Afferent.Tests.LayoutTests
 open Crucible
 open Afferent.Tests
 open Trellis
+open Afferent.Arbor
 
 testSuite "Layout Tests"
 
@@ -214,6 +217,27 @@ test "grid child with width and height: percent 1.0 fills cell" := do
   let cl := result.get! 1
   shouldBeNear cl.width 200.0
   shouldBeNear cl.height 300.0
+
+/-! ## Absolute Positioning Tests -/
+
+test "absolute children do not affect flex container intrinsic size" := do
+  let widget := Widget.flex 1 none FlexContainer.column {} #[
+    Widget.rect 2 none { minWidth := some 120, minHeight := some 24 },
+    Widget.rect 3 none {
+      minWidth := some 200
+      minHeight := some 100
+      position := .absolute
+      top := some 40
+      left := some 0
+    }
+  ]
+  let result : MeasureResult := (measureWidget (M := Id) widget 1000 1000 : Id _)
+  match result.node.content with
+  | some cs =>
+    shouldBeNear cs.width 120.0
+    shouldBeNear cs.height 24.0
+  | none =>
+    ensure false "Expected container content size to be set"
 
 /-! ## Demo Grid Layout Chain Tests
 

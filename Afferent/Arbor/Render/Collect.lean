@@ -12,6 +12,8 @@ namespace Afferent.Arbor
 /-- Render command collector state. -/
 structure CollectState where
   commands : Array RenderCommand := #[]
+  /-- Deferred absolute-positioned widgets to render after normal flow. -/
+  deferredAbsolute : Array (Widget × Trellis.LayoutResult) := #[]
 deriving Inhabited
 
 /-- Collector monad for accumulating render commands. -/
@@ -27,11 +29,31 @@ def emit (cmd : RenderCommand) : CollectM Unit := do
 def emitAll (cmds : Array RenderCommand) : CollectM Unit := do
   modify fun s => { s with commands := s.commands ++ cmds }
 
+/-- Defer an absolute-positioned widget to render after normal flow. -/
+def deferAbsolute (w : Widget) (layouts : Trellis.LayoutResult) : CollectM Unit := do
+  modify fun s => { s with deferredAbsolute := s.deferredAbsolute.push (w, layouts) }
+
 /-- Run the collector and return the commands. -/
 def execute {α : Type} (m : CollectM α) : Array RenderCommand :=
   (StateT.run m {}).2.commands
 
 end CollectM
+
+def isAbsoluteWidgetForRender (w : Widget) : Bool :=
+  match w.style? with
+  | some style => style.position == .absolute
+  | none => false
+
+/-- Separate children into flow (normal) and absolute-positioned. -/
+def partitionChildren (children : Array Widget) : (Array Widget × Array Widget) := Id.run do
+  let mut flow : Array Widget := #[]
+  let mut abs : Array Widget := #[]
+  for child in children do
+    if isAbsoluteWidgetForRender child then
+      abs := abs.push child
+    else
+      flow := flow.push child
+  (flow, abs)
 
 /-- Collect box background and border render commands based on BoxStyle. -/
 def collectBoxStyle (rect : Trellis.LayoutRect) (style : BoxStyle) : CollectM Unit := do
@@ -139,8 +161,12 @@ partial def collectScaledChildren (contentRect : Trellis.LayoutRect)
   CollectM.emit (.pushTranslate (-childBounds.x) (-childBounds.y))
 
   -- Render children (they have absolute coordinates that we're transforming)
-  for child in children do
+  -- Defer absolute children to render after all normal flow content
+  let (flowChildren, absChildren) := partitionChildren children
+  for child in flowChildren do
     collectWidget child layouts
+  for child in absChildren do
+    CollectM.deferAbsolute child layouts
 
   -- Pop transforms in reverse order
   CollectM.emit .popTransform  -- translate to origin
@@ -185,8 +211,12 @@ partial def collectWidget (w : Widget) (layouts : Trellis.LayoutResult) : Collec
       -- Apply content scale transforms
       collectScaledChildren contentRect m children layouts
     | none =>
-      for child in children do
+      -- Render flow children inline, defer absolute children
+      let (flowChildren, absChildren) := partitionChildren children
+      for child in flowChildren do
         collectWidget child layouts
+      for child in absChildren do
+        CollectM.deferAbsolute child layouts
 
   | .grid _ _ _ style children =>
     collectBoxStyle borderRect style
@@ -195,8 +225,12 @@ partial def collectWidget (w : Widget) (layouts : Trellis.LayoutResult) : Collec
       -- Apply content scale transforms
       collectScaledChildren contentRect m children layouts
     | none =>
-      for child in children do
+      -- Render flow children inline, defer absolute children
+      let (flowChildren, absChildren) := partitionChildren children
+      for child in flowChildren do
         collectWidget child layouts
+      for child in absChildren do
+        CollectM.deferAbsolute child layouts
 
   | .scroll _ _ style scrollState _ _ child =>
     -- Render background
@@ -220,16 +254,33 @@ partial def collectWidget (w : Widget) (layouts : Trellis.LayoutResult) : Collec
 
 end  -- mutual
 
+/-- Render all deferred absolute-positioned widgets.
+    Called after the main tree traversal to ensure they render on top. -/
+partial def renderDeferredAbsolute : CollectM Unit := do
+  let state ← get
+  -- Clear the deferred list before processing (in case rendering adds more)
+  set { state with deferredAbsolute := #[] }
+  for (widget, layouts) in state.deferredAbsolute do
+    collectWidget widget layouts
+  -- Check if any new absolute elements were deferred during rendering
+  let newState ← get
+  if newState.deferredAbsolute.size > 0 then
+    renderDeferredAbsolute
+
 /-- Collect render commands for a widget tree.
-    This is the main entry point for converting a widget tree to render commands. -/
+    This is the main entry point for converting a widget tree to render commands.
+    Absolute-positioned elements are rendered after all normal flow content. -/
 def collectCommands (w : Widget) (layouts : Trellis.LayoutResult) : Array RenderCommand :=
-  CollectM.execute (collectWidget w layouts)
+  CollectM.execute do
+    collectWidget w layouts
+    renderDeferredAbsolute
 
 /-- Collect render commands with an initial save/restore wrapper. -/
 def collectCommandsWithSave (w : Widget) (layouts : Trellis.LayoutResult) : Array RenderCommand :=
   CollectM.execute do
     CollectM.emit .save
     collectWidget w layouts
+    renderDeferredAbsolute
     CollectM.emit .restore
 
 /-- Collect debug border commands for all layout cells.
@@ -252,6 +303,7 @@ def collectCommandsWithDebug (w : Widget) (layouts : Trellis.LayoutResult)
     (borderColor : Color := ⟨0.5, 1.0, 0.5, 0.5⟩) : Array RenderCommand :=
   CollectM.execute do
     collectWidget w layouts
+    renderDeferredAbsolute
     collectDebugBorders w layouts borderColor
 
 end Afferent.Arbor
