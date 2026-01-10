@@ -6,7 +6,7 @@ import Afferent.Canopy.Theme
 
 namespace Afferent.Canopy
 
-open Afferent.Arbor
+open Afferent.Arbor hiding Event
 
 /-- Label text variants for semantic styling. -/
 inductive LabelVariant where

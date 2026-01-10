@@ -2,13 +2,15 @@
   Canopy TextArea Widget
   Multi-line text input with word wrapping and vertical scrolling.
 -/
+import Reactive
 import Afferent.Canopy.Core
 import Afferent.Canopy.Theme
 import Afferent.Text.Font
+import Afferent.Canopy.Reactive.Component
 
 namespace Afferent.Canopy
 
-open Afferent.Arbor
+open Afferent.Arbor hiding Event
 
 /-- A wrapped line of text with its character range in the original string. -/
 structure WrappedLine where
@@ -443,5 +445,83 @@ def textAreaVisual (name : String) (theme : Theme)
   }
 
   pure (.flex wid (some name) props style #[child])
+
+/-! ## Reactive TextArea Components (FRP-based)
+
+These use WidgetM for declarative composition with automatic focus and keyboard handling.
+-/
+
+open Reactive Reactive.Host
+open Afferent.Canopy.Reactive
+
+/-- TextArea result - events and dynamics. -/
+structure TextAreaResult where
+  onChange : Reactive.Event Spider String
+  onFocus : Reactive.Event Spider Unit
+  onBlur : Reactive.Event Spider Unit
+  text : Reactive.Dynamic Spider String
+  isFocused : Reactive.Dynamic Spider Bool
+
+/-- Create a reactive text area component using WidgetM.
+    Emits the text area widget and returns text state.
+    - `theme`: Theme for styling
+    - `placeholder`: Placeholder text when empty
+    - `initialState`: Initial text area state
+    - `font`: Font for text measurement
+    - `width`: Width of the text area
+    - `height`: Height of the text area
+-/
+def TextArea.reactive (theme : Theme) (placeholder : String) (initialState : TextAreaState)
+    (font : Afferent.Font) (width : Float := 280) (height : Float := 120)
+    : WidgetM TextAreaResult := do
+  let name ← registerComponentW "text-area" (isInput := true)
+  let events ← getEventsW
+  let focusedInput := events.registry.focusedInput
+  let fireFocusedInput := events.registry.fireFocus
+
+  let clicks ← useClick name
+  let keyEvents ← useKeyboard
+
+  let isFocused ← Dynamic.mapM (· == some name) focusedInput
+
+  let focusChanges ← Dynamic.changesM focusedInput
+  let focusEvents ← Event.filterM
+    (fun (old, new) => old != some name && new == some name) focusChanges
+  let onFocus ← Event.voidM focusEvents
+  let blurEvents ← Event.filterM
+    (fun (old, new) => old == some name && new != some name) focusChanges
+  let onBlur ← Event.voidM blurEvents
+
+  let notFocused ← Dynamic.mapM (· != some name) focusedInput
+  let focusClicks ← Event.gateM notFocused.current clicks
+  let focusAction ← Event.mapM (fun _ => fireFocusedInput (some name)) focusClicks
+  performEvent_ focusAction
+
+  let gatedKeys ← Event.gateM isFocused.current keyEvents
+  let padding : Float := 8.0
+  let contentWidth := width - padding * 2
+  let viewportHeight := height - padding * 2
+  let textState ← Reactive.foldDynM
+    (fun keyData state => do
+      let updated := TextArea.handleKeyPress keyData.event state none
+      let renderedState ← TextArea.computeRenderState font updated contentWidth padding
+      pure (TextArea.scrollToCursor renderedState viewportHeight))
+    initialState gatedKeys
+
+  let textChanges ← Dynamic.changesM textState
+  let valueChanges ← Event.mapMaybeM
+    (fun (old, new) => if old.value != new.value then some new.value else none)
+    textChanges
+  let onChange := valueChanges
+
+  let text ← Dynamic.mapM (·.value) textState
+
+  emit do
+    let state ← textState.sample
+    let focused ← focusedInput.sample
+    let isFoc := focused == some name
+    pure (textAreaVisual name theme { state with focused := isFoc } placeholder width height)
+
+  pure { onChange, onFocus, onBlur, text, isFocused }
 
 end Afferent.Canopy

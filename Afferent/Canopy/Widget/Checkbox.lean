@@ -2,13 +2,15 @@
   Canopy Checkbox Widget
   Toggle checkbox with checked/unchecked states.
 -/
+import Reactive
 import Afferent.Canopy.Core
 import Afferent.Canopy.Theme
 import Afferent.Canopy.Widget.Button
+import Afferent.Canopy.Reactive.Component
 
 namespace Afferent.Canopy
 
-open Afferent.Arbor
+open Afferent.Arbor hiding Event
 
 /-- Extended state for checkbox widgets. -/
 structure CheckboxState extends WidgetState where
@@ -134,5 +136,74 @@ def checkboxOnly {Msg : Type} (name : String)
       borderWidth := if state.focused then 2 else 1
       backgroundColor := some boxBg
     }
+
+/-! ## Reactive Checkbox Components (FRP-based)
+
+These use WidgetM for declarative composition with automatic state management.
+-/
+
+open Reactive Reactive.Host
+open Afferent.Canopy.Reactive
+
+/-- Checkbox result - events and dynamics. -/
+structure CheckboxResult where
+  onToggle : Reactive.Event Spider Bool
+  isChecked : Reactive.Dynamic Spider Bool
+
+/-- Build the visual for a checkbox given its state (pure WidgetBuilder). -/
+def checkboxVisual (name : String) (labelText : String) (theme : Theme)
+    (checked : Bool) (state : WidgetState) : WidgetBuilder := do
+  let colors := theme.input
+  let boxSize : Float := 20.0
+  let boxBg := if checked then theme.primary.background else colors.background
+  let borderColor := if state.focused then colors.borderFocused else colors.border
+
+  let checkboxBox : WidgetBuilder := do
+    if checked then
+      custom (Checkbox.boxSpec checked state.hovered theme boxSize) {
+        minWidth := some boxSize
+        minHeight := some boxSize
+        cornerRadius := 4
+        borderColor := some borderColor
+        borderWidth := if state.focused then 2 else 1
+        backgroundColor := some boxBg
+      }
+    else
+      box {
+        minWidth := some boxSize
+        minHeight := some boxSize
+        cornerRadius := 4
+        borderColor := some borderColor
+        borderWidth := if state.focused then 2 else 1
+        backgroundColor := some boxBg
+      }
+
+  let wid ← freshId
+  let props : Trellis.FlexContainer := { Trellis.FlexContainer.row 8 with alignItems := .center }
+  let checkBox ← checkboxBox
+  let label ← text' labelText theme.font theme.text .left
+  pure (.flex wid (some name) props {} #[checkBox, label])
+
+/-- Create a reactive checkbox component using WidgetM.
+    Emits the checkbox widget and returns toggle state.
+    - `label`: Label text displayed next to checkbox
+    - `theme`: Theme for styling
+    - `initialChecked`: Initial checked state
+-/
+def Checkbox.reactive (label : String) (theme : Theme) (initialChecked : Bool := false)
+    : WidgetM CheckboxResult := do
+  let name ← registerComponentW "checkbox"
+  let isHovered ← useHover name
+  let clicks ← useClick name
+  let isChecked ← Reactive.foldDyn (fun _ checked => !checked) initialChecked clicks
+  let onToggle := isChecked.updated
+
+  emit do
+    let hovered ← isHovered.sample
+    let checked ← isChecked.sample
+    let state : WidgetState := { hovered, pressed := false, focused := false }
+    pure (checkboxVisual name label theme checked state)
+
+  pure { onToggle, isChecked }
 
 end Afferent.Canopy

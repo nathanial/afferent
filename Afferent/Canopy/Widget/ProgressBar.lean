@@ -2,12 +2,14 @@
   Canopy ProgressBar Widget
   Horizontal progress indicator with determinate and indeterminate modes.
 -/
+import Reactive
 import Afferent.Canopy.Core
 import Afferent.Canopy.Theme
+import Afferent.Canopy.Reactive.Component
 
 namespace Afferent.Canopy
 
-open Afferent.Arbor
+open Afferent.Arbor hiding Event
 
 /-- Progress bar variant for different visual styles. -/
 inductive ProgressVariant where
@@ -170,5 +172,97 @@ def progressBarIndeterminateVisual (name : String) (animationProgress : Float)
   | none =>
     let track ← progressTrack
     pure (.flex wid (some name) props {} #[track])
+
+/-! ## Reactive ProgressBar Components (FRP-based)
+
+These use WidgetM for declarative composition with automatic animation.
+-/
+
+open Reactive Reactive.Host
+open Afferent.Canopy.Reactive
+
+/-- Float modulo for animation cycling. -/
+private def floatMod (x y : Float) : Float :=
+  x - y * (x / y).floor
+
+/-- ProgressBar result - just state access since progress bars are typically display-only. -/
+structure ProgressBarResult where
+  value : Reactive.Dynamic Spider Float
+
+/-- Create a determinate progress bar component using WidgetM.
+    Displays a static progress value.
+    - `theme`: Theme for styling
+    - `initialValue`: Initial progress value (0.0 to 1.0)
+    - `variant`: Color variant
+    - `label`: Optional label text
+    - `showPercentage`: Whether to show percentage text
+-/
+def ProgressBar.reactive (theme : Theme) (initialValue : Float := 0.0)
+    (variant : ProgressVariant := .primary)
+    (label : Option String := none) (showPercentage : Bool := false)
+    : WidgetM ProgressBarResult := do
+  let name ← registerComponentW "progress-bar" (isInteractive := false)
+
+  -- Create a constant dynamic
+  let value ← Dynamic.pureM initialValue
+
+  emit do
+    pure (progressBarVisual name initialValue variant theme label showPercentage)
+
+  pure { value }
+
+/-- IndeterminateProgressBar result - includes animation control. -/
+structure IndeterminateProgressBarResult where
+  animationProgress : Reactive.Dynamic Spider Float
+
+/-- Create an indeterminate progress bar component using WidgetM.
+    Emits an animated progress bar that cycles continuously.
+    - `theme`: Theme for styling
+    - `variant`: Color variant
+    - `label`: Optional label text
+-/
+def ProgressBar.indeterminate (theme : Theme)
+    (variant : ProgressVariant := .primary)
+    (label : Option String := none)
+    : WidgetM IndeterminateProgressBarResult := do
+  let name ← registerComponentW "progress-bar-indeterminate" (isInteractive := false)
+
+  -- Subscribe to animation frames for continuous animation
+  let animFrame ← useAnimationFrame
+
+  -- Accumulate time for animation (cycle every 2 seconds)
+  let cycleDuration : Float := 2.0
+  let animationTime ← Reactive.foldDyn (fun dt acc => floatMod (acc + dt) cycleDuration) 0.0 animFrame
+  let animationProgress ← Dynamic.mapM (· / cycleDuration) animationTime
+
+  emit do
+    let progress ← animationProgress.sample
+    pure (progressBarIndeterminateVisual name progress variant theme label)
+
+  pure { animationProgress }
+
+/-- Create a progress bar that updates based on an external event stream.
+    Useful for showing download progress, file processing, etc.
+    - `theme`: Theme for styling
+    - `valueUpdates`: Event stream of progress values
+    - `initialValue`: Initial progress value
+    - `variant`: Color variant
+    - `label`: Optional label text
+    - `showPercentage`: Whether to show percentage text
+-/
+def ProgressBar.withEvents (theme : Theme) (valueUpdates : Reactive.Event Spider Float)
+    (initialValue : Float := 0.0)
+    (variant : ProgressVariant := .primary)
+    (label : Option String := none) (showPercentage : Bool := true)
+    : WidgetM ProgressBarResult := do
+  let name ← registerComponentW "progress-bar" (isInteractive := false)
+
+  let value ← Reactive.holdDyn initialValue valueUpdates
+
+  emit do
+    let v ← value.sample
+    pure (progressBarVisual name v variant theme label showPercentage)
+
+  pure { value }
 
 end Afferent.Canopy

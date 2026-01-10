@@ -1,0 +1,427 @@
+/-
+  Canopy Reactive - Component Infrastructure
+  React-like component helpers for self-contained widget definitions.
+-/
+import Reactive
+import Afferent.Arbor
+import Afferent.Canopy.Core
+import Afferent.Canopy.Theme
+import Afferent.Canopy.Widget.Label
+import Afferent.Canopy.Widget.Panel
+import Afferent.Canopy.Reactive.Types
+import Afferent.Canopy.Reactive.Inputs
+
+open Reactive Reactive.Host
+open Afferent.Canopy
+
+namespace Afferent.Canopy.Reactive
+
+/-! ## The ReactiveM Monad
+
+Like React's context, ReactiveM carries the event streams implicitly.
+Components use hooks that access this context without explicit parameters.
+-/
+
+/-- ReactiveM is SpiderM with implicit access to ReactiveEvents.
+    This is analogous to how React components access context through hooks. -/
+abbrev ReactiveM := ReaderT ReactiveEvents SpiderM
+
+/-- Explicit ForIn instance for ReactiveM to avoid issues with derived instances.
+    This properly threads through both the ReactiveEvents context and SpiderEnv. -/
+instance [ForIn SpiderM ρ α] : ForIn ReactiveM ρ α where
+  forIn x init f := fun ctx => ForIn.forIn x init fun a b => f a b ctx
+
+/-- Explicit MonadLift instance to allow SpiderM operations in ReactiveM without liftSpider.
+    ReaderT should provide this automatically, but being explicit ensures it works. -/
+instance : MonadLift SpiderM ReactiveM where
+  monadLift m := fun _ => m
+
+/-- MonadSample instance for ReactiveM - delegates to SpiderM. -/
+instance : MonadSample Spider ReactiveM where
+  sample b := fun _ => b.sample
+
+/-- MonadHold instance for ReactiveM - delegates to SpiderM.
+    This allows holdDyn, foldDyn, etc. to work directly in ReactiveM. -/
+instance : MonadHold Spider ReactiveM where
+  hold initial event := fun _ => MonadHold.hold initial event
+  holdDyn initial event := fun _ => MonadHold.holdDyn initial event
+  foldDyn f init event := fun _ => MonadHold.foldDyn f init event
+  foldDynM f init event := fun ctx =>
+    MonadHold.foldDynM (m := SpiderM) (fun a b => f a b ctx) init event
+
+/-- TriggerEvent instance for ReactiveM - delegates to SpiderM.
+    This allows newTriggerEvent to work directly in ReactiveM. -/
+instance : TriggerEvent Spider ReactiveM where
+  newTriggerEvent := fun _ => TriggerEvent.newTriggerEvent
+  newEventWithTrigger callback := fun _ => TriggerEvent.newEventWithTrigger callback
+
+/-- Run a ReactiveM computation with the given events context. -/
+def ReactiveM.run (events : ReactiveEvents) (m : ReactiveM α) : SpiderM α :=
+  ReaderT.run m events
+
+/-- Get the events from the implicit context. -/
+def getEvents : ReactiveM ReactiveEvents := read
+
+/-- Register a component and get an auto-generated name.
+    This is the preferred way to register components in ReactiveM context. -/
+def registerComponent (namePrefix : String) (isInput : Bool := false)
+    (isInteractive : Bool := true) : ReactiveM String := do
+  let events ← getEvents
+  SpiderM.liftIO <| events.registry.register namePrefix isInput isInteractive
+
+/-- Lift SpiderM into ReactiveM. Prefer using automatic lifting instead. -/
+@[deprecated "Use automatic monad lifting instead of explicit liftSpider"]
+def liftSpider (m : SpiderM α) : ReactiveM α := fun _ => m
+
+/-! ## Type Aliases -/
+
+/-- A component's render function - samples its internal dynamics and produces a widget. -/
+abbrev ComponentRender := IO Afferent.Arbor.WidgetBuilder
+
+/-! ## The WidgetM Monad
+
+WidgetM combines FRP network construction (ReactiveM) with widget tree accumulation.
+This enables Reflex-DOM style monadic widget building where components emit their
+renders into the parent container automatically.
+-/
+
+/-- State for accumulating child render functions during widget building. -/
+structure WidgetMState where
+  /-- Array of child component render functions, accumulated in order. -/
+  children : Array ComponentRender := #[]
+deriving Inhabited
+
+/-- WidgetM combines FRP setup (ReactiveM) with widget accumulation.
+    Components use `emit` to add their render functions to the current container. -/
+abbrev WidgetM := StateT WidgetMState ReactiveM
+
+/-- ForIn instance for WidgetM - threads through state and reader properly. -/
+instance [ForIn ReactiveM ρ α] : ForIn WidgetM ρ α where
+  forIn x init f := fun s => do
+    let result ← ForIn.forIn x init fun a b => do
+      let (b', _) ← f a b s
+      pure b'
+    pure (result, s)
+
+/-- MonadLift from SpiderM to WidgetM. -/
+instance : MonadLift SpiderM WidgetM where
+  monadLift m := StateT.lift (fun _ => m)
+
+/-- MonadSample instance for WidgetM - delegates to ReactiveM. -/
+instance : MonadSample Spider WidgetM where
+  sample b := StateT.lift (sample b)
+
+/-- MonadHold instance for WidgetM - delegates to ReactiveM. -/
+instance : MonadHold Spider WidgetM where
+  hold initial event := StateT.lift (MonadHold.hold initial event)
+  holdDyn initial event := StateT.lift (MonadHold.holdDyn initial event)
+  foldDyn f init event := StateT.lift (MonadHold.foldDyn f init event)
+  foldDynM f init event := fun s => do
+    let result ← MonadHold.foldDynM (m := ReactiveM) (fun a b => (f a b).run' s) init event
+    pure (result, s)
+
+/-- TriggerEvent instance for WidgetM - delegates to ReactiveM. -/
+instance : TriggerEvent Spider WidgetM where
+  newTriggerEvent := StateT.lift TriggerEvent.newTriggerEvent
+  newEventWithTrigger callback := StateT.lift (TriggerEvent.newEventWithTrigger callback)
+
+/-! ## WidgetM Core Helpers -/
+
+/-- Emit a widget render function into the current container's children.
+    This is the primary way components contribute their visual representation. -/
+def emit (render : ComponentRender) : WidgetM Unit := do
+  modify fun s => { s with children := s.children.push render }
+
+/-- Run a WidgetM computation and extract both the result and collected child renders.
+    Used by container combinators to gather children's render functions. -/
+def runWidgetChildren (m : WidgetM α) : WidgetM (α × Array ComponentRender) := do
+  let parentState ← get
+  set (WidgetMState.mk #[])
+  let result ← m
+  let childState ← get
+  set parentState
+  pure (result, childState.children)
+
+/-- Run a WidgetM computation in ReactiveM context and extract the final render.
+    This is used at the top level to get a single ComponentRender from WidgetM. -/
+def runWidget (m : WidgetM α) : ReactiveM (α × ComponentRender) := do
+  let (result, state) ← m.run { children := #[] }
+  let render : ComponentRender := do
+    if state.children.isEmpty then
+      pure (Afferent.Arbor.spacer 0 0)
+    else if h : state.children.size = 1 then
+      state.children[0]
+    else
+      let widgets ← state.children.mapM id
+      pure (Afferent.Arbor.column (gap := 0) (style := {}) widgets)
+  pure (result, render)
+
+/-- Get the events from WidgetM context. -/
+def getEventsW : WidgetM ReactiveEvents := StateT.lift getEvents
+
+/-- Register a component in WidgetM context. -/
+def registerComponentW (namePrefix : String) (isInput : Bool := false)
+    (isInteractive : Bool := true) : WidgetM String :=
+  StateT.lift (registerComponent namePrefix isInput isInteractive)
+
+/-! ## Hit Testing Helpers -/
+
+/-- Find a widget ID by name in the widget tree.
+    Uses a depth limit to ensure termination. -/
+def findWidgetIdByName (widget : Afferent.Arbor.Widget)
+    (target : String) (maxDepth : Nat := 100) : Option Afferent.Arbor.WidgetId :=
+  go widget target maxDepth
+where
+  go (widget : Afferent.Arbor.Widget) (target : String) (fuel : Nat)
+      : Option Afferent.Arbor.WidgetId :=
+    match fuel with
+    | 0 => none  -- Depth limit reached
+    | fuel' + 1 =>
+      let widgetName := Afferent.Arbor.Widget.name? widget
+      match widgetName with
+      | some name =>
+          if name == target then
+            some (Afferent.Arbor.Widget.id widget)
+          else
+            findInChildren widget target fuel'
+      | none =>
+          findInChildren widget target fuel'
+  findInChildren (widget : Afferent.Arbor.Widget) (target : String) (fuel : Nat)
+      : Option Afferent.Arbor.WidgetId :=
+    let children := Afferent.Arbor.Widget.children widget
+    let rec loop (idx : Nat) : Option Afferent.Arbor.WidgetId :=
+      if idx >= children.size then
+        none
+      else
+        match children[idx]? with
+        | some child =>
+            match go child target fuel with
+            | some result => some result
+            | none => loop (idx + 1)
+        | none => loop (idx + 1)
+    loop 0
+
+/-- Check if a named widget is in the hit path. -/
+def hitPathHasNamedWidget (widget : Afferent.Arbor.Widget)
+    (hitPath : Array Afferent.Arbor.WidgetId) (name : String) : Bool :=
+  match findWidgetIdByName widget name with
+  | some wid => hitPath.any (· == wid)
+  | none => false
+
+/-- Check if a widget name is in the hit path (for ClickData). -/
+def hitWidget (data : ClickData) (name : String) : Bool :=
+  hitPathHasNamedWidget data.widget data.hitPath name
+
+/-- Check if a widget name is in the hit path (for HoverData). -/
+def hitWidgetHover (data : HoverData) (name : String) : Bool :=
+  hitPathHasNamedWidget data.widget data.hitPath name
+
+/-- Calculate slider value from click position given the slider's layout.
+    `trackWidth` is the width of the slider track in pixels. -/
+def calculateSliderValue (clickX : Float) (layouts : Trellis.LayoutResult)
+    (widget : Afferent.Arbor.Widget) (sliderName : String) (trackWidth : Float) : Option Float :=
+  match findWidgetIdByName widget sliderName with
+  | some wid =>
+      match layouts.get wid with
+      | some layout =>
+          let rect := layout.contentRect
+          let relativeX := clickX - rect.x
+          let value := relativeX / trackWidth
+          let clampedValue := if value < 0.0 then 0.0 else if value > 1.0 then 1.0 else value
+          some clampedValue
+      | none => none
+  | none => none
+
+/-! ## Component Hooks
+
+These are like React hooks - they access the event context implicitly
+and set up subscriptions automatically.
+-/
+
+/-- Create a hover state Dynamic for a widget (like React's useState + useEffect for hover).
+    Returns a Dynamic that is true when the mouse is over the widget. -/
+def useHover (name : String) : ReactiveM (Dynamic Spider Bool) := do
+  let events ← getEvents
+  -- Pure FRP: map hover events to bool, hold latest value
+  let hoverChanges ← Event.mapM (fun data => hitWidgetHover data name) events.hoverEvent
+  holdDyn false hoverChanges
+
+/-- Create a click event for a widget that fires Unit (like React's onClick handler).
+    Returns an Event that fires when the widget is clicked. -/
+def useClick (name : String) : ReactiveM (Event Spider Unit) := do
+  let events ← getEvents
+  let clicks ← Event.filterM (fun data => hitWidget data name) events.clickEvent
+  Event.voidM clicks
+
+/-- Subscribe to animation frames. Returns an Event that fires each frame with delta time. -/
+def useAnimationFrame : ReactiveM (Event Spider Float) := do
+  let events ← getEvents
+  pure events.animationFrame
+
+/-- Subscribe to key events. Returns the raw key event stream. -/
+def useKeyboard : ReactiveM (Event Spider KeyData) := do
+  let events ← getEvents
+  pure events.keyEvent
+
+/-- Create click event with full data (for sliders that need position). -/
+def useClickData (name : String) : ReactiveM (Event Spider ClickData) := do
+  let events ← getEvents
+  Event.filterM (fun data => hitWidget data name) events.clickEvent
+
+/-- Subscribe to all click events (for focus management). -/
+def useAllClicks : ReactiveM (Event Spider ClickData) := do
+  let events ← getEvents
+  pure events.clickEvent
+
+/-- Subscribe to all hover events (for position tracking). -/
+def useAllHovers : ReactiveM (Event Spider HoverData) := do
+  let events ← getEvents
+  pure events.hoverEvent
+
+/-- Set up automatic focus clearing when clicking non-input interactive widgets.
+    Call this after all components have been created. -/
+def ComponentRegistry.setupFocusClearing (reg : ComponentRegistry) : ReactiveM Unit := do
+  let inputs ← SpiderM.liftIO reg.inputNames.get
+  let interactives ← SpiderM.liftIO reg.interactiveNames.get
+
+  let isInputClick (data : ClickData) : Bool :=
+    inputs.any (fun name => hitWidget data name)
+  let isNonInputInteractiveClick (data : ClickData) : Bool :=
+    interactives.any (fun name => hitWidget data name)
+
+  let allClicks ← useAllClicks
+  let nonInputClicks ← Event.filterM
+    (fun data => !isInputClick data && isNonInputInteractiveClick data) allClicks
+  let clearAction ← Event.mapM (fun _ => reg.fireFocus none) nonInputClicks
+  performEvent_ clearAction
+
+/-! ## WidgetM Container Combinators
+
+These combinators run child WidgetM computations and wrap their renders
+in container widgets. They enable declarative nesting like Reflex-DOM.
+-/
+
+/-- Create a column container that collects children's renders.
+    Children are laid out vertically with the specified gap. -/
+def column' (gap : Float := 0) (style : Afferent.Arbor.BoxStyle := {})
+    (children : WidgetM α) : WidgetM α := do
+  let (result, childRenders) ← runWidgetChildren children
+  emit do
+    let widgets ← childRenders.mapM id
+    pure (Afferent.Arbor.column (gap := gap) (style := style) widgets)
+  pure result
+
+/-- Create a row container that collects children's renders.
+    Children are laid out horizontally with the specified gap. -/
+def row' (gap : Float := 0) (style : Afferent.Arbor.BoxStyle := {})
+    (children : WidgetM α) : WidgetM α := do
+  let (result, childRenders) ← runWidgetChildren children
+  emit do
+    let widgets ← childRenders.mapM id
+    pure (Afferent.Arbor.row (gap := gap) (style := style) widgets)
+  pure result
+
+/-- Create a flex row with custom properties. -/
+def flexRow' (props : Trellis.FlexContainer) (style : Afferent.Arbor.BoxStyle := {})
+    (children : WidgetM α) : WidgetM α := do
+  let (result, childRenders) ← runWidgetChildren children
+  emit do
+    let widgets ← childRenders.mapM id
+    pure (Afferent.Arbor.flexRow props (style := style) widgets)
+  pure result
+
+/-- Create a flex column with custom properties. -/
+def flexColumn' (props : Trellis.FlexContainer) (style : Afferent.Arbor.BoxStyle := {})
+    (children : WidgetM α) : WidgetM α := do
+  let (result, childRenders) ← runWidgetChildren children
+  emit do
+    let widgets ← childRenders.mapM id
+    pure (Afferent.Arbor.flexColumn props (style := style) widgets)
+  pure result
+
+/-- Create a titled panel container. -/
+def titledPanel' (title : String) (variant : PanelVariant) (theme : Theme)
+    (children : WidgetM α) : WidgetM α := do
+  let (result, childRenders) ← runWidgetChildren children
+  emit do
+    let widgets ← childRenders.mapM id
+    let content := Afferent.Arbor.column (gap := 0) (style := {}) widgets
+    pure (titledPanel title variant theme content)
+  pure result
+
+/-- Create an elevated panel container. -/
+def elevatedPanel' (theme : Theme) (padding : Float := 16)
+    (children : WidgetM α) : WidgetM α := do
+  let (result, childRenders) ← runWidgetChildren children
+  emit do
+    let widgets ← childRenders.mapM id
+    let content := Afferent.Arbor.column (gap := 0) (style := {}) widgets
+    pure (elevatedPanel theme padding content)
+  pure result
+
+/-- Create an outlined panel container. -/
+def outlinedPanel' (theme : Theme) (padding : Float := 16)
+    (children : WidgetM α) : WidgetM α := do
+  let (result, childRenders) ← runWidgetChildren children
+  emit do
+    let widgets ← childRenders.mapM id
+    let content := Afferent.Arbor.column (gap := 0) (style := {}) widgets
+    pure (outlinedPanel theme padding content)
+  pure result
+
+/-- Create a filled panel container. -/
+def filledPanel' (theme : Theme) (padding : Float := 16)
+    (children : WidgetM α) : WidgetM α := do
+  let (result, childRenders) ← runWidgetChildren children
+  emit do
+    let widgets ← childRenders.mapM id
+    let content := Afferent.Arbor.column (gap := 0) (style := {}) widgets
+    pure (filledPanel theme padding content)
+  pure result
+
+/-! ## WidgetM Static Widget Emitters
+
+These emit visual-only widgets without returning events or dynamics.
+-/
+
+/-- Emit a heading1 label. -/
+def heading1' (text : String) (theme : Theme) : WidgetM Unit := do
+  emit (pure (heading1 text theme))
+
+/-- Emit a heading2 label. -/
+def heading2' (text : String) (theme : Theme) : WidgetM Unit := do
+  emit (pure (heading2 text theme))
+
+/-- Emit a heading3 label. -/
+def heading3' (text : String) (theme : Theme) : WidgetM Unit := do
+  emit (pure (heading3 text theme))
+
+/-- Emit body text. -/
+def bodyText' (text : String) (theme : Theme) : WidgetM Unit := do
+  emit (pure (bodyText text theme))
+
+/-- Emit caption text. -/
+def caption' (text : String) (theme : Theme) : WidgetM Unit := do
+  emit (pure (caption text theme))
+
+/-- Emit a spacer. -/
+def spacer' (width height : Float) : WidgetM Unit := do
+  emit (pure (Afferent.Arbor.spacer width height))
+
+/-! ## WidgetM Conditional Rendering -/
+
+/-- Emit a widget only when condition is true (sampled at render time). -/
+def when' (condition : Dynamic Spider Bool) (content : WidgetM Unit) : WidgetM Unit := do
+  let (_, childRenders) ← runWidgetChildren content
+  emit do
+    let visible ← condition.sample
+    if visible then
+      let widgets ← childRenders.mapM id
+      pure (Afferent.Arbor.column (gap := 0) (style := {}) widgets)
+    else
+      pure (Afferent.Arbor.spacer 0 0)
+
+/-- Emit a dynamic widget (the IO action is run at render time). -/
+def emitDynamic (render : ComponentRender) : WidgetM Unit := emit render
+
+end Afferent.Canopy.Reactive

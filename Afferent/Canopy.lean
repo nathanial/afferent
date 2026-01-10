@@ -5,3 +5,4 @@
 import Afferent.Canopy.Core
 import Afferent.Canopy.Theme
 import Afferent.Canopy.Widget
+import Afferent.Canopy.Reactive

@@ -2,13 +2,15 @@
   Canopy TextInput Widget
   Single-line text input with cursor and editing support.
 -/
+import Reactive
 import Afferent.Canopy.Core
 import Afferent.Canopy.Theme
 import Afferent.Canopy.Widget.Button
+import Afferent.Canopy.Reactive.Component
 
 namespace Afferent.Canopy
 
-open Afferent.Arbor
+open Afferent.Arbor hiding Event
 
 /-- Extended state for text input widgets. -/
 structure TextInputState extends WidgetState where
@@ -212,5 +214,78 @@ def textInput {Msg : Type} (name : String)
 
   -- Build visual structure using textInputVisual
   UIBuilder.lift (textInputVisual name theme state placeholder)
+
+/-! ## Reactive TextInput Components (FRP-based)
+
+These use WidgetM for declarative composition with automatic focus and keyboard handling.
+-/
+
+open Reactive Reactive.Host
+open Afferent.Canopy.Reactive
+
+/-- TextInput result - events and dynamics. -/
+structure TextInputResult where
+  onChange : Reactive.Event Spider String
+  onFocus : Reactive.Event Spider Unit
+  onBlur : Reactive.Event Spider Unit
+  text : Reactive.Dynamic Spider String
+  isFocused : Reactive.Dynamic Spider Bool
+
+/-- Create a reactive text input component using WidgetM.
+    Emits the text input widget and returns text state.
+    - `theme`: Theme for styling
+    - `placeholder`: Placeholder text when empty
+    - `initialValue`: Initial text value
+-/
+def TextInput.reactive (theme : Theme) (placeholder : String) (initialValue : String := "")
+    : WidgetM TextInputResult := do
+  let name ← registerComponentW "text-input" (isInput := true)
+  let events ← getEventsW
+  let focusedInput := events.registry.focusedInput
+  let fireFocusedInput := events.registry.fireFocus
+
+  let clicks ← useClick name
+  let keyEvents ← useKeyboard
+
+  let isFocused ← Dynamic.mapM (· == some name) focusedInput
+
+  let focusChanges ← Dynamic.changesM focusedInput
+  let focusEvents ← Event.filterM
+    (fun (old, new) => old != some name && new == some name) focusChanges
+  let onFocus ← Event.voidM focusEvents
+  let blurEvents ← Event.filterM
+    (fun (old, new) => old == some name && new != some name) focusChanges
+  let onBlur ← Event.voidM blurEvents
+
+  let notFocused ← Dynamic.mapM (· != some name) focusedInput
+  let focusClicks ← Event.gateM notFocused.current clicks
+  let focusAction ← Event.mapM (fun _ => fireFocusedInput (some name)) focusClicks
+  performEvent_ focusAction
+
+  let gatedKeys ← Event.gateM isFocused.current keyEvents
+  let initialState : TextInputState := {
+    value := initialValue
+    cursor := initialValue.length
+    cursorPixelX := 0.0
+  }
+  let textState ← Reactive.foldDyn
+    (fun keyData state => TextInput.handleKeyPress keyData.event state none)
+    initialState gatedKeys
+
+  let textChanges ← Dynamic.changesM textState
+  let valueChanges ← Event.mapMaybeM
+    (fun (old, new) => if old.value != new.value then some new.value else none)
+    textChanges
+  let onChange := valueChanges
+
+  let text ← Dynamic.mapM (·.value) textState
+
+  emit do
+    let state ← textState.sample
+    let focused ← focusedInput.sample
+    let isFoc := focused == some name
+    pure (textInputVisual name theme { state with focused := isFoc } placeholder)
+
+  pure { onChange, onFocus, onBlur, text, isFocused }
 
 end Afferent.Canopy

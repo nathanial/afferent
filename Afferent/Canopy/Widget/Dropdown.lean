@@ -2,12 +2,14 @@
   Canopy Dropdown Widget
   Single-selection dropdown/select widget.
 -/
+import Reactive
 import Afferent.Canopy.Core
 import Afferent.Canopy.Theme
+import Afferent.Canopy.Reactive.Component
 
 namespace Afferent.Canopy
 
-open Afferent.Arbor
+open Afferent.Arbor hiding Event
 
 /-- Extended state for dropdown widgets. -/
 structure DropdownState extends WidgetState where
@@ -242,5 +244,82 @@ def dropdownVisual (name : String) (triggerName : String)
       gap := 0
     }
     pure (.flex outerWid (some name) outerProps {} #[trigger])
+
+/-! ## Reactive Dropdown Components (FRP-based)
+
+These use WidgetM for declarative composition with automatic open/close and selection.
+-/
+
+open Reactive Reactive.Host
+open Afferent.Canopy.Reactive
+
+/-- Dropdown result - events and dynamics. -/
+structure DropdownResult where
+  onSelect : Reactive.Event Spider Nat
+  selection : Reactive.Dynamic Spider Nat
+  isOpen : Reactive.Dynamic Spider Bool
+
+/-- Create a reactive dropdown component using WidgetM.
+    Emits the dropdown widget and returns selection state.
+    - `options`: Array of option strings
+    - `theme`: Theme for styling
+    - `initialSelection`: Initial selected index
+-/
+def Dropdown.reactive (options : Array String) (theme : Theme) (initialSelection : Nat := 0)
+    : WidgetM DropdownResult := do
+  let containerName ← registerComponentW "dropdown" (isInteractive := false)
+  let triggerName ← registerComponentW "dropdown-trigger"
+
+  let mut optionNames : Array String := #[]
+  for _ in options do
+    let name ← registerComponentW "dropdown-option"
+    optionNames := optionNames.push name
+  let optionNameFn (i : Nat) : String := optionNames.getD i ""
+
+  let isTriggerHovered ← useHover triggerName
+  let triggerClicks ← useClick triggerName
+  let allClicks ← useAllClicks
+  let allHovers ← useAllHovers
+
+  let findClickedOption (data : ClickData) : Option Nat :=
+    (List.range options.size).findSome? fun i =>
+      if hitWidget data (optionNameFn i) then some i else none
+
+  let isClickOutside (data : ClickData) : Bool :=
+    !hitWidget data containerName && !hitWidget data triggerName
+
+  let findHoveredOption (data : HoverData) : Option Nat :=
+    (List.range options.size).findSome? fun i =>
+      if hitWidgetHover data (optionNameFn i) then some i else none
+
+  let optionClicks ← Event.mapMaybeM findClickedOption allClicks
+  let selection ← Reactive.holdDyn initialSelection optionClicks
+  let onSelect := optionClicks
+
+  let isOpen ← SpiderM.fixDynM fun isOpenBehavior => do
+    let toggleEvents ← Event.mapM (fun _ => fun open_ => !open_) triggerClicks
+    let closeOnOption ← Event.mapM (fun _ => fun _ => false) optionClicks
+    let outsideClicks ← Event.filterM isClickOutside allClicks
+    let gatedOutside ← Event.gateM isOpenBehavior outsideClicks
+    let closeOnOutside ← Event.mapM (fun _ => fun _ => false) gatedOutside
+    let allTransitions ← Event.leftmostM [closeOnOption, closeOnOutside, toggleEvents]
+    Reactive.foldDyn (fun f s => f s) false allTransitions
+
+  let hoverChanges ← Event.mapM findHoveredOption allHovers
+  let gatedHover ← Event.gateM isOpen.current hoverChanges
+  let closeEvents ← Event.filterM (fun open_ => !open_) isOpen.updated
+  let resetHover ← Event.mapM (fun _ => (none : Option Nat)) closeEvents
+  let mergedHover ← Event.mergeM gatedHover resetHover
+  let hoveredOption ← Reactive.holdDyn none mergedHover
+
+  emit do
+    let triggerHovered ← isTriggerHovered.sample
+    let open_ ← isOpen.sample
+    let sel ← selection.sample
+    let hoverOpt ← hoveredOption.sample
+    let triggerState : WidgetState := { hovered := triggerHovered, pressed := false, focused := false }
+    pure (dropdownVisual containerName triggerName optionNameFn options sel open_ hoverOpt theme triggerState)
+
+  pure { onSelect, selection, isOpen }
 
 end Afferent.Canopy

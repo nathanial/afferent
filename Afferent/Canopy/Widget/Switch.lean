@@ -2,13 +2,15 @@
   Canopy Switch Widget
   iOS-style on/off toggle switch.
 -/
+import Reactive
 import Afferent.Canopy.Core
 import Afferent.Canopy.Theme
 import Afferent.Canopy.Widget.Button
+import Afferent.Canopy.Reactive.Component
 
 namespace Afferent.Canopy
 
-open Afferent.Arbor
+open Afferent.Arbor hiding Event
 
 /-- Extended state for switch widgets. -/
 structure SwitchState extends WidgetState where
@@ -185,5 +187,57 @@ def switchOnly {Msg : Type} (name : String)
     (state : SwitchState := {})
     : UIBuilder (WidgetMsg Msg) Widget :=
   switch name none onToggle theme state
+
+/-! ## Reactive Switch Components (FRP-based)
+
+These use WidgetM for declarative composition with automatic state management and animation.
+-/
+
+open Reactive Reactive.Host
+open Afferent.Canopy.Reactive
+
+/-- Switch result - events and dynamics. -/
+structure SwitchResult where
+  onToggle : Reactive.Event Spider Bool
+  isOn : Reactive.Dynamic Spider Bool
+  animProgress : Reactive.Dynamic Spider Float
+
+/-- Create a reactive switch component using WidgetM with animation.
+    Emits the switch widget and returns toggle state.
+    - `label`: Optional label text displayed next to switch
+    - `theme`: Theme for styling
+    - `initialOn`: Initial on/off state
+-/
+def Switch.reactive (label : Option String) (theme : Theme) (initialOn : Bool := false)
+    : WidgetM SwitchResult := do
+  let name ← registerComponentW "switch"
+  let isHovered ← useHover name
+  let clicks ← useClick name
+  let animFrames ← useAnimationFrame
+
+  let isOn ← Reactive.foldDyn (fun _ on => !on) initialOn clicks
+  let onToggle := isOn.updated
+
+  let initialAnim := if initialOn then 1.0 else 0.0
+  let animProgress ← SpiderM.fixDynM fun animBehavior => do
+    let updateEvent ← Event.attachWithM
+      (fun (anim, on) dt =>
+        let animSpeed := 8.0
+        let rawFactor := animSpeed * dt
+        let lerpFactor := if rawFactor > 1.0 then 1.0 else rawFactor
+        let target := if on then 1.0 else 0.0
+        let diff := target - anim
+        if diff.abs < 0.01 then target else anim + diff * lerpFactor)
+      (Reactive.Behavior.zipWith Prod.mk animBehavior isOn.current)
+      animFrames
+    Reactive.holdDyn initialAnim updateEvent
+
+  emit do
+    let hovered ← isHovered.sample
+    let anim ← animProgress.sample
+    let state : WidgetState := { hovered, pressed := false, focused := false }
+    pure (animatedSwitchVisual name label theme anim state)
+
+  pure { onToggle, isOn, animProgress }
 
 end Afferent.Canopy

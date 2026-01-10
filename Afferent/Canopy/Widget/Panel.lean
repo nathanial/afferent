@@ -7,7 +7,7 @@ import Afferent.Canopy.Widget.Label
 
 namespace Afferent.Canopy
 
-open Afferent.Arbor
+open Afferent.Arbor hiding Event
 
 /-- Panel visual variants. -/
 inductive PanelVariant where

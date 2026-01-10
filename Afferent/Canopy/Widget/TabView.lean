@@ -2,13 +2,15 @@
   Canopy TabView Widget
   Tabbed content panels with tab bar.
 -/
+import Reactive
 import Afferent.Canopy.Core
 import Afferent.Canopy.Theme
 import Afferent.Canopy.Widget.Label
+import Afferent.Canopy.Reactive.Component
 
 namespace Afferent.Canopy
 
-open Afferent.Arbor
+open Afferent.Arbor hiding Event
 
 /-- Extended state for tab view widgets. -/
 structure TabViewState extends WidgetState where
@@ -169,5 +171,84 @@ def tabViewVisual (name : String) (headerNameFn : Nat → String)
   }
 
   pure (.flex outerWid (some name) outerProps outerStyle #[tabBar, divider, contentPanel])
+
+/-! ## Reactive TabView Components (FRP-based)
+
+These use WidgetM for declarative composition with automatic tab switching.
+-/
+
+open Reactive Reactive.Host
+open Afferent.Canopy.Reactive
+
+/-- A tab definition with label and WidgetM content builder. -/
+structure TabDef where
+  label : String
+  content : WidgetM Unit
+
+instance : Inhabited TabDef where
+  default := { label := "", content := pure () }
+
+/-- TabView result - events and dynamics. -/
+structure TabViewResult where
+  onTabChange : Reactive.Event Spider Nat
+  activeTab : Reactive.Dynamic Spider Nat
+
+/-- Create a reactive tab view component using WidgetM.
+    Emits the tab view widget and returns tab state.
+    - `tabs`: Array of tab definitions (label and content)
+    - `theme`: Theme for styling
+    - `initialTab`: Initial active tab index
+-/
+def TabView.reactive (tabs : Array TabDef) (theme : Theme) (initialTab : Nat := 0)
+    : WidgetM TabViewResult := do
+  let containerName ← registerComponentW "tabview" (isInteractive := false)
+
+  let mut headerNames : Array String := #[]
+  for _ in tabs do
+    let name ← registerComponentW "tab-header"
+    headerNames := headerNames.push name
+  let headerNameFn (i : Nat) : String := headerNames.getD i ""
+
+  -- Pre-run all tab contents to get their renders
+  let mut tabContentRenders : Array (Array ComponentRender) := #[]
+  for tab in tabs do
+    let (_, renders) ← runWidgetChildren tab.content
+    tabContentRenders := tabContentRenders.push renders
+
+  let allClicks ← useAllClicks
+  let allHovers ← useAllHovers
+
+  let findClickedTab (data : ClickData) : Option Nat :=
+    (List.range tabs.size).findSome? fun i =>
+      if hitWidget data (headerNameFn i) then some i else none
+
+  let findHoveredTab (data : HoverData) : Option Nat :=
+    (List.range tabs.size).findSome? fun i =>
+      if hitWidgetHover data (headerNameFn i) then some i else none
+
+  let tabChanges ← Event.mapMaybeM findClickedTab allClicks
+  let activeTab ← Reactive.holdDyn initialTab tabChanges
+  let onTabChange := tabChanges
+
+  let hoverChanges ← Event.mapM findHoveredTab allHovers
+  let hoveredTab ← Reactive.holdDyn none hoverChanges
+
+  let tabsRef := tabs
+
+  emit do
+    let active ← activeTab.sample
+    let hovered ← hoveredTab.sample
+
+    let mut tabDefs : Array (String × WidgetBuilder) := #[]
+    for i in [:tabsRef.size] do
+      let tab := tabsRef[i]!
+      let renders := tabContentRenders[i]!
+      let contentWidgets ← renders.mapM id
+      let content := column (gap := 0) (style := {}) contentWidgets
+      tabDefs := tabDefs.push (tab.label, content)
+
+    pure (tabViewVisual containerName headerNameFn tabDefs active hovered theme)
+
+  pure { onTabChange, activeTab }
 
 end Afferent.Canopy

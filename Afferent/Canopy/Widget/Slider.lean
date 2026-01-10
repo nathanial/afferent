@@ -2,12 +2,14 @@
   Canopy Slider Widget
   Horizontal slider for selecting a value within a range.
 -/
+import Reactive
 import Afferent.Canopy.Core
 import Afferent.Canopy.Theme
+import Afferent.Canopy.Reactive.Component
 
 namespace Afferent.Canopy
 
-open Afferent.Arbor
+open Afferent.Arbor hiding Event
 
 /-- Extended state for slider widgets. -/
 structure SliderState extends WidgetState where
@@ -119,5 +121,44 @@ def sliderVisual (name : String) (labelText : Option String) (theme : Theme)
 def sliderOnlyVisual (name : String) (theme : Theme)
     (value : Float) (state : WidgetState := {}) : WidgetBuilder :=
   sliderVisual name none theme value state
+
+/-! ## Reactive Slider Components (FRP-based)
+
+These use WidgetM for declarative composition with automatic value tracking.
+-/
+
+open Reactive Reactive.Host
+open Afferent.Canopy.Reactive
+
+/-- Slider result - events and dynamics. -/
+structure SliderResult where
+  onChange : Reactive.Event Spider Float
+  value : Reactive.Dynamic Spider Float
+
+/-- Create a reactive slider component using WidgetM.
+    Emits the slider widget and returns value state.
+    - `label`: Optional label text displayed next to slider
+    - `theme`: Theme for styling
+    - `initialValue`: Initial value (0.0-1.0)
+-/
+def Slider.reactive (label : Option String) (theme : Theme) (initialValue : Float := 0.5)
+    : WidgetM SliderResult := do
+  let name ← registerComponentW "slider"
+  let isHovered ← useHover name
+  let clicks ← useClickData name
+
+  let trackWidth := Slider.defaultDimensions.trackWidth
+  let valueChanges ← Event.mapMaybeM
+    (fun data => calculateSliderValue data.click.x data.layouts data.widget name trackWidth) clicks
+  let value ← Reactive.holdDyn initialValue valueChanges
+  let onChange := valueChanges
+
+  emit do
+    let hovered ← isHovered.sample
+    let v ← value.sample
+    let state : WidgetState := { hovered, pressed := false, focused := false }
+    pure (sliderVisual name label theme v state)
+
+  pure { onChange, value }
 
 end Afferent.Canopy
