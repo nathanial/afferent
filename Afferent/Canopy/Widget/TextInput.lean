@@ -68,14 +68,6 @@ def moveCursorEnd (s : TextInputState) : TextInputState :=
 
 end TextInputState
 
-/-- Messages emitted by text input widget. -/
-inductive TextInputMsg (Msg : Type) where
-  | app (msg : Msg)
-  | valueChanged (name : String) (value : String) (cursor : Nat)
-  | focus (name : String) (focused : Bool)
-  | hover (name : String) (hovered : Bool)
-deriving Repr
-
 namespace TextInput
 
 /-- Custom spec for text input rendering with cursor.
@@ -175,45 +167,6 @@ def textInputVisual (name : String) (theme : Theme)
   let child ← custom (TextInput.inputSpec state.value placeholder showPlaceholder
           state.cursorPixelX state.focused theme) {}
   pure (.flex wid (some name) props style #[child])
-
-/-- Create a text input field (UIBuilder version with event handling).
-    - `name`: Unique name for state tracking
-    - `onValueChange`: Message to emit when value changes
-    - `theme`: Theme for styling
-    - `state`: Current text input state
-    - `placeholder`: Placeholder text when empty
-    - `maxLength`: Optional maximum character length
--/
-def textInput {Msg : Type} (name : String)
-    (onValueChange : String → Msg)
-    (theme : Theme)
-    (state : TextInputState := {})
-    (placeholder : String := "")
-    (maxLength : Option Nat := none)
-    : UIBuilder (TextInputMsg Msg) Widget := do
-  let wid ← UIBuilder.freshId
-
-  -- Register event handlers
-  UIBuilder.register wid fun _ event =>
-    match event with
-    | .mouseEnter _ => { msgs := #[.hover name true] }
-    | .mouseLeave _ => { msgs := #[.hover name false] }
-    | .mouseClick _ =>
-        if !state.disabled then
-          { msgs := #[.focus name true] }
-        else {}
-    | .keyPress e =>
-        if state.focused && !state.disabled then
-          let newState := TextInput.handleKeyPress e state maxLength
-          if newState.value != state.value || newState.cursor != state.cursor then
-            { msgs := #[.valueChanged name newState.value newState.cursor, .app (onValueChange newState.value)] }
-          else
-            { msgs := #[.valueChanged name newState.value newState.cursor] }
-        else {}
-    | _ => {}
-
-  -- Build visual structure using textInputVisual
-  UIBuilder.lift (textInputVisual name theme state placeholder)
 
 /-! ## Reactive TextInput Components (FRP-based)
 

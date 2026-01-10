@@ -147,47 +147,6 @@ def animatedSwitchVisual (name : String) (labelText : Option String) (theme : Th
   | none =>
     pure (.flex wid (some name) props {} #[track])
 
-/-- Create an interactive switch (UIBuilder version).
-    - `name`: Unique name for state tracking
-    - `labelText`: Optional text to display next to switch
-    - `onToggle`: Message to emit with new on state when toggled
-    - `theme`: Theme for styling
-    - `state`: Current switch state (includes on boolean)
--/
-def switch {Msg : Type} (name : String) (labelText : Option String)
-    (onToggle : Bool → Msg)
-    (theme : Theme)
-    (state : SwitchState := {})
-    : UIBuilder (WidgetMsg Msg) Widget := do
-  let wid ← UIBuilder.freshId
-
-  -- Register event handlers
-  UIBuilder.register wid fun _ event =>
-    match event with
-    | .mouseEnter _ => { msgs := #[.hover name true] }
-    | .mouseLeave _ => { msgs := #[.hover name false] }
-    | .mouseClick _ =>
-        if !state.disabled then
-          let newOn := !state.on
-          { msgs := #[.app (onToggle newOn)] }
-        else {}
-    | .keyPress e =>
-        if state.focused && (e.key == .space || e.key == .enter) && !state.disabled then
-          let newOn := !state.on
-          { msgs := #[.app (onToggle newOn)] }
-        else {}
-    | _ => {}
-
-  UIBuilder.lift (switchVisual name labelText theme state.on state.toWidgetState)
-
-/-- Create an interactive switch without label. -/
-def switchOnly {Msg : Type} (name : String)
-    (onToggle : Bool → Msg)
-    (theme : Theme)
-    (state : SwitchState := {})
-    : UIBuilder (WidgetMsg Msg) Widget :=
-  switch name none onToggle theme state
-
 /-! ## Reactive Switch Components (FRP-based)
 
 These use WidgetM for declarative composition with automatic state management and animation.
