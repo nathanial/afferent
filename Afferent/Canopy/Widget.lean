@@ -14,3 +14,4 @@ import Afferent.Canopy.Widget.Slider
 import Afferent.Canopy.Widget.Dropdown
 import Afferent.Canopy.Widget.TabView
 import Afferent.Canopy.Widget.Modal
+import Afferent.Canopy.Widget.ProgressBar
