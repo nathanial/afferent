@@ -11,6 +11,7 @@ import Afferent.Tests.RenderSmokeTests
 import Afferent.Tests.ContentScaleTests
 import Afferent.Tests.CSSTests
 import Afferent.Tests.ScrollContainerTests
+import Afferent.Tests.TooltipTests
 import Crucible
 
 open Crucible
