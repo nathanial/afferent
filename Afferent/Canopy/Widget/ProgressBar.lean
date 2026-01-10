@@ -197,7 +197,7 @@ structure ProgressBarResult where
     - `label`: Optional label text
     - `showPercentage`: Whether to show percentage text
 -/
-def ProgressBar.reactive (theme : Theme) (initialValue : Float := 0.0)
+def progressBar (theme : Theme) (initialValue : Float := 0.0)
     (variant : ProgressVariant := .primary)
     (label : Option String := none) (showPercentage : Bool := false)
     : WidgetM ProgressBarResult := do
@@ -221,7 +221,7 @@ structure IndeterminateProgressBarResult where
     - `variant`: Color variant
     - `label`: Optional label text
 -/
-def ProgressBar.indeterminate (theme : Theme)
+def progressBarIndeterminate (theme : Theme)
     (variant : ProgressVariant := .primary)
     (label : Option String := none)
     : WidgetM IndeterminateProgressBarResult := do
@@ -250,7 +250,7 @@ def ProgressBar.indeterminate (theme : Theme)
     - `label`: Optional label text
     - `showPercentage`: Whether to show percentage text
 -/
-def ProgressBar.withEvents (theme : Theme) (valueUpdates : Reactive.Event Spider Float)
+def progressBarWithEvents (theme : Theme) (valueUpdates : Reactive.Event Spider Float)
     (initialValue : Float := 0.0)
     (variant : ProgressVariant := .primary)
     (label : Option String := none) (showPercentage : Bool := true)

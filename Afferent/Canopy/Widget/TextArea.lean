@@ -471,7 +471,7 @@ structure TextAreaResult where
     - `width`: Width of the text area
     - `height`: Height of the text area
 -/
-def TextArea.reactive (theme : Theme) (placeholder : String) (initialState : TextAreaState)
+def textArea (theme : Theme) (placeholder : String) (initialState : TextAreaState)
     (font : Afferent.Font) (width : Float := 280) (height : Float := 120)
     : WidgetM TextAreaResult := do
   let name ← registerComponentW "text-area" (isInput := true)

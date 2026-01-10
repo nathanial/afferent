@@ -102,7 +102,7 @@ def checkboxVisual (name : String) (labelText : String) (theme : Theme)
     - `theme`: Theme for styling
     - `initialChecked`: Initial checked state
 -/
-def Checkbox.reactive (label : String) (theme : Theme) (initialChecked : Bool := false)
+def checkbox (label : String) (theme : Theme) (initialChecked : Bool := false)
     : WidgetM CheckboxResult := do
   let name ← registerComponentW "checkbox"
   let isHovered ← useHover name

@@ -89,7 +89,7 @@ structure RadioGroupResult where
     - `theme`: Theme for styling
     - `initialSelection`: Initial selected value
 -/
-def RadioGroup.reactive (options : Array RadioOption) (theme : Theme) (initialSelection : String)
+def radioGroup (options : Array RadioOption) (theme : Theme) (initialSelection : String)
     : WidgetM RadioGroupResult := do
   let mut optionNames : Array String := #[]
   for _ in options do

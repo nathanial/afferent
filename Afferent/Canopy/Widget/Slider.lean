@@ -141,7 +141,7 @@ structure SliderResult where
     - `theme`: Theme for styling
     - `initialValue`: Initial value (0.0-1.0)
 -/
-def Slider.reactive (label : Option String) (theme : Theme) (initialValue : Float := 0.5)
+def slider (label : Option String) (theme : Theme) (initialValue : Float := 0.5)
     : WidgetM SliderResult := do
   let name ← registerComponentW "slider"
   let isHovered ← useHover name

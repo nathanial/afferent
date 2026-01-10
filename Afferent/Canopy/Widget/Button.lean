@@ -81,7 +81,7 @@ def buttonVisual (name : String) (labelText : String) (theme : Theme)
     - `theme`: Theme for styling
     - `variant`: Visual variant (primary, secondary, outline, ghost)
 -/
-def Button.reactive (label : String) (theme : Theme) (variant : ButtonVariant := .primary)
+def button (label : String) (theme : Theme) (variant : ButtonVariant := .primary)
     : WidgetM (Reactive.Event Spider Unit) := do
   let name ← registerComponentW "button"
   let isHovered ← useHover name

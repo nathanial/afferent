@@ -167,7 +167,7 @@ structure SwitchResult where
     - `theme`: Theme for styling
     - `initialOn`: Initial on/off state
 -/
-def Switch.reactive (label : Option String) (theme : Theme) (initialOn : Bool := false)
+def switch (label : Option String) (theme : Theme) (initialOn : Bool := false)
     : WidgetM SwitchResult := do
   let name ← registerComponentW "switch"
   let isHovered ← useHover name

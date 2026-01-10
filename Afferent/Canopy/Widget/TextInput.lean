@@ -190,7 +190,7 @@ structure TextInputResult where
     - `placeholder`: Placeholder text when empty
     - `initialValue`: Initial text value
 -/
-def TextInput.reactive (theme : Theme) (placeholder : String) (initialValue : String := "")
+def textInput (theme : Theme) (placeholder : String) (initialValue : String := "")
     : WidgetM TextInputResult := do
   let name ← registerComponentW "text-input" (isInput := true)
   let events ← getEventsW

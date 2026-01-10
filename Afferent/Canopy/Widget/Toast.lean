@@ -192,7 +192,7 @@ structure ToastManagerResult where
     - `theme`: Theme for styling
     - `defaultDuration`: How long toasts are shown (in seconds)
 -/
-def Toast.manager (theme : Theme) (defaultDuration : Float := 3.0)
+def toastManager (theme : Theme) (defaultDuration : Float := 3.0)
     : WidgetM ToastManagerResult := do
   let containerName ← registerComponentW "toast-container" (isInteractive := false)
 

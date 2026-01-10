@@ -265,7 +265,7 @@ structure DropdownResult where
     - `theme`: Theme for styling
     - `initialSelection`: Initial selected index
 -/
-def Dropdown.reactive (options : Array String) (theme : Theme) (initialSelection : Nat := 0)
+def dropdown (options : Array String) (theme : Theme) (initialSelection : Nat := 0)
     : WidgetM DropdownResult := do
   let containerName ← registerComponentW "dropdown" (isInteractive := false)
   let triggerName ← registerComponentW "dropdown-trigger"

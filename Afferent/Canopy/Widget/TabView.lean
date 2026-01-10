@@ -199,7 +199,7 @@ structure TabViewResult where
     - `theme`: Theme for styling
     - `initialTab`: Initial active tab index
 -/
-def TabView.reactive (tabs : Array TabDef) (theme : Theme) (initialTab : Nat := 0)
+def tabView (tabs : Array TabDef) (theme : Theme) (initialTab : Nat := 0)
     : WidgetM TabViewResult := do
   let containerName ← registerComponentW "tabview" (isInteractive := false)
 

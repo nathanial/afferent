@@ -262,7 +262,7 @@ structure ModalResult where
     - `theme`: Theme for styling
     - `content`: Content widget builder
 -/
-def Modal.reactive (title : String) (theme : Theme) (content : WidgetM Unit)
+def modal (title : String) (theme : Theme) (content : WidgetM Unit)
     : WidgetM ModalResult := do
   let containerName ← registerComponentW "modal" (isInteractive := false)
   let backdropName ← registerComponentW "modal-backdrop" (isInteractive := false)
