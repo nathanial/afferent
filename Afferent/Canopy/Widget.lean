@@ -20,3 +20,4 @@ import Afferent.Canopy.Widget.Scroll
 import Afferent.Canopy.Widget.Tooltip
 import Afferent.Canopy.Widget.Menu
 import Afferent.Canopy.Widget.MenuBar
+import Afferent.Canopy.Widget.Table
