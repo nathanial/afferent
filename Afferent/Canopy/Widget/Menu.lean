@@ -241,13 +241,19 @@ partial def submenuVisual (containerNameFn : MenuPath → String) (itemNameFn : 
         (offsetX + config.minWidth + 2) (offsetY + itemY)
       allMenus := allMenus.push nestedSubmenu
 
-  -- If multiple menus, wrap in a container; otherwise return single menu
+  -- If multiple menus, wrap in a container with same size as root menu
+  -- The wrapper is in normal flow, and the menus inside are absolute
   if allMenus.size == 1 then
     pure menuWidget
   else
+    -- Wrapper takes the space of the root menu so layout doesn't shift
+    let wrapperStyle : BoxStyle := {
+      minWidth := some config.minWidth
+      height := .length totalHeight
+    }
     let wrapperWid ← freshId
     let wrapperProps : Trellis.FlexContainer := { direction := .column, gap := 0 }
-    pure (.flex wrapperWid none wrapperProps {} allMenus)
+    pure (.flex wrapperWid none wrapperProps wrapperStyle allMenus)
 
 /-- Build a complete visual menu widget with submenu support.
     - `containerNameFn`: Function to get container name by path
@@ -280,13 +286,24 @@ def menuVisual (containerNameFn : MenuPath → String) (triggerName : String)
 
   if isOpen then
     -- Build the root menu (and any open submenus)
+    -- Root menu is at (0, 0) relative to its container - the container handles positioning
     let menuTree ← submenuVisual containerNameFn itemNameFn items #[] openSubmenuPath
-      hoveredPath theme config 0 (triggerHeight + 4)
+      hoveredPath theme config 0 0
 
-    -- Outer container with trigger + menu tree
+    -- Menu container - positioned below trigger with position:relative for absolute children
+    let menuContainerStyle : BoxStyle := {
+      position := .absolute
+      top := some (triggerHeight + 4)
+      left := some 0
+    }
+    let menuContainerWid ← freshId
+    let menuContainerProps : Trellis.FlexContainer := { direction := .column, gap := 0 }
+    let menuContainer := Widget.flex menuContainerWid none menuContainerProps menuContainerStyle #[menuTree]
+
+    -- Outer container with trigger + positioned menu container
     let outerWid ← freshId
     let outerProps : Trellis.FlexContainer := { direction := .column, gap := 0 }
-    pure (.flex outerWid none outerProps {} #[trigger, menuTree])
+    pure (.flex outerWid none outerProps {} #[trigger, menuContainer])
   else
     -- Just the trigger when closed
     let outerWid ← freshId
