@@ -435,27 +435,28 @@ def menu (items : Array MenuItem) (theme : Theme)
   let hoveredPath ← Reactive.holdDyn none mergedHoverPath
 
   -- Track which submenus are open based on hover
-  -- When hovering a submenu item, open it; when hovering elsewhere, close submenus
-  let computeOpenPath (hovered : Option MenuPath) : MenuPath :=
+  -- Use foldDyn to maintain state - don't close on momentary no-hover
+  let computeOpenPath (hovered : Option MenuPath) (currentOpen : MenuPath) : MenuPath :=
     match hovered with
-    | none => #[]  -- No hover, close all submenus
+    | none => currentOpen  -- Keep current state when not hovering anything
     | some path =>
       -- If hovering a submenu item, open that submenu
       if Menu.isEnabledSubmenuAtPath items path then
         path  -- Open this submenu
       else
-        -- Keep the submenu path that contains this item
-        -- (i.e., path minus last element, or empty if at root)
-        if path.size > 0 then
-          -- If we're hovering an item in a submenu, keep that submenu open
-          path.pop
+        -- Compute what the open path should be based on hovered item
+        let newOpen := if path.size > 0 then path.pop else #[]
+        -- Check if we're still within the currently open subtree
+        if Menu.isPathPrefix newOpen currentOpen || newOpen.size >= currentOpen.size then
+          newOpen
         else
-          #[]
+          -- Hovering outside current subtree, close to new level
+          newOpen
 
-  let openPathFromHover ← Event.mapM computeOpenPath gatedHoverPath
-  let resetOpenPath ← Event.mapM (fun _ => (#[] : MenuPath)) closeEvents
-  let mergedOpenPath ← Event.mergeM openPathFromHover resetOpenPath
-  let openSubmenuPath ← Reactive.holdDyn #[] mergedOpenPath
+  let openPathUpdates ← Event.mapM (fun hp currentOpen => computeOpenPath hp currentOpen) gatedHoverPath
+  let resetOpenPath ← Event.mapM (fun _ _ => (#[] : MenuPath)) closeEvents
+  let mergedOpenPath ← Event.mergeM openPathUpdates resetOpenPath
+  let openSubmenuPath ← Reactive.foldDyn (fun f s => f s) #[] mergedOpenPath
 
   -- Selection event (only fires for enabled action items)
   let onSelect ← Event.mapMaybeM findClickedAction allClicks
