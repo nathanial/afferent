@@ -126,6 +126,12 @@ def handleKeyPress (e : KeyEvent) (state : TextInputState) (maxLen : Option Nat)
     | .«end» => state.moveCursorEnd
     | _ => state
 
+/-- Compute cursor pixel position by measuring text before cursor. -/
+def computeCursorPixelX (font : Afferent.Font) (state : TextInputState) : IO TextInputState := do
+  let textBeforeCursor := state.value.take state.cursor
+  let (width, _) ← font.measureText textBeforeCursor
+  pure { state with cursorPixelX := width }
+
 end TextInput
 
 /-- Build the visual representation of a text input (WidgetBuilder version).
@@ -187,10 +193,11 @@ structure TextInputResult where
 /-- Create a reactive text input component using WidgetM.
     Emits the text input widget and returns text state.
     - `theme`: Theme for styling
+    - `font`: Font for text measurement (cursor positioning)
     - `placeholder`: Placeholder text when empty
     - `initialValue`: Initial text value
 -/
-def textInput (theme : Theme) (placeholder : String) (initialValue : String := "")
+def textInput (theme : Theme) (font : Afferent.Font) (placeholder : String) (initialValue : String := "")
     : WidgetM TextInputResult := do
   let name ← registerComponentW "text-input" (isInput := true)
   let events ← getEventsW
@@ -221,8 +228,11 @@ def textInput (theme : Theme) (placeholder : String) (initialValue : String := "
     cursor := initialValue.length
     cursorPixelX := 0.0
   }
-  let textState ← Reactive.foldDyn
-    (fun keyData state => TextInput.handleKeyPress keyData.event state none)
+  let initialState ← SpiderM.liftIO (TextInput.computeCursorPixelX font initialState)
+  let textState ← Reactive.foldDynM
+    (fun keyData state => SpiderM.liftIO do
+      let updated := TextInput.handleKeyPress keyData.event state none
+      TextInput.computeCursorPixelX font updated)
     initialState gatedKeys
 
   let textChanges ← Dynamic.changesM textState
