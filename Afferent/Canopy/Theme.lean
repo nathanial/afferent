@@ -20,6 +20,18 @@ structure InteractiveColors where
   borderFocused : Color
 deriving Repr, BEq, Inhabited
 
+/-- Scrollbar styling colors. -/
+structure ScrollbarColors where
+  /-- Scrollbar track background. -/
+  track : Color
+  /-- Scrollbar thumb (normal state). -/
+  thumb : Color
+  /-- Scrollbar thumb (hovered). -/
+  thumbHover : Color
+  /-- Scrollbar thumb (dragging). -/
+  thumbActive : Color
+deriving Repr, BEq, Inhabited
+
 /-- Complete theme for Canopy widgets. -/
 structure Theme where
   /-- Primary action buttons (filled, prominent). -/
@@ -32,6 +44,8 @@ structure Theme where
   input : InteractiveColors
   /-- Panel/card backgrounds. -/
   panel : InteractiveColors
+  /-- Scrollbar styling. -/
+  scrollbar : ScrollbarColors
   /-- Default text color. -/
   text : Color
   /-- Muted/secondary text color. -/
@@ -102,6 +116,12 @@ def dark : Theme := {
     border := Color.gray 0.25
     borderFocused := Color.gray 0.4
   }
+  scrollbar := {
+    track := Color.gray 0.15
+    thumb := Color.gray 0.35
+    thumbHover := Color.gray 0.45
+    thumbActive := Color.gray 0.55
+  }
   text := Color.white
   textMuted := Color.gray 0.6
   focusRing := Color.fromRgb8 59 130 246
@@ -160,6 +180,12 @@ def light : Theme := {
     foregroundDisabled := Color.gray 0.5
     border := Color.gray 0.8
     borderFocused := Color.gray 0.6
+  }
+  scrollbar := {
+    track := Color.gray 0.9
+    thumb := Color.gray 0.7
+    thumbHover := Color.gray 0.6
+    thumbActive := Color.gray 0.5
   }
   text := Color.gray 0.1
   textMuted := Color.gray 0.5

@@ -45,6 +45,31 @@ def zero : ScrollState := {}
 
 end ScrollState
 
+/-- Scrollbar rendering configuration (passed to render layer). -/
+structure ScrollbarRenderConfig where
+  /-- Show vertical scrollbar. -/
+  showVertical : Bool := true
+  /-- Show horizontal scrollbar. -/
+  showHorizontal : Bool := false
+  /-- Scrollbar track thickness in pixels. -/
+  thickness : Float := 8.0
+  /-- Minimum thumb length in pixels. -/
+  minThumbLength : Float := 30.0
+  /-- Corner radius for scrollbar elements. -/
+  cornerRadius : Float := 4.0
+  /-- Track background color. -/
+  trackColor : Color := ⟨0.15, 0.15, 0.15, 1.0⟩
+  /-- Thumb color. -/
+  thumbColor : Color := ⟨0.35, 0.35, 0.35, 1.0⟩
+deriving Repr, BEq, Inhabited
+
+namespace ScrollbarRenderConfig
+
+def hidden : ScrollbarRenderConfig :=
+  { showVertical := false, showHorizontal := false }
+
+end ScrollbarRenderConfig
+
 /-- Widget identifier for layout-to-widget mapping. -/
 abbrev WidgetId := Nat
 
@@ -174,6 +199,7 @@ inductive Widget where
            (scrollState : ScrollState)
            (contentWidth : Float)
            (contentHeight : Float)
+           (scrollbarConfig : ScrollbarRenderConfig)
            (child : Widget)
 
   /-- Fixed-size spacer -/
@@ -216,7 +242,7 @@ def name? : Widget → Option String
 def children : Widget → Array Widget
   | .flex _ _ _ _ children => children
   | .grid _ _ _ _ children => children
-  | .scroll _ _ _ _ _ _ child => #[child]
+  | .scroll _ _ _ _ _ _ _ child => #[child]
   | _ => #[]
 
 /-- Get the widget's style if it has one. -/

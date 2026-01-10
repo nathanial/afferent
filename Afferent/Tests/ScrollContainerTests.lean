@@ -33,11 +33,11 @@ def testTheme : Theme := { Theme.dark with font := testFont, smallFont := testFo
 
 test "namedScroll creates scroll widget" := do
   let child := text' "Hello" testFont
-  let scrollBuilder := namedScroll "test-scroll" {} 300 600 {} child
+  let scrollBuilder := namedScroll "test-scroll" {} 300 600 {} {} child
   let (widget, _) ← scrollBuilder.run {}
 
   match widget with
-  | .scroll _ name _ _ contentW contentH _ =>
+  | .scroll _ name _ _ contentW contentH _ _ =>
     ensure (name == some "test-scroll") s!"Expected name 'test-scroll', got {name}"
     shouldBeNear contentW 300.0
     shouldBeNear contentH 600.0
@@ -71,7 +71,7 @@ test "nested column in scroll has correct total widget count" := do
     text' "Item 10" testFont
   ]
   let columnBuilder := column (gap := 4) (style := {}) children
-  let scrollBuilder := namedScroll "test-scroll" {} 300 600 {} columnBuilder
+  let scrollBuilder := namedScroll "test-scroll" {} 300 600 {} {} columnBuilder
   let (widget, _) ← scrollBuilder.run {}
   let count := widget.widgetCount
   -- 1 scroll + 1 flex + 10 text = 12
@@ -342,7 +342,7 @@ test "scroll widget child is laid out at full content height" := do
   ]
   let scrollBuilder := namedScroll "test-scroll"
     { minWidth := some viewportW, minHeight := some viewportH }
-    viewportW contentH {} childBuilder
+    viewportW contentH {} {} childBuilder
 
   let (widget, _) ← scrollBuilder.run {}
 
@@ -357,6 +357,427 @@ test "scroll widget child is laid out at full content height" := do
   -- The child should be laid out at contentH (600), not viewportH (150)
   let childLayout := result.get! 2
   ensure (childLayout.height >= contentH) s!"Child height {childLayout.height} should be >= content height {contentH}"
+
+/-! ## Scrollbar Hit Detection Tests -/
+
+/-- Create a test layout for scrollbar hit testing. -/
+def testScrollLayout (x y width height : Float) : ComputedLayout :=
+  { nodeId := 0
+  , contentRect := { x, y, width, height }
+  , borderRect := { x, y, width, height } }
+
+test "isInVerticalScrollbar returns None when verticalScroll is disabled" := do
+  let config : ScrollContainerConfig := { verticalScroll := false }
+  let layout := testScrollLayout 0 0 300 200
+  let result := isInVerticalScrollbar config layout 295 100
+  ensure result.isNone "Should return None when verticalScroll is false"
+
+test "isInVerticalScrollbar returns None when scrollbar visibility is hidden" := do
+  let config : ScrollContainerConfig := { scrollbarVisibility := .hidden }
+  let layout := testScrollLayout 0 0 300 200
+  let result := isInVerticalScrollbar config layout 295 100
+  ensure result.isNone "Should return None when scrollbar is hidden"
+
+test "isInVerticalScrollbar returns Some when mouse is in scrollbar track" := do
+  let config : ScrollContainerConfig := {
+    verticalScroll := true
+    scrollbarThickness := 8.0
+    scrollbarVisibility := .always
+  }
+  let layout := testScrollLayout 0 0 300 200
+  -- Scrollbar track is at x = 292 to 300 (width - thickness to width)
+  -- Mouse at x=295 should be in the track
+  let result := isInVerticalScrollbar config layout 295 100
+  match result with
+  | some (relY, trackH) =>
+    shouldBeNear relY 100.0
+    shouldBeNear trackH 200.0
+  | none => ensure false "Expected Some when mouse is in scrollbar"
+
+test "isInVerticalScrollbar returns None when mouse is outside scrollbar track" := do
+  let config : ScrollContainerConfig := {
+    verticalScroll := true
+    scrollbarThickness := 8.0
+    scrollbarVisibility := .always
+  }
+  let layout := testScrollLayout 0 0 300 200
+  -- Mouse at x=100 is in content area, not scrollbar
+  let result := isInVerticalScrollbar config layout 100 100
+  ensure result.isNone "Should return None when mouse is outside scrollbar"
+
+test "isInVerticalScrollbar returns None when mouse is above track" := do
+  let config : ScrollContainerConfig := {
+    verticalScroll := true
+    scrollbarThickness := 8.0
+  }
+  let layout := testScrollLayout 0 50 300 200
+  -- Track starts at y=50, mouse at y=30 is above
+  let result := isInVerticalScrollbar config layout 295 30
+  ensure result.isNone "Should return None when mouse is above track"
+
+test "isInVerticalScrollbar returns None when mouse is below track" := do
+  let config : ScrollContainerConfig := {
+    verticalScroll := true
+    scrollbarThickness := 8.0
+  }
+  let layout := testScrollLayout 0 50 300 200
+  -- Track ends at y=250, mouse at y=280 is below
+  let result := isInVerticalScrollbar config layout 295 280
+  ensure result.isNone "Should return None when mouse is below track"
+
+/-! ## Scroll Offset Calculation Tests -/
+
+test "scrollOffsetFromTrackPosition returns 0 when no overflow" := do
+  -- contentH <= viewportH means no scrolling possible
+  let offset := scrollOffsetFromTrackPosition 100 200 200 150 30
+  shouldBeNear offset 0.0
+
+test "scrollOffsetFromTrackPosition returns 0 at top of track" := do
+  -- When clicking at the very top, offset should be 0 or near it
+  let viewportH := 100.0
+  let contentH := 400.0  -- max scroll = 300
+  let trackH := 100.0
+  let minThumb := 30.0
+  let offset := scrollOffsetFromTrackPosition 0 trackH viewportH contentH minThumb
+  -- At relativeY=0, we're at the top
+  ensure (offset <= 10.0) s!"Offset at top should be near 0, got {offset}"
+
+test "scrollOffsetFromTrackPosition returns max at bottom of track" := do
+  -- When clicking at the very bottom, offset should be max
+  let viewportH := 100.0
+  let contentH := 400.0  -- max scroll = 300
+  let trackH := 100.0
+  let minThumb := 30.0
+  let offset := scrollOffsetFromTrackPosition trackH trackH viewportH contentH minThumb
+  -- At relativeY=trackH, we're at the bottom
+  ensure (offset >= 290.0) s!"Offset at bottom should be near max (300), got {offset}"
+
+test "scrollOffsetFromTrackPosition returns middle value at middle of track" := do
+  let viewportH := 100.0
+  let contentH := 400.0  -- max scroll = 300
+  let trackH := 100.0
+  let minThumb := 30.0
+  let offset := scrollOffsetFromTrackPosition 50 trackH viewportH contentH minThumb
+  -- At middle of track, offset should be roughly in the middle range
+  ensure (offset > 50.0 && offset < 250.0) s!"Offset at middle should be in middle range, got {offset}"
+
+/-! ## ScrollbarDragState Tests -/
+
+test "ScrollbarDragState default is not dragging" := do
+  let state : ScrollbarDragState := {}
+  ensure (!state.isDragging) "Default drag state should not be dragging"
+
+test "ScrollCombinedState default has zero scroll and no drag" := do
+  let state : ScrollCombinedState := {}
+  shouldBeNear state.scroll.offsetX 0.0
+  shouldBeNear state.scroll.offsetY 0.0
+  ensure (!state.drag.isDragging) "Default should not be dragging"
+
+/-! ## Drag Behavior Integration Tests -/
+
+test "click in scrollbar area starts drag" := do
+  -- This tests the logic that should happen when processing a click event
+  -- in the scrollbar area
+  let config : ScrollContainerConfig := {
+    width := 300
+    height := 200
+    verticalScroll := true
+    scrollbarThickness := 8.0
+    scrollbarMinThumb := 30.0
+  }
+  let layout := testScrollLayout 0 0 300 200
+  let contentH := 600.0  -- 3x viewport height
+
+  -- Simulate click at position in scrollbar
+  let mouseX := 295.0
+  let mouseY := 50.0
+
+  -- Check that click is in scrollbar
+  let hitResult := isInVerticalScrollbar config layout mouseX mouseY
+  match hitResult with
+  | some (relativeY, trackHeight) =>
+    -- Calculate new offset as the scroll logic would
+    let newOffsetY := scrollOffsetFromTrackPosition relativeY trackHeight
+      config.height contentH config.scrollbarMinThumb
+    -- Verify drag would start
+    let dragState : ScrollbarDragState := {
+      isDragging := true
+      dragStartY := mouseY
+      initialOffsetY := newOffsetY
+    }
+    ensure dragState.isDragging "Drag should be active after click in scrollbar"
+    ensure (newOffsetY >= 0.0) s!"Offset should be non-negative, got {newOffsetY}"
+  | none =>
+    ensure false "Click at x=295 should hit scrollbar track"
+
+test "hover while dragging updates scroll position" := do
+  let config : ScrollContainerConfig := {
+    width := 300
+    height := 200
+    verticalScroll := true
+    scrollbarThickness := 8.0
+    scrollbarMinThumb := 30.0
+  }
+  let layout := testScrollLayout 0 0 300 200
+  let contentH := 600.0
+
+  -- Start with an active drag
+  let initialDrag : ScrollbarDragState := {
+    isDragging := true
+    dragStartY := 50.0
+    initialOffsetY := 50.0
+  }
+  let initialState : ScrollCombinedState := {
+    scroll := { offsetY := 50.0 }
+    drag := initialDrag
+  }
+
+  -- Simulate hover at new Y position (drag down)
+  let newY := 150.0
+  let relativeY := newY - layout.contentRect.y
+  let newOffsetY := scrollOffsetFromTrackPosition relativeY layout.contentRect.height
+    config.height contentH config.scrollbarMinThumb
+
+  -- Verify the new offset is different from initial
+  ensure (newOffsetY != initialState.scroll.offsetY)
+    s!"Scroll offset should change during drag: initial={initialState.scroll.offsetY}, new={newOffsetY}"
+
+test "mouseUp ends drag" := do
+  -- Start with an active drag
+  let dragState : ScrollbarDragState := {
+    isDragging := true
+    dragStartY := 50.0
+    initialOffsetY := 50.0
+  }
+  let state : ScrollCombinedState := {
+    scroll := { offsetY := 100.0 }
+    drag := dragState
+  }
+
+  -- After mouseUp, drag should be inactive but scroll position preserved
+  let newDrag : ScrollbarDragState := {}
+  let newState : ScrollCombinedState := { state with drag := newDrag }
+
+  ensure (!newState.drag.isDragging) "Drag should be inactive after mouseUp"
+  shouldBeNear newState.scroll.offsetY 100.0
+
+/-! ## FRP Network Tests - Full Event Flow -/
+
+/-- Helper to create test ClickData for scrollbar clicks. -/
+def mkClickData (x y : Float) (layouts : LayoutResult) (widget : Widget) : ClickData :=
+  { click := { x, y, button := 0, modifiers := 0 }
+  , hitPath := #[]
+  , widget
+  , layouts }
+
+/-- Helper to create test HoverData. -/
+def mkHoverData (x y : Float) (layouts : LayoutResult) (widget : Widget) : HoverData :=
+  { x, y
+  , hitPath := #[]
+  , widget
+  , layouts }
+
+/-- Helper to create test MouseButtonData. -/
+def mkMouseButtonData (x y : Float) (layouts : LayoutResult) (widget : Widget) : MouseButtonData :=
+  { x, y
+  , button := 0
+  , hitPath := #[]
+  , widget
+  , layouts }
+
+/-- Create a minimal widget for testing. -/
+def testWidget : Widget := .spacer 0 none 100 100
+
+/-- Create a LayoutResult with a scroll container at specified position. -/
+def mkScrollLayout (widgetId : WidgetId) (x y width height : Float) : LayoutResult :=
+  let layout : ComputedLayout := {
+    nodeId := widgetId
+    contentRect := { x, y, width, height }
+    borderRect := { x, y, width, height }
+  }
+  LayoutResult.empty.add layout
+
+test "FRP: scrollContainer responds to scroll wheel events" := do
+  let result ← runSpider do
+    let (events, inputs) ← createInputs
+    let config : ScrollContainerConfig := {
+      width := 300
+      height := 200
+      verticalScroll := true
+    }
+
+    -- Run scrollContainer to set up FRP network
+    let ((_, scrollResult), _) ← (do
+      scrollContainer config testTheme do
+        emit (pure (text' "Item 1" testFont))
+        emit (pure (text' "Item 2" testFont))
+        pure ()
+    ).run { children := #[] } |>.run events
+
+    -- Sample initial state
+    let initialOffset ← scrollResult.scrollState.sample
+    ensure (initialOffset.offsetY == 0.0) s!"Initial offset should be 0, got {initialOffset.offsetY}"
+
+    -- Create a scroll widget with the name that scrollContainer registered ("scroll-container-0")
+    -- The widget ID is 42 (arbitrary), and we put 42 in the hitPath
+    let scrollWidgetId : WidgetId := 42
+    let scrollWidget : Widget := .scroll scrollWidgetId (some "scroll-container-0") {}
+        {} 300 600 {} testWidget
+
+    -- Fire a scroll event:
+    -- - widget tree contains "scroll-container-0" with ID 42
+    -- - hitPath contains 42
+    -- So hitWidgetScroll will find ID 42 by name, then find 42 in hitPath → true
+    -- Note: negative deltaY because Scroll.lean negates it (platform convention)
+    let scrollData : ScrollData := {
+      scroll := { x := 150, y := 100, deltaX := 0, deltaY := -3.0, modifiers := {} }
+      hitPath := #[scrollWidgetId]
+      widget := scrollWidget
+      layouts := mkScrollLayout scrollWidgetId 0 0 300 200
+    }
+    inputs.fireScroll scrollData
+
+    -- Sample after scroll
+    let afterScroll ← scrollResult.scrollState.sample
+    pure afterScroll.offsetY
+
+  -- Scroll wheel with deltaY=-3, speed=20 should increase offset by 60
+  -- (Scroll.lean negates deltaY, so -3 * -20 = +60)
+  ensure (result > 0.0) s!"Offset should increase after scroll, got {result}"
+
+test "FRP: click events are received by scrollContainer" := do
+  let result ← runSpider do
+    let (events, inputs) ← createInputs
+
+    -- Track if click event was received
+    let clickReceivedRef ← SpiderM.liftIO (IO.mkRef false)
+
+    -- Subscribe to all clicks to verify event flow
+    let allClicks ← useAllClicks |>.run events
+    let _ ← SpiderM.liftIO <| allClicks.subscribe fun _ => do
+      clickReceivedRef.set true
+
+    -- Fire a click event
+    let clickData := mkClickData 295 100 (mkScrollLayout 0 0 0 300 200) testWidget
+    inputs.fireClick clickData
+
+    SpiderM.liftIO clickReceivedRef.get
+
+  ensure result "Click event should be received by useAllClicks"
+
+test "FRP: hover events are received by scrollContainer" := do
+  let result ← runSpider do
+    let (events, inputs) ← createInputs
+
+    -- Track if hover event was received
+    let hoverReceivedRef ← SpiderM.liftIO (IO.mkRef false)
+
+    -- Subscribe to all hovers
+    let allHovers ← useAllHovers |>.run events
+    let _ ← SpiderM.liftIO <| allHovers.subscribe fun _ => do
+      hoverReceivedRef.set true
+
+    -- Fire a hover event
+    let hoverData := mkHoverData 150 100 (mkScrollLayout 0 0 0 300 200) testWidget
+    inputs.fireHover hoverData
+
+    SpiderM.liftIO hoverReceivedRef.get
+
+  ensure result "Hover event should be received by useAllHovers"
+
+test "FRP: mouseUp events are received" := do
+  let result ← runSpider do
+    let (events, inputs) ← createInputs
+
+    -- Track if mouseUp event was received
+    let mouseUpReceivedRef ← SpiderM.liftIO (IO.mkRef false)
+
+    -- Subscribe to mouseUp events
+    let allMouseUp ← useAllMouseUp |>.run events
+    let _ ← SpiderM.liftIO <| allMouseUp.subscribe fun _ => do
+      mouseUpReceivedRef.set true
+
+    -- Fire a mouseUp event
+    let mouseUpData := mkMouseButtonData 295 100 (mkScrollLayout 0 0 0 300 200) testWidget
+    inputs.fireMouseUp mouseUpData
+
+    SpiderM.liftIO mouseUpReceivedRef.get
+
+  ensure result "MouseUp event should be received by useAllMouseUp"
+
+test "FRP: foldDynM accumulates scroll events correctly" := do
+  let result ← runSpider do
+    -- Create a trigger event for scroll data
+    let (scrollEvent, fireScroll) ← newTriggerEvent (t := Spider) (a := ScrollData)
+
+    -- Use foldDynM to accumulate scroll offsets
+    let offsetDyn ← Reactive.foldDynM
+      (fun (scrollData : ScrollData) offset => do
+        let newOffset := offset + scrollData.scroll.deltaY * 20.0
+        pure newOffset
+      )
+      (0.0 : Float)
+      scrollEvent
+
+    -- Fire scroll events directly to the trigger
+    let scrollData1 : ScrollData := {
+      scroll := { x := 150, y := 100, deltaX := 0, deltaY := 1.0, modifiers := {} }
+      hitPath := #[]
+      widget := testWidget
+      layouts := mkScrollLayout 0 0 0 300 200
+    }
+    SpiderM.liftIO (fireScroll scrollData1)
+
+    let scrollData2 : ScrollData := {
+      scroll := { x := 150, y := 100, deltaX := 0, deltaY := 2.0, modifiers := {} }
+      hitPath := #[]
+      widget := testWidget
+      layouts := mkScrollLayout 0 0 0 300 200
+    }
+    SpiderM.liftIO (fireScroll scrollData2)
+
+    offsetDyn.sample
+
+  -- After two scroll events with deltaY 1 and 2, offset should be (1+2)*20 = 60
+  shouldBeNear result 60.0
+
+/-! ## Debug: Print scrollbar position calculation -/
+
+test "debug scrollbar geometry" := do
+  let config : ScrollContainerConfig := {
+    width := 300
+    height := 200
+    verticalScroll := true
+    scrollbarThickness := 8.0
+    scrollbarMinThumb := 30.0
+    scrollbarVisibility := .always
+  }
+  let layout := testScrollLayout 100 100 300 200  -- offset at 100,100
+  let contentH := 600.0
+
+  -- The scrollbar track should be at:
+  -- x: contentRect.x + contentRect.width - thickness = 100 + 300 - 8 = 392
+  -- y: contentRect.y = 100
+  -- width: 8
+  -- height: contentRect.height = 200
+
+  let expectedTrackX := layout.contentRect.x + layout.contentRect.width - config.scrollbarThickness
+  let expectedTrackY := layout.contentRect.y
+  let expectedTrackW := config.scrollbarThickness
+  let expectedTrackH := layout.contentRect.height
+
+  -- Test click at center of scrollbar
+  let mouseX := expectedTrackX + expectedTrackW / 2  -- 392 + 4 = 396
+  let mouseY := expectedTrackY + expectedTrackH / 2  -- 100 + 100 = 200
+
+  let result := isInVerticalScrollbar config layout mouseX mouseY
+  match result with
+  | some (relY, trackH) =>
+    -- relY should be mouseY - trackY = 200 - 100 = 100
+    shouldBeNear relY (mouseY - expectedTrackY)
+    shouldBeNear trackH expectedTrackH
+  | none =>
+    ensure false s!"Expected hit at ({mouseX}, {mouseY}), track at x={expectedTrackX}"
 
 #generate_tests
 

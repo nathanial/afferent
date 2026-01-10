@@ -50,4 +50,19 @@ structure ScrollData where
   /-- Computed layouts. -/
   layouts : Trellis.LayoutResult
 
+/-- Mouse button event with layout context. -/
+structure MouseButtonData where
+  /-- Mouse X position. -/
+  x : Float
+  /-- Mouse Y position. -/
+  y : Float
+  /-- Mouse button (0=left, 1=right, 2=middle). -/
+  button : UInt8
+  /-- Path from root to widget under mouse. -/
+  hitPath : Array Afferent.Arbor.WidgetId
+  /-- The root widget tree. -/
+  widget : Afferent.Arbor.Widget
+  /-- Computed layouts. -/
+  layouts : Trellis.LayoutResult
+
 end Afferent.Canopy.Reactive

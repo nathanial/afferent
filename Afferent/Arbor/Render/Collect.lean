@@ -232,7 +232,7 @@ partial def collectWidget (w : Widget) (layouts : Trellis.LayoutResult) : Collec
       for child in absChildren do
         CollectM.deferAbsolute child layouts
 
-  | .scroll _ _ style scrollState _ _ child =>
+  | .scroll _ _ style scrollState contentWidth contentHeight scrollbarConfig child =>
     -- Render background
     collectBoxStyle borderRect style
 
@@ -251,6 +251,57 @@ partial def collectWidget (w : Widget) (layouts : Trellis.LayoutResult) : Collec
     CollectM.emit .popTransform
     CollectM.emit .restore
     CollectM.emit .popClip
+
+    -- Render scrollbars (after content, so they overlay)
+    let viewportW := contentRect.width
+    let viewportH := contentRect.height
+    let thickness := scrollbarConfig.thickness
+    let minThumb := scrollbarConfig.minThumbLength
+    let radius := scrollbarConfig.cornerRadius
+
+    -- Vertical scrollbar
+    if scrollbarConfig.showVertical && contentHeight > viewportH then
+      -- Calculate scrollable range
+      let maxScrollY := contentHeight - viewportH
+      let scrollRatio := if maxScrollY > 0 then scrollState.offsetY / maxScrollY else 0
+
+      -- Calculate thumb size (proportional to viewport/content ratio)
+      let thumbRatio := viewportH / contentHeight
+      let thumbHeight := max minThumb (viewportH * thumbRatio)
+      let trackHeight := viewportH
+      let thumbTravel := trackHeight - thumbHeight
+      let thumbY := thumbTravel * scrollRatio
+
+      -- Track rect (right edge of content area)
+      let trackX := contentRect.x + viewportW - thickness
+      let trackRect : Rect := ⟨⟨trackX, contentRect.y⟩, ⟨thickness, trackHeight⟩⟩
+      CollectM.emit (.fillRect trackRect scrollbarConfig.trackColor radius)
+
+      -- Thumb rect
+      let thumbRect : Rect := ⟨⟨trackX, contentRect.y + thumbY⟩, ⟨thickness, thumbHeight⟩⟩
+      CollectM.emit (.fillRect thumbRect scrollbarConfig.thumbColor radius)
+
+    -- Horizontal scrollbar
+    if scrollbarConfig.showHorizontal && contentWidth > viewportW then
+      -- Calculate scrollable range
+      let maxScrollX := contentWidth - viewportW
+      let scrollRatio := if maxScrollX > 0 then scrollState.offsetX / maxScrollX else 0
+
+      -- Calculate thumb size (proportional to viewport/content ratio)
+      let thumbRatio := viewportW / contentWidth
+      let thumbWidth := max minThumb (viewportW * thumbRatio)
+      let trackWidth := viewportW
+      let thumbTravel := trackWidth - thumbWidth
+      let thumbX := thumbTravel * scrollRatio
+
+      -- Track rect (bottom edge of content area)
+      let trackY := contentRect.y + viewportH - thickness
+      let trackRect : Rect := ⟨⟨contentRect.x, trackY⟩, ⟨trackWidth, thickness⟩⟩
+      CollectM.emit (.fillRect trackRect scrollbarConfig.trackColor radius)
+
+      -- Thumb rect
+      let thumbRect : Rect := ⟨⟨contentRect.x + thumbX, trackY⟩, ⟨thumbWidth, thickness⟩⟩
+      CollectM.emit (.fillRect thumbRect scrollbarConfig.thumbColor radius)
 
 end  -- mutual
 

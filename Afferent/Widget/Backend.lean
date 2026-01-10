@@ -207,7 +207,7 @@ partial def renderCustomWidgets (w : Afferent.Arbor.Widget) (layouts : Trellis.L
       | .grid _ _ _ _ children =>
           for child in children do
             renderCustomWidgets child layouts
-      | .scroll _ _ _ _ _ _ child =>
+      | .scroll _ _ _ _ _ _ _ child =>
           renderCustomWidgets child layouts
       | _ => pure ()
 

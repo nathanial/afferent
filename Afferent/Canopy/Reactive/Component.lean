@@ -222,9 +222,7 @@ def hitWidgetHover (data : HoverData) (name : String) : Bool :=
 
 /-- Check if a widget name is in the hit path (for ScrollData). -/
 def hitWidgetScroll (data : ScrollData) (name : String) : Bool :=
-  let result := hitPathHasNamedWidget data.widget data.hitPath name
-  dbg_trace s!"[hitWidgetScroll] name={name} hitPath.size={data.hitPath.size} result={result}"
-  result
+  hitPathHasNamedWidget data.widget data.hitPath name
 
 /-- Calculate slider value from click position given the slider's layout.
     `trackWidth` is the width of the slider track in pixels. -/
@@ -282,6 +280,11 @@ def useClickData (name : String) : ReactiveM (Event Spider ClickData) := do
 def useAllClicks : ReactiveM (Event Spider ClickData) := do
   let events ← getEvents
   pure events.clickEvent
+
+/-- Subscribe to all mouse up events (for drag ending). -/
+def useAllMouseUp : ReactiveM (Event Spider MouseButtonData) := do
+  let events ← getEvents
+  pure events.mouseUpEvent
 
 /-- Subscribe to all hover events (for position tracking). -/
 def useAllHovers : ReactiveM (Event Spider HoverData) := do

@@ -455,7 +455,7 @@ partial def collectWidgetInfo (w : Widget) (layouts : Trellis.LayoutResult)
         ("text", none, some content, none, 0)
     | .rect _ _ style =>
         ("rect", none, none, some (formatStyle style), 0)
-    | .scroll _ _ style _ _ _ _ =>
+    | .scroll _ _ style _ _ _ _ _ =>
         ("scroll", none, none, some (formatStyle style), 1)
     | .spacer _ _ width height =>
         ("spacer", some s!"{width.toUInt32}x{height.toUInt32}", none, none, 0)

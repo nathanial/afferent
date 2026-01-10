@@ -154,7 +154,7 @@ where
     let childTransform := match layouts.get w.id with
       | some layout =>
         match w with
-        | .scroll _ _ _ scrollState _ _ _ =>
+        | .scroll _ _ _ scrollState _ _ _ _ =>
           transform.addScroll scrollState.offsetX scrollState.offsetY
         | .flex _ _ _ _ children | .grid _ _ _ _ children =>
           match layout.scaleMetadata with
@@ -233,7 +233,7 @@ where
 
     -- Compute child transform
     let childTransform := match w with
-      | .scroll _ _ _ scrollState _ _ _ =>
+      | .scroll _ _ _ scrollState _ _ _ _ =>
         transform.addScroll scrollState.offsetX scrollState.offsetY
       | .flex _ _ _ _ children | .grid _ _ _ _ children =>
         match layout.scaleMetadata with
@@ -291,7 +291,7 @@ where
 
     -- Compute child transform based on widget type and scale metadata
     let childTransform := match w with
-      | .scroll _ _ _ scrollState _ _ _ =>
+      | .scroll _ _ _ scrollState _ _ _ _ =>
         transform.addScroll scrollState.offsetX scrollState.offsetY
       | .flex _ _ _ _ children | .grid _ _ _ _ children =>
         match layout.scaleMetadata with
@@ -366,7 +366,7 @@ where
 
         -- Compute child transform based on widget type and scale metadata
         let childTransform := match w with
-          | .scroll _ _ _ scrollState _ _ _ =>
+          | .scroll _ _ _ scrollState _ _ _ _ =>
             transform.addScroll scrollState.offsetX scrollState.offsetY
           | .flex _ _ _ _ children | .grid _ _ _ _ children =>
             match layout.scaleMetadata with

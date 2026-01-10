@@ -11,8 +11,10 @@ namespace Afferent.Canopy.Reactive
 
 /-- Trigger functions to fire from the application loop when FFI events occur. -/
 structure ReactiveInputs where
-  /-- Fire when a click event occurs. -/
+  /-- Fire when a click event occurs (mouse down). -/
   fireClick : ClickData → IO Unit
+  /-- Fire when mouse button is released. -/
+  fireMouseUp : MouseButtonData → IO Unit
   /-- Fire when mouse position changes (hover). -/
   fireHover : HoverData → IO Unit
   /-- Fire when a key is pressed. -/
@@ -61,8 +63,10 @@ def ComponentRegistry.register (reg : ComponentRegistry) (namePrefix : String)
 
 /-- Global reactive event streams that widgets subscribe to. -/
 structure ReactiveEvents where
-  /-- Click events with layout context. -/
+  /-- Click events with layout context (mouse down). -/
   clickEvent : Event Spider ClickData
+  /-- Mouse up events with layout context. -/
+  mouseUpEvent : Event Spider MouseButtonData
   /-- Hover events with position and layout context. -/
   hoverEvent : Event Spider HoverData
   /-- Keyboard events. -/
@@ -78,6 +82,7 @@ structure ReactiveEvents where
     Returns both the event streams (for subscriptions) and triggers (for firing). -/
 def createInputs : SpiderM (ReactiveEvents × ReactiveInputs) := do
   let (clickEvent, fireClick) ← newTriggerEvent (t := Spider) (a := ClickData)
+  let (mouseUpEvent, fireMouseUp) ← newTriggerEvent (t := Spider) (a := MouseButtonData)
   let (hoverEvent, fireHover) ← newTriggerEvent (t := Spider) (a := HoverData)
   let (keyEvent, fireKey) ← newTriggerEvent (t := Spider) (a := KeyData)
   let (animFrame, fireAnimFrame) ← newTriggerEvent (t := Spider) (a := Float)
@@ -86,6 +91,7 @@ def createInputs : SpiderM (ReactiveEvents × ReactiveInputs) := do
 
   let events : ReactiveEvents := {
     clickEvent := clickEvent
+    mouseUpEvent := mouseUpEvent
     hoverEvent := hoverEvent
     keyEvent := keyEvent
     animationFrame := animFrame
@@ -94,6 +100,7 @@ def createInputs : SpiderM (ReactiveEvents × ReactiveInputs) := do
   }
   let inputs : ReactiveInputs := {
     fireClick := fireClick
+    fireMouseUp := fireMouseUp
     fireHover := fireHover
     fireKey := fireKey
     fireAnimationFrame := fireAnimFrame

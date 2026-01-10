@@ -225,24 +225,27 @@ def gridCustom (props : Trellis.GridContainer) (style : BoxStyle := {})
 
 /-- Create a scroll container. -/
 def scroll (style : BoxStyle := {}) (contentWidth contentHeight : Float)
-    (scrollState : ScrollState := {}) (child : WidgetBuilder) : WidgetBuilder := do
+    (scrollState : ScrollState := {}) (scrollbarConfig : ScrollbarRenderConfig := {})
+    (child : WidgetBuilder) : WidgetBuilder := do
   let wid ← freshId
   let c ← child
-  pure (.scroll wid none style scrollState contentWidth contentHeight c)
+  pure (.scroll wid none style scrollState contentWidth contentHeight scrollbarConfig c)
 
 /-- Create a named scroll container. -/
 def namedScroll (name : String) (style : BoxStyle := {}) (contentWidth contentHeight : Float)
-    (scrollState : ScrollState := {}) (child : WidgetBuilder) : WidgetBuilder := do
+    (scrollState : ScrollState := {}) (scrollbarConfig : ScrollbarRenderConfig := {})
+    (child : WidgetBuilder) : WidgetBuilder := do
   let wid ← freshId
   let c ← child
-  pure (.scroll wid (some name) style scrollState contentWidth contentHeight c)
+  pure (.scroll wid (some name) style scrollState contentWidth contentHeight scrollbarConfig c)
 
 /-- Create a vertical scroll container (scrolls only vertically). -/
 def vscroll (style : BoxStyle := {}) (contentHeight : Float)
-    (scrollState : ScrollState := {}) (child : WidgetBuilder) : WidgetBuilder := do
+    (scrollState : ScrollState := {}) (scrollbarConfig : ScrollbarRenderConfig := {})
+    (child : WidgetBuilder) : WidgetBuilder := do
   -- Content width = viewport width (no horizontal scrolling)
   let contentWidth := style.minWidth.getD 0
-  scroll style contentWidth contentHeight scrollState child
+  scroll style contentWidth contentHeight scrollState scrollbarConfig child
 
 /-! ## Convenience Combinators -/
 

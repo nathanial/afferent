@@ -32,7 +32,7 @@ def widgetBoxStyle : Widget → Option BoxStyle
   | .grid _ _ _ style _ => some style
   | .rect _ _ style => some style
   | .custom _ _ style _ => some style
-  | .scroll _ _ style _ _ _ _ => some style
+  | .scroll _ _ style _ _ _ _ _ => some style
   | .text .. => none
   | .spacer .. => none
 
@@ -246,7 +246,7 @@ partial def measureWidget {M : Type → Type} [Monad M] [TextMeasurer M] (w : Wi
     let updatedWidget := Widget.grid id name props style updatedChildren
     pure ⟨node, updatedWidget⟩
 
-  | .scroll id name style scrollState contentW contentH child =>
+  | .scroll id name style scrollState contentW contentH scrollbarConfig child =>
     let box := styleToBoxConstraints style
     -- Measure child with content size as available space
     let childResult ← measureWidget child contentW contentH
@@ -265,7 +265,7 @@ partial def measureWidget {M : Type → Type} [Monad M] [TextMeasurer M] (w : Wi
     let node :=
       Trellis.LayoutNode.mk id box (.flex Trellis.FlexContainer.default) .none
         (some (Trellis.ContentSize.mk' viewportBorderW viewportBorderH)) #[childNode]
-    let updatedWidget := Widget.scroll id name style scrollState contentW contentH childResult.widget
+    let updatedWidget := Widget.scroll id name style scrollState contentW contentH scrollbarConfig childResult.widget
     pure ⟨node, updatedWidget⟩
 
 /-- Convenience function that just returns the LayoutNode. -/
@@ -356,7 +356,7 @@ partial def intrinsicSize {M : Type → Type} [Monad M] [TextMeasurer M] (w : Wi
     -- Apply min constraints
     pure (max rawW (style.minWidth.getD 0), max rawH (style.minHeight.getD 0))
 
-  | .scroll _ _ style _ contentW contentH _ =>
+  | .scroll _ _ style _ contentW contentH _ _ =>
     -- Scroll containers use their viewport size (from style) or content size
     let w := style.minWidth.getD contentW
     let h := style.minHeight.getD contentH
@@ -419,7 +419,7 @@ partial def applyContentScale {M : Type → Type} [Monad M] [TextMeasurer M]
     for child in children do
       result ← applyContentScale child result
 
-  | .scroll _ _ _ _ _ _ child =>
+  | .scroll _ _ _ _ _ _ _ child =>
     -- Recurse into scroll child
     result ← applyContentScale child result
 
