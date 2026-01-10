@@ -21,3 +21,4 @@ import Afferent.Canopy.Widget.Tooltip
 import Afferent.Canopy.Widget.Menu
 import Afferent.Canopy.Widget.MenuBar
 import Afferent.Canopy.Widget.Table
+import Afferent.Canopy.Widget.ListBox

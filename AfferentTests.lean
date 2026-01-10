@@ -15,6 +15,7 @@ import Afferent.Tests.TooltipTests
 import Afferent.Tests.MenuTests
 import Afferent.Tests.MenuBarTests
 import Afferent.Tests.TableTests
+import Afferent.Tests.ListBoxTests
 import Crucible
 
 open Crucible
