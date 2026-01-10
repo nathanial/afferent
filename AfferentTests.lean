@@ -10,6 +10,7 @@ import Afferent.Tests.FontTests
 import Afferent.Tests.RenderSmokeTests
 import Afferent.Tests.ContentScaleTests
 import Afferent.Tests.CSSTests
+import Afferent.Tests.ScrollContainerTests
 import Crucible
 
 open Crucible

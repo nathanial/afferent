@@ -19,6 +19,8 @@ structure ReactiveInputs where
   fireKey : KeyData → IO Unit
   /-- Fire each frame with delta time (for animations). -/
   fireAnimationFrame : Float → IO Unit
+  /-- Fire when scroll wheel is used. -/
+  fireScroll : ScrollData → IO Unit
 
 /-- Registry for auto-generating widget names and tracking component categories. -/
 structure ComponentRegistry where
@@ -67,6 +69,8 @@ structure ReactiveEvents where
   keyEvent : Event Spider KeyData
   /-- Animation frame events (fires each frame with dt). -/
   animationFrame : Event Spider Float
+  /-- Scroll events with layout context. -/
+  scrollEvent : Event Spider ScrollData
   /-- Component registry for auto-generating names. -/
   registry : ComponentRegistry
 
@@ -77,6 +81,7 @@ def createInputs : SpiderM (ReactiveEvents × ReactiveInputs) := do
   let (hoverEvent, fireHover) ← newTriggerEvent (t := Spider) (a := HoverData)
   let (keyEvent, fireKey) ← newTriggerEvent (t := Spider) (a := KeyData)
   let (animFrame, fireAnimFrame) ← newTriggerEvent (t := Spider) (a := Float)
+  let (scrollEvent, fireScroll) ← newTriggerEvent (t := Spider) (a := ScrollData)
   let registry ← ComponentRegistry.create
 
   let events : ReactiveEvents := {
@@ -84,6 +89,7 @@ def createInputs : SpiderM (ReactiveEvents × ReactiveInputs) := do
     hoverEvent := hoverEvent
     keyEvent := keyEvent
     animationFrame := animFrame
+    scrollEvent := scrollEvent
     registry := registry
   }
   let inputs : ReactiveInputs := {
@@ -91,6 +97,7 @@ def createInputs : SpiderM (ReactiveEvents × ReactiveInputs) := do
     fireHover := fireHover
     fireKey := fireKey
     fireAnimationFrame := fireAnimFrame
+    fireScroll := fireScroll
   }
   pure (events, inputs)
 

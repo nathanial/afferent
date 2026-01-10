@@ -39,4 +39,15 @@ structure KeyData where
   /-- Currently focused widget name (for routing). -/
   focusedWidget : Option String
 
+/-- Scroll event with layout context for reactive handlers. -/
+structure ScrollData where
+  /-- The raw scroll event from Arbor. -/
+  scroll : Afferent.Arbor.ScrollEvent
+  /-- Path from root to widget under mouse during scroll. -/
+  hitPath : Array Afferent.Arbor.WidgetId
+  /-- The root widget tree. -/
+  widget : Afferent.Arbor.Widget
+  /-- Computed layouts. -/
+  layouts : Trellis.LayoutResult
+
 end Afferent.Canopy.Reactive

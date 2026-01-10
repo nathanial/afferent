@@ -95,13 +95,17 @@ deriving Inhabited
     Components use `emit` to add their render functions to the current container. -/
 abbrev WidgetM := StateT WidgetMState ReactiveM
 
-/-- ForIn instance for WidgetM - threads through state and reader properly. -/
+/-- ForIn instance for WidgetM - threads state through each iteration properly.
+    This ensures that emit calls inside for loops accumulate correctly. -/
 instance [ForIn ReactiveM ρ α] : ForIn WidgetM ρ α where
   forIn x init f := fun s => do
-    let result ← ForIn.forIn x init fun a b => do
-      let (b', _) ← f a b s
-      pure b'
-    pure (result, s)
+    -- Thread state through by including it in the accumulator
+    let (result, finalState) ← ForIn.forIn x (init, s) fun a (b, currentState) => do
+      let (step, newState) ← f a b currentState
+      match step with
+      | .done b' => pure (ForInStep.done (b', newState))
+      | .yield b' => pure (ForInStep.yield (b', newState))
+    pure (result, finalState)
 
 /-- MonadLift from SpiderM to WidgetM. -/
 instance : MonadLift SpiderM WidgetM where
@@ -216,6 +220,12 @@ def hitWidget (data : ClickData) (name : String) : Bool :=
 def hitWidgetHover (data : HoverData) (name : String) : Bool :=
   hitPathHasNamedWidget data.widget data.hitPath name
 
+/-- Check if a widget name is in the hit path (for ScrollData). -/
+def hitWidgetScroll (data : ScrollData) (name : String) : Bool :=
+  let result := hitPathHasNamedWidget data.widget data.hitPath name
+  dbg_trace s!"[hitWidgetScroll] name={name} hitPath.size={data.hitPath.size} result={result}"
+  result
+
 /-- Calculate slider value from click position given the slider's layout.
     `trackWidth` is the width of the slider track in pixels. -/
 def calculateSliderValue (clickX : Float) (layouts : Trellis.LayoutResult)
@@ -277,6 +287,17 @@ def useAllClicks : ReactiveM (Event Spider ClickData) := do
 def useAllHovers : ReactiveM (Event Spider HoverData) := do
   let events ← getEvents
   pure events.hoverEvent
+
+/-- Subscribe to scroll events for a named widget.
+    Returns an Event that fires when scrolling occurs over the widget. -/
+def useScroll (name : String) : ReactiveM (Event Spider ScrollData) := do
+  let events ← getEvents
+  Event.filterM (fun data => hitWidgetScroll data name) events.scrollEvent
+
+/-- Subscribe to all scroll events (for custom handling). -/
+def useAllScrolls : ReactiveM (Event Spider ScrollData) := do
+  let events ← getEvents
+  pure events.scrollEvent
 
 /-- Set up automatic focus clearing when clicking non-input interactive widgets.
     Call this after all components have been created. -/

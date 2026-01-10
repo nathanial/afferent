@@ -16,3 +16,4 @@ import Afferent.Canopy.Widget.TabView
 import Afferent.Canopy.Widget.Modal
 import Afferent.Canopy.Widget.ProgressBar
 import Afferent.Canopy.Widget.Toast
+import Afferent.Canopy.Widget.Scroll
