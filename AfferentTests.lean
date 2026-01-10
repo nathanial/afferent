@@ -12,6 +12,7 @@ import Afferent.Tests.ContentScaleTests
 import Afferent.Tests.CSSTests
 import Afferent.Tests.ScrollContainerTests
 import Afferent.Tests.TooltipTests
+import Afferent.Tests.MenuTests
 import Crucible
 
 open Crucible

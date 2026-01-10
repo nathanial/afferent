@@ -18,3 +18,4 @@ import Afferent.Canopy.Widget.ProgressBar
 import Afferent.Canopy.Widget.Toast
 import Afferent.Canopy.Widget.Scroll
 import Afferent.Canopy.Widget.Tooltip
+import Afferent.Canopy.Widget.Menu
