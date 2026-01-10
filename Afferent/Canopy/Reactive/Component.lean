@@ -424,4 +424,67 @@ def when' (condition : Dynamic Spider Bool) (content : WidgetM Unit) : WidgetM U
 /-- Emit a dynamic widget (the IO action is run at render time). -/
 def emitDynamic (render : ComponentRender) : WidgetM Unit := emit render
 
+/-! ## Dynamic Widget Subtrees
+
+`dynWidget` enables rebuilding entire widget subtrees when a Dynamic value changes.
+This is similar to Reflex's `dyn` combinator.
+-/
+
+/-- Run a dynamic widget computation. When the input Dynamic changes, the widget
+    builder is re-run with the new value, rebuilding the subtree with fresh
+    reactive subscriptions.
+
+    Similar to Reflex's `dyn`, but takes a builder function to avoid BEq constraints.
+
+    Note: Old subscriptions from previous builds are not explicitly cleaned up,
+    but become harmless no-ops since widget names are unique per build.
+
+    Example (dependent dropdowns):
+    ```
+    let catResult ← dropdown categories theme 0
+    let _ ← dynWidget catResult.selection fun catIdx =>
+      dropdown (itemsForCategory catIdx) theme 0
+    ```
+-/
+def dynWidget (dynValue : Dynamic Spider a) (builder : a → WidgetM b)
+    : WidgetM (Dynamic Spider b) := do
+  let events ← getEventsW  -- Capture ReactiveEvents context
+
+  -- Initial build (Dynamic.sample is IO, so lift it)
+  let initialValue ← SpiderM.liftIO dynValue.sample
+  let (initialResult, initialRenders) ← runWidgetChildren (builder initialValue)
+
+  -- Refs for current state
+  let rendersRef : IO.Ref (Array ComponentRender) ← SpiderM.liftIO (IO.mkRef initialRenders)
+
+  -- Result tracking via trigger event
+  let (resultTrigger, fireResult) ← Reactive.newTriggerEvent
+  let resultDyn ← Reactive.holdDyn initialResult resultTrigger
+
+  -- Subscribe to rebuilds when dynValue changes
+  -- We need to construct a SpiderM action that captures the env for running WidgetM
+  let subscribeAction : SpiderM Unit := ⟨fun env => do
+    let unsub ← Reactive.Event.subscribe dynValue.updated fun newValue => do
+      -- Run the builder with the new value in captured context
+      -- WidgetM → ReactiveM via .run, ReactiveM → SpiderM via .run, SpiderM → IO via .run env
+      let widgetM := runWidgetChildren (builder newValue)
+      let reactiveM := widgetM.run { children := #[] }
+      let spiderM := reactiveM.run events
+      let ((result, renders), _) ← spiderM.run env
+      rendersRef.set renders
+      fireResult result
+    env.currentScope.register unsub⟩
+  subscribeAction  -- Lift SpiderM to WidgetM via MonadLift
+
+  -- Emit render that uses current renders
+  emit do
+    let renders ← rendersRef.get
+    if renders.isEmpty then
+      pure (Afferent.Arbor.spacer 0 0)
+    else
+      let widgets ← renders.mapM id
+      pure (Afferent.Arbor.column (gap := 0) (style := {}) widgets)
+
+  pure resultDyn
+
 end Afferent.Canopy.Reactive
