@@ -2,6 +2,7 @@
   Canopy Menu Widget
   Displays a list of actionable items in a popup overlay.
 -/
+import Std.Data.HashMap
 import Reactive
 import Afferent.Canopy.Core
 import Afferent.Canopy.Theme
@@ -13,11 +14,15 @@ open Afferent.Arbor hiding Event
 open Reactive Reactive.Host
 open Afferent.Canopy.Reactive
 
-/-- A menu item can be an action or separator. -/
+/-- A menu item can be an action, separator, or submenu. -/
 inductive MenuItem where
   | action (label : String) (enabled : Bool := true)
   | separator
+  | submenu (label : String) (items : Array MenuItem) (enabled : Bool := true)
 deriving Repr, Inhabited
+
+/-- Path to a menu item (indices at each level). -/
+abbrev MenuPath := Array Nat
 
 /-- Configuration for menu appearance. -/
 structure MenuConfig where
@@ -29,8 +34,8 @@ deriving Repr, Inhabited
 
 /-- Result from menu widget. -/
 structure MenuResult where
-  /-- Fires when an item is selected (raw index into items array). -/
-  onSelect : Reactive.Event Spider Nat
+  /-- Fires when an action item is selected (path to item). -/
+  onSelect : Reactive.Event Spider MenuPath
   /-- Whether the menu is currently open. -/
   isOpen : Reactive.Dynamic Spider Bool
 
@@ -45,6 +50,7 @@ def calculateHeight (items : Array MenuItem) (config : MenuConfig := defaultConf
     match item with
     | .separator => acc + config.separatorHeight
     | .action .. => acc + config.itemHeight
+    | .submenu .. => acc + config.itemHeight
   ) 0.0
 
 /-- Check if a menu item at given index is an enabled action. -/
@@ -52,6 +58,57 @@ def isEnabledAction (items : Array MenuItem) (index : Nat) : Bool :=
   match items.getD index .separator with
   | .action _ enabled => enabled
   | .separator => false
+  | .submenu .. => false
+
+/-- Get the item at a given path. -/
+partial def getItemAtPath (items : Array MenuItem) (path : MenuPath) : Option MenuItem :=
+  match path.toList with
+  | [] => none
+  | [i] => items[i]?
+  | i :: rest =>
+    match items[i]? with
+    | some (.submenu _ subItems _) => getItemAtPath subItems rest.toArray
+    | _ => none
+
+/-- Check if item at path is an enabled action. -/
+def isEnabledActionAtPath (items : Array MenuItem) (path : MenuPath) : Bool :=
+  match getItemAtPath items path with
+  | some (.action _ enabled) => enabled
+  | _ => false
+
+/-- Check if item at path is an enabled submenu. -/
+def isEnabledSubmenuAtPath (items : Array MenuItem) (path : MenuPath) : Bool :=
+  match getItemAtPath items path with
+  | some (.submenu _ _ enabled) => enabled
+  | _ => false
+
+/-- Get items at a given parent path (empty path = root items). -/
+partial def getItemsAtPath (items : Array MenuItem) (path : MenuPath) : Array MenuItem :=
+  match path.toList with
+  | [] => items
+  | i :: rest =>
+    match items[i]? with
+    | some (.submenu _ subItems _) => getItemsAtPath subItems rest.toArray
+    | _ => #[]
+
+/-- Calculate height for items at a path. -/
+def calculateHeightAtPath (items : Array MenuItem) (path : MenuPath)
+    (config : MenuConfig := defaultConfig) : Float :=
+  calculateHeight (getItemsAtPath items path) config
+
+/-- Count total items recursively (for name registration). -/
+partial def countAllItems (items : Array MenuItem) : Nat :=
+  items.foldl (fun acc item =>
+    match item with
+    | .submenu _ subItems _ => acc + 1 + countAllItems subItems
+    | _ => acc + 1
+  ) 0
+
+/-- Check if a path is a prefix of another path. -/
+def isPathPrefix (prefix_ : MenuPath) (path : MenuPath) : Bool :=
+  if prefix_.size > path.size then false
+  else (List.range prefix_.size).all fun i =>
+    prefix_.getD i 0 == path.getD i 0
 
 end Menu
 
@@ -100,23 +157,116 @@ def menuItemVisual (name : String) (item : MenuItem) (isHovered : Bool)
     }
     let textWidget ← text' label theme.font textColor .left
     pure (.flex wid (some name) props itemStyle #[textWidget])
+  | .submenu label _ enabled =>
+    let bgColor := if !enabled then theme.input.background
+      else if isHovered then theme.input.backgroundHover
+      else theme.input.background
+    let textColor := if enabled then theme.text else theme.textMuted
+    let itemStyle : BoxStyle := {
+      backgroundColor := some bgColor
+      padding := Trellis.EdgeInsets.symmetric 12 8
+      minHeight := some config.itemHeight
+      width := .percent 1.0
+    }
+    let wid ← freshId
+    let props : Trellis.FlexContainer := {
+      Trellis.FlexContainer.row 0 with
+      alignItems := .center
+      justifyContent := .spaceBetween
+    }
+    let textWidget ← text' label theme.font textColor .left
+    let arrowWidget ← text' "›" theme.font textColor .right
+    pure (.flex wid (some name) props itemStyle #[textWidget, arrowWidget])
 
-/-- Build a complete visual menu widget.
-    - `containerName`: Widget name for the menu container
+/-- Build a submenu popup at a given path.
+    - `containerNameFn`: Function to get container name by path
+    - `itemNameFn`: Function to get item name by path
+    - `items`: Root menu items
+    - `path`: Path to this submenu (empty = root menu)
+    - `openSubmenuPath`: Which submenus are open
+    - `hoveredPath`: Currently hovered item path
+    - `theme`: Theme for styling
+    - `config`: Menu configuration
+    - `offsetX`: X offset for positioning (accumulated from parent menus)
+    - `offsetY`: Y offset for positioning
+-/
+partial def submenuVisual (containerNameFn : MenuPath → String) (itemNameFn : MenuPath → String)
+    (items : Array MenuItem) (path : MenuPath) (openSubmenuPath : MenuPath)
+    (hoveredPath : Option MenuPath) (theme : Theme) (config : MenuConfig := Menu.defaultConfig)
+    (offsetX : Float := 0) (offsetY : Float := 0) : WidgetBuilder := do
+  let subItems := Menu.getItemsAtPath items path
+  let totalHeight := Menu.calculateHeight subItems config
+
+  -- Build menu items at this level
+  let mut menuWidgets : Array Widget := #[]
+  for i in [:subItems.size] do
+    let itemPath := path.push i
+    let item := subItems.getD i .separator
+    let isHov := hoveredPath == some itemPath
+    let itemWidget ← menuItemVisual (itemNameFn itemPath) item isHov theme config
+    menuWidgets := menuWidgets.push itemWidget
+
+  let menuStyle : BoxStyle := {
+    backgroundColor := some theme.input.background
+    borderColor := some theme.input.border
+    borderWidth := 1
+    cornerRadius := config.cornerRadius
+    minWidth := some config.minWidth
+    height := .length totalHeight
+    position := .absolute
+    top := some offsetY
+    left := some offsetX
+  }
+
+  let menuWid ← freshId
+  let menuProps : Trellis.FlexContainer := { direction := .column, gap := 0 }
+  let menuWidget : Widget := .flex menuWid (some (containerNameFn path)) menuProps menuStyle menuWidgets
+
+  -- Check if we need to render any open submenus at this level
+  -- A submenu at index i (path ++ [i]) is open if openSubmenuPath starts with path ++ [i]
+  let mut allMenus : Array Widget := #[menuWidget]
+  for i in [:subItems.size] do
+    let itemPath := path.push i
+    -- Check if this item's submenu is open
+    if Menu.isPathPrefix itemPath openSubmenuPath && Menu.isEnabledSubmenuAtPath items itemPath then
+      -- Calculate position for nested submenu
+      let itemY := (List.range i).foldl (fun acc j =>
+        let item := subItems.getD j .separator
+        match item with
+        | .separator => acc + config.separatorHeight
+        | _ => acc + config.itemHeight
+      ) 0.0
+      let nestedSubmenu ← submenuVisual containerNameFn itemNameFn items itemPath
+        openSubmenuPath hoveredPath theme config
+        (offsetX + config.minWidth + 2) (offsetY + itemY)
+      allMenus := allMenus.push nestedSubmenu
+
+  -- If multiple menus, wrap in a container; otherwise return single menu
+  if allMenus.size == 1 then
+    pure menuWidget
+  else
+    let wrapperWid ← freshId
+    let wrapperProps : Trellis.FlexContainer := { direction := .column, gap := 0 }
+    pure (.flex wrapperWid none wrapperProps {} allMenus)
+
+/-- Build a complete visual menu widget with submenu support.
+    - `containerNameFn`: Function to get container name by path
     - `triggerName`: Widget name for the trigger
-    - `itemNameFn`: Function to get item name by index
+    - `itemNameFn`: Function to get item name by path
     - `items`: Array of menu items
     - `isOpen`: Whether the menu is open
-    - `hoveredIndex`: Currently hovered item index (if any)
+    - `openSubmenuPath`: Path to currently open submenu
+    - `hoveredPath`: Currently hovered item path
     - `theme`: Theme for styling
     - `config`: Menu configuration
     - `triggerHeight`: Height of the trigger widget for positioning
     - `triggerBuilders`: Trigger widget builders to compose
 -/
-def menuVisual (containerName : String) (triggerName : String)
-    (itemNameFn : Nat → String) (items : Array MenuItem) (isOpen : Bool)
-    (hoveredIndex : Option Nat) (theme : Theme) (config : MenuConfig := Menu.defaultConfig)
-    (triggerHeight : Float := 32.0) (triggerBuilders : Array WidgetBuilder) : WidgetBuilder := do
+def menuVisual (containerNameFn : MenuPath → String) (triggerName : String)
+    (itemNameFn : MenuPath → String) (items : Array MenuItem) (isOpen : Bool)
+    (openSubmenuPath : MenuPath) (hoveredPath : Option MenuPath) (theme : Theme)
+    (config : MenuConfig := Menu.defaultConfig) (triggerHeight : Float := 32.0)
+    (triggerBuilders : Array WidgetBuilder) : WidgetBuilder := do
   -- Build trigger widgets within our builder context (preserves ID state)
   let mut triggerWidgets : Array Widget := #[]
   for builder in triggerBuilders do
@@ -129,46 +279,68 @@ def menuVisual (containerName : String) (triggerName : String)
   let trigger : Widget := .flex triggerWid (some triggerName) triggerProps {} triggerWidgets
 
   if isOpen then
-    -- Build menu items
-    let mut menuItems : Array Widget := #[]
-    for i in [:items.size] do
-      let item := items.getD i .separator
-      let isHov := hoveredIndex == some i
-      let itemWidget ← menuItemVisual (itemNameFn i) item isHov theme config
-      menuItems := menuItems.push itemWidget
+    -- Build the root menu (and any open submenus)
+    let menuTree ← submenuVisual containerNameFn itemNameFn items #[] openSubmenuPath
+      hoveredPath theme config 0 (triggerHeight + 4)
 
-    -- Calculate total height
-    let totalHeight := Menu.calculateHeight items config
-
-    let menuStyle : BoxStyle := {
-      backgroundColor := some theme.input.background
-      borderColor := some theme.input.border
-      borderWidth := 1
-      cornerRadius := config.cornerRadius
-      minWidth := some config.minWidth
-      height := .length totalHeight
-      position := .absolute
-      top := some (triggerHeight + 4)
-      left := some 0
-    }
-
-    let menuWid ← freshId
-    let menuProps : Trellis.FlexContainer := { direction := .column, gap := 0 }
-    let menu : Widget := .flex menuWid (some containerName) menuProps menuStyle menuItems
-
-    -- Outer container with trigger + menu
+    -- Outer container with trigger + menu tree
     let outerWid ← freshId
     let outerProps : Trellis.FlexContainer := { direction := .column, gap := 0 }
-    pure (.flex outerWid none outerProps {} #[trigger, menu])
+    pure (.flex outerWid none outerProps {} #[trigger, menuTree])
   else
     -- Just the trigger when closed
     let outerWid ← freshId
     let outerProps : Trellis.FlexContainer := { direction := .column, gap := 0 }
     pure (.flex outerWid none outerProps {} #[trigger])
 
+/-- Register names for all menu items recursively. Returns a map from path to name. -/
+partial def registerMenuItemNames (items : Array MenuItem) (parentPath : MenuPath := #[])
+    : WidgetM (Std.HashMap MenuPath String) := do
+  let mut names : Std.HashMap MenuPath String := {}
+  for i in [:items.size] do
+    let path := parentPath.push i
+    let name ← registerComponentW "menu-item"
+    names := names.insert path name
+    match items.getD i .separator with
+    | .submenu _ subItems _ =>
+      let subNames ← registerMenuItemNames subItems path
+      for (subPath, subName) in subNames.toList do
+        names := names.insert subPath subName
+    | _ => pure ()
+  pure names
+
+/-- Register container names for all submenus recursively. -/
+partial def registerSubmenuContainerNames (items : Array MenuItem) (parentPath : MenuPath := #[])
+    : WidgetM (Std.HashMap MenuPath String) := do
+  let mut names : Std.HashMap MenuPath String := {}
+  -- Root container
+  let rootName ← registerComponentW "menu" (isInteractive := false)
+  names := names.insert parentPath rootName
+  for i in [:items.size] do
+    let path := parentPath.push i
+    match items.getD i .separator with
+    | .submenu _ subItems _ =>
+      let subName ← registerComponentW "submenu" (isInteractive := false)
+      names := names.insert path subName
+      let subNames ← registerSubmenuContainerNames subItems path
+      for (subPath, subSubName) in subNames.toList do
+        names := names.insert subPath subSubName
+    | _ => pure ()
+  pure names
+
+/-- Collect all item paths in a menu tree. -/
+partial def collectAllPaths (items : Array MenuItem) (parentPath : MenuPath := #[]) : List MenuPath :=
+  (List.range items.size).foldl (fun acc i =>
+    let path := parentPath.push i
+    let withPath := path :: acc
+    match items.getD i .separator with
+    | .submenu _ subItems _ => collectAllPaths subItems path ++ withPath
+    | _ => withPath
+  ) []
+
 /-- Create a reactive menu component using WidgetM.
     The menu appears when clicking the trigger widget.
-    - `items`: Array of menu items
+    - `items`: Array of menu items (can include submenus)
     - `theme`: Theme for styling
     - `config`: Menu configuration
     - `trigger`: The widget(s) that trigger the menu on click
@@ -176,15 +348,16 @@ def menuVisual (containerName : String) (triggerName : String)
 def menu (items : Array MenuItem) (theme : Theme)
     (config : MenuConfig := Menu.defaultConfig)
     (trigger : WidgetM α) : WidgetM (α × MenuResult) := do
-  let containerName ← registerComponentW "menu" (isInteractive := false)
   let triggerName ← registerComponentW "menu-trigger"
 
-  -- Register names for each item
-  let mut itemNames : Array String := #[]
-  for _ in items do
-    let name ← registerComponentW "menu-item"
-    itemNames := itemNames.push name
-  let itemNameFn (i : Nat) : String := itemNames.getD i ""
+  -- Register names for all items and containers recursively
+  let itemNames ← registerMenuItemNames items
+  let containerNames ← registerSubmenuContainerNames items
+  let itemNameFn (path : MenuPath) : String := itemNames.getD path ""
+  let containerNameFn (path : MenuPath) : String := containerNames.getD path ""
+
+  -- All paths for hit testing
+  let allPaths := collectAllPaths items
 
   -- Run trigger widget to get its renders
   let (triggerResult, triggerRenders) ← runWidgetChildren trigger
@@ -210,23 +383,33 @@ def menu (items : Array MenuItem) (theme : Theme)
       | none => pure ()
   ) allHovers)
 
-  -- Find clicked enabled action item (returns raw index)
-  let findClickedAction (data : ClickData) : Option Nat :=
-    (List.range items.size).findSome? fun i =>
-      if hitWidget data (itemNameFn i) && Menu.isEnabledAction items i then some i else none
+  -- Find clicked enabled action item (returns path)
+  let findClickedAction (data : ClickData) : Option MenuPath :=
+    allPaths.findSome? fun path =>
+      if hitWidget data (itemNameFn path) && Menu.isEnabledActionAtPath items path then some path else none
+
+  -- Find which item path is being hovered
+  let findHoveredPath (data : HoverData) : Option MenuPath :=
+    allPaths.findSome? fun path =>
+      if hitWidgetHover data (itemNameFn path) then some path else none
+
+  -- Check if click is on any menu container or item
+  let isClickInMenu (data : ClickData) : Bool :=
+    -- Check all containers
+    containerNames.toList.any (fun (_, name) => hitWidget data name) ||
+    -- Check all items
+    allPaths.any fun path => hitWidget data (itemNameFn path)
 
   -- Click-outside detection
   let isClickOutside (data : ClickData) : Bool :=
-    !hitWidget data containerName && !hitWidget data triggerName &&
-    -- Also not clicking on any menu item
-    (List.range items.size).all fun i => !hitWidget data (itemNameFn i)
+    !hitWidget data triggerName && !isClickInMenu data
 
   -- Open/close state machine
   let isOpen ← SpiderM.fixDynM fun isOpenBehavior => do
     -- Toggle on trigger click
     let toggleEvents ← Event.mapM (fun _ => fun open_ => !open_) triggerClicks
 
-    -- Close on enabled item click
+    -- Close on enabled action item click
     let itemClicks ← Event.mapMaybeM findClickedAction allClicks
     let closeOnItem ← Event.mapM (fun _ => fun _ => false) itemClicks
 
@@ -243,28 +426,48 @@ def menu (items : Array MenuItem) (theme : Theme)
     let allTransitions ← Event.leftmostM [closeOnItem, closeOnOutside, closeOnEscape, toggleEvents]
     Reactive.foldDyn (fun f s => f s) false allTransitions
 
-  -- Track hovered item (only when menu is open)
-  let findHoveredItem (data : HoverData) : Option Nat :=
-    (List.range items.size).findSome? fun i =>
-      if hitWidgetHover data (itemNameFn i) then some i else none
-
-  let hoverChanges ← Event.mapM findHoveredItem allHovers
-  let gatedHover ← Event.gateM isOpen.current hoverChanges
+  -- Track hovered path (only when menu is open)
+  let hoverPathChanges ← Event.mapM findHoveredPath allHovers
+  let gatedHoverPath ← Event.gateM isOpen.current hoverPathChanges
   let closeEvents ← Event.filterM (fun open_ => !open_) isOpen.updated
-  let resetHover ← Event.mapM (fun _ => (none : Option Nat)) closeEvents
-  let mergedHover ← Event.mergeM gatedHover resetHover
-  let hoveredIndex ← Reactive.holdDyn none mergedHover
+  let resetHoverPath ← Event.mapM (fun _ => (none : Option MenuPath)) closeEvents
+  let mergedHoverPath ← Event.mergeM gatedHoverPath resetHoverPath
+  let hoveredPath ← Reactive.holdDyn none mergedHoverPath
+
+  -- Track which submenus are open based on hover
+  -- When hovering a submenu item, open it; when hovering elsewhere, close submenus
+  let computeOpenPath (hovered : Option MenuPath) : MenuPath :=
+    match hovered with
+    | none => #[]  -- No hover, close all submenus
+    | some path =>
+      -- If hovering a submenu item, open that submenu
+      if Menu.isEnabledSubmenuAtPath items path then
+        path  -- Open this submenu
+      else
+        -- Keep the submenu path that contains this item
+        -- (i.e., path minus last element, or empty if at root)
+        if path.size > 0 then
+          -- If we're hovering an item in a submenu, keep that submenu open
+          path.pop
+        else
+          #[]
+
+  let openPathFromHover ← Event.mapM computeOpenPath gatedHoverPath
+  let resetOpenPath ← Event.mapM (fun _ => (#[] : MenuPath)) closeEvents
+  let mergedOpenPath ← Event.mergeM openPathFromHover resetOpenPath
+  let openSubmenuPath ← Reactive.holdDyn #[] mergedOpenPath
 
   -- Selection event (only fires for enabled action items)
   let onSelect ← Event.mapMaybeM findClickedAction allClicks
 
   emit do
     let open_ ← isOpen.sample
-    let hoverIdx ← hoveredIndex.sample
+    let hoverPath ← hoveredPath.sample
+    let openPath ← openSubmenuPath.sample
     let (_, triggerHeight) ← triggerDimsRef.get
     -- Get trigger widget builders (ComponentRender = IO WidgetBuilder)
     let triggerBuilders ← triggerRenders.mapM id
-    pure (menuVisual containerName triggerName itemNameFn items open_ hoverIdx theme config triggerHeight triggerBuilders)
+    pure (menuVisual containerNameFn triggerName itemNameFn items open_ openPath hoverPath theme config triggerHeight triggerBuilders)
 
   pure (triggerResult, { onSelect, isOpen })
 
