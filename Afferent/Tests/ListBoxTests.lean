@@ -4,14 +4,24 @@
 -/
 import Afferent.Tests.Framework
 import Afferent.Canopy.Widget.ListBox
+import Afferent.Canopy.Reactive.Component
+import Afferent.Arbor
 
 namespace Afferent.Tests.ListBoxTests
 
 open Crucible
 open Afferent.Tests
 open Afferent.Canopy
+open Afferent.Canopy.Reactive
+open Afferent.Arbor
 
 testSuite "ListBox Tests"
+
+/-- Test font ID for widget building tests. -/
+def testFont : FontId := { id := 0, name := "test", size := 14.0 }
+
+/-- Test theme for widget tests. -/
+def testTheme : Theme := { Theme.dark with font := testFont, smallFont := testFont }
 
 /-! ## ListBoxSelectionMode Tests -/
 
@@ -93,6 +103,138 @@ test "selection on empty array" := do
   ensure (result == #[0]) "Should select first item"
   let result2 := ListBox.updateSelection .multiple 5 #[]
   ensure (result2 == #[5]) "Should select item at index 5"
+
+/-! ## Visual Structure Tests -/
+
+test "listBoxItemVisual creates widget with correct name" := do
+  let itemName := "listbox-item-0"
+  let builder := listBoxItemVisual itemName "Apple" false false testTheme
+  let (widget, _) ← builder.run {}
+  -- Check the widget has the correct name
+  let widgetName := Widget.name? widget
+  ensure (widgetName == some itemName) s!"Expected name '{itemName}', got {widgetName}"
+
+test "listBoxItemVisual creates widget with name in structure" := do
+  let itemName := "test-item-5"
+  let builder := listBoxItemVisual itemName "Banana" true false testTheme
+  let (widget, _) ← builder.run {}
+  -- Use findWidgetIdByName to verify the name is findable
+  let found := findWidgetIdByName widget itemName
+  ensure found.isSome s!"Widget with name '{itemName}' should be findable"
+
+test "listBoxItemsVisual creates column with items" := do
+  let itemNameFn (i : Nat) : String := s!"item-{i}"
+  let items := #["Apple", "Banana", "Cherry"]
+  let builder := listBoxItemsVisual itemNameFn items #[] none testTheme
+  let (widget, _) ← builder.run {}
+  -- The outer widget should be a flex with 3 children
+  match widget with
+  | .flex _ _ props _ children =>
+    ensure (props.direction == .column) "Should be a column"
+    ensure (children.size == 3) s!"Should have 3 children, got {children.size}"
+  | _ => ensure false "Expected flex widget"
+
+test "listBoxItemsVisual items have correct names" := do
+  let itemNameFn (i : Nat) : String := s!"test-item-{i}"
+  let items := #["Apple", "Banana", "Cherry"]
+  let builder := listBoxItemsVisual itemNameFn items #[] none testTheme
+  let (widget, _) ← builder.run {}
+  -- Verify each item name is findable
+  for i in [:items.size] do
+    let found := findWidgetIdByName widget (itemNameFn i)
+    ensure found.isSome s!"Item '{itemNameFn i}' should be findable in widget tree"
+
+test "listBoxItemsVisual container has NO name" := do
+  -- This test documents the current behavior - the container is unnamed
+  let itemNameFn (i : Nat) : String := s!"item-{i}"
+  let items := #["Apple", "Banana"]
+  let builder := listBoxItemsVisual itemNameFn items #[] none testTheme
+  let (widget, _) ← builder.run {}
+  -- The container itself has no name
+  let containerName := Widget.name? widget
+  ensure (containerName.isNone) s!"Container should have no name, but got {containerName}"
+
+/-! ## Item Index Calculation Tests -/
+
+/-- Helper to compute item index from click position - mirrors internal logic. -/
+def computeItemIndexTest (containerX containerY containerW containerH : Float)
+    (posX posY scrollOffset itemHeight : Float) (itemCount : Nat) : Option Nat :=
+  if posX >= containerX && posX <= containerX + containerW &&
+     posY >= containerY && posY <= containerY + containerH then
+    let relativeY := posY - containerY + scrollOffset
+    let itemIndex := (relativeY / itemHeight).floor.toUInt64.toNat
+    if itemIndex < itemCount then some itemIndex else none
+  else none
+
+test "computeItemIndex returns item 0 for click at top" := do
+  -- Container at (100, 100), size 200x192, item height 32, 6 items
+  let result := computeItemIndexTest 100 100 200 192 150 110 0 32 6
+  ensure (result == some 0) s!"Click near top should hit item 0, got {result}"
+
+test "computeItemIndex returns correct item for middle click" := do
+  -- Click at y=180 relative to container at y=100 means relativeY=80
+  -- 80 / 32 = 2.5 -> floor = 2
+  let result := computeItemIndexTest 100 100 200 192 150 180 0 32 6
+  ensure (result == some 2) s!"Click at y=180 should hit item 2, got {result}"
+
+test "computeItemIndex accounts for scroll offset" := do
+  -- With scroll offset of 64 (2 items worth), click at y=110 (relativeY=10)
+  -- becomes relativeY=10+64=74, 74/32=2.3 -> floor = 2
+  let result := computeItemIndexTest 100 100 200 192 150 110 64 32 10
+  ensure (result == some 2) s!"With scroll=64, click at y=110 should hit item 2, got {result}"
+
+test "computeItemIndex returns none for click outside container" := do
+  let result := computeItemIndexTest 100 100 200 192 50 50 0 32 6
+  ensure result.isNone "Click outside container should return none"
+
+test "computeItemIndex returns none for click below items" := do
+  -- 6 items at height 32 = 192px total content
+  -- Click at y=350 with container at y=100 and height=192
+  let result := computeItemIndexTest 100 100 200 192 150 350 0 32 6
+  ensure result.isNone "Click below visible items should return none"
+
+test "computeItemIndex returns none for item index beyond count" := do
+  -- Container shows all items but we click in empty space at bottom
+  -- relativeY = 250-100 + 0 = 150, 150/32 = 4.6 -> 4
+  -- If only 4 items, index 4 is beyond count
+  let result := computeItemIndexTest 100 100 200 200 150 250 0 32 4
+  ensure result.isNone s!"Index beyond item count should return none, got {result}"
+
+/-! ## Hit Path Tests -/
+
+test "hitWidget finds named item in widget tree" := do
+  -- Create a simple list box visual
+  let itemNameFn (i : Nat) : String := s!"listbox-item-{i}"
+  let items := #["Apple", "Banana", "Cherry"]
+  let builder := listBoxItemsVisual itemNameFn items #[1] none testTheme
+  let (widget, _) ← builder.run {}
+
+  -- Verify findWidgetIdByName works for each item
+  for i in [:items.size] do
+    let name := itemNameFn i
+    let found := findWidgetIdByName widget name
+    ensure found.isSome s!"findWidgetIdByName should find '{name}'"
+
+test "findWidgetIdByName returns none for non-existent name" := do
+  let itemNameFn (i : Nat) : String := s!"item-{i}"
+  let items := #["Apple", "Banana"]
+  let builder := listBoxItemsVisual itemNameFn items #[] none testTheme
+  let (widget, _) ← builder.run {}
+
+  let found := findWidgetIdByName widget "non-existent-container"
+  ensure found.isNone "Should not find non-existent widget name"
+
+test "searching for 'listbox-container' in items visual returns none" := do
+  -- This test documents why the current hit testing fails
+  let itemNameFn (i : Nat) : String := s!"listbox-item-{i}"
+  let items := #["Apple", "Banana", "Cherry"]
+  let builder := listBoxItemsVisual itemNameFn items #[] none testTheme
+  let (widget, _) ← builder.run {}
+
+  -- The current implementation searches for "listbox-container" but
+  -- listBoxItemsVisual does NOT name the container
+  let found := findWidgetIdByName widget "listbox-container"
+  ensure found.isNone "listbox-container should NOT be found (this is the bug)"
 
 #generate_tests
 

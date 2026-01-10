@@ -96,18 +96,6 @@ def listBoxItemsVisual (itemNameFn : Nat → String) (items : Array String)
   let props : FlexContainer := { direction := .column, gap := 0 }
   pure (.flex wid none props {} itemWidgets)
 
-/-- Combined state for list box selection and hover. -/
-structure ListBoxState where
-  selectedItems : Array Nat := #[]
-  hoveredItem : Option Nat := none
-  lastClickedItem : Option Nat := none
-deriving Repr, BEq, Inhabited
-
-/-- Event type for list box inputs. -/
-inductive ListBoxInputEvent where
-  | click (data : ClickData)
-  | hover (data : HoverData)
-
 /-- Create a reactive list box widget.
     - `items`: Array of item labels to display
     - `theme`: Theme for styling
@@ -116,10 +104,7 @@ inductive ListBoxInputEvent where
 def listBox (items : Array String) (theme : Theme)
     (config : ListBoxConfig := ListBox.defaultConfig)
     : WidgetM ListBoxResult := do
-  -- Register container name for hit testing
-  let containerName ← registerComponentW "listbox-container"
-
-  -- Register item names (still needed for rendering)
+  -- Register item names for hit testing
   let mut itemNames : Array String := #[]
   for i in [:items.size] do
     let name ← registerComponentW s!"listbox-item-{i}"
@@ -143,75 +128,39 @@ def listBox (items : Array String) (theme : Theme)
   -- Create trigger for item clicks
   let (itemClickTrigger, fireItemClick) ← Reactive.newTriggerEvent (t := Spider) (a := Nat)
 
-  -- Create a ref to store scroll offset for hit testing
-  let scrollOffsetRef ← SpiderM.liftIO (IO.mkRef 0.0)
+  -- Find which item was clicked (like Table pattern)
+  let findClickedItem (data : ClickData) : Option Nat :=
+    (List.range items.size).findSome? fun i =>
+      if hitWidget data (itemNameFn i) then some i else none
 
-  -- Helper to compute item index from position
-  let computeItemIndex (containerRect : LayoutRect) (posX posY scrollOffset : Float) : Option Nat :=
-    if posX >= containerRect.x && posX <= containerRect.x + containerRect.width &&
-       posY >= containerRect.y && posY <= containerRect.y + containerRect.height then
-      let relativeY := posY - containerRect.y + scrollOffset
-      let itemIndex := (relativeY / config.itemHeight).floor.toUInt64.toNat
-      if itemIndex < items.size then some itemIndex else none
-    else none
+  -- Find which item is hovered
+  let findHoveredItem (data : HoverData) : Option Nat :=
+    (List.range items.size).findSome? fun i =>
+      if hitWidgetHover data (itemNameFn i) then some i else none
 
-  -- Lift events to unified type
-  let liftSpider {α : Type} : SpiderM α → WidgetM α := fun m => StateT.lift (liftM m)
-  let clickEvents ← liftSpider (Event.mapM ListBoxInputEvent.click allClicks)
-  let hoverEvents ← liftSpider (Event.mapM ListBoxInputEvent.hover allHovers)
-  let allInputEvents ← liftSpider (Event.leftmostM [clickEvents, hoverEvents])
+  -- Item click events
+  let itemClicks ← Event.mapMaybeM findClickedItem allClicks
 
-  -- Fold all events into combined state (reads scroll offset from ref)
-  let combinedState ← Reactive.foldDynM
-    (fun (event : ListBoxInputEvent) (state : ListBoxState) => do
-      let scrollOffset ← SpiderM.liftIO scrollOffsetRef.get
-      match event with
-      | .click clickData =>
-        match findWidgetIdByName clickData.widget containerName with
-        | some widgetId =>
-          match clickData.layouts.get widgetId with
-          | some layout =>
-            let containerRect := layout.contentRect
-            match computeItemIndex containerRect clickData.click.x clickData.click.y scrollOffset with
-            | some itemIndex =>
-              -- Fire the trigger event
-              SpiderM.liftIO (fireItemClick itemIndex)
-              let newSelection := ListBox.updateSelection config.selectionMode itemIndex state.selectedItems
-              pure { state with selectedItems := newSelection, lastClickedItem := some itemIndex }
-            | none => pure state
-          | none => pure state
-        | none => pure state
-      | .hover hoverData =>
-        match findWidgetIdByName hoverData.widget containerName with
-        | some widgetId =>
-          match hoverData.layouts.get widgetId with
-          | some layout =>
-            let containerRect := layout.contentRect
-            let hoveredIdx := computeItemIndex containerRect hoverData.x hoverData.y scrollOffset
-            pure { state with hoveredItem := hoveredIdx }
-          | none => pure state
-        | none => pure state
+  -- Track selected items
+  let selectedItems ← Reactive.foldDynM
+    (fun (clickedItem : Nat) (current : Array Nat) => do
+      SpiderM.liftIO (fireItemClick clickedItem)
+      pure (ListBox.updateSelection config.selectionMode clickedItem current)
     )
-    ({} : ListBoxState)
-    allInputEvents
+    (#[] : Array Nat)
+    itemClicks
 
-  -- Extract dynamics from combined state
-  let selectedItems ← Dynamic.mapM (fun s => s.selectedItems) combinedState
-  let hoveredItem ← Dynamic.mapM (fun s => s.hoveredItem) combinedState
+  -- Track hovered item
+  let hoverChanges ← Event.mapM findHoveredItem allHovers
+  let hoveredItem ← Reactive.holdDyn (none : Option Nat) hoverChanges
 
   -- Use scroll container for scrolling - items are emitted INSIDE
-  let (_, scrollResult) ← scrollContainer scrollConfig theme do
+  let (_, _) ← scrollContainer scrollConfig theme do
     emit do
       let selected ← selectedItems.sample
       let hovered ← hoveredItem.sample
       pure (listBoxItemsVisual itemNameFn items selected hovered theme config)
     pure ()
-
-  -- Update scroll offset ref when scroll state changes
-  let _ ← performEvent_ (← Event.mapM (fun _ => do
-    let scrollState ← scrollResult.scrollState.sample
-    scrollOffsetRef.set scrollState.offsetY
-  ) allInputEvents)
 
   pure { onSelect := itemClickTrigger, selectedItems, hoveredItem }
 
@@ -224,10 +173,7 @@ def listBox (items : Array String) (theme : Theme)
 def listBoxWithSelection (items : Array String) (initialSelection : Array Nat)
     (theme : Theme) (config : ListBoxConfig := ListBox.defaultConfig)
     : WidgetM ListBoxResult := do
-  -- Register container name for hit testing
-  let containerName ← registerComponentW "listbox-container"
-
-  -- Register item names (still needed for rendering)
+  -- Register item names for hit testing
   let mut itemNames : Array String := #[]
   for i in [:items.size] do
     let name ← registerComponentW s!"listbox-item-{i}"
@@ -251,75 +197,39 @@ def listBoxWithSelection (items : Array String) (initialSelection : Array Nat)
   -- Create trigger for item clicks
   let (itemClickTrigger, fireItemClick) ← Reactive.newTriggerEvent (t := Spider) (a := Nat)
 
-  -- Create a ref to store scroll offset for hit testing
-  let scrollOffsetRef ← SpiderM.liftIO (IO.mkRef 0.0)
+  -- Find which item was clicked (like Table pattern)
+  let findClickedItem (data : ClickData) : Option Nat :=
+    (List.range items.size).findSome? fun i =>
+      if hitWidget data (itemNameFn i) then some i else none
 
-  -- Helper to compute item index from position
-  let computeItemIndex (containerRect : LayoutRect) (posX posY scrollOffset : Float) : Option Nat :=
-    if posX >= containerRect.x && posX <= containerRect.x + containerRect.width &&
-       posY >= containerRect.y && posY <= containerRect.y + containerRect.height then
-      let relativeY := posY - containerRect.y + scrollOffset
-      let itemIndex := (relativeY / config.itemHeight).floor.toUInt64.toNat
-      if itemIndex < items.size then some itemIndex else none
-    else none
+  -- Find which item is hovered
+  let findHoveredItem (data : HoverData) : Option Nat :=
+    (List.range items.size).findSome? fun i =>
+      if hitWidgetHover data (itemNameFn i) then some i else none
 
-  -- Lift events to unified type
-  let liftSpider {α : Type} : SpiderM α → WidgetM α := fun m => StateT.lift (liftM m)
-  let clickEvents ← liftSpider (Event.mapM ListBoxInputEvent.click allClicks)
-  let hoverEvents ← liftSpider (Event.mapM ListBoxInputEvent.hover allHovers)
-  let allInputEvents ← liftSpider (Event.leftmostM [clickEvents, hoverEvents])
+  -- Item click events
+  let itemClicks ← Event.mapMaybeM findClickedItem allClicks
 
-  -- Fold all events into combined state (reads scroll offset from ref)
-  let combinedState ← Reactive.foldDynM
-    (fun (event : ListBoxInputEvent) (state : ListBoxState) => do
-      let scrollOffset ← SpiderM.liftIO scrollOffsetRef.get
-      match event with
-      | .click clickData =>
-        match findWidgetIdByName clickData.widget containerName with
-        | some widgetId =>
-          match clickData.layouts.get widgetId with
-          | some layout =>
-            let containerRect := layout.contentRect
-            match computeItemIndex containerRect clickData.click.x clickData.click.y scrollOffset with
-            | some itemIndex =>
-              -- Fire the trigger event
-              SpiderM.liftIO (fireItemClick itemIndex)
-              let newSelection := ListBox.updateSelection config.selectionMode itemIndex state.selectedItems
-              pure { state with selectedItems := newSelection, lastClickedItem := some itemIndex }
-            | none => pure state
-          | none => pure state
-        | none => pure state
-      | .hover hoverData =>
-        match findWidgetIdByName hoverData.widget containerName with
-        | some widgetId =>
-          match hoverData.layouts.get widgetId with
-          | some layout =>
-            let containerRect := layout.contentRect
-            let hoveredIdx := computeItemIndex containerRect hoverData.x hoverData.y scrollOffset
-            pure { state with hoveredItem := hoveredIdx }
-          | none => pure state
-        | none => pure state
+  -- Track selected items (with initial selection)
+  let selectedItems ← Reactive.foldDynM
+    (fun (clickedItem : Nat) (current : Array Nat) => do
+      SpiderM.liftIO (fireItemClick clickedItem)
+      pure (ListBox.updateSelection config.selectionMode clickedItem current)
     )
-    ({ selectedItems := initialSelection } : ListBoxState)
-    allInputEvents
+    initialSelection
+    itemClicks
 
-  -- Extract dynamics from combined state
-  let selectedItems ← Dynamic.mapM (fun s => s.selectedItems) combinedState
-  let hoveredItem ← Dynamic.mapM (fun s => s.hoveredItem) combinedState
+  -- Track hovered item
+  let hoverChanges ← Event.mapM findHoveredItem allHovers
+  let hoveredItem ← Reactive.holdDyn (none : Option Nat) hoverChanges
 
   -- Use scroll container for scrolling - items are emitted INSIDE
-  let (_, scrollResult) ← scrollContainer scrollConfig theme do
+  let (_, _) ← scrollContainer scrollConfig theme do
     emit do
       let selected ← selectedItems.sample
       let hovered ← hoveredItem.sample
       pure (listBoxItemsVisual itemNameFn items selected hovered theme config)
     pure ()
-
-  -- Update scroll offset ref when scroll state changes
-  let _ ← performEvent_ (← Event.mapM (fun _ => do
-    let scrollState ← scrollResult.scrollState.sample
-    scrollOffsetRef.set scrollState.offsetY
-  ) allInputEvents)
 
   pure { onSelect := itemClickTrigger, selectedItems, hoveredItem }
 
