@@ -23,8 +23,8 @@ structure ScrollContainerConfig where
   verticalScroll : Bool := true
   /-- Enable horizontal scrolling. -/
   horizontalScroll : Bool := false
-  /-- Scroll sensitivity multiplier. -/
-  scrollSpeed : Float := 1.0
+  /-- Scroll sensitivity multiplier (pixels per scroll unit). -/
+  scrollSpeed : Float := 20.0
 deriving Repr, Inhabited
 
 namespace ScrollContainerConfig
@@ -83,11 +83,13 @@ def scrollContainer (config : ScrollContainerConfig) (_theme : Theme)
   let contentSizeRef ← SpiderM.liftIO (IO.mkRef (config.width, config.height))
 
   -- Fold scroll events into scroll state, clamped to bounds
+  -- Negate deltas: scroll wheel down (positive deltaY from OS) should increase offsetY
+  -- to move content up and reveal content below
   let scrollState ← Reactive.foldDynM
     (fun scrollData state => do
       let (contentW, contentH) ← SpiderM.liftIO contentSizeRef.get
-      let dx := if config.horizontalScroll then scrollData.scroll.deltaX * config.scrollSpeed else 0
-      let dy := if config.verticalScroll then scrollData.scroll.deltaY * config.scrollSpeed else 0
+      let dx := if config.horizontalScroll then -scrollData.scroll.deltaX * config.scrollSpeed else 0
+      let dy := if config.verticalScroll then -scrollData.scroll.deltaY * config.scrollSpeed else 0
       pure (state.scrollBy dx dy config.width config.height contentW contentH))
     ScrollState.zero
     scrollEvents

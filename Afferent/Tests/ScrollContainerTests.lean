@@ -7,6 +7,7 @@ import Afferent.Arbor
 import Afferent.Arbor.Widget.DSL
 import Afferent.Canopy.Reactive.Component
 import Afferent.Canopy.Widget.Scroll
+import Afferent.Layout
 import Reactive
 import Trellis
 
@@ -321,6 +322,41 @@ test "scroll container child collection - simulated" := do
 
   -- Expected: 1 outer column + 1 inner column + 20 text = 22
   ensure (result == 22) s!"Expected 22 widgets, got {result}"
+
+/-! ## Scroll Container Layout Tests
+
+These tests verify that scroll container children are laid out at their
+natural size (which may exceed viewport) rather than being shrunk to fit.
+-/
+
+test "scroll widget child is laid out at full content height" := do
+  -- Create a scroll widget with content taller than viewport
+  -- The child should be laid out at its full content height, not shrunk
+  let viewportW := 300.0
+  let viewportH := 150.0
+  let contentH := 600.0
+
+  -- Build a scroll widget with a column child
+  let childBuilder := column (gap := 0) (style := {}) #[
+    coloredBox Tincture.Color.red 280 contentH
+  ]
+  let scrollBuilder := namedScroll "test-scroll"
+    { minWidth := some viewportW, minHeight := some viewportH }
+    viewportW contentH {} childBuilder
+
+  let (widget, _) ← scrollBuilder.run {}
+
+  -- Measure the widget tree (this applies the shrink=0 fix)
+  let measureResult ← Afferent.Arbor.measureWidget (M := Id) widget 800 600
+  let layoutNode := measureResult.node
+
+  -- Run layout
+  let result := layout layoutNode 800 600
+
+  -- Find the child layout (ID 1 is the scroll container, ID 2 is the column child)
+  -- The child should be laid out at contentH (600), not viewportH (150)
+  let childLayout := result.get! 2
+  ensure (childLayout.height >= contentH) s!"Child height {childLayout.height} should be >= content height {contentH}"
 
 #generate_tests
 
