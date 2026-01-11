@@ -7,6 +7,7 @@ import Afferent.Canopy.Widget.Panel
 import Afferent.Canopy.Widget.Button
 import Afferent.Canopy.Widget.Checkbox
 import Afferent.Canopy.Widget.TextInput
+import Afferent.Canopy.Widget.PasswordInput
 import Afferent.Canopy.Widget.TextArea
 import Afferent.Canopy.Widget.RadioButton
 import Afferent.Canopy.Widget.Switch

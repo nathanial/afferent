@@ -20,7 +20,7 @@ A complete desktop widget framework for building rich GUI applications in Lean 4
 - [x] **RangeSlider** - Dual-handle for min/max range selection
 - [x] **Stepper** - Increment/decrement numeric input (+/- buttons)
 - [ ] **TextArea** - Multi-line text input with scrolling
-- [ ] **PasswordInput** - Masked text input
+- [x] **PasswordInput** - Masked text input
 - [ ] **SearchInput** - Text input with search icon and clear button
 - [ ] **ColorPicker** - Color selection (hue/saturation/brightness)
 - [x] **DatePicker** - Calendar-based date selection
