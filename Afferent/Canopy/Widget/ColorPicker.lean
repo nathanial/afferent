@@ -126,29 +126,38 @@ def getWidgetRect (widget : Widget) (layouts : Trellis.LayoutResult)
   | none => none
 
 /-- CustomSpec for saturation/value square.
-    Renders a grid approximating the HSV gradient. -/
+    Uses two overlapping gradients: horizontal (white→hue) and vertical (transparent→black). -/
 def svSquareSpec (hue saturation value : Float) (size : Float)
     (indicatorRadius : Float) : CustomSpec := {
   measure := fun _ _ => (size, size)
   collect := fun layout =>
     let rect := layout.contentRect
-    -- Render 16x16 grid for smooth gradient approximation
-    let gridSize : Nat := 16
-    let cellW := rect.width / gridSize.toFloat
-    let cellH := rect.height / gridSize.toFloat
 
-    let cmds := (List.range gridSize).foldl (fun acc row =>
-      (List.range gridSize).foldl (fun acc2 col =>
-        let s := (col.toFloat + 0.5) / gridSize.toFloat
-        let v := 1.0 - (row.toFloat + 0.5) / gridSize.toFloat
-        let color := HSV.toColor { h := hue, s, v } 1.0
-        let cellRect := Arbor.Rect.mk'
-          (rect.x + col.toFloat * cellW)
-          (rect.y + row.toFloat * cellH)
-          cellW cellH
-        acc2.push (.fillRect cellRect color 0)
-      ) acc
-    ) (#[] : Array RenderCommand)
+    -- Layer 1: Horizontal gradient (white → pure hue color) for saturation
+    let pureHueColor := HSV.toColor { h := hue, s := 1.0, v := 1.0 } 1.0
+    let leftPt := Afferent.Point.mk' rect.x (rect.y + rect.height / 2)
+    let rightPt := Afferent.Point.mk' (rect.x + rect.width) (rect.y + rect.height / 2)
+    let satStops : Array Afferent.GradientStop := #[
+      { position := 0.0, color := Color.white },
+      { position := 1.0, color := pureHueColor }
+    ]
+    let satStyle := Afferent.FillStyle.linearGradient leftPt rightPt satStops
+    let svRect := Arbor.Rect.mk' rect.x rect.y rect.width rect.height
+
+    -- Layer 2: Vertical gradient (transparent → black) for value
+    let topPt := Afferent.Point.mk' (rect.x + rect.width / 2) rect.y
+    let bottomPt := Afferent.Point.mk' (rect.x + rect.width / 2) (rect.y + rect.height)
+    let valStops : Array Afferent.GradientStop := #[
+      { position := 0.0, color := { Color.black with a := 0.0 } },
+      { position := 1.0, color := Color.black }
+    ]
+    let valStyle := Afferent.FillStyle.linearGradient topPt bottomPt valStops
+
+    -- Draw both gradient layers
+    let cmds : Array RenderCommand := #[
+      .fillRectStyle svRect satStyle 0,
+      .fillRectStyle svRect valStyle 0
+    ]
 
     -- Draw selection indicator (white circle with black outline)
     let indicatorX := rect.x + saturation * rect.width
@@ -160,22 +169,37 @@ def svSquareSpec (hue saturation value : Float) (size : Float)
     cmds.push (.strokeRect indicatorRect Color.white 1.0 indicatorRadius)
 }
 
-/-- CustomSpec for vertical hue bar. -/
+/-- CustomSpec for vertical hue bar.
+    Uses a 7-stop linear gradient for smooth HSV spectrum. -/
 def hueBarSpec (selectedHue : Float) (width height : Float)
     (indicatorHeight cornerRadius : Float) : CustomSpec := {
   measure := fun _ _ => (width, height)
   collect := fun layout =>
     let rect := layout.contentRect
-    -- Render vertical hue gradient (60 segments)
-    let segments : Nat := 60
-    let segH := rect.height / segments.toFloat
 
-    let cmds := (List.range segments).foldl (fun acc i =>
-      let hue := i.toFloat / segments.toFloat
-      let color := HSV.toColor { h := hue, s := 1.0, v := 1.0 } 1.0
-      let segRect := Arbor.Rect.mk' rect.x (rect.y + i.toFloat * segH) rect.width segH
-      acc.push (.fillRect segRect color 0)
-    ) (#[] : Array RenderCommand)
+    -- 7-stop vertical gradient for HSV hue spectrum (red → yellow → green → cyan → blue → magenta → red)
+    let topPt := Afferent.Point.mk' (rect.x + rect.width / 2) rect.y
+    let bottomPt := Afferent.Point.mk' (rect.x + rect.width / 2) (rect.y + rect.height)
+    -- Compute hue colors explicitly
+    let red     := HSV.toColor (HSV.mk 0.0   1.0 1.0) 1.0
+    let yellow  := HSV.toColor (HSV.mk 0.167 1.0 1.0) 1.0
+    let green   := HSV.toColor (HSV.mk 0.333 1.0 1.0) 1.0
+    let cyan    := HSV.toColor (HSV.mk 0.5   1.0 1.0) 1.0
+    let blue    := HSV.toColor (HSV.mk 0.667 1.0 1.0) 1.0
+    let magenta := HSV.toColor (HSV.mk 0.833 1.0 1.0) 1.0
+    let hueStops : Array Afferent.GradientStop := #[
+      { position := 0.0,   color := red },
+      { position := 0.167, color := yellow },
+      { position := 0.333, color := green },
+      { position := 0.5,   color := cyan },
+      { position := 0.667, color := blue },
+      { position := 0.833, color := magenta },
+      { position := 1.0,   color := red }
+    ]
+    let hueStyle := Afferent.FillStyle.linearGradient topPt bottomPt hueStops
+    let hueRect := Arbor.Rect.mk' rect.x rect.y rect.width rect.height
+
+    let cmds : Array RenderCommand := #[.fillRectStyle hueRect hueStyle cornerRadius]
 
     -- Draw hue indicator
     let indicatorY := rect.y + selectedHue * rect.height - indicatorHeight / 2
@@ -184,13 +208,15 @@ def hueBarSpec (selectedHue : Float) (width height : Float)
     cmds.push (.strokeRect indicatorRect (Color.gray 0.3) 1.0 cornerRadius)
 }
 
-/-- CustomSpec for vertical alpha bar with checkerboard. -/
+/-- CustomSpec for vertical alpha bar with checkerboard.
+    Uses a 2-stop linear gradient from opaque to transparent. -/
 def alphaBarSpec (selectedAlpha : Float) (currentHSV : HSV)
     (width height : Float) (indicatorHeight cornerRadius : Float) : CustomSpec := {
   measure := fun _ _ => (width, height)
   collect := fun layout =>
     let rect := layout.contentRect
-    -- Draw checkerboard background
+
+    -- Draw checkerboard background for transparency visualization
     let checkSize : Float := 6.0
     let rows := (rect.height / checkSize).ceil.toUInt32.toNat
     let cols := (rect.width / checkSize).ceil.toUInt32.toNat
@@ -208,17 +234,17 @@ def alphaBarSpec (selectedAlpha : Float) (currentHSV : HSV)
       ) acc
     ) (#[] : Array RenderCommand)
 
-    -- Render alpha gradient (30 segments)
-    let segments : Nat := 30
-    let segH := rect.height / segments.toFloat
+    -- Vertical gradient from opaque (top) to transparent (bottom)
     let baseColor := HSV.toColor currentHSV 1.0
-
-    let cmds := (List.range segments).foldl (fun acc i =>
-      let a := 1.0 - i.toFloat / segments.toFloat
-      let color := { baseColor with a }
-      let segRect := Arbor.Rect.mk' rect.x (rect.y + i.toFloat * segH) rect.width segH
-      acc.push (.fillRect segRect color 0)
-    ) cmds
+    let topPt := Afferent.Point.mk' (rect.x + rect.width / 2) rect.y
+    let bottomPt := Afferent.Point.mk' (rect.x + rect.width / 2) (rect.y + rect.height)
+    let alphaStops : Array Afferent.GradientStop := #[
+      { position := 0.0, color := baseColor },
+      { position := 1.0, color := { baseColor with a := 0.0 } }
+    ]
+    let alphaStyle := Afferent.FillStyle.linearGradient topPt bottomPt alphaStops
+    let alphaRect := Arbor.Rect.mk' rect.x rect.y rect.width rect.height
+    let cmds := cmds.push (.fillRectStyle alphaRect alphaStyle 0)
 
     -- Draw alpha indicator
     let indicatorY := rect.y + (1.0 - selectedAlpha) * rect.height - indicatorHeight / 2

@@ -625,6 +625,160 @@ def sampleFillStyle (style : FillStyle) (p : Point) : Color :=
   | .solid c => c
   | .gradient g => sampleGradient g p
 
+/-! ## Linear Gradient Slicing (Convex Polygons) -/
+
+private def isConvexPolygon (points : Array Point) (eps : Float := 1.0e-6) : Bool := Id.run do
+  if points.size < 4 then
+    return true
+  let n := points.size
+  let mut sign : Int := 0
+  for i in [:n] do
+    let a := points[i]!
+    let b := points[(i + 1) % n]!
+    let c := points[(i + 2) % n]!
+    let cross := (b.x - a.x) * (c.y - a.y) - (b.y - a.y) * (c.x - a.x)
+    if Float.abs cross > eps then
+      let s : Int := if cross > 0.0 then 1 else -1
+      if sign == 0 then
+        sign := s
+      else if sign != s then
+        return false
+  return true
+
+private def dedupSorted (values : Array Float) (eps : Float := 1.0e-6) : Array Float := Id.run do
+  if values.isEmpty then
+    return #[]
+  let mut result : Array Float := #[values[0]!]
+  for i in [1:values.size] do
+    let v := values[i]!
+    let last := result[result.size - 1]!
+    if Float.abs (v - last) > eps then
+      result := result.push v
+  return result
+
+private def interpolateAtT (p1 p2 : Point) (t1 t2 tBound : Float) (eps : Float := 1.0e-6) : Point :=
+  if Float.abs (t2 - t1) < eps then
+    p1
+  else
+    let u0 := (tBound - t1) / (t2 - t1)
+    let u := if u0 < 0.0 then 0.0 else if u0 > 1.0 then 1.0 else u0
+    { x := p1.x + (p2.x - p1.x) * u, y := p1.y + (p2.y - p1.y) * u }
+
+private def clipPolygonByT (points : Array Point) (start : Point)
+    (dx dy lenSq tBound : Float) (keepAbove : Bool) : Array Point := Id.run do
+  if points.isEmpty then
+    return #[]
+  let tAt := fun p =>
+    ((p.x - start.x) * dx + (p.y - start.y) * dy) / lenSq
+  let n := points.size
+  let mut output : Array Point := #[]
+  for i in [:n] do
+    let curr := points[i]!
+    let next := points[(i + 1) % n]!
+    let tCurr := tAt curr
+    let tNext := tAt next
+    let currInside := if keepAbove then tCurr >= tBound else tCurr <= tBound
+    let nextInside := if keepAbove then tNext >= tBound else tNext <= tBound
+    if currInside && nextInside then
+      output := output.push next
+    else if currInside && !nextInside then
+      output := output.push (interpolateAtT curr next tCurr tNext tBound)
+    else if !currInside && nextInside then
+      output := output.push (interpolateAtT curr next tCurr tNext tBound)
+      output := output.push next
+  return output
+
+private def clipPolygonToSlab (points : Array Point) (start : Point)
+    (dx dy lenSq t0 t1 : Float) : Array Point :=
+  let lower := min t0 t1
+  let upper := max t0 t1
+  let clipped := clipPolygonByT points start dx dy lenSq lower true
+  clipPolygonByT clipped start dx dy lenSq upper false
+
+private def tessellateLinearGradientConvex (points : Array Point) (transform : Point → Point)
+    (style : FillStyle) (start finish : Point) (stops : Array GradientStop)
+    (screenWidth screenHeight : Float) : TessellationResult := Id.run do
+  if points.size < 3 then
+    return { vertices := #[], indices := #[] }
+  let dx := finish.x - start.x
+  let dy := finish.y - start.y
+  let lenSq := dx * dx + dy * dy
+  if lenSq < 0.0001 then
+    -- Degenerate gradient; fall back to solid fill sampling.
+    let mut vertices : Array Float := Array.mkEmpty (points.size * 6)
+    for p in points do
+      let color := sampleFillStyle style p
+      let rp := transform p
+      let ndc := pixelToNDC rp.x rp.y screenWidth screenHeight
+      vertices := vertices.push ndc.x
+      vertices := vertices.push ndc.y
+      vertices := vertices.push color.r
+      vertices := vertices.push color.g
+      vertices := vertices.push color.b
+      vertices := vertices.push color.a
+    let indices := triangulateConvexFan points.size
+    return { vertices, indices }
+
+  let tAt := fun p =>
+    ((p.x - start.x) * dx + (p.y - start.y) * dy) / lenSq
+  let mut tMin := tAt points[0]!
+  let mut tMax := tMin
+  for p in points do
+    let t := tAt p
+    if t < tMin then tMin := t
+    if t > tMax then tMax := t
+
+  let mut boundsAcc : Array Float := #[tMin, tMax]
+  for stop in stops do
+    if stop.position > tMin && stop.position < tMax then
+      boundsAcc := boundsAcc.push stop.position
+  let bounds := dedupSorted (boundsAcc.qsort (· < ·))
+
+  if bounds.size < 2 then
+    -- No usable slices; fall back to a single fan.
+    let mut vertices : Array Float := Array.mkEmpty (points.size * 6)
+    for p in points do
+      let color := sampleFillStyle style p
+      let rp := transform p
+      let ndc := pixelToNDC rp.x rp.y screenWidth screenHeight
+      vertices := vertices.push ndc.x
+      vertices := vertices.push ndc.y
+      vertices := vertices.push color.r
+      vertices := vertices.push color.g
+      vertices := vertices.push color.b
+      vertices := vertices.push color.a
+    let indices := triangulateConvexFan points.size
+    return { vertices, indices }
+
+  let mut vertices : Array Float := #[]
+  let mut indices : Array UInt32 := #[]
+
+  for i in [:bounds.size - 1] do
+    let t0 := bounds[i]!
+    let t1 := bounds[i + 1]!
+    if Float.abs (t1 - t0) < 1.0e-6 then
+      continue
+    let slice := clipPolygonToSlab points start dx dy lenSq t0 t1
+    if slice.size < 3 then
+      continue
+    let base : UInt32 := (vertices.size / 6).toUInt32
+    for p in slice do
+      let color := sampleFillStyle style p
+      let rp := transform p
+      let ndc := pixelToNDC rp.x rp.y screenWidth screenHeight
+      vertices := vertices.push ndc.x
+      vertices := vertices.push ndc.y
+      vertices := vertices.push color.r
+      vertices := vertices.push color.g
+      vertices := vertices.push color.b
+      vertices := vertices.push color.a
+    for j in [1:slice.size - 1] do
+      indices := indices.push base
+      indices := indices.push (base + j.toUInt32)
+      indices := indices.push (base + (j + 1).toUInt32)
+
+  return { vertices, indices }
+
 /-- Tessellate a path with a fill style (solid or gradient), converting to NDC.
     Handles both convex and non-convex polygons. -/
 def tessellateConvexPathFillNDC (path : Path) (style : FillStyle)
@@ -633,6 +787,14 @@ def tessellateConvexPathFillNDC (path : Path) (style : FillStyle)
   let (points, holes) := flattenRings rings
   if points.size < 3 then
     return { vertices := #[], indices := #[] }
+
+  -- For convex polygons with multi-stop linear gradients, slice along stops
+  -- to preserve intermediate colors (e.g., hue bars).
+  match style with
+  | .gradient (.linear start finish stops) =>
+    if holes.isEmpty && stops.size > 2 && isConvexPolygon points then
+      return tessellateLinearGradientConvex points (fun p => p) style start finish stops screenWidth screenHeight
+  | _ => pure ()
 
   -- Pre-allocate vertex array (6 floats per vertex: x, y, r, g, b, a)
   let mut vertices : Array Float := Array.mkEmpty (points.size * 6)
@@ -761,6 +923,12 @@ def tessellatePathWithTransform (originalPath : Path) (transform : Transform) (s
   let numPoints := originalPoints.size
   if numPoints < 3 then
     return { vertices := #[], indices := #[] }
+
+  match style with
+  | .gradient (.linear start finish stops) =>
+    if holes.isEmpty && stops.size > 2 && isConvexPolygon originalPoints then
+      return tessellateLinearGradientConvex originalPoints transform.apply style start finish stops screenWidth screenHeight
+  | _ => pure ()
 
   -- Apply transform to get transformed positions - guaranteed 1-to-1 correspondence
   let transformedPoints := originalPoints.map transform.apply

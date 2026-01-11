@@ -249,8 +249,8 @@ test "svSquareSpec generates render commands" := do
     contentRect := { x := 0, y := 0, width := 180, height := 180 }
   }
   let cmds := spec.collect layout
-  -- 16x16 grid + 2 stroke commands for indicator
-  ensure (cmds.size >= 256) s!"Expected at least 256 commands, got {cmds.size}"
+  -- 2 gradient fills (saturation + value) + 2 stroke commands for indicator
+  ensure (cmds.size == 4) s!"Expected 4 commands (2 gradients + 2 indicator), got {cmds.size}"
 
 test "hueBarSpec generates render commands" := do
   let spec := ColorPicker.hueBarSpec 0.5 24.0 180.0 4.0 4.0
@@ -260,8 +260,8 @@ test "hueBarSpec generates render commands" := do
     contentRect := { x := 0, y := 0, width := 24, height := 180 }
   }
   let cmds := spec.collect layout
-  -- 60 segments + 2 indicator commands
-  ensure (cmds.size >= 60) s!"Expected at least 60 commands, got {cmds.size}"
+  -- 1 gradient fill + 2 indicator commands (fill + stroke)
+  ensure (cmds.size == 3) s!"Expected 3 commands (1 gradient + 2 indicator), got {cmds.size}"
 
 /-! ## Clamp Function Tests -/
 

@@ -231,6 +231,22 @@ test "sampleRadialGradient at edge returns last stop" := do
   shouldBeNear result.r 0.0
   shouldBeNear result.b 1.0
 
+test "tessellateConvexPathFillNDC slices multi-stop linear gradients" := do
+  let rect := Rect.mk' 0 0 10 100
+  let path := Path.rectangle rect
+  let start := Point.mk' 0 0
+  let finish := Point.mk' 0 100
+  let stops : Array GradientStop := #[
+    { position := 0.0, color := Color.red },
+    { position := 0.5, color := Color.green },
+    { position := 1.0, color := Color.blue }
+  ]
+  let style := FillStyle.linearGradient start finish stops
+  let result := tessellateConvexPathFillNDC path style 100 100
+  -- Sliced gradients should produce more than 4 vertices / 2 triangles.
+  ensure (result.vertices.size > 24) s!"Expected >24 floats, got {result.vertices.size}"
+  ensure (result.indices.size > 6) s!"Expected >6 indices, got {result.indices.size}"
+
 /-! ## Gradient Edge Case Tests -/
 
 test "interpolateGradientStops with empty stops returns black" := do
