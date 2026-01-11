@@ -12,6 +12,7 @@ import Afferent.Canopy.Widget.RadioButton
 import Afferent.Canopy.Widget.Switch
 import Afferent.Canopy.Widget.Slider
 import Afferent.Canopy.Widget.Dropdown
+import Afferent.Canopy.Widget.DatePicker
 import Afferent.Canopy.Widget.TabView
 import Afferent.Canopy.Widget.SplitPane
 import Afferent.Canopy.Widget.Modal

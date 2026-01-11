@@ -23,7 +23,7 @@ A complete desktop widget framework for building rich GUI applications in Lean 4
 - [ ] **PasswordInput** - Masked text input
 - [ ] **SearchInput** - Text input with search icon and clear button
 - [ ] **ColorPicker** - Color selection (hue/saturation/brightness)
-- [ ] **DatePicker** - Calendar-based date selection
+- [x] **DatePicker** - Calendar-based date selection
 - [ ] **TimePicker** - Hour/minute/second selection
 - [ ] **FilePicker** - File/folder browser dialog
 
@@ -118,7 +118,7 @@ A complete desktop widget framework for building rich GUI applications in Lean 4
 ### Phase 4: Advanced
 1. VirtualList
 2. SplitPane (done)
-3. DatePicker
+3. DatePicker (done)
 4. ColorPicker
 5. DataGrid
 
