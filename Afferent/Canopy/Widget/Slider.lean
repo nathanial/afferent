@@ -135,6 +135,11 @@ structure SliderResult where
   onChange : Reactive.Event Spider Float
   value : Reactive.Dynamic Spider Float
 
+inductive SliderInputEvent where
+  | click (data : ClickData)
+  | hover (data : HoverData)
+  | mouseUp
+
 /-- Create a reactive slider component using WidgetM.
     Emits the slider widget and returns value state.
     - `label`: Optional label text displayed next to slider
@@ -145,20 +150,52 @@ def slider (label : Option String) (theme : Theme) (initialValue : Float := 0.5)
     : WidgetM SliderResult := do
   let name ← registerComponentW "slider"
   let isHovered ← useHover name
-  let clicks ← useClickData name
+  let allClicks ← useAllClicks
+  let allHovers ← useAllHovers
+  let allMouseUp ← useAllMouseUp
 
   let trackWidth := Slider.defaultDimensions.trackWidth
-  let valueChanges ← Event.mapMaybeM
-    (fun data => calculateSliderValue data.click.x data.layouts data.widget name trackWidth) clicks
-  let value ← Reactive.holdDyn initialValue valueChanges
-  let onChange := valueChanges
+  let liftSpider {α : Type} : SpiderM α → WidgetM α := fun m => StateT.lift (liftM m)
+  let allInputEvents ← liftSpider do
+    let clickEvents ← Event.mapM SliderInputEvent.click allClicks
+    let hoverEvents ← Event.mapM SliderInputEvent.hover allHovers
+    let mouseUpEvents ← Event.mapM (fun _ => SliderInputEvent.mouseUp) allMouseUp
+    Event.leftmostM [clickEvents, hoverEvents, mouseUpEvents]
+
+  let combinedState ← Reactive.foldDynM
+    (fun event state => do
+      match event with
+      | .click data =>
+        if !hitWidget data name || data.click.button != 0 then
+          pure state
+        else
+          match calculateSliderValue data.click.x data.layouts data.widget name trackWidth with
+          | some v => pure { state with value := v, pressed := true }
+          | none => pure state
+      | .hover data =>
+        if state.pressed then
+          match calculateSliderValue data.x data.layouts data.widget name trackWidth with
+          | some v => pure { state with value := v }
+          | none => pure state
+        else
+          pure state
+      | .mouseUp =>
+        pure { state with pressed := false }
+    )
+    ({ value := initialValue, pressed := false, hovered := false, focused := false, disabled := false } : SliderState)
+    allInputEvents
+
+  let valueDyn ← Dynamic.mapM (·.value) combinedState
+  let valueChanges ← Dynamic.changesM valueDyn
+  let onChange ← Event.mapMaybeM
+    (fun (old, new) => if old != new then some new else none) valueChanges
 
   emit do
     let hovered ← isHovered.sample
-    let v ← value.sample
-    let state : WidgetState := { hovered, pressed := false, focused := false }
-    pure (sliderVisual name label theme v state)
+    let s ← combinedState.sample
+    let state : WidgetState := { hovered, pressed := s.pressed, focused := false }
+    pure (sliderVisual name label theme s.value state)
 
-  pure { onChange, value }
+  pure { onChange, value := valueDyn }
 
 end Afferent.Canopy

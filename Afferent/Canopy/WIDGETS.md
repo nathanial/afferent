@@ -17,7 +17,7 @@ A complete desktop widget framework for building rich GUI applications in Lean 4
 - [ ] **RadioGroup** - Container managing radio button exclusivity
 - [ ] **Switch/Toggle** - iOS-style on/off toggle
 - [ ] **Slider** - Horizontal/vertical value slider with optional labels
-- [ ] **RangeSlider** - Dual-handle for min/max range selection
+- [x] **RangeSlider** - Dual-handle for min/max range selection
 - [ ] **Stepper** - Increment/decrement numeric input (+/- buttons)
 - [ ] **TextArea** - Multi-line text input with scrolling
 - [ ] **PasswordInput** - Masked text input
@@ -121,6 +121,7 @@ A complete desktop widget framework for building rich GUI applications in Lean 4
 3. DatePicker (done)
 4. ColorPicker
 5. DataGrid (done)
+6. RangeSlider (done)
 
 ## Design Principles
 
