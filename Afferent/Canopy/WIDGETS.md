@@ -66,7 +66,7 @@ A complete desktop widget framework for building rich GUI applications in Lean 4
 ## Data Display Widgets
 
 - [ ] **Table** - Sortable, filterable data table with columns
-- [ ] **DataGrid** - Editable table with cell editing
+- [x] **DataGrid** - Editable table with cell editing
 - [x] **VirtualList** - Efficiently rendered long lists
 - [ ] **Calendar** - Month/week/day calendar view
 - [ ] **Timeline** - Chronological event display
@@ -120,7 +120,7 @@ A complete desktop widget framework for building rich GUI applications in Lean 4
 2. SplitPane (done)
 3. DatePicker (done)
 4. ColorPicker
-5. DataGrid
+5. DataGrid (done)
 
 ## Design Principles
 
