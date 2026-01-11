@@ -67,7 +67,7 @@ A complete desktop widget framework for building rich GUI applications in Lean 4
 
 - [ ] **Table** - Sortable, filterable data table with columns
 - [ ] **DataGrid** - Editable table with cell editing
-- [ ] **VirtualList** - Efficiently rendered long lists
+- [x] **VirtualList** - Efficiently rendered long lists
 - [ ] **Calendar** - Month/week/day calendar view
 - [ ] **Timeline** - Chronological event display
 - [ ] **Chart** - Basic charts (bar, line, pie)
