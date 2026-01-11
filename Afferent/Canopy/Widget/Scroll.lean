@@ -275,8 +275,9 @@ def scrollContainer (config : ScrollContainerConfig) (theme : Theme)
   emit do
     let state ← combinedState.sample
     let widgets ← childRenders.mapM id
-    -- Build the child column
-    let childBuilder := column (gap := 0) (style := {}) widgets
+    -- Build the child column (fill width for vertical-only scroll)
+    let childStyle : BoxStyle := if config.horizontalScroll then {} else { width := .percent 1.0 }
+    let childBuilder := column (gap := 0) (style := childStyle) widgets
     -- Run the builder to measure actual widget count
     let (builtChild, _builderState) ← childBuilder.run {}
     let widgetCount := builtChild.widgetCount

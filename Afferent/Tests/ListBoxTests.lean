@@ -14,6 +14,7 @@ open Afferent.Tests
 open Afferent.Canopy
 open Afferent.Canopy.Reactive
 open Afferent.Arbor
+open Reactive Reactive.Host
 
 testSuite "ListBox Tests"
 
@@ -22,6 +23,28 @@ def testFont : FontId := { id := 0, name := "test", size := 14.0 }
 
 /-- Test theme for widget tests. -/
 def testTheme : Theme := { Theme.dark with font := testFont, smallFont := testFont }
+
+/-! ## Widget Tree Helpers -/
+
+/-- Find the first scroll widget in a tree (depth-first). -/
+partial def findScrollWidget (w : Widget) : Option (WidgetId × ScrollbarRenderConfig) :=
+  match w with
+  | .scroll id _ _ _ _ _ scrollbarConfig _ => some (id, scrollbarConfig)
+  | _ =>
+      w.children.foldl (init := none) fun acc child =>
+        match acc with
+        | some _ => acc
+        | none => findScrollWidget child
+
+/-- Collect widget IDs for list box items (by name prefix). -/
+partial def collectListBoxItemIds (w : Widget) : Array WidgetId :=
+  let ids :=
+    match w.name? with
+    | some name =>
+        if name.startsWith "listbox-item-" then #[w.id] else #[]
+    | none => #[]
+  w.children.foldl (init := ids) fun acc child =>
+    acc ++ collectListBoxItemIds child
 
 /-! ## ListBoxSelectionMode Tests -/
 
@@ -235,6 +258,77 @@ test "searching for 'listbox-container' in items visual returns none" := do
   -- listBoxItemsVisual does NOT name the container
   let found := findWidgetIdByName widget "listbox-container"
   ensure found.isNone "listbox-container should NOT be found (this is the bug)"
+
+/-! ## Widget Tree Layout Tests -/
+
+test "listBoxItemsVisual with 12 items creates all 12 in tree" := do
+  let itemNameFn (i : Nat) : String := s!"item-{i}"
+  let items := #["0", "1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "11"]
+  let builder := listBoxItemsVisual itemNameFn items #[] none testTheme
+  let (widget, _) ← builder.run {}
+  -- Verify ALL items are in the tree (including items 6-11)
+  for i in [:12] do
+    let found := findWidgetIdByName widget (itemNameFn i)
+    ensure found.isSome s!"Item '{itemNameFn i}' (index {i}) should exist in widget tree"
+
+test "all items have unique widget IDs" := do
+  let itemNameFn (i : Nat) : String := s!"item-{i}"
+  let items := #["0", "1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "11"]
+  let builder := listBoxItemsVisual itemNameFn items #[] none testTheme
+  let (widget, _) ← builder.run {}
+  -- Collect all widget IDs
+  let mut ids : Array WidgetId := #[]
+  for i in [:12] do
+    match findWidgetIdByName widget (itemNameFn i) with
+    | some wid => ids := ids.push wid
+    | none => ensure false s!"Item {i} not found"
+  -- Verify uniqueness
+  let uniqueIds := ids.toList.eraseDups
+  ensure (uniqueIds.length == 12) s!"Should have 12 unique IDs, got {uniqueIds.length}"
+
+test "listBox items reach scrollbar track in scroll container" := do
+  let items := (List.range 12).map (fun i => s!"Item {i}") |>.toArray
+  let config := { ListBox.defaultConfig with maxVisibleItems := 6 }
+  let itemNameFn (i : Nat) : String := s!"listbox-item-{i}"
+
+  -- Build a wide scroll container with list box items inside.
+  let contentW := 200.0
+  let contentH := items.size.toFloat * config.itemHeight
+  let scrollStyle : BoxStyle := {
+    width := .percent 1.0
+    minWidth := some 400.0
+    minHeight := some 200.0
+    maxHeight := some 200.0
+  }
+  let scrollbarConfig : ScrollbarRenderConfig := {}
+  let itemsBuilder := listBoxItemsVisual itemNameFn items #[] none testTheme config
+  let scrollBuilder := namedScroll "listbox-scroll-test" scrollStyle contentW contentH {} scrollbarConfig itemsBuilder
+  let (widget, _) ← scrollBuilder.run {}
+
+  let viewportW := 600.0
+  let viewportH := 400.0
+  let measureResult : MeasureResult := (measureWidget (M := Id) widget viewportW viewportH)
+  let layouts := Trellis.layout measureResult.node viewportW viewportH
+
+  let itemIds := collectListBoxItemIds measureResult.widget
+  ensure (!itemIds.isEmpty) "Expected listBox items to be present in widget tree"
+
+  match findScrollWidget measureResult.widget with
+  | some (scrollId, scrollbarConfig) =>
+    let scrollLayout := layouts.get! scrollId
+    ensure (contentH > scrollLayout.contentRect.height)
+      s!"Expected content height {contentH} to exceed viewport {scrollLayout.contentRect.height}"
+    ensure (scrollLayout.contentRect.width > contentW)
+      s!"Expected viewport width {scrollLayout.contentRect.width} to exceed content width {contentW}"
+    let itemLayout := layouts.get! itemIds[0]!
+    let trackX := scrollLayout.contentRect.x + scrollLayout.contentRect.width - scrollbarConfig.thickness
+    let itemRight := itemLayout.borderRect.x + itemLayout.borderRect.width
+    ensure (itemLayout.borderRect.width > contentW)
+      s!"Expected item width {itemLayout.borderRect.width} to exceed content width {contentW}"
+    ensure (itemRight >= trackX)
+      s!"Item right edge {itemRight} should reach scrollbar track x {trackX}"
+  | none =>
+    ensure false "Expected to find a scroll container in listBox widget"
 
 #generate_tests
 

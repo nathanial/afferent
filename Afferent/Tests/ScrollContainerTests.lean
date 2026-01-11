@@ -358,6 +358,39 @@ test "scroll widget child is laid out at full content height" := do
   let childLayout := result.get! 2
   ensure (childLayout.height >= contentH) s!"Child height {childLayout.height} should be >= content height {contentH}"
 
+test "hit testing honors scroll offsets for offscreen items" := do
+  let itemHeight := 32.0
+  let itemCount := 12
+  let viewportW := 200.0
+  let viewportH := itemHeight * 6.0
+  let contentH := itemHeight * itemCount.toFloat
+
+  let mut items : Array Widget := #[]
+  for i in [:itemCount] do
+    let itemId := 10 + i
+    let itemStyle : BoxStyle := {
+      minHeight := some itemHeight
+      width := .percent 1.0
+      flexItem := some { Trellis.FlexItem.default with shrink := 0 }
+    }
+    items := items.push (.rect itemId (some s!"item-{i}") itemStyle)
+
+  let columnId := 2
+  let column := Widget.flex columnId none (Trellis.FlexContainer.column 0) {} items
+  let scrollState : ScrollState := { offsetY := itemHeight * 6.0 }
+  let scrollStyle : BoxStyle := { minWidth := some viewportW, minHeight := some viewportH }
+  let scrollWidget :=
+    Widget.scroll 1 (some "scroll") scrollStyle scrollState viewportW contentH {} column
+
+  let measureResult : MeasureResult := (measureWidget (M := Id) scrollWidget viewportW viewportH)
+  let layouts := Trellis.layout measureResult.node viewportW viewportH
+
+  -- Click near the top of the viewport; with offset, this should hit item 6.
+  let path := hitTestPath measureResult.widget layouts 10 10
+  let item6Id := 10 + 6
+  ensure (path.any (· == item6Id))
+    s!"Expected hit path to include item 6 (id {item6Id}), got {path}"
+
 /-! ## Scrollbar Hit Detection Tests -/
 
 /-- Create a test layout for scrollbar hit testing. -/

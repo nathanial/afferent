@@ -252,9 +252,19 @@ partial def measureWidget {M : Type → Type} [Monad M] [TextMeasurer M] (w : Wi
     let childResult ← measureWidget child contentW contentH
     -- The scroll container's LayoutNode is a flex container that will be sized by parent
     -- The child must be laid out at full content size (not shrunk to viewport)
-    -- Set shrink=0 and minHeight to prevent shrinking
-    let childItem : Trellis.FlexItem := { shrink := 0 }
-    let childBox := { childResult.node.box with minHeight := contentH, minWidth := contentW }
+    -- Set shrink=0 and alignSelf=flexStart to prevent cross-axis stretch
+    let childItem : Trellis.FlexItem := { grow := 1, shrink := 0, alignSelf := some .flexStart }
+    let origBox := childResult.node.box
+    let newMinWidth := max origBox.minWidth contentW
+    let newMinHeight := max origBox.minHeight contentH
+    let childBox := { origBox with
+      -- Keep width flexible so the child can stretch to the viewport,
+      -- but ensure it never shrinks below the scrollable content width.
+      width := origBox.width
+      height := if origBox.height.isAuto then .length contentH else origBox.height
+      minHeight := newMinHeight
+      minWidth := newMinWidth
+    }
     let origNode := childResult.node
     let childNode := Trellis.LayoutNode.mk origNode.id childBox origNode.container
       (.flexChild childItem) origNode.content origNode.children

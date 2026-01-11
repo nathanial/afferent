@@ -94,7 +94,8 @@ def listBoxItemsVisual (itemNameFn : Nat → String) (items : Array String)
 
   let wid ← freshId
   let props : FlexContainer := { direction := .column, gap := 0 }
-  pure (.flex wid none props {} itemWidgets)
+  let containerStyle : BoxStyle := { width := .percent 1.0 }
+  pure (.flex wid none props containerStyle itemWidgets)
 
 /-- Create a reactive list box widget.
     - `items`: Array of item labels to display
