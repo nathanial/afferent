@@ -54,7 +54,7 @@ A complete desktop widget framework for building rich GUI applications in Lean 4
 - [ ] **Card** - Styled container with optional header/footer
 - [ ] **Accordion** - Collapsible content sections
 - [ ] **TabView** - Tabbed content panels
-- [ ] **SplitPane** - Resizable split container (horizontal/vertical)
+- [x] **SplitPane** - Resizable split container (horizontal/vertical)
 - [ ] **ScrollView** - Scrollable content area with scrollbars
 - [ ] **Sidebar** - Collapsible side navigation panel
 - [ ] **Toolbar** - Horizontal bar with action buttons
@@ -117,7 +117,7 @@ A complete desktop widget framework for building rich GUI applications in Lean 4
 
 ### Phase 4: Advanced
 1. VirtualList
-2. SplitPane
+2. SplitPane (done)
 3. DatePicker
 4. ColorPicker
 5. DataGrid
