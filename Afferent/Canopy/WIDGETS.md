@@ -18,7 +18,7 @@ A complete desktop widget framework for building rich GUI applications in Lean 4
 - [ ] **Switch/Toggle** - iOS-style on/off toggle
 - [ ] **Slider** - Horizontal/vertical value slider with optional labels
 - [x] **RangeSlider** - Dual-handle for min/max range selection
-- [ ] **Stepper** - Increment/decrement numeric input (+/- buttons)
+- [x] **Stepper** - Increment/decrement numeric input (+/- buttons)
 - [ ] **TextArea** - Multi-line text input with scrolling
 - [ ] **PasswordInput** - Masked text input
 - [ ] **SearchInput** - Text input with search icon and clear button
