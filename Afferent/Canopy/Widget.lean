@@ -48,3 +48,4 @@ import Afferent.Canopy.Widget.StackedAreaChart
 import Afferent.Canopy.Widget.RadarChart
 import Afferent.Canopy.Widget.CandlestickChart
 import Afferent.Canopy.Widget.WaterfallChart
+import Afferent.Canopy.Widget.GaugeChart
