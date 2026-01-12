@@ -32,6 +32,7 @@ import Afferent.Canopy.Widget.VirtualList
 import Afferent.Canopy.Widget.TreeView
 import Afferent.Canopy.Widget.ColorPicker
 import Afferent.Canopy.Widget.BarChart
+import Afferent.Canopy.Widget.HorizontalBarChart
 import Afferent.Canopy.Widget.LineChart
 import Afferent.Canopy.Widget.AreaChart
 import Afferent.Canopy.Widget.PieChart
