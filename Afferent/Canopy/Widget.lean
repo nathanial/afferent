@@ -49,3 +49,4 @@ import Afferent.Canopy.Widget.RadarChart
 import Afferent.Canopy.Widget.CandlestickChart
 import Afferent.Canopy.Widget.WaterfallChart
 import Afferent.Canopy.Widget.GaugeChart
+import Afferent.Canopy.Widget.FunnelChart
