@@ -39,3 +39,4 @@ import Afferent.Canopy.Widget.PieChart
 import Afferent.Canopy.Widget.DonutChart
 import Afferent.Canopy.Widget.ScatterPlot
 import Afferent.Canopy.Widget.BubbleChart
+import Afferent.Canopy.Widget.Histogram
