@@ -31,3 +31,4 @@ import Afferent.Canopy.Widget.ListBox
 import Afferent.Canopy.Widget.VirtualList
 import Afferent.Canopy.Widget.TreeView
 import Afferent.Canopy.Widget.ColorPicker
+import Afferent.Canopy.Widget.BarChart
