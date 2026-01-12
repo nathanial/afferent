@@ -41,3 +41,4 @@ import Afferent.Canopy.Widget.ScatterPlot
 import Afferent.Canopy.Widget.BubbleChart
 import Afferent.Canopy.Widget.Histogram
 import Afferent.Canopy.Widget.BoxPlot
+import Afferent.Canopy.Widget.Heatmap
