@@ -51,3 +51,4 @@ import Afferent.Canopy.Widget.WaterfallChart
 import Afferent.Canopy.Widget.GaugeChart
 import Afferent.Canopy.Widget.FunnelChart
 import Afferent.Canopy.Widget.TreemapChart
+import Afferent.Canopy.Widget.SankeyDiagram
