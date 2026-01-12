@@ -34,3 +34,4 @@ import Afferent.Canopy.Widget.ColorPicker
 import Afferent.Canopy.Widget.BarChart
 import Afferent.Canopy.Widget.LineChart
 import Afferent.Canopy.Widget.AreaChart
+import Afferent.Canopy.Widget.PieChart

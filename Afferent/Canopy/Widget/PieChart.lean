@@ -1,0 +1,360 @@
+/-
+  Canopy PieChart Widget
+  Pie chart for showing proportional data as circular segments.
+-/
+import Reactive
+import Afferent.Canopy.Core
+import Afferent.Canopy.Theme
+import Afferent.Canopy.Reactive.Component
+
+namespace Afferent.Canopy
+
+open Afferent.Arbor hiding Event
+
+namespace PieChart
+
+/-- Dimensions and styling for pie chart rendering. -/
+structure Dimensions where
+  width : Float := 300.0
+  height : Float := 300.0
+  radius : Float := 100.0
+  showLabels : Bool := true
+  showValues : Bool := false
+  showPercentages : Bool := true
+  labelOffset : Float := 20.0
+  strokeWidth : Float := 1.0
+  strokeColor : Option Color := some (Color.gray 0.2)
+deriving Repr, Inhabited
+
+/-- Default pie chart dimensions. -/
+def defaultDimensions : Dimensions := {}
+
+/-- A slice of the pie chart. -/
+structure Slice where
+  value : Float
+  label : Option String := none
+  color : Option Color := none
+deriving Repr, Inhabited
+
+/-- Default colors for pie slices. -/
+def defaultColors (theme : Theme) : Array Color := #[
+  theme.primary.background,
+  theme.secondary.background,
+  Color.rgba 0.2 0.8 0.3 1.0,
+  Color.rgba 1.0 0.7 0.0 1.0,
+  Color.rgba 0.9 0.2 0.2 1.0,
+  Color.rgba 0.5 0.3 0.9 1.0,
+  Color.rgba 0.0 0.7 0.7 1.0,
+  Color.rgba 0.9 0.5 0.7 1.0,
+  Color.rgba 0.6 0.4 0.2 1.0,
+  Color.rgba 0.3 0.6 0.9 1.0
+]
+
+/-- Format a percentage value. -/
+private def formatPercent (v : Float) : String :=
+  let pct := (v * 100).floor.toUInt32
+  s!"{pct}%"
+
+/-- Format a value for display. -/
+private def formatValue (v : Float) : String :=
+  if v >= 1000000 then
+    s!"{(v / 1000000).floor.toUInt32}M"
+  else if v >= 1000 then
+    s!"{(v / 1000).floor.toUInt32}K"
+  else if v == v.floor then
+    s!"{v.floor.toUInt32}"
+  else
+    let whole := v.floor.toInt32
+    let frac := ((v - v.floor) * 10).floor.toUInt32
+    s!"{whole}.{frac}"
+
+/-- Custom spec for pie chart rendering. -/
+def pieChartSpec (slices : Array Slice) (theme : Theme)
+    (dims : Dimensions := defaultDimensions) : CustomSpec := {
+  measure := fun _ _ => (dims.width, dims.height)
+  collect := fun layout =>
+    let rect := layout.contentRect
+    let cmds : Array RenderCommand := #[]
+
+    -- Calculate center of chart
+    let centerX := rect.x + dims.width / 2
+    let centerY := rect.y + dims.height / 2
+    let center := Arbor.Point.mk' centerX centerY
+
+    -- Calculate total value
+    let total := slices.foldl (fun acc s => acc + s.value) 0.0
+    let total := if total <= 0.0 then 1.0 else total
+
+    let colors := defaultColors theme
+    let pi := 3.141592653589793
+    let twoPi := 2.0 * pi
+
+    -- Draw background circle (optional, for visual consistency)
+    let bgPath := Arbor.Path.circle center dims.radius
+    let cmds := cmds.push (.fillPath bgPath (theme.panel.background.withAlpha 0.3))
+
+    -- Draw each slice
+    let cmds := Id.run do
+      let mut cmds := cmds
+      let mut startAngle := -pi / 2  -- Start at top (12 o'clock)
+
+      for i in [0:slices.size] do
+        let slice := slices[i]!
+        let proportion := slice.value / total
+        let sweepAngle := proportion * twoPi
+        let endAngle := startAngle + sweepAngle
+
+        -- Get color for this slice
+        let color := slice.color.getD (colors[i % colors.size]!)
+
+        -- Create pie slice path
+        let slicePath := Arbor.Path.pie center dims.radius startAngle endAngle
+
+        -- Fill the slice
+        cmds := cmds.push (.fillPath slicePath color)
+
+        -- Optionally stroke the slice
+        if let some strokeColor := dims.strokeColor then
+          if dims.strokeWidth > 0.0 then
+            cmds := cmds.push (.strokePath slicePath strokeColor dims.strokeWidth)
+
+        startAngle := endAngle
+
+      cmds
+
+    -- Draw labels
+    let cmds := if dims.showLabels || dims.showValues || dims.showPercentages then
+      Id.run do
+        let mut cmds := cmds
+        let mut startAngle := -pi / 2
+
+        for i in [0:slices.size] do
+          let slice := slices[i]!
+          let proportion := slice.value / total
+          let sweepAngle := proportion * twoPi
+          let midAngle := startAngle + sweepAngle / 2
+
+          -- Calculate label position (outside the pie)
+          let labelRadius := dims.radius + dims.labelOffset
+          let labelX := centerX + labelRadius * Float.cos midAngle
+          let labelY := centerY + labelRadius * Float.sin midAngle
+
+          -- Build label text
+          let labelParts : Array String := Id.run do
+            let mut parts : Array String := #[]
+            if dims.showLabels then
+              if let some label := slice.label then
+                parts := parts.push label
+            if dims.showValues then
+              parts := parts.push (formatValue slice.value)
+            if dims.showPercentages then
+              parts := parts.push (formatPercent proportion)
+            parts
+
+          if labelParts.size > 0 then
+            let labelText := String.intercalate " " labelParts.toList
+            cmds := cmds.push (.fillText labelText labelX (labelY + 4) theme.smallFont theme.text)
+
+          startAngle := startAngle + sweepAngle
+
+        cmds
+    else cmds
+
+    cmds
+
+  draw := none
+}
+
+/-- Custom spec for pie chart with legend instead of inline labels. -/
+def pieChartWithLegendSpec (slices : Array Slice) (theme : Theme)
+    (dims : Dimensions := defaultDimensions) : CustomSpec := {
+  measure := fun _ _ => (dims.width + 120, dims.height)  -- Extra width for legend
+  collect := fun layout =>
+    let rect := layout.contentRect
+    let cmds : Array RenderCommand := #[]
+
+    -- Chart is on the left, legend on the right
+    let chartCenterX := rect.x + dims.radius + 20
+    let chartCenterY := rect.y + dims.height / 2
+    let center := Arbor.Point.mk' chartCenterX chartCenterY
+
+    let total := slices.foldl (fun acc s => acc + s.value) 0.0
+    let total := if total <= 0.0 then 1.0 else total
+
+    let colors := defaultColors theme
+    let pi := 3.141592653589793
+    let twoPi := 2.0 * pi
+
+    -- Draw each slice
+    let cmds := Id.run do
+      let mut cmds := cmds
+      let mut startAngle := -pi / 2
+
+      for i in [0:slices.size] do
+        let slice := slices[i]!
+        let proportion := slice.value / total
+        let sweepAngle := proportion * twoPi
+        let endAngle := startAngle + sweepAngle
+
+        let color := slice.color.getD (colors[i % colors.size]!)
+        let slicePath := Arbor.Path.pie center dims.radius startAngle endAngle
+
+        cmds := cmds.push (.fillPath slicePath color)
+
+        if let some strokeColor := dims.strokeColor then
+          if dims.strokeWidth > 0.0 then
+            cmds := cmds.push (.strokePath slicePath strokeColor dims.strokeWidth)
+
+        startAngle := endAngle
+
+      cmds
+
+    -- Draw legend on the right
+    let legendX := rect.x + dims.radius * 2 + 50
+    let legendStartY := rect.y + 20
+    let legendItemHeight : Float := 24.0
+    let swatchSize : Float := 14.0
+
+    let cmds := Id.run do
+      let mut cmds := cmds
+
+      for i in [0:slices.size] do
+        let slice := slices[i]!
+        let proportion := slice.value / total
+        let color := slice.color.getD (colors[i % colors.size]!)
+        let itemY := legendStartY + i.toFloat * legendItemHeight
+
+        -- Color swatch
+        let swatchRect := Arbor.Rect.mk' legendX itemY swatchSize swatchSize
+        cmds := cmds.push (.fillRect swatchRect color 2.0)
+
+        -- Label text
+        let labelX := legendX + swatchSize + 8
+        let labelY := itemY + swatchSize / 2 + 4
+
+        let labelText := match slice.label with
+          | some label => s!"{label} ({formatPercent proportion})"
+          | none => formatPercent proportion
+
+        cmds := cmds.push (.fillText labelText labelX labelY theme.smallFont theme.text)
+
+      cmds
+
+    cmds
+
+  draw := none
+}
+
+end PieChart
+
+/-- Build a pie chart visual (WidgetBuilder version).
+    - `name`: Widget name for identification
+    - `slices`: Array of pie slices with values, labels, and optional colors
+    - `theme`: Theme for styling
+    - `dims`: Chart dimensions
+-/
+def pieChartVisual (name : String) (slices : Array PieChart.Slice)
+    (theme : Theme) (dims : PieChart.Dimensions := PieChart.defaultDimensions)
+    : WidgetBuilder := do
+  let wid ← freshId
+  let chart ← custom (PieChart.pieChartSpec slices theme dims) {
+    minWidth := some dims.width
+    minHeight := some dims.height
+  }
+  let props : Trellis.FlexContainer := { Trellis.FlexContainer.column 0 with alignItems := .flexStart }
+  pure (.flex wid (some name) props {} #[chart])
+
+/-- Build a pie chart with legend visual (WidgetBuilder version).
+    - `name`: Widget name for identification
+    - `slices`: Array of pie slices
+    - `theme`: Theme for styling
+    - `dims`: Chart dimensions
+-/
+def pieChartWithLegendVisual (name : String) (slices : Array PieChart.Slice)
+    (theme : Theme) (dims : PieChart.Dimensions := PieChart.defaultDimensions)
+    : WidgetBuilder := do
+  let wid ← freshId
+  let chart ← custom (PieChart.pieChartWithLegendSpec slices theme dims) {
+    minWidth := some (dims.width + 120)
+    minHeight := some dims.height
+  }
+  let props : Trellis.FlexContainer := { Trellis.FlexContainer.column 0 with alignItems := .flexStart }
+  pure (.flex wid (some name) props {} #[chart])
+
+/-! ## Reactive PieChart Components (FRP-based)
+
+These use WidgetM for declarative composition.
+-/
+
+open Reactive Reactive.Host
+open Afferent.Canopy.Reactive
+
+/-- PieChart result - provides access to chart state. -/
+structure PieChartResult where
+  /-- The slices being displayed. -/
+  slices : Reactive.Dynamic Spider (Array PieChart.Slice)
+
+/-- Create a pie chart component using WidgetM.
+    Displays a static pie chart with the given slices.
+    - `slices`: Array of pie slices with values, labels, and optional colors
+    - `theme`: Theme for styling
+    - `dims`: Chart dimensions
+-/
+def pieChart (slices : Array PieChart.Slice)
+    (theme : Theme) (dims : PieChart.Dimensions := PieChart.defaultDimensions)
+    : WidgetM PieChartResult := do
+  let name ← registerComponentW "pie-chart" (isInteractive := false)
+
+  let slicesDyn ← Dynamic.pureM slices
+
+  emit do
+    pure (pieChartVisual name slices theme dims)
+
+  pure { slices := slicesDyn }
+
+/-- Create a pie chart with legend component using WidgetM.
+    - `slices`: Array of pie slices
+    - `theme`: Theme for styling
+    - `dims`: Chart dimensions
+-/
+def pieChartWithLegend (slices : Array PieChart.Slice)
+    (theme : Theme) (dims : PieChart.Dimensions := PieChart.defaultDimensions)
+    : WidgetM PieChartResult := do
+  let name ← registerComponentW "pie-chart" (isInteractive := false)
+
+  let slicesDyn ← Dynamic.pureM slices
+
+  emit do
+    pure (pieChartWithLegendVisual name slices theme dims)
+
+  pure { slices := slicesDyn }
+
+/-- Create a pie chart that updates based on an external event stream.
+    - `initialSlices`: Initial slice data
+    - `sliceUpdates`: Event stream of slice updates
+    - `theme`: Theme for styling
+    - `dims`: Chart dimensions
+-/
+def pieChartWithEvents (initialSlices : Array PieChart.Slice)
+    (sliceUpdates : Reactive.Event Spider (Array PieChart.Slice))
+    (theme : Theme) (dims : PieChart.Dimensions := PieChart.defaultDimensions)
+    : WidgetM PieChartResult := do
+  let name ← registerComponentW "pie-chart" (isInteractive := false)
+
+  let slicesDyn ← Reactive.holdDyn initialSlices sliceUpdates
+
+  emit do
+    let s ← slicesDyn.sample
+    pure (pieChartVisual name s theme dims)
+
+  pure { slices := slicesDyn }
+
+/-- Helper to create slices from simple value/label pairs. -/
+def PieChart.Slice.fromPairs (pairs : Array (Float × String)) : Array PieChart.Slice :=
+  pairs.map fun (value, label) => { value, label := some label }
+
+/-- Helper to create slices from values with auto-generated labels. -/
+def PieChart.Slice.fromValues (values : Array Float) : Array PieChart.Slice :=
+  values.mapIdx fun i value => { value, label := some s!"Item {i + 1}" }
+
+end Afferent.Canopy
