@@ -36,3 +36,4 @@ import Afferent.Canopy.Widget.LineChart
 import Afferent.Canopy.Widget.AreaChart
 import Afferent.Canopy.Widget.PieChart
 import Afferent.Canopy.Widget.DonutChart
+import Afferent.Canopy.Widget.ScatterPlot
