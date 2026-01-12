@@ -44,3 +44,4 @@ import Afferent.Canopy.Widget.BoxPlot
 import Afferent.Canopy.Widget.Heatmap
 import Afferent.Canopy.Widget.StackedBarChart
 import Afferent.Canopy.Widget.GroupedBarChart
+import Afferent.Canopy.Widget.StackedAreaChart
