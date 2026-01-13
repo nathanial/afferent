@@ -3,7 +3,7 @@
   Unit tests for the table widget functionality.
 -/
 import Afferent.Tests.Framework
-import Afferent.Canopy.Widget.Table
+import Afferent.Canopy.Widget.Data.Table
 
 namespace Afferent.Tests.TableTests
 

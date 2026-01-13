@@ -6,8 +6,8 @@ import Reactive
 import Afferent.Arbor
 import Afferent.Canopy.Core
 import Afferent.Canopy.Theme
-import Afferent.Canopy.Widget.Label
-import Afferent.Canopy.Widget.Panel
+import Afferent.Canopy.Widget.Display.Label
+import Afferent.Canopy.Widget.Layout.Panel
 import Afferent.Canopy.Reactive.Types
 import Afferent.Canopy.Reactive.Inputs
 

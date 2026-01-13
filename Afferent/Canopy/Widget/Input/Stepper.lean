@@ -5,7 +5,7 @@
 import Reactive
 import Afferent.Canopy.Core
 import Afferent.Canopy.Theme
-import Afferent.Canopy.Widget.Label
+import Afferent.Canopy.Widget.Display.Label
 import Afferent.Canopy.Reactive.Component
 
 namespace Afferent.Canopy

@@ -3,7 +3,7 @@
   Unit tests for the tree view widget functionality.
 -/
 import Afferent.Tests.Framework
-import Afferent.Canopy.Widget.TreeView
+import Afferent.Canopy.Widget.Data.TreeView
 import Afferent.Canopy.Reactive.Component
 import Afferent.Arbor
 

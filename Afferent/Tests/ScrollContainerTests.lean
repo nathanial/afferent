@@ -6,7 +6,7 @@ import Afferent.Tests.Framework
 import Afferent.Arbor
 import Afferent.Arbor.Widget.DSL
 import Afferent.Canopy.Reactive.Component
-import Afferent.Canopy.Widget.Scroll
+import Afferent.Canopy.Widget.Layout.Scroll
 import Afferent.Layout
 import Reactive
 import Trellis

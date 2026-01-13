@@ -5,7 +5,7 @@
 import Afferent.Tests.Framework
 import Afferent.Arbor
 import Afferent.Arbor.Widget.DSL
-import Afferent.Canopy.Widget.Tooltip
+import Afferent.Canopy.Widget.Display.Tooltip
 import Trellis
 
 namespace Afferent.Tests.TooltipTests

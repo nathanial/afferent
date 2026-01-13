@@ -7,7 +7,7 @@ import Reactive
 import Afferent.Canopy.Core
 import Afferent.Canopy.Theme
 import Afferent.Canopy.Reactive.Component
-import Afferent.Canopy.Widget.Menu
+import Afferent.Canopy.Widget.Navigation.Menu
 
 namespace Afferent.Canopy
 

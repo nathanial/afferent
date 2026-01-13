@@ -5,7 +5,7 @@
 import Reactive
 import Afferent.Canopy.Core
 import Afferent.Canopy.Theme
-import Afferent.Canopy.Widget.Button
+import Afferent.Canopy.Widget.Input.Button
 import Afferent.Canopy.Reactive.Component
 
 namespace Afferent.Canopy

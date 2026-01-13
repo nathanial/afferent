@@ -6,7 +6,7 @@ import Reactive
 import Afferent.Canopy.Core
 import Afferent.Canopy.Theme
 import Afferent.Canopy.Reactive.Component
-import Afferent.Canopy.Widget.Scroll
+import Afferent.Canopy.Widget.Layout.Scroll
 
 namespace Afferent.Canopy
 

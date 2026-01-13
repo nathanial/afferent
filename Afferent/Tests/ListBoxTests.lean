@@ -3,7 +3,7 @@
   Unit tests for the list box widget functionality.
 -/
 import Afferent.Tests.Framework
-import Afferent.Canopy.Widget.ListBox
+import Afferent.Canopy.Widget.Data.ListBox
 import Afferent.Canopy.Reactive.Component
 import Afferent.Arbor
 

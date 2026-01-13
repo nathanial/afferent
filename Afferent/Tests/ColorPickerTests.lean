@@ -3,7 +3,7 @@
   Unit tests for the color picker widget functionality.
 -/
 import Afferent.Tests.Framework
-import Afferent.Canopy.Widget.ColorPicker
+import Afferent.Canopy.Widget.Input.ColorPicker
 import Afferent.Canopy.Reactive.Component
 import Afferent.Arbor
 import Tincture

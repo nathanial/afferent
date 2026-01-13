@@ -3,7 +3,7 @@
   Unit tests for the menu widget functionality.
 -/
 import Afferent.Tests.Framework
-import Afferent.Canopy.Widget.Menu
+import Afferent.Canopy.Widget.Navigation.Menu
 
 namespace Afferent.Tests.MenuTests
 

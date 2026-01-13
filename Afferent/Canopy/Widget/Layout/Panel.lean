@@ -3,7 +3,7 @@
   Container with styled background and border.
 -/
 import Afferent.Canopy.Theme
-import Afferent.Canopy.Widget.Label
+import Afferent.Canopy.Widget.Display.Label
 
 namespace Afferent.Canopy
 
