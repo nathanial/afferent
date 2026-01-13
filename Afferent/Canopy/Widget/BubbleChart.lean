@@ -98,16 +98,18 @@ private def sizeToRadius (size minSize maxSize : Float) (dims : Dimensions) : Fl
 /-- Custom spec for single-series bubble chart rendering. -/
 def bubbleChartSpec (points : Array DataPoint) (theme : Theme)
     (dims : Dimensions := defaultDimensions) : CustomSpec := {
-  measure := fun _ _ => (dims.width, dims.height)
+  measure := fun _ _ => (dims.marginLeft + dims.marginRight + 50, dims.marginTop + dims.marginBottom + 30)
   collect := fun layout =>
     let rect := layout.contentRect
+    let actualWidth := rect.width
+    let actualHeight := rect.height
     let cmds : Array RenderCommand := #[]
 
     -- Calculate chart area
     let chartX := rect.x + dims.marginLeft
     let chartY := rect.y + dims.marginTop
-    let chartWidth := dims.width - dims.marginLeft - dims.marginRight
-    let chartHeight := dims.height - dims.marginTop - dims.marginBottom
+    let chartWidth := actualWidth - dims.marginLeft - dims.marginRight
+    let chartHeight := actualHeight - dims.marginTop - dims.marginBottom
 
     -- Find data bounds
     let (minX, maxX, minY, maxY, minSize, maxSize) := Id.run do
@@ -136,7 +138,7 @@ def bubbleChartSpec (points : Array DataPoint) (theme : Theme)
     let rangeY := niceMaxY - niceMinY
 
     -- Draw background
-    let bgRect := Arbor.Rect.mk' rect.x rect.y dims.width dims.height
+    let bgRect := Arbor.Rect.mk' rect.x rect.y actualWidth actualHeight
     let cmds := cmds.push (.fillRect bgRect (theme.panel.background.withAlpha 0.3) 6.0)
 
     -- Draw grid lines
@@ -230,15 +232,17 @@ def bubbleChartSpec (points : Array DataPoint) (theme : Theme)
 /-- Custom spec for multi-series bubble chart rendering. -/
 def multiSeriesSpec (series : Array Series) (theme : Theme)
     (dims : Dimensions := defaultDimensions) : CustomSpec := {
-  measure := fun _ _ => (dims.width, dims.height)
+  measure := fun _ _ => (dims.marginLeft + dims.marginRight + 50, dims.marginTop + dims.marginBottom + 30)
   collect := fun layout =>
     let rect := layout.contentRect
+    let actualWidth := rect.width
+    let actualHeight := rect.height
     let cmds : Array RenderCommand := #[]
 
     let chartX := rect.x + dims.marginLeft
     let chartY := rect.y + dims.marginTop
-    let chartWidth := dims.width - dims.marginLeft - dims.marginRight
-    let chartHeight := dims.height - dims.marginTop - dims.marginBottom
+    let chartWidth := actualWidth - dims.marginLeft - dims.marginRight
+    let chartHeight := actualHeight - dims.marginTop - dims.marginBottom
 
     -- Find global data bounds across all series
     let (minX, maxX, minY, maxY, minSize, maxSize) := Id.run do
@@ -271,7 +275,7 @@ def multiSeriesSpec (series : Array Series) (theme : Theme)
     let rangeY := niceMaxY - niceMinY
 
     -- Draw background
-    let bgRect := Arbor.Rect.mk' rect.x rect.y dims.width dims.height
+    let bgRect := Arbor.Rect.mk' rect.x rect.y actualWidth actualHeight
     let cmds := cmds.push (.fillRect bgRect (theme.panel.background.withAlpha 0.3) 6.0)
 
     -- Draw grid lines
@@ -350,16 +354,18 @@ def multiSeriesSpec (series : Array Series) (theme : Theme)
 /-- Custom spec for bubble chart with legend. -/
 def bubbleChartWithLegendSpec (series : Array Series) (theme : Theme)
     (dims : Dimensions := defaultDimensions) : CustomSpec := {
-  measure := fun _ _ => (dims.width + 120, dims.height)
+  measure := fun _ _ => (dims.marginLeft + dims.marginRight + 170, dims.marginTop + dims.marginBottom + 30)
   collect := fun layout =>
     let rect := layout.contentRect
+    let actualWidth := rect.width
+    let actualHeight := rect.height
     let cmds : Array RenderCommand := #[]
 
-    -- Adjust chart area for legend
+    -- Adjust chart area for legend (reserve 120px for legend on right)
     let chartX := rect.x + dims.marginLeft
     let chartY := rect.y + dims.marginTop
-    let chartWidth := dims.width - dims.marginLeft - dims.marginRight - 20
-    let chartHeight := dims.height - dims.marginTop - dims.marginBottom
+    let chartWidth := actualWidth - dims.marginLeft - dims.marginRight - 120
+    let chartHeight := actualHeight - dims.marginTop - dims.marginBottom
 
     -- Find global data bounds
     let (minX, maxX, minY, maxY, minSize, maxSize) := Id.run do
@@ -392,7 +398,7 @@ def bubbleChartWithLegendSpec (series : Array Series) (theme : Theme)
     let rangeY := niceMaxY - niceMinY
 
     -- Draw background
-    let bgRect := Arbor.Rect.mk' rect.x rect.y (dims.width + 120) dims.height
+    let bgRect := Arbor.Rect.mk' rect.x rect.y actualWidth actualHeight
     let cmds := cmds.push (.fillRect bgRect (theme.panel.background.withAlpha 0.3) 6.0)
 
     -- Draw grid lines
@@ -495,11 +501,13 @@ def bubbleChartVisual (name : String) (points : Array BubbleChart.DataPoint)
     : WidgetBuilder := do
   let wid ← freshId
   let chart ← custom (BubbleChart.bubbleChartSpec points theme dims) {
-    minWidth := some dims.width
-    minHeight := some dims.height
+    width := .percent 1.0
+    height := .percent 1.0
+    flexItem := some (Trellis.FlexItem.growing 1)
   }
-  let props : Trellis.FlexContainer := { Trellis.FlexContainer.column 0 with alignItems := .flexStart }
-  pure (.flex wid (some name) props {} #[chart])
+  let style : BoxStyle := { width := .percent 1.0, height := .percent 1.0, flexItem := some (Trellis.FlexItem.growing 1) }
+  let props : Trellis.FlexContainer := { Trellis.FlexContainer.column 0 with alignItems := .stretch }
+  pure (.flex wid (some name) props style #[chart])
 
 /-- Build a multi-series bubble chart visual (WidgetBuilder version).
     - `name`: Widget name for identification
@@ -512,11 +520,13 @@ def multiSeriesBubbleChartVisual (name : String) (series : Array BubbleChart.Ser
     : WidgetBuilder := do
   let wid ← freshId
   let chart ← custom (BubbleChart.multiSeriesSpec series theme dims) {
-    minWidth := some dims.width
-    minHeight := some dims.height
+    width := .percent 1.0
+    height := .percent 1.0
+    flexItem := some (Trellis.FlexItem.growing 1)
   }
-  let props : Trellis.FlexContainer := { Trellis.FlexContainer.column 0 with alignItems := .flexStart }
-  pure (.flex wid (some name) props {} #[chart])
+  let style : BoxStyle := { width := .percent 1.0, height := .percent 1.0, flexItem := some (Trellis.FlexItem.growing 1) }
+  let props : Trellis.FlexContainer := { Trellis.FlexContainer.column 0 with alignItems := .stretch }
+  pure (.flex wid (some name) props style #[chart])
 
 /-- Build a bubble chart with legend visual (WidgetBuilder version).
     - `name`: Widget name for identification
@@ -529,11 +539,13 @@ def bubbleChartWithLegendVisual (name : String) (series : Array BubbleChart.Seri
     : WidgetBuilder := do
   let wid ← freshId
   let chart ← custom (BubbleChart.bubbleChartWithLegendSpec series theme dims) {
-    minWidth := some (dims.width + 120)
-    minHeight := some dims.height
+    width := .percent 1.0
+    height := .percent 1.0
+    flexItem := some (Trellis.FlexItem.growing 1)
   }
-  let props : Trellis.FlexContainer := { Trellis.FlexContainer.column 0 with alignItems := .flexStart }
-  pure (.flex wid (some name) props {} #[chart])
+  let style : BoxStyle := { width := .percent 1.0, height := .percent 1.0, flexItem := some (Trellis.FlexItem.growing 1) }
+  let props : Trellis.FlexContainer := { Trellis.FlexContainer.column 0 with alignItems := .stretch }
+  pure (.flex wid (some name) props style #[chart])
 
 /-! ## Reactive BubbleChart Components (FRP-based)
 

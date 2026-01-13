@@ -165,16 +165,20 @@ def computeBins (data : Array Float) (config : BinConfig := defaultBinConfig) : 
 /-- Custom spec for histogram rendering. -/
 def histogramSpec (bins : Array Bin) (variant : HistogramVariant) (theme : Theme)
     (dims : Dimensions := defaultDimensions) (showDensity : Bool := false) : CustomSpec := {
-  measure := fun _ _ => (dims.width, dims.height)
+  measure := fun _ _ => (dims.marginLeft + dims.marginRight + 50, dims.marginTop + dims.marginBottom + 30)
   collect := fun layout =>
     let rect := layout.contentRect
     let cmds : Array RenderCommand := #[]
 
+    -- Use actual container size for responsive layout
+    let actualWidth := rect.width
+    let actualHeight := rect.height
+
     -- Calculate chart area
     let chartX := rect.x + dims.marginLeft
     let chartY := rect.y + dims.marginTop
-    let chartWidth := dims.width - dims.marginLeft - dims.marginRight
-    let chartHeight := dims.height - dims.marginTop - dims.marginBottom
+    let chartWidth := actualWidth - dims.marginLeft - dims.marginRight
+    let chartHeight := actualHeight - dims.marginTop - dims.marginBottom
 
     if bins.isEmpty then cmds else
 
@@ -193,7 +197,7 @@ def histogramSpec (bins : Array Bin) (variant : HistogramVariant) (theme : Theme
     let rangeX := maxX - minX
 
     -- Draw background
-    let bgRect := Arbor.Rect.mk' rect.x rect.y dims.width dims.height
+    let bgRect := Arbor.Rect.mk' rect.x rect.y actualWidth actualHeight
     let cmds := cmds.push (.fillRect bgRect (theme.panel.background.withAlpha 0.3) 6.0)
 
     -- Draw horizontal grid lines
@@ -270,15 +274,19 @@ def histogramSpec (bins : Array Bin) (variant : HistogramVariant) (theme : Theme
 def histogramFromCountsSpec (labels : Array String) (counts : Array Nat)
     (variant : HistogramVariant) (theme : Theme)
     (dims : Dimensions := defaultDimensions) : CustomSpec := {
-  measure := fun _ _ => (dims.width, dims.height)
+  measure := fun _ _ => (dims.marginLeft + dims.marginRight + 50, dims.marginTop + dims.marginBottom + 30)
   collect := fun layout =>
     let rect := layout.contentRect
     let cmds : Array RenderCommand := #[]
 
+    -- Use actual container size for responsive layout
+    let actualWidth := rect.width
+    let actualHeight := rect.height
+
     let chartX := rect.x + dims.marginLeft
     let chartY := rect.y + dims.marginTop
-    let chartWidth := dims.width - dims.marginLeft - dims.marginRight
-    let chartHeight := dims.height - dims.marginTop - dims.marginBottom
+    let chartWidth := actualWidth - dims.marginLeft - dims.marginRight
+    let chartHeight := actualHeight - dims.marginTop - dims.marginBottom
 
     let binCount := min labels.size counts.size
     if binCount == 0 then cmds else
@@ -293,7 +301,7 @@ def histogramFromCountsSpec (labels : Array String) (counts : Array Nat)
     let barWidth := (chartWidth - dims.barGap * (binCount - 1).toFloat) / binCount.toFloat
 
     -- Draw background
-    let bgRect := Arbor.Rect.mk' rect.x rect.y dims.width dims.height
+    let bgRect := Arbor.Rect.mk' rect.x rect.y actualWidth actualHeight
     let cmds := cmds.push (.fillRect bgRect (theme.panel.background.withAlpha 0.3) 6.0)
 
     -- Draw horizontal grid lines
@@ -373,11 +381,13 @@ def histogramVisual (name : String) (data : Array Float)
   let wid ← freshId
   let bins := Histogram.computeBins data binConfig
   let chart ← custom (Histogram.histogramSpec bins variant theme dims binConfig.normalize) {
-    minWidth := some dims.width
-    minHeight := some dims.height
+    width := .percent 1.0
+    height := .percent 1.0
+    flexItem := some (Trellis.FlexItem.growing 1)
   }
-  let props : Trellis.FlexContainer := { Trellis.FlexContainer.column 0 with alignItems := .flexStart }
-  pure (.flex wid (some name) props {} #[chart])
+  let style : BoxStyle := { width := .percent 1.0, height := .percent 1.0, flexItem := some (Trellis.FlexItem.growing 1) }
+  let props : Trellis.FlexContainer := { Trellis.FlexContainer.column 0 with alignItems := .stretch }
+  pure (.flex wid (some name) props style #[chart])
 
 /-- Build a histogram visual from pre-computed bins (WidgetBuilder version).
     - `name`: Widget name for identification
@@ -393,11 +403,13 @@ def histogramFromBinsVisual (name : String) (bins : Array Histogram.Bin)
     (showDensity : Bool := false) : WidgetBuilder := do
   let wid ← freshId
   let chart ← custom (Histogram.histogramSpec bins variant theme dims showDensity) {
-    minWidth := some dims.width
-    minHeight := some dims.height
+    width := .percent 1.0
+    height := .percent 1.0
+    flexItem := some (Trellis.FlexItem.growing 1)
   }
-  let props : Trellis.FlexContainer := { Trellis.FlexContainer.column 0 with alignItems := .flexStart }
-  pure (.flex wid (some name) props {} #[chart])
+  let style : BoxStyle := { width := .percent 1.0, height := .percent 1.0, flexItem := some (Trellis.FlexItem.growing 1) }
+  let props : Trellis.FlexContainer := { Trellis.FlexContainer.column 0 with alignItems := .stretch }
+  pure (.flex wid (some name) props style #[chart])
 
 /-- Build a histogram visual from categorical counts (WidgetBuilder version).
     - `name`: Widget name for identification
@@ -412,11 +424,13 @@ def histogramFromCountsVisual (name : String) (labels : Array String) (counts : 
     (dims : Histogram.Dimensions := Histogram.defaultDimensions) : WidgetBuilder := do
   let wid ← freshId
   let chart ← custom (Histogram.histogramFromCountsSpec labels counts variant theme dims) {
-    minWidth := some dims.width
-    minHeight := some dims.height
+    width := .percent 1.0
+    height := .percent 1.0
+    flexItem := some (Trellis.FlexItem.growing 1)
   }
-  let props : Trellis.FlexContainer := { Trellis.FlexContainer.column 0 with alignItems := .flexStart }
-  pure (.flex wid (some name) props {} #[chart])
+  let style : BoxStyle := { width := .percent 1.0, height := .percent 1.0, flexItem := some (Trellis.FlexItem.growing 1) }
+  let props : Trellis.FlexContainer := { Trellis.FlexContainer.column 0 with alignItems := .stretch }
+  pure (.flex wid (some name) props style #[chart])
 
 /-! ## Reactive Histogram Components (FRP-based)
 

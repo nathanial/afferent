@@ -106,14 +106,24 @@ private def fractionToAngle (frac : Float) (dims : Dimensions) : Float :=
 def gaugeChartSpec (data : Data) (theme : Theme)
     (colors : ChartColors := defaultColors)
     (dims : Dimensions := defaultDimensions) : CustomSpec := {
-  measure := fun _ _ => (dims.width, dims.height)
+  measure := fun _ _ => (50, 50)  -- Minimum size for circular gauge
   collect := fun layout =>
     let rect := layout.contentRect
+    let actualWidth := rect.width
+    let actualHeight := rect.height
     let cmds : Array RenderCommand := #[]
 
+    -- Use minimum of width/height for radius calculations (circular gauge)
+    let minDim := min actualWidth actualHeight
+    let radius := minDim * 0.35  -- Scale radius to fit
+    let arcThickness := minDim * 0.08
+    let needleLength := radius * 0.8
+    let needleWidth := minDim * 0.02
+    let tickLength := minDim * 0.035
+
     -- Calculate center point
-    let centerX := rect.x + dims.width / 2
-    let centerY := rect.y + dims.height * 0.65  -- Slightly below center for visual balance
+    let centerX := rect.x + actualWidth / 2
+    let centerY := rect.y + actualHeight * 0.55  -- Slightly below center for visual balance
 
     -- Normalize value to 0-1 fraction
     let valueRange := data.maxValue - data.minValue
@@ -127,10 +137,10 @@ def gaugeChartSpec (data : Data) (theme : Theme)
     -- Draw background arc
     let bgArcPath := Arbor.Path.arcPath
       (Arbor.Point.mk' centerX centerY)
-      dims.radius
+      radius
       (fractionToAngle 0.0 dims)
       (fractionToAngle 1.0 dims)
-    let cmds := cmds.push (.strokePath bgArcPath colors.background dims.arcThickness)
+    let cmds := cmds.push (.strokePath bgArcPath colors.background arcThickness)
 
     -- Draw colored segments
     let cmds := Id.run do
@@ -140,10 +150,10 @@ def gaugeChartSpec (data : Data) (theme : Theme)
         let endAngle := fractionToAngle seg.endFrac dims
         let segPath := Arbor.Path.arcPath
           (Arbor.Point.mk' centerX centerY)
-          dims.radius
+          radius
           startAngle
           endAngle
-        cmds := cmds.push (.strokePath segPath seg.color dims.arcThickness)
+        cmds := cmds.push (.strokePath segPath seg.color arcThickness)
       cmds
 
     -- Draw tick marks
@@ -153,8 +163,8 @@ def gaugeChartSpec (data : Data) (theme : Theme)
         for i in [0:dims.tickCount + 1] do
           let frac := i.toFloat / dims.tickCount.toFloat
           let angle := fractionToAngle frac dims
-          let innerR := dims.radius - dims.arcThickness / 2 - 2
-          let outerR := innerR - dims.tickLength
+          let innerR := radius - arcThickness / 2 - 2
+          let outerR := innerR - tickLength
           let cosA := Float.cos angle
           let sinA := Float.sin angle
           let x1 := centerX + innerR * cosA
@@ -170,22 +180,23 @@ def gaugeChartSpec (data : Data) (theme : Theme)
 
     -- Draw needle
     let needleAngle := fractionToAngle valueFrac dims
-    let needleTipX := centerX + dims.needleLength * Float.cos needleAngle
-    let needleTipY := centerY + dims.needleLength * Float.sin needleAngle
+    let needleTipX := centerX + needleLength * Float.cos needleAngle
+    let needleTipY := centerY + needleLength * Float.sin needleAngle
     -- Draw needle as a tapered line (triangle would be better but line works)
     let needlePath := Arbor.Path.empty
       |>.moveTo (Arbor.Point.mk' centerX centerY)
       |>.lineTo (Arbor.Point.mk' needleTipX needleTipY)
-    let cmds := cmds.push (.strokePath needlePath colors.needle dims.needleWidth)
+    let cmds := cmds.push (.strokePath needlePath colors.needle needleWidth)
 
     -- Draw center circle
-    let centerCirclePath := Arbor.Path.circle (Arbor.Point.mk' centerX centerY) 8.0
+    let centerCircleRadius := minDim * 0.035
+    let centerCirclePath := Arbor.Path.circle (Arbor.Point.mk' centerX centerY) centerCircleRadius
     let cmds := cmds.push (.fillPath centerCirclePath colors.needleCenter)
 
     -- Draw current value
     let cmds := if dims.showValue then
       let valueStr := formatValue data.value data.unit
-      let valueY := centerY + 25.0
+      let valueY := centerY + minDim * 0.12
       cmds.push (.fillText valueStr centerX valueY theme.font theme.text)
     else cmds
 
@@ -193,7 +204,7 @@ def gaugeChartSpec (data : Data) (theme : Theme)
     let cmds := if dims.showLabel then
       match data.label with
       | some label =>
-        let labelY := centerY + 42.0
+        let labelY := centerY + minDim * 0.2
         cmds.push (.fillText label centerX labelY theme.smallFont theme.textMuted)
       | none => cmds
     else cmds
@@ -202,7 +213,7 @@ def gaugeChartSpec (data : Data) (theme : Theme)
     let cmds := if dims.showMinMax then
       let minAngle := fractionToAngle 0.0 dims
       let maxAngle := fractionToAngle 1.0 dims
-      let labelRadius := dims.radius + 15.0
+      let labelRadius := radius + minDim * 0.07
       let minX := centerX + labelRadius * Float.cos minAngle
       let minY := centerY + labelRadius * Float.sin minAngle
       let maxX := centerX + labelRadius * Float.cos maxAngle
@@ -233,11 +244,17 @@ def gaugeChartVisual (name : String) (data : GaugeChart.Data)
     : WidgetBuilder := do
   let wid ← freshId
   let chart ← custom (GaugeChart.gaugeChartSpec data theme colors dims) {
-    minWidth := some dims.width
-    minHeight := some dims.height
+    width := .percent 1.0
+    height := .percent 1.0
+    flexItem := some (Trellis.FlexItem.growing 1)
   }
-  let props : Trellis.FlexContainer := { Trellis.FlexContainer.column 0 with alignItems := .flexStart }
-  pure (.flex wid (some name) props {} #[chart])
+  let style : BoxStyle := {
+    width := .percent 1.0
+    height := .percent 1.0
+    flexItem := some (Trellis.FlexItem.growing 1)
+  }
+  let props : Trellis.FlexContainer := { Trellis.FlexContainer.column 0 with alignItems := .stretch }
+  pure (.flex wid (some name) props style #[chart])
 
 /-! ## Reactive GaugeChart Components (FRP-based)
 

@@ -105,15 +105,26 @@ private def annularSegment (center : Arbor.Point) (outerR innerR : Float)
 /-- Custom spec for donut chart rendering. -/
 def donutChartSpec (slices : Array Slice) (theme : Theme)
     (dims : Dimensions := defaultDimensions) : CustomSpec := {
-  measure := fun _ _ => (dims.width, dims.height)
+  measure := fun _ _ => (50, 50)
   collect := fun layout =>
     let rect := layout.contentRect
+    let actualWidth := rect.width
+    let actualHeight := rect.height
     let cmds : Array RenderCommand := #[]
 
+    -- Use smaller of width/height for diameter-based sizing
+    let actualDiameter := min actualWidth actualHeight
+
     -- Calculate center of chart
-    let centerX := rect.x + dims.width / 2
-    let centerY := rect.y + dims.height / 2
+    let centerX := rect.x + actualWidth / 2
+    let centerY := rect.y + actualHeight / 2
     let center := Arbor.Point.mk' centerX centerY
+
+    -- Scale radii based on actual size vs configured size
+    let scale := actualDiameter / dims.width
+    let outerRadius := dims.outerRadius * scale
+    let innerRadius := dims.innerRadius * scale
+    let labelOffset := dims.labelOffset * scale
 
     -- Calculate total value
     let total := slices.foldl (fun acc s => acc + s.value) 0.0
@@ -138,7 +149,7 @@ def donutChartSpec (slices : Array Slice) (theme : Theme)
         let color := slice.color.getD (colors[i % colors.size]!)
 
         -- Create annular segment path
-        let segmentPath := annularSegment center dims.outerRadius dims.innerRadius startAngle endAngle
+        let segmentPath := annularSegment center outerRadius innerRadius startAngle endAngle
 
         -- Fill the segment
         cmds := cmds.push (.fillPath segmentPath color)
@@ -176,7 +187,7 @@ def donutChartSpec (slices : Array Slice) (theme : Theme)
           let midAngle := startAngle + sweepAngle / 2
 
           -- Calculate label position (outside the outer ring)
-          let labelRadius := dims.outerRadius + dims.labelOffset
+          let labelRadius := outerRadius + labelOffset
           let labelX := centerX + labelRadius * Float.cos midAngle
           let labelY := centerY + labelRadius * Float.sin midAngle
 
@@ -207,14 +218,25 @@ def donutChartSpec (slices : Array Slice) (theme : Theme)
 /-- Custom spec for donut chart with legend. -/
 def donutChartWithLegendSpec (slices : Array Slice) (theme : Theme)
     (dims : Dimensions := defaultDimensions) : CustomSpec := {
-  measure := fun _ _ => (dims.width + 120, dims.height)
+  measure := fun _ _ => (170, 50)
   collect := fun layout =>
     let rect := layout.contentRect
+    let actualWidth := rect.width
+    let actualHeight := rect.height
     let cmds : Array RenderCommand := #[]
 
+    -- Reserve space for legend (120px on right)
+    let chartAreaWidth := actualWidth - 120
+    let chartDiameter := min chartAreaWidth actualHeight
+
+    -- Scale based on actual size
+    let scale := chartDiameter / dims.width
+    let outerRadius := dims.outerRadius * scale
+    let innerRadius := dims.innerRadius * scale
+
     -- Chart on left, legend on right
-    let chartCenterX := rect.x + dims.outerRadius + 20
-    let chartCenterY := rect.y + dims.height / 2
+    let chartCenterX := rect.x + chartDiameter / 2 + 20
+    let chartCenterY := rect.y + actualHeight / 2
     let center := Arbor.Point.mk' chartCenterX chartCenterY
 
     let total := slices.foldl (fun acc s => acc + s.value) 0.0
@@ -236,7 +258,7 @@ def donutChartWithLegendSpec (slices : Array Slice) (theme : Theme)
         let endAngle := startAngle + sweepAngle
 
         let color := slice.color.getD (colors[i % colors.size]!)
-        let segmentPath := annularSegment center dims.outerRadius dims.innerRadius startAngle endAngle
+        let segmentPath := annularSegment center outerRadius innerRadius startAngle endAngle
 
         cmds := cmds.push (.fillPath segmentPath color)
 
@@ -260,7 +282,7 @@ def donutChartWithLegendSpec (slices : Array Slice) (theme : Theme)
       | none, none => cmds
 
     -- Draw legend
-    let legendX := rect.x + dims.outerRadius * 2 + 50
+    let legendX := rect.x + chartDiameter + 50
     let legendStartY := rect.y + 20
     let legendItemHeight : Float := 24.0
     let swatchSize : Float := 14.0
@@ -308,11 +330,13 @@ def donutChartVisual (name : String) (slices : Array DonutChart.Slice)
     : WidgetBuilder := do
   let wid ← freshId
   let chart ← custom (DonutChart.donutChartSpec slices theme dims) {
-    minWidth := some dims.width
-    minHeight := some dims.height
+    width := .percent 1.0
+    height := .percent 1.0
+    flexItem := some (Trellis.FlexItem.growing 1)
   }
-  let props : Trellis.FlexContainer := { Trellis.FlexContainer.column 0 with alignItems := .flexStart }
-  pure (.flex wid (some name) props {} #[chart])
+  let style : BoxStyle := { width := .percent 1.0, height := .percent 1.0, flexItem := some (Trellis.FlexItem.growing 1) }
+  let props : Trellis.FlexContainer := { Trellis.FlexContainer.column 0 with alignItems := .stretch }
+  pure (.flex wid (some name) props style #[chart])
 
 /-- Build a donut chart with legend visual (WidgetBuilder version).
     - `name`: Widget name for identification
@@ -325,11 +349,13 @@ def donutChartWithLegendVisual (name : String) (slices : Array DonutChart.Slice)
     : WidgetBuilder := do
   let wid ← freshId
   let chart ← custom (DonutChart.donutChartWithLegendSpec slices theme dims) {
-    minWidth := some (dims.width + 120)
-    minHeight := some dims.height
+    width := .percent 1.0
+    height := .percent 1.0
+    flexItem := some (Trellis.FlexItem.growing 1)
   }
-  let props : Trellis.FlexContainer := { Trellis.FlexContainer.column 0 with alignItems := .flexStart }
-  pure (.flex wid (some name) props {} #[chart])
+  let style : BoxStyle := { width := .percent 1.0, height := .percent 1.0, flexItem := some (Trellis.FlexItem.growing 1) }
+  let props : Trellis.FlexContainer := { Trellis.FlexContainer.column 0 with alignItems := .stretch }
+  pure (.flex wid (some name) props style #[chart])
 
 /-! ## Reactive DonutChart Components (FRP-based)
 

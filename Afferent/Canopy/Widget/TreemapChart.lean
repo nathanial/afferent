@@ -239,15 +239,17 @@ private partial def renderNodes (items : Array (LayoutItem × LayoutRect))
 /-- Custom spec for treemap chart rendering. -/
 def treemapChartSpec (data : Data) (theme : Theme)
     (dims : Dimensions := defaultDimensions) : CustomSpec := {
-  measure := fun _ _ => (dims.width, dims.height)
+  measure := fun _ _ => (dims.padding * 2 + 40, dims.padding * 2 + 40)
   collect := fun layout =>
     let rect := layout.contentRect
+    let actualWidth := rect.width
+    let actualHeight := rect.height
     let cmds : Array RenderCommand := #[]
 
     if data.nodes.isEmpty then cmds else
 
     -- Draw background
-    let bgRect := Arbor.Rect.mk' rect.x rect.y dims.width dims.height
+    let bgRect := Arbor.Rect.mk' rect.x rect.y actualWidth actualHeight
     let cmds := cmds.push (.fillRect bgRect (theme.panel.background.withAlpha 0.3) 6.0)
 
     -- Create layout items
@@ -258,8 +260,8 @@ def treemapChartSpec (data : Data) (theme : Theme)
     let layoutRect : LayoutRect := {
       x := rect.x + dims.padding
       y := rect.y + dims.padding
-      w := dims.width - dims.padding * 2
-      h := dims.height - dims.padding * 2
+      w := actualWidth - dims.padding * 2
+      h := actualHeight - dims.padding * 2
     }
 
     -- Run squarify algorithm
@@ -285,11 +287,17 @@ def treemapChartVisual (name : String) (data : TreemapChart.Data)
     : WidgetBuilder := do
   let wid ← freshId
   let chart ← custom (TreemapChart.treemapChartSpec data theme dims) {
-    minWidth := some dims.width
-    minHeight := some dims.height
+    width := .percent 1.0
+    height := .percent 1.0
+    flexItem := some (Trellis.FlexItem.growing 1)
   }
-  let props : Trellis.FlexContainer := { Trellis.FlexContainer.column 0 with alignItems := .flexStart }
-  pure (.flex wid (some name) props {} #[chart])
+  let style : BoxStyle := {
+    width := .percent 1.0
+    height := .percent 1.0
+    flexItem := some (Trellis.FlexItem.growing 1)
+  }
+  let props : Trellis.FlexContainer := { Trellis.FlexContainer.column 0 with alignItems := .stretch }
+  pure (.flex wid (some name) props style #[chart])
 
 /-! ## Reactive TreemapChart Components (FRP-based)
 

@@ -71,14 +71,18 @@ private def formatValue (v : Float) : String :=
 /-- Custom spec for pie chart rendering. -/
 def pieChartSpec (slices : Array Slice) (theme : Theme)
     (dims : Dimensions := defaultDimensions) : CustomSpec := {
-  measure := fun _ _ => (dims.width, dims.height)
+  measure := fun _ _ => (dims.radius * 2 + dims.labelOffset * 2 + 50, dims.radius * 2 + dims.labelOffset * 2 + 30)
   collect := fun layout =>
     let rect := layout.contentRect
     let cmds : Array RenderCommand := #[]
 
+    -- Use actual allocated size for responsive layout
+    let actualWidth := rect.width
+    let actualHeight := rect.height
+
     -- Calculate center of chart
-    let centerX := rect.x + dims.width / 2
-    let centerY := rect.y + dims.height / 2
+    let centerX := rect.x + actualWidth / 2
+    let centerY := rect.y + actualHeight / 2
     let center := Arbor.Point.mk' centerX centerY
 
     -- Calculate total value
@@ -168,14 +172,18 @@ def pieChartSpec (slices : Array Slice) (theme : Theme)
 /-- Custom spec for pie chart with legend instead of inline labels. -/
 def pieChartWithLegendSpec (slices : Array Slice) (theme : Theme)
     (dims : Dimensions := defaultDimensions) : CustomSpec := {
-  measure := fun _ _ => (dims.width + 120, dims.height)  -- Extra width for legend
+  measure := fun _ _ => (dims.radius * 2 + 170, dims.radius * 2 + 50)  -- Minimum size with legend
   collect := fun layout =>
     let rect := layout.contentRect
     let cmds : Array RenderCommand := #[]
 
+    -- Use actual allocated size for responsive layout
+    let actualWidth := rect.width
+    let actualHeight := rect.height
+
     -- Chart is on the left, legend on the right
     let chartCenterX := rect.x + dims.radius + 20
-    let chartCenterY := rect.y + dims.height / 2
+    let chartCenterY := rect.y + actualHeight / 2
     let center := Arbor.Point.mk' chartCenterX chartCenterY
 
     let total := slices.foldl (fun acc s => acc + s.value) 0.0
@@ -258,11 +266,13 @@ def pieChartVisual (name : String) (slices : Array PieChart.Slice)
     : WidgetBuilder := do
   let wid ← freshId
   let chart ← custom (PieChart.pieChartSpec slices theme dims) {
-    minWidth := some dims.width
-    minHeight := some dims.height
+    width := .percent 1.0
+    height := .percent 1.0
+    flexItem := some (Trellis.FlexItem.growing 1)
   }
-  let props : Trellis.FlexContainer := { Trellis.FlexContainer.column 0 with alignItems := .flexStart }
-  pure (.flex wid (some name) props {} #[chart])
+  let style : BoxStyle := { width := .percent 1.0, height := .percent 1.0, flexItem := some (Trellis.FlexItem.growing 1) }
+  let props : Trellis.FlexContainer := { Trellis.FlexContainer.column 0 with alignItems := .stretch }
+  pure (.flex wid (some name) props style #[chart])
 
 /-- Build a pie chart with legend visual (WidgetBuilder version).
     - `name`: Widget name for identification
@@ -275,11 +285,13 @@ def pieChartWithLegendVisual (name : String) (slices : Array PieChart.Slice)
     : WidgetBuilder := do
   let wid ← freshId
   let chart ← custom (PieChart.pieChartWithLegendSpec slices theme dims) {
-    minWidth := some (dims.width + 120)
-    minHeight := some dims.height
+    width := .percent 1.0
+    height := .percent 1.0
+    flexItem := some (Trellis.FlexItem.growing 1)
   }
-  let props : Trellis.FlexContainer := { Trellis.FlexContainer.column 0 with alignItems := .flexStart }
-  pure (.flex wid (some name) props {} #[chart])
+  let style : BoxStyle := { width := .percent 1.0, height := .percent 1.0, flexItem := some (Trellis.FlexItem.growing 1) }
+  let props : Trellis.FlexContainer := { Trellis.FlexContainer.column 0 with alignItems := .stretch }
+  pure (.flex wid (some name) props style #[chart])
 
 /-! ## Reactive PieChart Components (FRP-based)
 

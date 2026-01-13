@@ -92,9 +92,11 @@ private def calculateStackedTotals (data : Data) : Array Float :=
 /-- Custom spec for stacked bar chart rendering. -/
 def stackedBarChartSpec (data : Data) (theme : Theme)
     (dims : Dimensions := defaultDimensions) : CustomSpec := {
-  measure := fun _ _ => (dims.width, dims.height)
+  measure := fun _ _ => (dims.marginLeft + dims.marginRight + 50, dims.marginTop + dims.marginBottom + 30)
   collect := fun layout =>
     let rect := layout.contentRect
+    let actualWidth := rect.width
+    let actualHeight := rect.height
     let cmds : Array RenderCommand := #[]
 
     let numCategories := data.categories.size
@@ -104,8 +106,8 @@ def stackedBarChartSpec (data : Data) (theme : Theme)
     let legendSpace := if dims.showLegend then dims.marginRight else 20.0
     let chartX := rect.x + dims.marginLeft
     let chartY := rect.y + dims.marginTop
-    let chartWidth := dims.width - dims.marginLeft - legendSpace
-    let chartHeight := dims.height - dims.marginTop - dims.marginBottom
+    let chartWidth := actualWidth - dims.marginLeft - legendSpace
+    let chartHeight := actualHeight - dims.marginTop - dims.marginBottom
 
     -- Find max stacked total for scaling
     let stackedTotals := calculateStackedTotals data
@@ -125,7 +127,7 @@ def stackedBarChartSpec (data : Data) (theme : Theme)
     let barWidth := (chartWidth - totalGapWidth) / numCategories.toFloat
 
     -- Draw background
-    let bgRect := Arbor.Rect.mk' rect.x rect.y dims.width dims.height
+    let bgRect := Arbor.Rect.mk' rect.x rect.y actualWidth actualHeight
     let cmds := cmds.push (.fillRect bgRect (theme.panel.background.withAlpha 0.3) 6.0)
 
     -- Draw grid lines
@@ -225,11 +227,13 @@ def stackedBarChartVisual (name : String) (data : StackedBarChart.Data)
     : WidgetBuilder := do
   let wid ← freshId
   let chart ← custom (StackedBarChart.stackedBarChartSpec data theme dims) {
-    minWidth := some dims.width
-    minHeight := some dims.height
+    width := .percent 1.0
+    height := .percent 1.0
+    flexItem := some (Trellis.FlexItem.growing 1)
   }
-  let props : Trellis.FlexContainer := { Trellis.FlexContainer.column 0 with alignItems := .flexStart }
-  pure (.flex wid (some name) props {} #[chart])
+  let style : BoxStyle := { width := .percent 1.0, height := .percent 1.0, flexItem := some (Trellis.FlexItem.growing 1) }
+  let props : Trellis.FlexContainer := { Trellis.FlexContainer.column 0 with alignItems := .stretch }
+  pure (.flex wid (some name) props style #[chart])
 
 /-! ## Reactive StackedBarChart Components (FRP-based)
 

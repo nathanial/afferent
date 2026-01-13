@@ -130,9 +130,11 @@ private def findValueRange (positions : Array (Float × Float × BarType)) : (Fl
 def waterfallChartSpec (data : Data) (theme : Theme)
     (colors : ChartColors := defaultColors)
     (dims : Dimensions := defaultDimensions) : CustomSpec := {
-  measure := fun _ _ => (dims.width, dims.height)
+  measure := fun _ _ => (dims.marginLeft + dims.marginRight + 50, dims.marginTop + dims.marginBottom + 30)
   collect := fun layout =>
     let rect := layout.contentRect
+    let actualWidth := rect.width
+    let actualHeight := rect.height
     let cmds : Array RenderCommand := #[]
 
     let numBars := data.bars.size
@@ -147,8 +149,8 @@ def waterfallChartSpec (data : Data) (theme : Theme)
     -- Calculate chart area
     let chartX := rect.x + dims.marginLeft
     let chartY := rect.y + dims.marginTop
-    let chartWidth := dims.width - dims.marginLeft - dims.marginRight
-    let chartHeight := dims.height - dims.marginTop - dims.marginBottom
+    let chartWidth := actualWidth - dims.marginLeft - dims.marginRight
+    let chartHeight := actualHeight - dims.marginTop - dims.marginBottom
 
     -- Calculate bar width
     let totalGapWidth := dims.barGap * (numBars + 1).toFloat
@@ -159,7 +161,7 @@ def waterfallChartSpec (data : Data) (theme : Theme)
       chartY + chartHeight - ((v - minVal) / valueRange) * chartHeight
 
     -- Draw background
-    let bgRect := Arbor.Rect.mk' rect.x rect.y dims.width dims.height
+    let bgRect := Arbor.Rect.mk' rect.x rect.y actualWidth actualHeight
     let cmds := cmds.push (.fillRect bgRect (theme.panel.background.withAlpha 0.3) 6.0)
 
     -- Draw grid lines
@@ -271,11 +273,13 @@ def waterfallChartVisual (name : String) (data : WaterfallChart.Data)
     : WidgetBuilder := do
   let wid ← freshId
   let chart ← custom (WaterfallChart.waterfallChartSpec data theme colors dims) {
-    minWidth := some dims.width
-    minHeight := some dims.height
+    width := .percent 1.0
+    height := .percent 1.0
+    flexItem := some (Trellis.FlexItem.growing 1)
   }
-  let props : Trellis.FlexContainer := { Trellis.FlexContainer.column 0 with alignItems := .flexStart }
-  pure (.flex wid (some name) props {} #[chart])
+  let style : BoxStyle := { width := .percent 1.0, height := .percent 1.0, flexItem := some (Trellis.FlexItem.growing 1) }
+  let props : Trellis.FlexContainer := { Trellis.FlexContainer.column 0 with alignItems := .stretch }
+  pure (.flex wid (some name) props style #[chart])
 
 /-! ## Reactive WaterfallChart Components (FRP-based)
 
