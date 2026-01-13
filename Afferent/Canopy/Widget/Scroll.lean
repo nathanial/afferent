@@ -43,6 +43,10 @@ structure ScrollContainerConfig where
   scrollbarMinThumb : Float := 30.0
   /-- Scrollbar corner radius. -/
   scrollbarRadius : Float := 4.0
+  /-- Fill available height instead of using fixed pixel height. -/
+  fillHeight : Bool := false
+  /-- Fill available width instead of using fixed pixel width. -/
+  fillWidth : Bool := false
 deriving Repr, Inhabited
 
 namespace ScrollContainerConfig
@@ -137,10 +141,16 @@ def scrollContainerVisual (name : String) (config : ScrollContainerConfig) (them
     (scrollState : ScrollState) (contentWidth contentHeight : Float)
     (child : WidgetBuilder) : WidgetBuilder := do
   let style : BoxStyle := {
-    minWidth := some config.width
-    minHeight := some config.height
-    maxWidth := some config.width
-    maxHeight := some config.height
+    -- Use percentage-based sizing when fill options are enabled
+    width := if config.fillWidth then .percent 1.0 else .auto
+    height := if config.fillHeight then .percent 1.0 else .auto
+    minWidth := if config.fillWidth then none else some config.width
+    minHeight := if config.fillHeight then none else some config.height
+    maxWidth := if config.fillWidth then none else some config.width
+    maxHeight := if config.fillHeight then none else some config.height
+    flexItem := if config.fillHeight || config.fillWidth
+                then some (Trellis.FlexItem.growing 1)
+                else none
   }
   let scrollbarConfig := buildScrollbarConfig config theme
   namedScroll name style contentWidth contentHeight scrollState scrollbarConfig child

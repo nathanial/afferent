@@ -124,13 +124,15 @@ def radarChartSpec (data : Data) (theme : Theme)
     let numAxes := data.axisLabels.size
     if numAxes < 3 then cmds else  -- Need at least 3 axes for a polygon
 
-    -- Calculate center point
+    -- Calculate center point and radius from available space
     let legendSpace := if dims.showLegend then dims.marginRight else 20.0
     let chartWidth := actualWidth - dims.marginLeft - legendSpace
     let chartHeight := actualHeight - dims.marginTop - dims.marginBottom
     let centerX := rect.x + dims.marginLeft + chartWidth / 2
     let centerY := rect.y + dims.marginTop + chartHeight / 2
-    let radius := (min actualWidth actualHeight) / 2 * 0.9 - max dims.marginTop (max dims.marginBottom (max dims.marginLeft dims.marginRight))
+    -- Radius is based on available chart area, leaving room for labels
+    let availableRadius := (min chartWidth chartHeight) / 2
+    let radius := max 20.0 (availableRadius * 0.75)  -- 75% of available, min 20px
 
     -- Find max value for scaling
     let maxVal := findMaxValue data

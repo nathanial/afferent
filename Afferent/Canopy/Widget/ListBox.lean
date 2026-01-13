@@ -28,6 +28,8 @@ structure ListBoxConfig where
   maxVisibleItems : Nat := 6
   selectionMode : ListBoxSelectionMode := .single
   borderWidth : Float := 1.0
+  /-- Fill available height instead of using maxVisibleItems. -/
+  fillHeight : Bool := false
 deriving Repr, Inhabited
 
 /-- Result from list box widget. -/
@@ -116,14 +118,15 @@ def listBox (items : Array String) (theme : Theme)
   let allClicks ← useAllClicks
   let allHovers ← useAllHovers
 
-  -- Calculate visible height
+  -- Calculate visible height (used when not filling available space)
   let visibleHeight := (min items.size config.maxVisibleItems).toFloat * config.itemHeight
   let scrollConfig : ScrollContainerConfig := {
     width := 200  -- Default width, can be overridden by parent layout
     height := visibleHeight
     verticalScroll := true
     horizontalScroll := false
-    scrollbarVisibility := if items.size > config.maxVisibleItems then .always else .hidden
+    scrollbarVisibility := if config.fillHeight || items.size > config.maxVisibleItems then .always else .hidden
+    fillHeight := config.fillHeight
   }
 
   -- Create trigger for item clicks
@@ -185,14 +188,15 @@ def listBoxWithSelection (items : Array String) (initialSelection : Array Nat)
   let allClicks ← useAllClicks
   let allHovers ← useAllHovers
 
-  -- Calculate visible height
+  -- Calculate visible height (used when not filling available space)
   let visibleHeight := (min items.size config.maxVisibleItems).toFloat * config.itemHeight
   let scrollConfig : ScrollContainerConfig := {
     width := 200
     height := visibleHeight
     verticalScroll := true
     horizontalScroll := false
-    scrollbarVisibility := if items.size > config.maxVisibleItems then .always else .hidden
+    scrollbarVisibility := if config.fillHeight || items.size > config.maxVisibleItems then .always else .hidden
+    fillHeight := config.fillHeight
   }
 
   -- Create trigger for item clicks

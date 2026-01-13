@@ -71,7 +71,7 @@ private def formatValue (v : Float) : String :=
 /-- Custom spec for pie chart rendering. -/
 def pieChartSpec (slices : Array Slice) (theme : Theme)
     (dims : Dimensions := defaultDimensions) : CustomSpec := {
-  measure := fun _ _ => (dims.radius * 2 + dims.labelOffset * 2 + 50, dims.radius * 2 + dims.labelOffset * 2 + 30)
+  measure := fun _ _ => (50, 50)  -- Minimum size
   collect := fun layout =>
     let rect := layout.contentRect
     let cmds : Array RenderCommand := #[]
@@ -79,6 +79,11 @@ def pieChartSpec (slices : Array Slice) (theme : Theme)
     -- Use actual allocated size for responsive layout
     let actualWidth := rect.width
     let actualHeight := rect.height
+
+    -- Calculate radius from actual size (leave room for labels if shown)
+    let labelSpace := if dims.showLabels || dims.showPercentages || dims.showValues then dims.labelOffset else 0
+    let availableSize := min actualWidth actualHeight - labelSpace * 2
+    let radius := max 10 (availableSize / 2 * 0.9)
 
     -- Calculate center of chart
     let centerX := rect.x + actualWidth / 2
@@ -94,7 +99,7 @@ def pieChartSpec (slices : Array Slice) (theme : Theme)
     let twoPi := 2.0 * pi
 
     -- Draw background circle (optional, for visual consistency)
-    let bgPath := Arbor.Path.circle center dims.radius
+    let bgPath := Arbor.Path.circle center radius
     let cmds := cmds.push (.fillPath bgPath (theme.panel.background.withAlpha 0.3))
 
     -- Draw each slice
@@ -112,7 +117,7 @@ def pieChartSpec (slices : Array Slice) (theme : Theme)
         let color := slice.color.getD (colors[i % colors.size]!)
 
         -- Create pie slice path
-        let slicePath := Arbor.Path.pie center dims.radius startAngle endAngle
+        let slicePath := Arbor.Path.pie center radius startAngle endAngle
 
         -- Fill the slice
         cmds := cmds.push (.fillPath slicePath color)
@@ -139,7 +144,7 @@ def pieChartSpec (slices : Array Slice) (theme : Theme)
           let midAngle := startAngle + sweepAngle / 2
 
           -- Calculate label position (outside the pie)
-          let labelRadius := dims.radius + dims.labelOffset
+          let labelRadius := radius + dims.labelOffset
           let labelX := centerX + labelRadius * Float.cos midAngle
           let labelY := centerY + labelRadius * Float.sin midAngle
 
@@ -172,7 +177,7 @@ def pieChartSpec (slices : Array Slice) (theme : Theme)
 /-- Custom spec for pie chart with legend instead of inline labels. -/
 def pieChartWithLegendSpec (slices : Array Slice) (theme : Theme)
     (dims : Dimensions := defaultDimensions) : CustomSpec := {
-  measure := fun _ _ => (dims.radius * 2 + 170, dims.radius * 2 + 50)  -- Minimum size with legend
+  measure := fun _ _ => (170, 50)  -- Minimum size with legend
   collect := fun layout =>
     let rect := layout.contentRect
     let cmds : Array RenderCommand := #[]
@@ -181,8 +186,14 @@ def pieChartWithLegendSpec (slices : Array Slice) (theme : Theme)
     let actualWidth := rect.width
     let actualHeight := rect.height
 
+    -- Reserve space for legend (120px on right)
+    let legendWidth : Float := 120
+    let chartAreaWidth := actualWidth - legendWidth - 20
+    let chartSize := min chartAreaWidth actualHeight
+    let radius := max 10 (chartSize / 2 * 0.9)
+
     -- Chart is on the left, legend on the right
-    let chartCenterX := rect.x + dims.radius + 20
+    let chartCenterX := rect.x + radius + 20
     let chartCenterY := rect.y + actualHeight / 2
     let center := Arbor.Point.mk' chartCenterX chartCenterY
 
@@ -205,7 +216,7 @@ def pieChartWithLegendSpec (slices : Array Slice) (theme : Theme)
         let endAngle := startAngle + sweepAngle
 
         let color := slice.color.getD (colors[i % colors.size]!)
-        let slicePath := Arbor.Path.pie center dims.radius startAngle endAngle
+        let slicePath := Arbor.Path.pie center radius startAngle endAngle
 
         cmds := cmds.push (.fillPath slicePath color)
 
@@ -218,7 +229,7 @@ def pieChartWithLegendSpec (slices : Array Slice) (theme : Theme)
       cmds
 
     -- Draw legend on the right
-    let legendX := rect.x + dims.radius * 2 + 50
+    let legendX := rect.x + radius * 2 + 50
     let legendStartY := rect.y + 20
     let legendItemHeight : Float := 24.0
     let swatchSize : Float := 14.0
