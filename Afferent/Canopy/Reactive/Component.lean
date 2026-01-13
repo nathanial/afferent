@@ -502,6 +502,8 @@ def dynWidget (dynValue : Dynamic Spider a) (builder : a → WidgetM b)
     let renders ← rendersRef.get
     if renders.isEmpty then
       pure (Afferent.Arbor.spacer 0 0)
+    else if h : renders.size = 1 then
+      renders[0]  -- Return single child directly without wrapping
     else
       let widgets ← renders.mapM id
       pure (Afferent.Arbor.column (gap := 0) (style := {}) widgets)
