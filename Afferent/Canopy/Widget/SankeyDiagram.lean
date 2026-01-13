@@ -265,46 +265,79 @@ private def linkPath (l : LinkLayout) (ox oy : Float) : Arbor.Path :=
     |>.closePath
 
 /-- Custom spec for Sankey diagram rendering with pre-computed cached layout.
-    Only performs offset calculations and render command generation - no layout computation. -/
+    Only performs offset calculations and render command generation - no layout computation.
+    Scales cached positions to fit actual allocated size. -/
 def sankeyDiagramSpecCached (cached : CachedLayout) (data : Data) (theme : Theme)
     (dims : Dimensions := defaultDimensions) : CustomSpec := {
-  measure := fun _ _ => (dims.width, dims.height)
+  measure := fun _ _ => (dims.marginLeft + dims.marginRight + 100, dims.marginTop + dims.marginBottom + 50)
   collect := fun layout =>
     let rect := layout.contentRect
     let cmds : Array RenderCommand := #[]
 
     if cached.nodeLayouts.isEmpty then cmds else
 
+    -- Use actual allocated size from layout
+    let actualWidth := rect.width
+    let actualHeight := rect.height
+
+    -- Calculate scale factors to map cached positions to actual size
+    let expectedChartWidth := dims.width - dims.marginLeft - dims.marginRight
+    let expectedChartHeight := dims.height - dims.marginTop - dims.marginBottom
+    let actualChartWidth := actualWidth - dims.marginLeft - dims.marginRight
+    let actualChartHeight := actualHeight - dims.marginTop - dims.marginBottom
+    let scaleX := if expectedChartWidth > 0 then actualChartWidth / expectedChartWidth else 1.0
+    let scaleY := if expectedChartHeight > 0 then actualChartHeight / expectedChartHeight else 1.0
+
     -- Offset from screen position
     let ox := rect.x + dims.marginLeft
     let oy := rect.y + dims.marginTop
 
     -- Draw background
-    let bgRect := Arbor.Rect.mk' rect.x rect.y dims.width dims.height
+    let bgRect := Arbor.Rect.mk' rect.x rect.y actualWidth actualHeight
     let cmds := cmds.push (.fillRect bgRect (theme.panel.background.withAlpha 0.3) 6.0)
 
-    -- Draw links first (behind nodes) - just offset pre-computed positions
+    -- Scale node width proportionally
+    let scaledNodeWidth := dims.nodeWidth * scaleX
+
+    -- Draw links first (behind nodes) - scale and offset pre-computed positions
     let cmds := cached.linkLayouts.foldl (fun cmds l =>
-      let path := linkPath l ox oy
+      -- Apply scale to cached positions
+      let scaledLink : LinkLayout := {
+        link := l.link
+        sourceX := l.sourceX * scaleX
+        sourceY := l.sourceY * scaleY
+        sourceHeight := l.sourceHeight * scaleY
+        targetX := l.targetX * scaleX
+        targetY := l.targetY * scaleY
+        targetHeight := l.targetHeight * scaleY
+        color := l.color
+      }
+      let path := linkPath scaledLink ox oy
       cmds.push (.fillPath path l.color)
     ) cmds
 
-    -- Draw nodes - just offset pre-computed positions
+    -- Draw nodes - scale and offset pre-computed positions
     let cmds := cached.nodeLayouts.foldl (fun cmds n =>
-      let nodeRect := Arbor.Rect.mk' (n.x + ox) (n.y + oy) dims.nodeWidth n.height
+      let scaledX := n.x * scaleX
+      let scaledY := n.y * scaleY
+      let scaledHeight := n.height * scaleY
+      let nodeRect := Arbor.Rect.mk' (scaledX + ox) (scaledY + oy) scaledNodeWidth scaledHeight
       cmds.push (.fillRect nodeRect n.color 2.0)
     ) cmds
 
-    -- Draw labels - just offset pre-computed positions
+    -- Draw labels - scale and offset pre-computed positions
     let cmds := if dims.showLabels then
       cached.nodeLayouts.foldl (fun cmds n =>
-        let labelY := n.y + oy + n.height / 2 + 4
+        let scaledX := n.x * scaleX
+        let scaledY := n.y * scaleY
+        let scaledHeight := n.height * scaleY
+        let labelY := scaledY + oy + scaledHeight / 2 + 4
         let (labelX, _align) := if n.node.column == cached.maxColumn then
-          (n.x + ox + dims.nodeWidth + 6, 0)  -- Right side
+          (scaledX + ox + scaledNodeWidth + 6, 0)  -- Right side
         else if n.node.column == 0 then
-          (n.x + ox - 6, 1)  -- Left side (right-aligned)
+          (scaledX + ox - 6, 1)  -- Left side (right-aligned)
         else
-          (n.x + ox + dims.nodeWidth + 6, 0)  -- Default right
+          (scaledX + ox + scaledNodeWidth + 6, 0)  -- Default right
 
         let labelText := if dims.showValues then
           let v := nodeValue n.node.id data.links
@@ -328,7 +361,7 @@ end SankeyDiagram
     - `cached`: Pre-computed layout (compute once, reuse every frame)
     - `data`: Original data (for label values)
     - `theme`: Theme for styling
-    - `dims`: Diagram dimensions
+    - `dims`: Diagram dimensions (margins only - actual size from layout)
 -/
 def sankeyDiagramVisualCached (name : String) (cached : SankeyDiagram.CachedLayout)
     (data : SankeyDiagram.Data) (theme : Theme)
@@ -336,11 +369,17 @@ def sankeyDiagramVisualCached (name : String) (cached : SankeyDiagram.CachedLayo
     : WidgetBuilder := do
   let wid ← freshId
   let chart ← custom (SankeyDiagram.sankeyDiagramSpecCached cached data theme dims) {
-    minWidth := some dims.width
-    minHeight := some dims.height
+    width := .percent 1.0
+    height := .percent 1.0
+    flexItem := some (Trellis.FlexItem.growing 1)
   }
-  let props : Trellis.FlexContainer := { Trellis.FlexContainer.column 0 with alignItems := .flexStart }
-  pure (.flex wid (some name) props {} #[chart])
+  let style : BoxStyle := {
+    width := .percent 1.0
+    height := .percent 1.0
+    flexItem := some (Trellis.FlexItem.growing 1)
+  }
+  let props : Trellis.FlexContainer := { Trellis.FlexContainer.column 0 with alignItems := .stretch }
+  pure (.flex wid (some name) props style #[chart])
 
 /-! ## Reactive SankeyDiagram Components (FRP-based)
 

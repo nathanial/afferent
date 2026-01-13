@@ -73,16 +73,20 @@ private def formatValue (v : Float) : String :=
 def barChartSpec (data : Array Float) (labels : Array String)
     (variant : BarChartVariant) (theme : Theme)
     (dims : Dimensions := defaultDimensions) : CustomSpec := {
-  measure := fun _ _ => (dims.width, dims.height)
+  measure := fun _ _ => (dims.marginLeft + dims.marginRight + 50, dims.marginTop + dims.marginBottom + 30)
   collect := fun layout =>
     let rect := layout.contentRect
     let cmds : Array RenderCommand := #[]
 
+    -- Use actual allocated size from layout
+    let actualWidth := rect.width
+    let actualHeight := rect.height
+
     -- Calculate chart area (inside margins)
     let chartX := rect.x + dims.marginLeft
     let chartY := rect.y + dims.marginTop
-    let chartWidth := dims.width - dims.marginLeft - dims.marginRight
-    let chartHeight := dims.height - dims.marginTop - dims.marginBottom
+    let chartWidth := actualWidth - dims.marginLeft - dims.marginRight
+    let chartHeight := actualHeight - dims.marginTop - dims.marginBottom
 
     -- Find max value for scaling (ensure at least 1 to avoid division by zero)
     let maxVal := data.foldl (fun acc v => if v > acc then v else acc) 0.0
@@ -102,7 +106,7 @@ def barChartSpec (data : Array Float) (labels : Array String)
     let barWidth := if barCount > 0 then (chartWidth - totalGapWidth) / barCount.toFloat else 0.0
 
     -- Draw background
-    let bgRect := Arbor.Rect.mk' rect.x rect.y dims.width dims.height
+    let bgRect := Arbor.Rect.mk' rect.x rect.y actualWidth actualHeight
     let cmds := cmds.push (.fillRect bgRect (theme.panel.background.withAlpha 0.3) 6.0)
 
     -- Draw grid lines
@@ -171,15 +175,19 @@ def barChartSpec (data : Array Float) (labels : Array String)
 /-- Custom spec for bar chart with individually colored bars. -/
 def multiColorBarChartSpec (data : Array DataPoint)
     (theme : Theme) (dims : Dimensions := defaultDimensions) : CustomSpec := {
-  measure := fun _ _ => (dims.width, dims.height)
+  measure := fun _ _ => (dims.marginLeft + dims.marginRight + 50, dims.marginTop + dims.marginBottom + 30)
   collect := fun layout =>
     let rect := layout.contentRect
+
+    -- Use actual allocated size from layout
+    let actualWidth := rect.width
+    let actualHeight := rect.height
 
     -- Calculate chart area
     let chartX := rect.x + dims.marginLeft
     let chartY := rect.y + dims.marginTop
-    let chartWidth := dims.width - dims.marginLeft - dims.marginRight
-    let chartHeight := dims.height - dims.marginTop - dims.marginBottom
+    let chartWidth := actualWidth - dims.marginLeft - dims.marginRight
+    let chartHeight := actualHeight - dims.marginTop - dims.marginBottom
 
     -- Find max value
     let maxVal := data.foldl (fun acc dp => if dp.value > acc then dp.value else acc) 0.0
@@ -198,7 +206,7 @@ def multiColorBarChartSpec (data : Array DataPoint)
     let cmds : Array RenderCommand := #[]
 
     -- Background
-    let bgRect := Arbor.Rect.mk' rect.x rect.y dims.width dims.height
+    let bgRect := Arbor.Rect.mk' rect.x rect.y actualWidth actualHeight
     let cmds := cmds.push (.fillRect bgRect (theme.panel.background.withAlpha 0.3) 6.0)
 
     -- Grid lines
@@ -281,7 +289,7 @@ end BarChart
     - `labels`: Optional labels for each bar
     - `variant`: Color variant for bars
     - `theme`: Theme for styling
-    - `dims`: Chart dimensions
+    - `dims`: Chart dimensions (margins only - actual size from layout)
 -/
 def barChartVisual (name : String) (data : Array Float)
     (labels : Array String := #[])
@@ -289,28 +297,40 @@ def barChartVisual (name : String) (data : Array Float)
     (dims : BarChart.Dimensions := BarChart.defaultDimensions) : WidgetBuilder := do
   let wid ← freshId
   let chart ← custom (BarChart.barChartSpec data labels variant theme dims) {
-    minWidth := some dims.width
-    minHeight := some dims.height
+    width := .percent 1.0
+    height := .percent 1.0
+    flexItem := some (Trellis.FlexItem.growing 1)
   }
-  let props : Trellis.FlexContainer := { Trellis.FlexContainer.column 0 with alignItems := .flexStart }
-  pure (.flex wid (some name) props {} #[chart])
+  let style : BoxStyle := {
+    width := .percent 1.0
+    height := .percent 1.0
+    flexItem := some (Trellis.FlexItem.growing 1)
+  }
+  let props : Trellis.FlexContainer := { Trellis.FlexContainer.column 0 with alignItems := .stretch }
+  pure (.flex wid (some name) props style #[chart])
 
 /-- Build a multi-color bar chart visual (WidgetBuilder version).
     Each data point can have its own color.
     - `name`: Widget name for identification
     - `data`: Array of data points with values, labels, and optional colors
     - `theme`: Theme for styling
-    - `dims`: Chart dimensions
+    - `dims`: Chart dimensions (margins only - actual size from layout)
 -/
 def multiColorBarChartVisual (name : String) (data : Array BarChart.DataPoint)
     (theme : Theme) (dims : BarChart.Dimensions := BarChart.defaultDimensions) : WidgetBuilder := do
   let wid ← freshId
   let chart ← custom (BarChart.multiColorBarChartSpec data theme dims) {
-    minWidth := some dims.width
-    minHeight := some dims.height
+    width := .percent 1.0
+    height := .percent 1.0
+    flexItem := some (Trellis.FlexItem.growing 1)
   }
-  let props : Trellis.FlexContainer := { Trellis.FlexContainer.column 0 with alignItems := .flexStart }
-  pure (.flex wid (some name) props {} #[chart])
+  let style : BoxStyle := {
+    width := .percent 1.0
+    height := .percent 1.0
+    flexItem := some (Trellis.FlexItem.growing 1)
+  }
+  let props : Trellis.FlexContainer := { Trellis.FlexContainer.column 0 with alignItems := .stretch }
+  pure (.flex wid (some name) props style #[chart])
 
 /-! ## Reactive BarChart Components (FRP-based)
 
