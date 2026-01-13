@@ -18,6 +18,7 @@ import Afferent.Tests.TableTests
 import Afferent.Tests.ListBoxTests
 import Afferent.Tests.TreeViewTests
 import Afferent.Tests.ColorPickerTests
+import Afferent.Tests.ReactiveLayoutTests
 import Crucible
 
 open Crucible
