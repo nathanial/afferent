@@ -23,6 +23,7 @@ import Afferent.Arbor.Core.TextMeasurer
 
 -- Render commands
 import Afferent.Arbor.Render.Command
+import Afferent.Arbor.Render.Builder
 import Afferent.Arbor.Render.Collect
 
 -- Widget system
