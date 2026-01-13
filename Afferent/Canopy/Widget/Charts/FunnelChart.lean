@@ -85,14 +85,13 @@ private def formatPercentage (frac : Float) : String :=
 def funnelChartSpec (data : Data) (theme : Theme)
     (dims : Dimensions := defaultDimensions) : CustomSpec := {
   measure := fun _ _ => (dims.marginLeft + dims.marginRight + 60, dims.marginTop + dims.marginBottom + 40)
-  collect := fun layout =>
+  collect := fun layout => RenderM.build do
     let rect := layout.contentRect
     let actualWidth := rect.width
     let actualHeight := rect.height
-    let cmds : Array RenderCommand := #[]
 
     let numStages := data.stages.size
-    if numStages == 0 then cmds else
+    if numStages == 0 then return
 
     -- Find maximum value for scaling widths
     let maxValue := data.stages.foldl (fun acc s => max acc s.value) 0.0
@@ -113,69 +112,62 @@ def funnelChartSpec (data : Data) (theme : Theme)
 
     -- Draw background
     let bgRect := Arbor.Rect.mk' rect.x rect.y actualWidth actualHeight
-    let cmds := cmds.push (.fillRect bgRect (theme.panel.background.withAlpha 0.3) 6.0)
+    RenderM.fillRect bgRect (theme.panel.background.withAlpha 0.3) 6.0
 
     -- Draw stages as trapezoids
-    let cmds := Id.run do
-      let mut cmds := cmds
+    for i in [0:numStages] do
+      let stage := data.stages[i]!
+      let color := getStageColor stage i
 
-      for i in [0:numStages] do
-        let stage := data.stages[i]!
-        let color := getStageColor stage i
+      -- Calculate width based on value (proportional to max)
+      let valueFrac := stage.value / maxValue
+      let stageWidth := max dims.minBottomWidth (funnelWidth * valueFrac)
 
-        -- Calculate width based on value (proportional to max)
-        let valueFrac := stage.value / maxValue
-        let stageWidth := max dims.minBottomWidth (funnelWidth * valueFrac)
+      -- Calculate next stage width (for trapezoid bottom)
+      let nextWidth := if i + 1 < numStages then
+        let nextStage := data.stages[i + 1]!
+        let nextFrac := nextStage.value / maxValue
+        max dims.minBottomWidth (funnelWidth * nextFrac)
+      else
+        dims.minBottomWidth
 
-        -- Calculate next stage width (for trapezoid bottom)
-        let nextWidth := if i + 1 < numStages then
-          let nextStage := data.stages[i + 1]!
-          let nextFrac := nextStage.value / maxValue
-          max dims.minBottomWidth (funnelWidth * nextFrac)
-        else
-          dims.minBottomWidth
+      -- Stage Y position
+      let stageY := funnelY + i.toFloat * (stageHeight + dims.stageGap)
 
-        -- Stage Y position
-        let stageY := funnelY + i.toFloat * (stageHeight + dims.stageGap)
+      -- Calculate trapezoid corners
+      let topLeft := Arbor.Point.mk' (centerX - stageWidth / 2) stageY
+      let topRight := Arbor.Point.mk' (centerX + stageWidth / 2) stageY
+      let bottomRight := Arbor.Point.mk' (centerX + nextWidth / 2) (stageY + stageHeight)
+      let bottomLeft := Arbor.Point.mk' (centerX - nextWidth / 2) (stageY + stageHeight)
 
-        -- Calculate trapezoid corners
-        let topLeft := Arbor.Point.mk' (centerX - stageWidth / 2) stageY
-        let topRight := Arbor.Point.mk' (centerX + stageWidth / 2) stageY
-        let bottomRight := Arbor.Point.mk' (centerX + nextWidth / 2) (stageY + stageHeight)
-        let bottomLeft := Arbor.Point.mk' (centerX - nextWidth / 2) (stageY + stageHeight)
+      -- Draw trapezoid as path
+      let trapPath := Arbor.Path.empty
+        |>.moveTo topLeft
+        |>.lineTo topRight
+        |>.lineTo bottomRight
+        |>.lineTo bottomLeft
+        |>.closePath
 
-        -- Draw trapezoid as path
-        let trapPath := Arbor.Path.empty
-          |>.moveTo topLeft
-          |>.lineTo topRight
-          |>.lineTo bottomRight
-          |>.lineTo bottomLeft
-          |>.closePath
+      RenderM.fillPath trapPath color
 
-        cmds := cmds.push (.fillPath trapPath color)
+      -- Draw label and value on the right side
+      if dims.showLabels then
+        let labelX := rect.x + actualWidth - dims.marginRight + 10
+        let labelY := stageY + stageHeight / 2
 
-        -- Draw label and value on the right side
-        if dims.showLabels then
-          let labelX := rect.x + actualWidth - dims.marginRight + 10
-          let labelY := stageY + stageHeight / 2
+        -- Stage label
+        RenderM.fillText stage.label labelX labelY theme.smallFont theme.text
 
-          -- Stage label
-          cmds := cmds.push (.fillText stage.label labelX labelY theme.smallFont theme.text)
-
-          -- Value and/or percentage
-          if dims.showValues || dims.showPercentages then
-            let valueY := labelY + 14
-            let valueStr := if dims.showValues && dims.showPercentages then
-              s!"{formatValue stage.value} ({formatPercentage valueFrac})"
-            else if dims.showValues then
-              formatValue stage.value
-            else
-              formatPercentage valueFrac
-            cmds := cmds.push (.fillText valueStr labelX valueY theme.smallFont theme.textMuted)
-
-      cmds
-
-    cmds
+        -- Value and/or percentage
+        if dims.showValues || dims.showPercentages then
+          let valueY := labelY + 14
+          let valueStr := if dims.showValues && dims.showPercentages then
+            s!"{formatValue stage.value} ({formatPercentage valueFrac})"
+          else if dims.showValues then
+            formatValue stage.value
+          else
+            formatPercentage valueFrac
+          RenderM.fillText valueStr labelX valueY theme.smallFont theme.textMuted
 
   draw := none
 }

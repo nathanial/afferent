@@ -97,10 +97,9 @@ def stackedBarChartSpec (data : Data) (theme : Theme)
     let rect := layout.contentRect
     let actualWidth := rect.width
     let actualHeight := rect.height
-    let cmds : Array RenderCommand := #[]
 
     let numCategories := data.categories.size
-    if numCategories == 0 || data.series.isEmpty then cmds else
+    if numCategories == 0 || data.series.isEmpty then #[] else
 
     -- Calculate chart area
     let legendSpace := if dims.showLegend then dims.marginRight else 20.0
@@ -126,25 +125,20 @@ def stackedBarChartSpec (data : Data) (theme : Theme)
     let totalGapWidth := if numCategories > 1 then dims.barGap * (numCategories - 1).toFloat else 0.0
     let barWidth := (chartWidth - totalGapWidth) / numCategories.toFloat
 
-    -- Draw background
-    let bgRect := Arbor.Rect.mk' rect.x rect.y actualWidth actualHeight
-    let cmds := cmds.push (.fillRect bgRect (theme.panel.background.withAlpha 0.3) 6.0)
+    RenderM.build do
+      -- Draw background
+      let bgRect := Arbor.Rect.mk' rect.x rect.y actualWidth actualHeight
+      RenderM.fillRect bgRect (theme.panel.background.withAlpha 0.3) 6.0
 
-    -- Draw grid lines
-    let cmds := if dims.showGridLines && dims.gridLineCount > 0 then
-      Id.run do
-        let mut cmds := cmds
+      -- Draw grid lines
+      if dims.showGridLines && dims.gridLineCount > 0 then
         for i in [0:dims.gridLineCount + 1] do
           let ratio := i.toFloat / dims.gridLineCount.toFloat
           let lineY := chartY + chartHeight - (ratio * chartHeight)
           let lineRect := Arbor.Rect.mk' chartX lineY chartWidth 1.0
-          cmds := cmds.push (.fillRect lineRect (Color.gray 0.3) 0.0)
-        cmds
-    else cmds
+          RenderM.fillRect lineRect (Color.gray 0.3) 0.0
 
-    -- Draw stacked bars
-    let cmds := Id.run do
-      let mut cmds := cmds
+      -- Draw stacked bars
       for catIdx in [0:numCategories] do
         let barX := chartX + catIdx.toFloat * (barWidth + dims.barGap)
         let mut currentY := chartY + chartHeight  -- Start from bottom
@@ -158,43 +152,33 @@ def stackedBarChartSpec (data : Data) (theme : Theme)
             currentY := currentY - segmentHeight
             let segmentRect := Arbor.Rect.mk' barX currentY barWidth segmentHeight
             let color := getSeriesColor series seriesIdx
-            cmds := cmds.push (.fillRect segmentRect color dims.cornerRadius)
-      cmds
+            RenderM.fillRect segmentRect color dims.cornerRadius
 
-    -- Draw Y-axis labels
-    let cmds := if dims.gridLineCount > 0 then
-      Id.run do
-        let mut cmds := cmds
+      -- Draw Y-axis labels
+      if dims.gridLineCount > 0 then
         for i in [0:dims.gridLineCount + 1] do
           let ratio := i.toFloat / dims.gridLineCount.toFloat
           let value := ratio * niceMax
           let labelY := chartY + chartHeight - (ratio * chartHeight) + 4
           let labelText := formatValue value
-          cmds := cmds.push (.fillText labelText (rect.x + 4) labelY theme.smallFont theme.textMuted)
-        cmds
-    else cmds
+          RenderM.fillText labelText (rect.x + 4) labelY theme.smallFont theme.textMuted
 
-    -- Draw X-axis labels
-    let cmds := Id.run do
-      let mut cmds := cmds
+      -- Draw X-axis labels
       for i in [0:numCategories] do
         let label := data.categories[i]!
         let labelX := chartX + i.toFloat * (barWidth + dims.barGap) + barWidth / 2
         let labelY := chartY + chartHeight + 16
-        cmds := cmds.push (.fillText label labelX labelY theme.smallFont theme.text)
-      cmds
+        RenderM.fillText label labelX labelY theme.smallFont theme.text
 
-    -- Draw axes
-    let axisColor := Color.gray 0.5
-    let yAxisRect := Arbor.Rect.mk' chartX chartY 1.0 chartHeight
-    let cmds := cmds.push (.fillRect yAxisRect axisColor 0.0)
-    let xAxisRect := Arbor.Rect.mk' chartX (chartY + chartHeight) chartWidth 1.0
-    let cmds := cmds.push (.fillRect xAxisRect axisColor 0.0)
+      -- Draw axes
+      let axisColor := Color.gray 0.5
+      let yAxisRect := Arbor.Rect.mk' chartX chartY 1.0 chartHeight
+      RenderM.fillRect yAxisRect axisColor 0.0
+      let xAxisRect := Arbor.Rect.mk' chartX (chartY + chartHeight) chartWidth 1.0
+      RenderM.fillRect xAxisRect axisColor 0.0
 
-    -- Draw legend
-    let cmds := if dims.showLegend && data.series.size > 0 then
-      Id.run do
-        let mut cmds := cmds
+      -- Draw legend
+      if dims.showLegend && data.series.size > 0 then
         let legendX := chartX + chartWidth + 16
         let legendY := chartY
         for i in [0:data.series.size] do
@@ -203,13 +187,9 @@ def stackedBarChartSpec (data : Data) (theme : Theme)
           let itemY := legendY + i.toFloat * (dims.legendItemHeight + 4)
           -- Color box
           let colorRect := Arbor.Rect.mk' legendX itemY 12.0 12.0
-          cmds := cmds.push (.fillRect colorRect color 2.0)
+          RenderM.fillRect colorRect color 2.0
           -- Label
-          cmds := cmds.push (.fillText series.name (legendX + 16) (itemY + 10) theme.smallFont theme.text)
-        cmds
-    else cmds
-
-    cmds
+          RenderM.fillText series.name (legendX + 16) (itemY + 10) theme.smallFont theme.text
 
   draw := none
 }

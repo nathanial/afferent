@@ -270,11 +270,10 @@ private def linkPath (l : LinkLayout) (ox oy : Float) : Arbor.Path :=
 def sankeyDiagramSpecCached (cached : CachedLayout) (data : Data) (theme : Theme)
     (dims : Dimensions := defaultDimensions) : CustomSpec := {
   measure := fun _ _ => (dims.marginLeft + dims.marginRight + 100, dims.marginTop + dims.marginBottom + 50)
-  collect := fun layout =>
+  collect := fun layout => RenderM.build do
     let rect := layout.contentRect
-    let cmds : Array RenderCommand := #[]
 
-    if cached.nodeLayouts.isEmpty then cmds else
+    if cached.nodeLayouts.isEmpty then return
 
     -- Use actual allocated size from layout
     let actualWidth := rect.width
@@ -294,13 +293,13 @@ def sankeyDiagramSpecCached (cached : CachedLayout) (data : Data) (theme : Theme
 
     -- Draw background
     let bgRect := Arbor.Rect.mk' rect.x rect.y actualWidth actualHeight
-    let cmds := cmds.push (.fillRect bgRect (theme.panel.background.withAlpha 0.3) 6.0)
+    RenderM.fillRect bgRect (theme.panel.background.withAlpha 0.3) 6.0
 
     -- Scale node width proportionally
     let scaledNodeWidth := dims.nodeWidth * scaleX
 
     -- Draw links first (behind nodes) - scale and offset pre-computed positions
-    let cmds := cached.linkLayouts.foldl (fun cmds l =>
+    for l in cached.linkLayouts do
       -- Apply scale to cached positions
       let scaledLink : LinkLayout := {
         link := l.link
@@ -313,21 +312,19 @@ def sankeyDiagramSpecCached (cached : CachedLayout) (data : Data) (theme : Theme
         color := l.color
       }
       let path := linkPath scaledLink ox oy
-      cmds.push (.fillPath path l.color)
-    ) cmds
+      RenderM.fillPath path l.color
 
     -- Draw nodes - scale and offset pre-computed positions
-    let cmds := cached.nodeLayouts.foldl (fun cmds n =>
+    for n in cached.nodeLayouts do
       let scaledX := n.x * scaleX
       let scaledY := n.y * scaleY
       let scaledHeight := n.height * scaleY
       let nodeRect := Arbor.Rect.mk' (scaledX + ox) (scaledY + oy) scaledNodeWidth scaledHeight
-      cmds.push (.fillRect nodeRect n.color 2.0)
-    ) cmds
+      RenderM.fillRect nodeRect n.color 2.0
 
     -- Draw labels - scale and offset pre-computed positions
-    let cmds := if dims.showLabels then
-      cached.nodeLayouts.foldl (fun cmds n =>
+    if dims.showLabels then
+      for n in cached.nodeLayouts do
         let scaledX := n.x * scaleX
         let scaledY := n.y * scaleY
         let scaledHeight := n.height * scaleY
@@ -345,11 +342,7 @@ def sankeyDiagramSpecCached (cached : CachedLayout) (data : Data) (theme : Theme
         else
           n.node.label
 
-        cmds.push (.fillText labelText labelX labelY theme.smallFont theme.text)
-      ) cmds
-    else cmds
-
-    cmds
+        RenderM.fillText labelText labelX labelY theme.smallFont theme.text
 
   draw := none
 }

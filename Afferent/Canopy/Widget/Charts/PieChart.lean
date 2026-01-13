@@ -74,7 +74,6 @@ def pieChartSpec (slices : Array Slice) (theme : Theme)
   measure := fun _ _ => (50, 50)  -- Minimum size
   collect := fun layout =>
     let rect := layout.contentRect
-    let cmds : Array RenderCommand := #[]
 
     -- Use actual allocated size for responsive layout
     let actualWidth := rect.width
@@ -98,15 +97,13 @@ def pieChartSpec (slices : Array Slice) (theme : Theme)
     let pi := 3.141592653589793
     let twoPi := 2.0 * pi
 
-    -- Draw background circle (optional, for visual consistency)
-    let bgPath := Arbor.Path.circle center radius
-    let cmds := cmds.push (.fillPath bgPath (theme.panel.background.withAlpha 0.3))
+    RenderM.build do
+      -- Draw background circle (optional, for visual consistency)
+      let bgPath := Arbor.Path.circle center radius
+      RenderM.fillPath bgPath (theme.panel.background.withAlpha 0.3)
 
-    -- Draw each slice
-    let cmds := Id.run do
-      let mut cmds := cmds
+      -- Draw each slice
       let mut startAngle := -pi / 2  -- Start at top (12 o'clock)
-
       for i in [0:slices.size] do
         let slice := slices[i]!
         let proportion := slice.value / total
@@ -120,28 +117,23 @@ def pieChartSpec (slices : Array Slice) (theme : Theme)
         let slicePath := Arbor.Path.pie center radius startAngle endAngle
 
         -- Fill the slice
-        cmds := cmds.push (.fillPath slicePath color)
+        RenderM.fillPath slicePath color
 
         -- Optionally stroke the slice
         if let some strokeColor := dims.strokeColor then
           if dims.strokeWidth > 0.0 then
-            cmds := cmds.push (.strokePath slicePath strokeColor dims.strokeWidth)
+            RenderM.strokePath slicePath strokeColor dims.strokeWidth
 
         startAngle := endAngle
 
-      cmds
-
-    -- Draw labels
-    let cmds := if dims.showLabels || dims.showValues || dims.showPercentages then
-      Id.run do
-        let mut cmds := cmds
-        let mut startAngle := -pi / 2
-
+      -- Draw labels
+      if dims.showLabels || dims.showValues || dims.showPercentages then
+        let mut labelAngle := -pi / 2
         for i in [0:slices.size] do
           let slice := slices[i]!
           let proportion := slice.value / total
           let sweepAngle := proportion * twoPi
-          let midAngle := startAngle + sweepAngle / 2
+          let midAngle := labelAngle + sweepAngle / 2
 
           -- Calculate label position (outside the pie)
           let labelRadius := radius + dims.labelOffset
@@ -162,14 +154,9 @@ def pieChartSpec (slices : Array Slice) (theme : Theme)
 
           if labelParts.size > 0 then
             let labelText := String.intercalate " " labelParts.toList
-            cmds := cmds.push (.fillText labelText labelX (labelY + 4) theme.smallFont theme.text)
+            RenderM.fillText labelText labelX (labelY + 4) theme.smallFont theme.text
 
-          startAngle := startAngle + sweepAngle
-
-        cmds
-    else cmds
-
-    cmds
+          labelAngle := labelAngle + sweepAngle
 
   draw := none
 }
@@ -180,7 +167,6 @@ def pieChartWithLegendSpec (slices : Array Slice) (theme : Theme)
   measure := fun _ _ => (170, 50)  -- Minimum size with legend
   collect := fun layout =>
     let rect := layout.contentRect
-    let cmds : Array RenderCommand := #[]
 
     -- Use actual allocated size for responsive layout
     let actualWidth := rect.width
@@ -204,11 +190,15 @@ def pieChartWithLegendSpec (slices : Array Slice) (theme : Theme)
     let pi := 3.141592653589793
     let twoPi := 2.0 * pi
 
-    -- Draw each slice
-    let cmds := Id.run do
-      let mut cmds := cmds
-      let mut startAngle := -pi / 2
+    -- Legend positioning
+    let legendX := rect.x + radius * 2 + 50
+    let legendStartY := rect.y + 20
+    let legendItemHeight : Float := 24.0
+    let swatchSize : Float := 14.0
 
+    RenderM.build do
+      -- Draw each slice
+      let mut startAngle := -pi / 2
       for i in [0:slices.size] do
         let slice := slices[i]!
         let proportion := slice.value / total
@@ -218,25 +208,15 @@ def pieChartWithLegendSpec (slices : Array Slice) (theme : Theme)
         let color := slice.color.getD (colors[i % colors.size]!)
         let slicePath := Arbor.Path.pie center radius startAngle endAngle
 
-        cmds := cmds.push (.fillPath slicePath color)
+        RenderM.fillPath slicePath color
 
         if let some strokeColor := dims.strokeColor then
           if dims.strokeWidth > 0.0 then
-            cmds := cmds.push (.strokePath slicePath strokeColor dims.strokeWidth)
+            RenderM.strokePath slicePath strokeColor dims.strokeWidth
 
         startAngle := endAngle
 
-      cmds
-
-    -- Draw legend on the right
-    let legendX := rect.x + radius * 2 + 50
-    let legendStartY := rect.y + 20
-    let legendItemHeight : Float := 24.0
-    let swatchSize : Float := 14.0
-
-    let cmds := Id.run do
-      let mut cmds := cmds
-
+      -- Draw legend on the right
       for i in [0:slices.size] do
         let slice := slices[i]!
         let proportion := slice.value / total
@@ -244,8 +224,7 @@ def pieChartWithLegendSpec (slices : Array Slice) (theme : Theme)
         let itemY := legendStartY + i.toFloat * legendItemHeight
 
         -- Color swatch
-        let swatchRect := Arbor.Rect.mk' legendX itemY swatchSize swatchSize
-        cmds := cmds.push (.fillRect swatchRect color 2.0)
+        RenderM.fillRect' legendX itemY swatchSize swatchSize color 2.0
 
         -- Label text
         let labelX := legendX + swatchSize + 8
@@ -255,11 +234,7 @@ def pieChartWithLegendSpec (slices : Array Slice) (theme : Theme)
           | some label => s!"{label} ({formatPercent proportion})"
           | none => formatPercent proportion
 
-        cmds := cmds.push (.fillText labelText labelX labelY theme.smallFont theme.text)
-
-      cmds
-
-    cmds
+        RenderM.fillText labelText labelX labelY theme.smallFont theme.text
 
   draw := none
 }

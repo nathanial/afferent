@@ -85,7 +85,6 @@ def scatterPlotSpec (points : Array DataPoint) (theme : Theme)
   measure := fun _ _ => (dims.marginLeft + dims.marginRight + 50, dims.marginTop + dims.marginBottom + 30)
   collect := fun layout =>
     let rect := layout.contentRect
-    let cmds : Array RenderCommand := #[]
 
     -- Use actual container size for responsive layout
     let actualWidth := rect.width
@@ -119,73 +118,55 @@ def scatterPlotSpec (points : Array DataPoint) (theme : Theme)
     let rangeX := niceMaxX - niceMinX
     let rangeY := niceMaxY - niceMinY
 
-    -- Draw background
-    let bgRect := Arbor.Rect.mk' rect.x rect.y actualWidth actualHeight
-    let cmds := cmds.push (.fillRect bgRect (theme.panel.background.withAlpha 0.3) 6.0)
+    let pointColor := theme.primary.background
+    let axisColor := Color.gray 0.5
 
-    -- Draw grid lines
-    let cmds := if dims.showGridLines && dims.gridLineCount > 0 then
-      Id.run do
-        let mut cmds := cmds
+    RenderM.build do
+      -- Draw background
+      RenderM.fillRect' rect.x rect.y actualWidth actualHeight (theme.panel.background.withAlpha 0.3) 6.0
+
+      -- Draw grid lines
+      if dims.showGridLines && dims.gridLineCount > 0 then
         -- Horizontal grid lines
         for i in [0:dims.gridLineCount + 1] do
           let ratio := i.toFloat / dims.gridLineCount.toFloat
           let lineY := chartY + chartHeight - (ratio * chartHeight)
-          let lineRect := Arbor.Rect.mk' chartX lineY chartWidth 1.0
-          cmds := cmds.push (.fillRect lineRect (Color.gray 0.3) 0.0)
+          RenderM.fillRect' chartX lineY chartWidth 1.0 (Color.gray 0.3) 0.0
         -- Vertical grid lines
         for i in [0:dims.gridLineCount + 1] do
           let ratio := i.toFloat / dims.gridLineCount.toFloat
           let lineX := chartX + (ratio * chartWidth)
-          let lineRect := Arbor.Rect.mk' lineX chartY 1.0 chartHeight
-          cmds := cmds.push (.fillRect lineRect (Color.gray 0.3) 0.0)
-        cmds
-    else cmds
+          RenderM.fillRect' lineX chartY 1.0 chartHeight (Color.gray 0.3) 0.0
 
-    -- Draw data points
-    let pointColor := theme.primary.background
-    let cmds := Id.run do
-      let mut cmds := cmds
+      -- Draw data points
       for p in points do
         let px := chartX + ((p.x - niceMinX) / rangeX) * chartWidth
         let py := chartY + chartHeight - ((p.y - niceMinY) / rangeY) * chartHeight
         let pointPath := Arbor.Path.circle (Arbor.Point.mk' px py) dims.pointRadius
-        cmds := cmds.push (.fillPath pointPath pointColor)
-      cmds
+        RenderM.fillPath pointPath pointColor
 
-    -- Draw Y-axis labels
-    let cmds := if dims.showAxisLabels && dims.gridLineCount > 0 then
-      Id.run do
-        let mut cmds := cmds
+      -- Draw Y-axis labels
+      if dims.showAxisLabels && dims.gridLineCount > 0 then
         for i in [0:dims.gridLineCount + 1] do
           let ratio := i.toFloat / dims.gridLineCount.toFloat
           let value := niceMinY + ratio * rangeY
           let labelY := chartY + chartHeight - (ratio * chartHeight) - 6
           let labelText := formatValue value
-          cmds := cmds.push (.fillText labelText (rect.x + 4) labelY theme.smallFont theme.textMuted)
-        cmds
-    else cmds
+          RenderM.fillText labelText (rect.x + 4) labelY theme.smallFont theme.textMuted
 
-    -- Draw X-axis labels
-    let cmds := if dims.showAxisLabels && dims.gridLineCount > 0 then
-      Id.run do
-        let mut cmds := cmds
+      -- Draw X-axis labels
+      if dims.showAxisLabels && dims.gridLineCount > 0 then
         for i in [0:dims.gridLineCount + 1] do
           let ratio := i.toFloat / dims.gridLineCount.toFloat
           let value := niceMinX + ratio * rangeX
           let labelX := chartX + (ratio * chartWidth)
           let labelY := chartY + chartHeight + 16
           let labelText := formatValue value
-          cmds := cmds.push (.fillText labelText labelX labelY theme.smallFont theme.textMuted)
-        cmds
-    else cmds
+          RenderM.fillText labelText labelX labelY theme.smallFont theme.textMuted
 
-    -- Draw axes
-    let axisColor := Color.gray 0.5
-    let yAxisRect := Arbor.Rect.mk' chartX chartY 1.0 chartHeight
-    let cmds := cmds.push (.fillRect yAxisRect axisColor 0.0)
-    let xAxisRect := Arbor.Rect.mk' chartX (chartY + chartHeight) chartWidth 1.0
-    cmds.push (.fillRect xAxisRect axisColor 0.0)
+      -- Draw axes
+      RenderM.fillRect' chartX chartY 1.0 chartHeight axisColor 0.0
+      RenderM.fillRect' chartX (chartY + chartHeight) chartWidth 1.0 axisColor 0.0
 
   draw := none
 }
@@ -196,7 +177,6 @@ def multiSeriesSpec (series : Array Series) (theme : Theme)
   measure := fun _ _ => (dims.marginLeft + dims.marginRight + 50, dims.marginTop + dims.marginBottom + 30)
   collect := fun layout =>
     let rect := layout.contentRect
-    let cmds : Array RenderCommand := #[]
 
     -- Use actual container size for responsive layout
     let actualWidth := rect.width
@@ -233,32 +213,25 @@ def multiSeriesSpec (series : Array Series) (theme : Theme)
     let rangeX := niceMaxX - niceMinX
     let rangeY := niceMaxY - niceMinY
 
-    -- Draw background
-    let bgRect := Arbor.Rect.mk' rect.x rect.y actualWidth actualHeight
-    let cmds := cmds.push (.fillRect bgRect (theme.panel.background.withAlpha 0.3) 6.0)
+    let colors := defaultColors theme
+    let axisColor := Color.gray 0.5
 
-    -- Draw grid lines
-    let cmds := if dims.showGridLines && dims.gridLineCount > 0 then
-      Id.run do
-        let mut cmds := cmds
+    RenderM.build do
+      -- Draw background
+      RenderM.fillRect' rect.x rect.y actualWidth actualHeight (theme.panel.background.withAlpha 0.3) 6.0
+
+      -- Draw grid lines
+      if dims.showGridLines && dims.gridLineCount > 0 then
         for i in [0:dims.gridLineCount + 1] do
           let ratio := i.toFloat / dims.gridLineCount.toFloat
           let lineY := chartY + chartHeight - (ratio * chartHeight)
-          let lineRect := Arbor.Rect.mk' chartX lineY chartWidth 1.0
-          cmds := cmds.push (.fillRect lineRect (Color.gray 0.3) 0.0)
+          RenderM.fillRect' chartX lineY chartWidth 1.0 (Color.gray 0.3) 0.0
         for i in [0:dims.gridLineCount + 1] do
           let ratio := i.toFloat / dims.gridLineCount.toFloat
           let lineX := chartX + (ratio * chartWidth)
-          let lineRect := Arbor.Rect.mk' lineX chartY 1.0 chartHeight
-          cmds := cmds.push (.fillRect lineRect (Color.gray 0.3) 0.0)
-        cmds
-    else cmds
+          RenderM.fillRect' lineX chartY 1.0 chartHeight (Color.gray 0.3) 0.0
 
-    let colors := defaultColors theme
-
-    -- Draw data points for each series
-    let cmds := Id.run do
-      let mut cmds := cmds
+      -- Draw data points for each series
       for si in [0:series.size] do
         let s := series[si]!
         let color := s.color.getD (colors[si % colors.size]!)
@@ -268,42 +241,30 @@ def multiSeriesSpec (series : Array Series) (theme : Theme)
           let px := chartX + ((p.x - niceMinX) / rangeX) * chartWidth
           let py := chartY + chartHeight - ((p.y - niceMinY) / rangeY) * chartHeight
           let pointPath := Arbor.Path.circle (Arbor.Point.mk' px py) radius
-          cmds := cmds.push (.fillPath pointPath color)
-      cmds
+          RenderM.fillPath pointPath color
 
-    -- Draw Y-axis labels
-    let cmds := if dims.showAxisLabels && dims.gridLineCount > 0 then
-      Id.run do
-        let mut cmds := cmds
+      -- Draw Y-axis labels
+      if dims.showAxisLabels && dims.gridLineCount > 0 then
         for i in [0:dims.gridLineCount + 1] do
           let ratio := i.toFloat / dims.gridLineCount.toFloat
           let value := niceMinY + ratio * rangeY
           let labelY := chartY + chartHeight - (ratio * chartHeight) - 6
           let labelText := formatValue value
-          cmds := cmds.push (.fillText labelText (rect.x + 4) labelY theme.smallFont theme.textMuted)
-        cmds
-    else cmds
+          RenderM.fillText labelText (rect.x + 4) labelY theme.smallFont theme.textMuted
 
-    -- Draw X-axis labels
-    let cmds := if dims.showAxisLabels && dims.gridLineCount > 0 then
-      Id.run do
-        let mut cmds := cmds
+      -- Draw X-axis labels
+      if dims.showAxisLabels && dims.gridLineCount > 0 then
         for i in [0:dims.gridLineCount + 1] do
           let ratio := i.toFloat / dims.gridLineCount.toFloat
           let value := niceMinX + ratio * rangeX
           let labelX := chartX + (ratio * chartWidth)
           let labelY := chartY + chartHeight + 16
           let labelText := formatValue value
-          cmds := cmds.push (.fillText labelText labelX labelY theme.smallFont theme.textMuted)
-        cmds
-    else cmds
+          RenderM.fillText labelText labelX labelY theme.smallFont theme.textMuted
 
-    -- Draw axes
-    let axisColor := Color.gray 0.5
-    let yAxisRect := Arbor.Rect.mk' chartX chartY 1.0 chartHeight
-    let cmds := cmds.push (.fillRect yAxisRect axisColor 0.0)
-    let xAxisRect := Arbor.Rect.mk' chartX (chartY + chartHeight) chartWidth 1.0
-    cmds.push (.fillRect xAxisRect axisColor 0.0)
+      -- Draw axes
+      RenderM.fillRect' chartX chartY 1.0 chartHeight axisColor 0.0
+      RenderM.fillRect' chartX (chartY + chartHeight) chartWidth 1.0 axisColor 0.0
 
   draw := none
 }

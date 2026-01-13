@@ -127,7 +127,6 @@ def boxPlotSpec (summaries : Array Summary) (theme : Theme)
   measure := fun _ _ => (dims.marginLeft + dims.marginRight + 50, dims.marginTop + dims.marginBottom + 30)
   collect := fun layout =>
     let rect := layout.contentRect
-    let cmds : Array RenderCommand := #[]
 
     -- Use actual container size for responsive layout
     let actualWidth := rect.width
@@ -138,7 +137,7 @@ def boxPlotSpec (summaries : Array Summary) (theme : Theme)
     let chartWidth := actualWidth - dims.marginLeft - dims.marginRight
     let chartHeight := actualHeight - dims.marginTop - dims.marginBottom
 
-    if summaries.isEmpty then cmds else
+    if summaries.isEmpty then #[] else
 
     -- Find global min/max for Y axis scaling
     let (globalMin, globalMax) := Id.run do
@@ -170,27 +169,21 @@ def boxPlotSpec (summaries : Array Summary) (theme : Theme)
     let totalGapWidth := chartWidth - totalBoxWidth
     let gapWidth := if boxCount > 1 then totalGapWidth / (boxCount + 1).toFloat else totalGapWidth / 2
 
-    -- Draw background
-    let bgRect := Arbor.Rect.mk' rect.x rect.y actualWidth actualHeight
-    let cmds := cmds.push (.fillRect bgRect (theme.panel.background.withAlpha 0.3) 6.0)
+    let colors := defaultColors theme
+    let axisColor := Color.gray 0.5
 
-    -- Draw horizontal grid lines
-    let cmds := if dims.showGridLines && dims.gridLineCount > 0 then
-      Id.run do
-        let mut cmds := cmds
+    RenderM.build do
+      -- Draw background
+      RenderM.fillRect' rect.x rect.y actualWidth actualHeight (theme.panel.background.withAlpha 0.3) 6.0
+
+      -- Draw horizontal grid lines
+      if dims.showGridLines && dims.gridLineCount > 0 then
         for i in [0:dims.gridLineCount + 1] do
           let ratio := i.toFloat / dims.gridLineCount.toFloat
           let lineY := chartY + chartHeight - (ratio * chartHeight)
-          let lineRect := Arbor.Rect.mk' chartX lineY chartWidth 1.0
-          cmds := cmds.push (.fillRect lineRect (Color.gray 0.3) 0.0)
-        cmds
-    else cmds
+          RenderM.fillRect' chartX lineY chartWidth 1.0 (Color.gray 0.3) 0.0
 
-    let colors := defaultColors theme
-
-    -- Draw each box plot
-    let cmds := Id.run do
-      let mut cmds := cmds
+      -- Draw each box plot
       for i in [0:boxCount] do
         let s := summaries[i]!
         let color := colors[i % colors.size]!
@@ -207,70 +200,54 @@ def boxPlotSpec (summaries : Array Summary) (theme : Theme)
 
         -- Draw whisker (vertical line from min to max)
         let whiskerX := boxCenterX
-        let whiskerLineRect := Arbor.Rect.mk' (whiskerX - 0.5) maxY 1.0 (minY - maxY)
-        cmds := cmds.push (.fillRect whiskerLineRect color 0.0)
+        RenderM.fillRect' (whiskerX - 0.5) maxY 1.0 (minY - maxY) color 0.0
 
         -- Draw whisker caps
         let capHalfWidth := dims.whiskerWidth / 2
         -- Min cap (bottom)
-        let minCapRect := Arbor.Rect.mk' (whiskerX - capHalfWidth) (minY - 0.5) dims.whiskerWidth 1.0
-        cmds := cmds.push (.fillRect minCapRect color 0.0)
+        RenderM.fillRect' (whiskerX - capHalfWidth) (minY - 0.5) dims.whiskerWidth 1.0 color 0.0
         -- Max cap (top)
-        let maxCapRect := Arbor.Rect.mk' (whiskerX - capHalfWidth) (maxY - 0.5) dims.whiskerWidth 1.0
-        cmds := cmds.push (.fillRect maxCapRect color 0.0)
+        RenderM.fillRect' (whiskerX - capHalfWidth) (maxY - 0.5) dims.whiskerWidth 1.0 color 0.0
 
         -- Draw box (Q1 to Q3)
         let boxLeft := boxCenterX - dims.boxWidth / 2
         let boxHeight := q1Y - q3Y  -- Q1 is lower on screen (higher Y) than Q3
         let boxRect := Arbor.Rect.mk' boxLeft q3Y dims.boxWidth boxHeight
-        cmds := cmds.push (.fillRect boxRect (color.withAlpha 0.6) 2.0)
+        RenderM.fillRect boxRect (color.withAlpha 0.6) 2.0
         -- Box outline
-        cmds := cmds.push (.strokeRect boxRect color 1.5)
+        RenderM.strokeRect boxRect color 1.5
 
         -- Draw median line
-        let medianRect := Arbor.Rect.mk' boxLeft (medianY - 1) dims.boxWidth 2.0
-        cmds := cmds.push (.fillRect medianRect (Color.white.withAlpha 0.9) 0.0)
+        RenderM.fillRect' boxLeft (medianY - 1) dims.boxWidth 2.0 (Color.white.withAlpha 0.9) 0.0
 
         -- Draw outliers
         if dims.showOutliers then
           for outlier in s.outliers do
             let outlierY := yToPixel outlier
             let outlierPath := Arbor.Path.circle (Arbor.Point.mk' boxCenterX outlierY) dims.outlierRadius
-            cmds := cmds.push (.strokePath outlierPath color 1.5)
+            RenderM.strokePath outlierPath color 1.5
 
-      cmds
-
-    -- Draw Y-axis labels
-    let cmds := if dims.gridLineCount > 0 then
-      Id.run do
-        let mut cmds := cmds
+      -- Draw Y-axis labels
+      if dims.gridLineCount > 0 then
         for i in [0:dims.gridLineCount + 1] do
           let ratio := i.toFloat / dims.gridLineCount.toFloat
           let value := yMin + ratio * yRange
           let labelY := chartY + chartHeight - (ratio * chartHeight) + 4
-          cmds := cmds.push (.fillText (formatValue value) (rect.x + 4) labelY theme.smallFont theme.textMuted)
-        cmds
-    else cmds
+          RenderM.fillText (formatValue value) (rect.x + 4) labelY theme.smallFont theme.textMuted
 
-    -- Draw X-axis labels (box labels)
-    let cmds := Id.run do
-      let mut cmds := cmds
+      -- Draw X-axis labels (box labels)
       for i in [0:boxCount] do
         let s := summaries[i]!
         match s.label with
         | some label =>
           let boxCenterX := chartX + gapWidth + i.toFloat * (dims.boxWidth + gapWidth) + dims.boxWidth / 2
           let labelY := chartY + chartHeight + 16
-          cmds := cmds.push (.fillText label boxCenterX labelY theme.smallFont theme.textMuted)
+          RenderM.fillText label boxCenterX labelY theme.smallFont theme.textMuted
         | none => pure ()
-      cmds
 
-    -- Draw axes
-    let axisColor := Color.gray 0.5
-    let yAxisRect := Arbor.Rect.mk' chartX chartY 1.0 chartHeight
-    let cmds := cmds.push (.fillRect yAxisRect axisColor 0.0)
-    let xAxisRect := Arbor.Rect.mk' chartX (chartY + chartHeight) chartWidth 1.0
-    cmds.push (.fillRect xAxisRect axisColor 0.0)
+      -- Draw axes
+      RenderM.fillRect' chartX chartY 1.0 chartHeight axisColor 0.0
+      RenderM.fillRect' chartX (chartY + chartHeight) chartWidth 1.0 axisColor 0.0
 
   draw := none
 }
@@ -281,7 +258,6 @@ def horizontalBoxPlotSpec (summaries : Array Summary) (theme : Theme)
   measure := fun _ _ => (dims.marginLeft + dims.marginRight + 50, dims.marginTop + dims.marginBottom + 30)
   collect := fun layout =>
     let rect := layout.contentRect
-    let cmds : Array RenderCommand := #[]
 
     -- Use actual container size for responsive layout
     let actualWidth := rect.width
@@ -292,7 +268,7 @@ def horizontalBoxPlotSpec (summaries : Array Summary) (theme : Theme)
     let chartWidth := actualWidth - dims.marginLeft - dims.marginRight
     let chartHeight := actualHeight - dims.marginTop - dims.marginBottom
 
-    if summaries.isEmpty then cmds else
+    if summaries.isEmpty then #[] else
 
     -- Find global min/max for X axis scaling
     let (globalMin, globalMax) := Id.run do
@@ -321,27 +297,21 @@ def horizontalBoxPlotSpec (summaries : Array Summary) (theme : Theme)
     let totalGapHeight := chartHeight - totalBoxHeight
     let gapHeight := if boxCount > 1 then totalGapHeight / (boxCount + 1).toFloat else totalGapHeight / 2
 
-    -- Draw background
-    let bgRect := Arbor.Rect.mk' rect.x rect.y actualWidth actualHeight
-    let cmds := cmds.push (.fillRect bgRect (theme.panel.background.withAlpha 0.3) 6.0)
+    let colors := defaultColors theme
+    let axisColor := Color.gray 0.5
 
-    -- Draw vertical grid lines
-    let cmds := if dims.showGridLines && dims.gridLineCount > 0 then
-      Id.run do
-        let mut cmds := cmds
+    RenderM.build do
+      -- Draw background
+      RenderM.fillRect' rect.x rect.y actualWidth actualHeight (theme.panel.background.withAlpha 0.3) 6.0
+
+      -- Draw vertical grid lines
+      if dims.showGridLines && dims.gridLineCount > 0 then
         for i in [0:dims.gridLineCount + 1] do
           let ratio := i.toFloat / dims.gridLineCount.toFloat
           let lineX := chartX + (ratio * chartWidth)
-          let lineRect := Arbor.Rect.mk' lineX chartY 1.0 chartHeight
-          cmds := cmds.push (.fillRect lineRect (Color.gray 0.3) 0.0)
-        cmds
-    else cmds
+          RenderM.fillRect' lineX chartY 1.0 chartHeight (Color.gray 0.3) 0.0
 
-    let colors := defaultColors theme
-
-    -- Draw each horizontal box plot
-    let cmds := Id.run do
-      let mut cmds := cmds
+      -- Draw each horizontal box plot
       for i in [0:boxCount] do
         let s := summaries[i]!
         let color := colors[i % colors.size]!
@@ -356,67 +326,51 @@ def horizontalBoxPlotSpec (summaries : Array Summary) (theme : Theme)
         let maxX := xToPixel s.max
 
         -- Draw whisker (horizontal line from min to max)
-        let whiskerLineRect := Arbor.Rect.mk' minX (boxCenterY - 0.5) (maxX - minX) 1.0
-        cmds := cmds.push (.fillRect whiskerLineRect color 0.0)
+        RenderM.fillRect' minX (boxCenterY - 0.5) (maxX - minX) 1.0 color 0.0
 
         -- Draw whisker caps
         let capHalfHeight := dims.whiskerWidth / 2
-        let minCapRect := Arbor.Rect.mk' (minX - 0.5) (boxCenterY - capHalfHeight) 1.0 dims.whiskerWidth
-        cmds := cmds.push (.fillRect minCapRect color 0.0)
-        let maxCapRect := Arbor.Rect.mk' (maxX - 0.5) (boxCenterY - capHalfHeight) 1.0 dims.whiskerWidth
-        cmds := cmds.push (.fillRect maxCapRect color 0.0)
+        RenderM.fillRect' (minX - 0.5) (boxCenterY - capHalfHeight) 1.0 dims.whiskerWidth color 0.0
+        RenderM.fillRect' (maxX - 0.5) (boxCenterY - capHalfHeight) 1.0 dims.whiskerWidth color 0.0
 
         -- Draw box (Q1 to Q3)
         let boxTop := boxCenterY - dims.boxWidth / 2
         let boxWidth := q3X - q1X
         let boxRect := Arbor.Rect.mk' q1X boxTop boxWidth dims.boxWidth
-        cmds := cmds.push (.fillRect boxRect (color.withAlpha 0.6) 2.0)
-        cmds := cmds.push (.strokeRect boxRect color 1.5)
+        RenderM.fillRect boxRect (color.withAlpha 0.6) 2.0
+        RenderM.strokeRect boxRect color 1.5
 
         -- Draw median line
-        let medianRect := Arbor.Rect.mk' (medianX - 1) boxTop 2.0 dims.boxWidth
-        cmds := cmds.push (.fillRect medianRect (Color.white.withAlpha 0.9) 0.0)
+        RenderM.fillRect' (medianX - 1) boxTop 2.0 dims.boxWidth (Color.white.withAlpha 0.9) 0.0
 
         -- Draw outliers
         if dims.showOutliers then
           for outlier in s.outliers do
             let outlierX := xToPixel outlier
             let outlierPath := Arbor.Path.circle (Arbor.Point.mk' outlierX boxCenterY) dims.outlierRadius
-            cmds := cmds.push (.strokePath outlierPath color 1.5)
+            RenderM.strokePath outlierPath color 1.5
 
-      cmds
-
-    -- Draw X-axis labels (values)
-    let cmds := if dims.gridLineCount > 0 then
-      Id.run do
-        let mut cmds := cmds
+      -- Draw X-axis labels (values)
+      if dims.gridLineCount > 0 then
         for i in [0:dims.gridLineCount + 1] do
           let ratio := i.toFloat / dims.gridLineCount.toFloat
           let value := xMin + ratio * xRange
           let labelX := chartX + (ratio * chartWidth)
           let labelY := chartY + chartHeight + 16
-          cmds := cmds.push (.fillText (formatValue value) labelX labelY theme.smallFont theme.textMuted)
-        cmds
-    else cmds
+          RenderM.fillText (formatValue value) labelX labelY theme.smallFont theme.textMuted
 
-    -- Draw Y-axis labels (box labels)
-    let cmds := Id.run do
-      let mut cmds := cmds
+      -- Draw Y-axis labels (box labels)
       for i in [0:boxCount] do
         let s := summaries[i]!
         match s.label with
         | some label =>
           let boxCenterY := chartY + gapHeight + i.toFloat * (dims.boxWidth + gapHeight) + dims.boxWidth / 2
-          cmds := cmds.push (.fillText label (rect.x + 4) (boxCenterY + 4) theme.smallFont theme.text)
+          RenderM.fillText label (rect.x + 4) (boxCenterY + 4) theme.smallFont theme.text
         | none => pure ()
-      cmds
 
-    -- Draw axes
-    let axisColor := Color.gray 0.5
-    let yAxisRect := Arbor.Rect.mk' chartX chartY 1.0 chartHeight
-    let cmds := cmds.push (.fillRect yAxisRect axisColor 0.0)
-    let xAxisRect := Arbor.Rect.mk' chartX (chartY + chartHeight) chartWidth 1.0
-    cmds.push (.fillRect xAxisRect axisColor 0.0)
+      -- Draw axes
+      RenderM.fillRect' chartX chartY 1.0 chartHeight axisColor 0.0
+      RenderM.fillRect' chartX (chartY + chartHeight) chartWidth 1.0 axisColor 0.0
 
   draw := none
 }

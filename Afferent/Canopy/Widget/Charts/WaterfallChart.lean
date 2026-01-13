@@ -131,14 +131,13 @@ def waterfallChartSpec (data : Data) (theme : Theme)
     (colors : ChartColors := defaultColors)
     (dims : Dimensions := defaultDimensions) : CustomSpec := {
   measure := fun _ _ => (dims.marginLeft + dims.marginRight + 50, dims.marginTop + dims.marginBottom + 30)
-  collect := fun layout =>
+  collect := fun layout => RenderM.build do
     let rect := layout.contentRect
     let actualWidth := rect.width
     let actualHeight := rect.height
-    let cmds : Array RenderCommand := #[]
 
     let numBars := data.bars.size
-    if numBars == 0 then cmds else
+    if numBars == 0 then return
 
     -- Calculate positions
     let positions := calculatePositions data
@@ -162,98 +161,82 @@ def waterfallChartSpec (data : Data) (theme : Theme)
 
     -- Draw background
     let bgRect := Arbor.Rect.mk' rect.x rect.y actualWidth actualHeight
-    let cmds := cmds.push (.fillRect bgRect (theme.panel.background.withAlpha 0.3) 6.0)
+    RenderM.fillRect bgRect (theme.panel.background.withAlpha 0.3) 6.0
 
     -- Draw grid lines
-    let cmds := if dims.showGridLines && dims.gridLineCount > 0 then
-      Id.run do
-        let mut cmds := cmds
-        for i in [0:dims.gridLineCount + 1] do
-          let ratio := i.toFloat / dims.gridLineCount.toFloat
-          let lineY := chartY + chartHeight - (ratio * chartHeight)
-          let lineRect := Arbor.Rect.mk' chartX lineY chartWidth 1.0
-          cmds := cmds.push (.fillRect lineRect (Color.gray 0.3) 0.0)
-        cmds
-    else cmds
+    if dims.showGridLines && dims.gridLineCount > 0 then
+      for i in [0:dims.gridLineCount + 1] do
+        let ratio := i.toFloat / dims.gridLineCount.toFloat
+        let lineY := chartY + chartHeight - (ratio * chartHeight)
+        let lineRect := Arbor.Rect.mk' chartX lineY chartWidth 1.0
+        RenderM.fillRect lineRect (Color.gray 0.3) 0.0
 
     -- Draw zero line if it's within the chart area
-    let cmds := if minVal < 0.0 && maxVal > 0.0 then
+    if minVal < 0.0 && maxVal > 0.0 then
       let zeroY := valueToY 0.0
       let zeroRect := Arbor.Rect.mk' chartX zeroY chartWidth 1.5
-      cmds.push (.fillRect zeroRect (Color.gray 0.5) 0.0)
-    else cmds
+      RenderM.fillRect zeroRect (Color.gray 0.5) 0.0
 
     -- Draw connectors and bars
-    let cmds := Id.run do
-      let mut cmds := cmds
-      let mut prevEndY : Option Float := none
+    let mut prevEndY : Option Float := none
 
-      for i in [0:numBars] do
-        let (startVal, endVal, barType) := positions[i]!
-        let barX := chartX + dims.barGap + i.toFloat * (barWidth + dims.barGap)
+    for i in [0:numBars] do
+      let (startVal, endVal, barType) := positions[i]!
+      let barX := chartX + dims.barGap + i.toFloat * (barWidth + dims.barGap)
 
-        let startY := valueToY startVal
-        let endY := valueToY endVal
+      let startY := valueToY startVal
+      let endY := valueToY endVal
 
-        -- Draw connector from previous bar (if enabled and not first bar)
-        if dims.showConnectors then
-          match prevEndY with
-          | some prevY =>
-            -- Only draw connector if this isn't a total bar
-            if barType != .total then
-              let connectorRect := Arbor.Rect.mk' (barX - dims.barGap) prevY dims.barGap dims.connectorWidth
-              cmds := cmds.push (.fillRect connectorRect colors.connector 0.0)
-          | none => pure ()
+      -- Draw connector from previous bar (if enabled and not first bar)
+      if dims.showConnectors then
+        match prevEndY with
+        | some prevY =>
+          -- Only draw connector if this isn't a total bar
+          if barType != .total then
+            let connectorRect := Arbor.Rect.mk' (barX - dims.barGap) prevY dims.barGap dims.connectorWidth
+            RenderM.fillRect connectorRect colors.connector 0.0
+        | none => pure ()
 
-        -- Determine bar color
-        let barColor := match barType with
-          | .initial => colors.total
-          | .increase => colors.increase
-          | .decrease => colors.decrease
-          | .total => colors.total
+      -- Determine bar color
+      let barColor := match barType with
+        | .initial => colors.total
+        | .increase => colors.increase
+        | .decrease => colors.decrease
+        | .total => colors.total
 
-        -- Draw bar (from startY to endY)
-        let barTop := min startY endY
-        let barBottom := max startY endY
-        let barHeight := max 2.0 (barBottom - barTop)
-        let barRect := Arbor.Rect.mk' barX barTop barWidth barHeight
-        cmds := cmds.push (.fillRect barRect barColor 2.0)
+      -- Draw bar (from startY to endY)
+      let barTop := min startY endY
+      let barBottom := max startY endY
+      let barHeight := max 2.0 (barBottom - barTop)
+      let barRect := Arbor.Rect.mk' barX barTop barWidth barHeight
+      RenderM.fillRect barRect barColor 2.0
 
-        -- Update previous end Y for connector
-        prevEndY := some endY
-
-      cmds
+      -- Update previous end Y for connector
+      prevEndY := some endY
 
     -- Draw Y-axis labels
-    let cmds := if dims.gridLineCount > 0 then
-      Id.run do
-        let mut cmds := cmds
-        for i in [0:dims.gridLineCount + 1] do
-          let ratio := i.toFloat / dims.gridLineCount.toFloat
-          let value := minVal + ratio * valueRange
-          let labelY := chartY + chartHeight - (ratio * chartHeight) + 4
-          let labelText := formatValue value
-          cmds := cmds.push (.fillText labelText (rect.x + 4) labelY theme.smallFont theme.textMuted)
-        cmds
-    else cmds
+    if dims.gridLineCount > 0 then
+      for i in [0:dims.gridLineCount + 1] do
+        let ratio := i.toFloat / dims.gridLineCount.toFloat
+        let value := minVal + ratio * valueRange
+        let labelY := chartY + chartHeight - (ratio * chartHeight) + 4
+        let labelText := formatValue value
+        RenderM.fillText labelText (rect.x + 4) labelY theme.smallFont theme.textMuted
 
     -- Draw X-axis labels
-    let cmds := Id.run do
-      let mut cmds := cmds
-      for i in [0:numBars] do
-        let bar := data.bars[i]!
-        let barX := chartX + dims.barGap + i.toFloat * (barWidth + dims.barGap)
-        let labelX := barX + barWidth / 2
-        let labelY := chartY + chartHeight + 16
-        cmds := cmds.push (.fillText bar.label labelX labelY theme.smallFont theme.text)
-      cmds
+    for i in [0:numBars] do
+      let bar := data.bars[i]!
+      let barX := chartX + dims.barGap + i.toFloat * (barWidth + dims.barGap)
+      let labelX := barX + barWidth / 2
+      let labelY := chartY + chartHeight + 16
+      RenderM.fillText bar.label labelX labelY theme.smallFont theme.text
 
     -- Draw axes
     let axisColor := Color.gray 0.5
     let yAxisRect := Arbor.Rect.mk' chartX chartY 1.0 chartHeight
-    let cmds := cmds.push (.fillRect yAxisRect axisColor 0.0)
+    RenderM.fillRect yAxisRect axisColor 0.0
     let xAxisRect := Arbor.Rect.mk' chartX (chartY + chartHeight) chartWidth 1.0
-    cmds.push (.fillRect xAxisRect axisColor 0.0)
+    RenderM.fillRect xAxisRect axisColor 0.0
 
   draw := none
 }

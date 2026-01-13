@@ -119,10 +119,9 @@ def radarChartSpec (data : Data) (theme : Theme)
     let rect := layout.contentRect
     let actualWidth := rect.width
     let actualHeight := rect.height
-    let cmds : Array RenderCommand := #[]
 
     let numAxes := data.axisLabels.size
-    if numAxes < 3 then cmds else  -- Need at least 3 axes for a polygon
+    if numAxes < 3 then #[] else  -- Need at least 3 axes for a polygon
 
     -- Calculate center point and radius from available space
     let legendSpace := if dims.showLegend then dims.marginRight else 20.0
@@ -138,14 +137,12 @@ def radarChartSpec (data : Data) (theme : Theme)
     let maxVal := findMaxValue data
     let niceMaxVal := niceMax maxVal
 
-    -- Draw background
-    let bgRect := Arbor.Rect.mk' rect.x rect.y actualWidth actualHeight
-    let cmds := cmds.push (.fillRect bgRect (theme.panel.background.withAlpha 0.3) 6.0)
+    RenderM.build do
+      -- Draw background
+      RenderM.fillRect' rect.x rect.y actualWidth actualHeight (theme.panel.background.withAlpha 0.3) 6.0
 
-    -- Draw grid polygons (concentric)
-    let cmds := if dims.showGridPolygons && dims.gridLevels > 0 then
-      Id.run do
-        let mut cmds := cmds
+      -- Draw grid polygons (concentric)
+      if dims.showGridPolygons && dims.gridLevels > 0 then
         for level in [1:dims.gridLevels + 1] do
           let levelRadius := radius * (level.toFloat / dims.gridLevels.toFloat)
           let mut gridPath := Arbor.Path.empty
@@ -160,41 +157,28 @@ def radarChartSpec (data : Data) (theme : Theme)
           let angle := axisAngle 0 numAxes
           let (x, y) := pointPosition centerX centerY angle levelRadius
           gridPath := gridPath.lineTo (Arbor.Point.mk' x y)
-          cmds := cmds.push (.strokePath gridPath (Color.gray 0.3) 1.0)
-        cmds
-    else cmds
+          RenderM.strokePath gridPath (Color.gray 0.3) 1.0
 
-    -- Draw axis lines from center to outer edge
-    let cmds := if dims.showGridLines then
-      Id.run do
-        let mut cmds := cmds
+      -- Draw axis lines from center to outer edge
+      if dims.showGridLines then
         for axisIdx in [0:numAxes] do
           let angle := axisAngle axisIdx numAxes
           let (outerX, outerY) := pointPosition centerX centerY angle radius
           let mut axisPath := Arbor.Path.empty
           axisPath := axisPath.moveTo (Arbor.Point.mk' centerX centerY)
           axisPath := axisPath.lineTo (Arbor.Point.mk' outerX outerY)
-          cmds := cmds.push (.strokePath axisPath (Color.gray 0.4) 1.0)
-        cmds
-    else cmds
+          RenderM.strokePath axisPath (Color.gray 0.4) 1.0
 
-    -- Draw axis labels
-    let cmds := if dims.showAxisLabels then
-      Id.run do
-        let mut cmds := cmds
+      -- Draw axis labels
+      if dims.showAxisLabels then
         let labelDistance := radius + 15.0
         for axisIdx in [0:numAxes] do
           let label := data.axisLabels[axisIdx]!
           let angle := axisAngle axisIdx numAxes
           let (x, y) := pointPosition centerX centerY angle labelDistance
-          cmds := cmds.push (.fillText label x (y + 4) theme.smallFont theme.text)
-        cmds
-    else cmds
+          RenderM.fillText label x (y + 4) theme.smallFont theme.text
 
-    -- Draw data series (filled polygons and lines)
-    let cmds := Id.run do
-      let mut cmds := cmds
-
+      -- Draw data series (filled polygons and lines)
       -- First pass: draw all filled areas
       for seriesIdx in [0:data.series.size] do
         let series := data.series[seriesIdx]!
@@ -220,7 +204,7 @@ def radarChartSpec (data : Data) (theme : Theme)
           let (x, y) := pointPosition centerX centerY angle distance
           dataPath := dataPath.lineTo (Arbor.Point.mk' x y)
 
-          cmds := cmds.push (.fillPath dataPath (color.withAlpha dims.fillOpacity))
+          RenderM.fillPath dataPath (color.withAlpha dims.fillOpacity)
 
       -- Second pass: draw all lines on top
       for seriesIdx in [0:data.series.size] do
@@ -247,7 +231,7 @@ def radarChartSpec (data : Data) (theme : Theme)
           let (x, y) := pointPosition centerX centerY angle distance
           linePath := linePath.lineTo (Arbor.Point.mk' x y)
 
-          cmds := cmds.push (.strokePath linePath color dims.lineWidth)
+          RenderM.strokePath linePath color dims.lineWidth
 
       -- Third pass: draw markers
       if dims.showMarkers then
@@ -263,14 +247,10 @@ def radarChartSpec (data : Data) (theme : Theme)
               let angle := axisAngle axisIdx numAxes
               let (x, y) := pointPosition centerX centerY angle distance
               let markerPath := Arbor.Path.circle (Arbor.Point.mk' x y) dims.markerRadius
-              cmds := cmds.push (.fillPath markerPath color)
+              RenderM.fillPath markerPath color
 
-      cmds
-
-    -- Draw legend
-    let cmds := if dims.showLegend && data.series.size > 0 then
-      Id.run do
-        let mut cmds := cmds
+      -- Draw legend
+      if dims.showLegend && data.series.size > 0 then
         let legendX := rect.x + dims.marginLeft + chartWidth + 16
         let legendY := rect.y + dims.marginTop
         for i in [0:data.series.size] do
@@ -278,14 +258,9 @@ def radarChartSpec (data : Data) (theme : Theme)
           let color := getSeriesColor series i
           let itemY := legendY + i.toFloat * (dims.legendItemHeight + 4)
           -- Color box
-          let colorRect := Arbor.Rect.mk' legendX itemY 12.0 12.0
-          cmds := cmds.push (.fillRect colorRect color 2.0)
+          RenderM.fillRect' legendX itemY 12.0 12.0 color 2.0
           -- Label
-          cmds := cmds.push (.fillText series.name (legendX + 16) (itemY + 10) theme.smallFont theme.text)
-        cmds
-    else cmds
-
-    cmds
+          RenderM.fillText series.name (legendX + 16) (itemY + 10) theme.smallFont theme.text
 
   draw := none
 }

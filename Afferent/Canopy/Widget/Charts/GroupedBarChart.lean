@@ -98,11 +98,10 @@ def groupedBarChartSpec (data : Data) (theme : Theme)
     let rect := layout.contentRect
     let actualWidth := rect.width
     let actualHeight := rect.height
-    let cmds : Array RenderCommand := #[]
 
     let numCategories := data.categories.size
     let numSeries := data.series.size
-    if numCategories == 0 || numSeries == 0 then cmds else
+    if numCategories == 0 || numSeries == 0 then #[] else
 
     -- Calculate chart area
     let legendSpace := if dims.showLegend then dims.marginRight else 20.0
@@ -131,25 +130,20 @@ def groupedBarChartSpec (data : Data) (theme : Theme)
     let totalBarGaps := if numSeries > 1 then dims.barGap * (numSeries - 1).toFloat else 0.0
     let barWidth := (groupWidth - totalBarGaps) / numSeries.toFloat
 
-    -- Draw background
-    let bgRect := Arbor.Rect.mk' rect.x rect.y actualWidth actualHeight
-    let cmds := cmds.push (.fillRect bgRect (theme.panel.background.withAlpha 0.3) 6.0)
+    RenderM.build do
+      -- Draw background
+      let bgRect := Arbor.Rect.mk' rect.x rect.y actualWidth actualHeight
+      RenderM.fillRect bgRect (theme.panel.background.withAlpha 0.3) 6.0
 
-    -- Draw grid lines
-    let cmds := if dims.showGridLines && dims.gridLineCount > 0 then
-      Id.run do
-        let mut cmds := cmds
+      -- Draw grid lines
+      if dims.showGridLines && dims.gridLineCount > 0 then
         for i in [0:dims.gridLineCount + 1] do
           let ratio := i.toFloat / dims.gridLineCount.toFloat
           let lineY := chartY + chartHeight - (ratio * chartHeight)
           let lineRect := Arbor.Rect.mk' chartX lineY chartWidth 1.0
-          cmds := cmds.push (.fillRect lineRect (Color.gray 0.3) 0.0)
-        cmds
-    else cmds
+          RenderM.fillRect lineRect (Color.gray 0.3) 0.0
 
-    -- Draw grouped bars
-    let cmds := Id.run do
-      let mut cmds := cmds
+      -- Draw grouped bars
       for catIdx in [0:numCategories] do
         let groupX := chartX + catIdx.toFloat * (groupWidth + dims.groupGap)
 
@@ -163,44 +157,34 @@ def groupedBarChartSpec (data : Data) (theme : Theme)
             let barY := chartY + chartHeight - barHeight
             let barRect := Arbor.Rect.mk' barX barY barWidth barHeight
             let color := getSeriesColor series seriesIdx
-            cmds := cmds.push (.fillRect barRect color dims.cornerRadius)
-      cmds
+            RenderM.fillRect barRect color dims.cornerRadius
 
-    -- Draw Y-axis labels
-    let cmds := if dims.gridLineCount > 0 then
-      Id.run do
-        let mut cmds := cmds
+      -- Draw Y-axis labels
+      if dims.gridLineCount > 0 then
         for i in [0:dims.gridLineCount + 1] do
           let ratio := i.toFloat / dims.gridLineCount.toFloat
           let value := ratio * niceMax
           let labelY := chartY + chartHeight - (ratio * chartHeight) + 4
           let labelText := formatValue value
-          cmds := cmds.push (.fillText labelText (rect.x + 4) labelY theme.smallFont theme.textMuted)
-        cmds
-    else cmds
+          RenderM.fillText labelText (rect.x + 4) labelY theme.smallFont theme.textMuted
 
-    -- Draw X-axis labels (centered under each group)
-    let cmds := Id.run do
-      let mut cmds := cmds
+      -- Draw X-axis labels (centered under each group)
       for i in [0:numCategories] do
         let label := data.categories[i]!
         let groupX := chartX + i.toFloat * (groupWidth + dims.groupGap)
         let labelX := groupX + groupWidth / 2
         let labelY := chartY + chartHeight + 16
-        cmds := cmds.push (.fillText label labelX labelY theme.smallFont theme.text)
-      cmds
+        RenderM.fillText label labelX labelY theme.smallFont theme.text
 
-    -- Draw axes
-    let axisColor := Color.gray 0.5
-    let yAxisRect := Arbor.Rect.mk' chartX chartY 1.0 chartHeight
-    let cmds := cmds.push (.fillRect yAxisRect axisColor 0.0)
-    let xAxisRect := Arbor.Rect.mk' chartX (chartY + chartHeight) chartWidth 1.0
-    let cmds := cmds.push (.fillRect xAxisRect axisColor 0.0)
+      -- Draw axes
+      let axisColor := Color.gray 0.5
+      let yAxisRect := Arbor.Rect.mk' chartX chartY 1.0 chartHeight
+      RenderM.fillRect yAxisRect axisColor 0.0
+      let xAxisRect := Arbor.Rect.mk' chartX (chartY + chartHeight) chartWidth 1.0
+      RenderM.fillRect xAxisRect axisColor 0.0
 
-    -- Draw legend
-    let cmds := if dims.showLegend && numSeries > 0 then
-      Id.run do
-        let mut cmds := cmds
+      -- Draw legend
+      if dims.showLegend && numSeries > 0 then
         let legendX := chartX + chartWidth + 16
         let legendY := chartY
         for i in [0:numSeries] do
@@ -209,13 +193,9 @@ def groupedBarChartSpec (data : Data) (theme : Theme)
           let itemY := legendY + i.toFloat * (dims.legendItemHeight + 4)
           -- Color box
           let colorRect := Arbor.Rect.mk' legendX itemY 12.0 12.0
-          cmds := cmds.push (.fillRect colorRect color 2.0)
+          RenderM.fillRect colorRect color 2.0
           -- Label
-          cmds := cmds.push (.fillText series.name (legendX + 16) (itemY + 10) theme.smallFont theme.text)
-        cmds
-    else cmds
-
-    cmds
+          RenderM.fillText series.name (legendX + 16) (itemY + 10) theme.smallFont theme.text
 
   draw := none
 }

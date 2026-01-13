@@ -134,17 +134,16 @@ def stackedAreaChartSpec (data : Data) (theme : Theme)
     let rect := layout.contentRect
     let actualWidth := rect.width
     let actualHeight := rect.height
-    let cmds : Array RenderCommand := #[]
 
     let numSeries := data.series.size
-    if numSeries == 0 then cmds else
+    if numSeries == 0 then #[] else
 
     -- Calculate stacked values
     let stackedValues := calculateStackedValues data
-    if stackedValues.isEmpty then cmds else
+    if stackedValues.isEmpty then #[] else
 
     let maxPoints := stackedValues[0]!.size
-    if maxPoints == 0 then cmds else
+    if maxPoints == 0 then #[] else
 
     -- Calculate chart area
     let legendSpace := if dims.showLegend then dims.marginRight else 20.0
@@ -163,26 +162,20 @@ def stackedAreaChartSpec (data : Data) (theme : Theme)
     -- Helper to convert value to Y coordinate
     let valueToY := fun (v : Float) => chartY + chartHeight - (v / niceMaxVal) * chartHeight
 
-    -- Draw background
-    let bgRect := Arbor.Rect.mk' rect.x rect.y actualWidth actualHeight
-    let cmds := cmds.push (.fillRect bgRect (theme.panel.background.withAlpha 0.3) 6.0)
+    RenderM.build do
+      -- Draw background
+      let bgRect := Arbor.Rect.mk' rect.x rect.y actualWidth actualHeight
+      RenderM.fillRect bgRect (theme.panel.background.withAlpha 0.3) 6.0
 
-    -- Draw grid lines
-    let cmds := if dims.showGridLines && dims.gridLineCount > 0 then
-      Id.run do
-        let mut cmds := cmds
+      -- Draw grid lines
+      if dims.showGridLines && dims.gridLineCount > 0 then
         for i in [0:dims.gridLineCount + 1] do
           let ratio := i.toFloat / dims.gridLineCount.toFloat
           let lineY := chartY + chartHeight - (ratio * chartHeight)
           let lineRect := Arbor.Rect.mk' chartX lineY chartWidth 1.0
-          cmds := cmds.push (.fillRect lineRect (Color.gray 0.3) 0.0)
-        cmds
-    else cmds
+          RenderM.fillRect lineRect (Color.gray 0.3) 0.0
 
-    -- Draw stacked areas (from bottom to top)
-    let cmds := Id.run do
-      let mut cmds := cmds
-
+      -- Draw stacked areas (from bottom to top)
       for seriesIdx in [0:numSeries] do
         let series := data.series[seriesIdx]!
         let color := getSeriesColor series seriesIdx
@@ -220,14 +213,10 @@ def stackedAreaChartSpec (data : Data) (theme : Theme)
         -- Close path
         areaPath := areaPath.lineTo (Arbor.Point.mk' startX startBottomY)
 
-        cmds := cmds.push (.fillPath areaPath (color.withAlpha dims.fillOpacity))
+        RenderM.fillPath areaPath (color.withAlpha dims.fillOpacity)
 
-      cmds
-
-    -- Draw lines on top of areas
-    let cmds := if dims.showLines then
-      Id.run do
-        let mut cmds := cmds
+      -- Draw lines on top of areas
+      if dims.showLines then
         for seriesIdx in [0:numSeries] do
           let series := data.series[seriesIdx]!
           let color := getSeriesColor series seriesIdx
@@ -243,46 +232,34 @@ def stackedAreaChartSpec (data : Data) (theme : Theme)
             else
               linePath := linePath.lineTo pt
 
-          cmds := cmds.push (.strokePath linePath color dims.lineWidth)
-        cmds
-    else cmds
+          RenderM.strokePath linePath color dims.lineWidth
 
-    -- Draw Y-axis labels
-    let cmds := if dims.gridLineCount > 0 then
-      Id.run do
-        let mut cmds := cmds
+      -- Draw Y-axis labels
+      if dims.gridLineCount > 0 then
         for i in [0:dims.gridLineCount + 1] do
           let ratio := i.toFloat / dims.gridLineCount.toFloat
           let value := ratio * niceMaxVal
           let labelY := chartY + chartHeight - (ratio * chartHeight) + 4
           let labelText := formatValue value
-          cmds := cmds.push (.fillText labelText (rect.x + 4) labelY theme.smallFont theme.textMuted)
-        cmds
-    else cmds
+          RenderM.fillText labelText (rect.x + 4) labelY theme.smallFont theme.textMuted
 
-    -- Draw X-axis labels
-    let cmds := if data.labels.size > 0 then
-      Id.run do
-        let mut cmds := cmds
+      -- Draw X-axis labels
+      if data.labels.size > 0 then
         for i in [0:min data.labels.size maxPoints] do
           let label := data.labels[i]!
           let labelX := chartX + i.toFloat * stepX
           let labelY := chartY + chartHeight + 16
-          cmds := cmds.push (.fillText label labelX labelY theme.smallFont theme.text)
-        cmds
-    else cmds
+          RenderM.fillText label labelX labelY theme.smallFont theme.text
 
-    -- Draw axes
-    let axisColor := Color.gray 0.5
-    let yAxisRect := Arbor.Rect.mk' chartX chartY 1.0 chartHeight
-    let cmds := cmds.push (.fillRect yAxisRect axisColor 0.0)
-    let xAxisRect := Arbor.Rect.mk' chartX (chartY + chartHeight) chartWidth 1.0
-    let cmds := cmds.push (.fillRect xAxisRect axisColor 0.0)
+      -- Draw axes
+      let axisColor := Color.gray 0.5
+      let yAxisRect := Arbor.Rect.mk' chartX chartY 1.0 chartHeight
+      RenderM.fillRect yAxisRect axisColor 0.0
+      let xAxisRect := Arbor.Rect.mk' chartX (chartY + chartHeight) chartWidth 1.0
+      RenderM.fillRect xAxisRect axisColor 0.0
 
-    -- Draw legend
-    let cmds := if dims.showLegend && numSeries > 0 then
-      Id.run do
-        let mut cmds := cmds
+      -- Draw legend
+      if dims.showLegend && numSeries > 0 then
         let legendX := chartX + chartWidth + 16
         let legendY := chartY
         for i in [0:numSeries] do
@@ -291,13 +268,9 @@ def stackedAreaChartSpec (data : Data) (theme : Theme)
           let itemY := legendY + i.toFloat * (dims.legendItemHeight + 4)
           -- Color box
           let colorRect := Arbor.Rect.mk' legendX itemY 12.0 12.0
-          cmds := cmds.push (.fillRect colorRect color 2.0)
+          RenderM.fillRect colorRect color 2.0
           -- Label
-          cmds := cmds.push (.fillText series.name (legendX + 16) (itemY + 10) theme.smallFont theme.text)
-        cmds
-    else cmds
-
-    cmds
+          RenderM.fillText series.name (legendX + 16) (itemY + 10) theme.smallFont theme.text
 
   draw := none
 }

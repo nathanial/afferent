@@ -117,10 +117,9 @@ def candlestickChartSpec (data : Data) (theme : Theme)
     let rect := layout.contentRect
     let actualWidth := rect.width
     let actualHeight := rect.height
-    let cmds : Array RenderCommand := #[]
 
     let numCandles := data.candles.size
-    if numCandles == 0 then cmds else
+    if numCandles == 0 then #[] else
 
     -- Calculate chart area
     let chartX := rect.x + dims.marginLeft
@@ -141,25 +140,28 @@ def candlestickChartSpec (data : Data) (theme : Theme)
     let priceToY := fun (price : Float) =>
       chartY + chartHeight - ((price - minPrice) / priceRange) * chartHeight
 
-    -- Draw background
-    let bgRect := Arbor.Rect.mk' rect.x rect.y actualWidth actualHeight
-    let cmds := cmds.push (.fillRect bgRect (theme.panel.background.withAlpha 0.3) 6.0)
+    -- Label indices for X-axis
+    let labelIndices := if numCandles <= 5 then
+      Array.range numCandles
+    else if numCandles <= 10 then
+      #[0, numCandles / 2, numCandles - 1]
+    else
+      #[0, numCandles / 4, numCandles / 2, 3 * numCandles / 4, numCandles - 1]
 
-    -- Draw grid lines
-    let cmds := if dims.showGridLines && dims.gridLineCount > 0 then
-      Id.run do
-        let mut cmds := cmds
+    RenderM.build do
+      -- Draw background
+      let bgRect := Arbor.Rect.mk' rect.x rect.y actualWidth actualHeight
+      RenderM.fillRect bgRect (theme.panel.background.withAlpha 0.3) 6.0
+
+      -- Draw grid lines
+      if dims.showGridLines && dims.gridLineCount > 0 then
         for i in [0:dims.gridLineCount + 1] do
           let ratio := i.toFloat / dims.gridLineCount.toFloat
           let lineY := chartY + chartHeight - (ratio * chartHeight)
           let lineRect := Arbor.Rect.mk' chartX lineY chartWidth 1.0
-          cmds := cmds.push (.fillRect lineRect (Color.gray 0.3) 0.0)
-        cmds
-    else cmds
+          RenderM.fillRect lineRect (Color.gray 0.3) 0.0
 
-    -- Draw candles
-    let cmds := Id.run do
-      let mut cmds := cmds
+      -- Draw candles
       for i in [0:numCandles] do
         let candle := data.candles[i]!
         let isBullish := candle.isBullish
@@ -186,43 +188,27 @@ def candlestickChartSpec (data : Data) (theme : Theme)
         -- Draw upper wick (from body top to high)
         let upperWickRect := Arbor.Rect.mk'
           (candleCenterX - dims.wickWidth / 2) highY dims.wickWidth (bodyTop - highY)
-        cmds := cmds.push (.fillRect upperWickRect wickColor 0.0)
+        RenderM.fillRect upperWickRect wickColor 0.0
 
         -- Draw lower wick (from body bottom to low)
         let lowerWickRect := Arbor.Rect.mk'
           (candleCenterX - dims.wickWidth / 2) bodyBottom dims.wickWidth (lowY - bodyBottom)
-        cmds := cmds.push (.fillRect lowerWickRect wickColor 0.0)
+        RenderM.fillRect lowerWickRect wickColor 0.0
 
         -- Draw body
         let bodyRect := Arbor.Rect.mk' candleX bodyTop candleWidth bodyHeight
-        cmds := cmds.push (.fillRect bodyRect bodyColor 1.0)
+        RenderM.fillRect bodyRect bodyColor 1.0
 
-      cmds
-
-    -- Draw Y-axis labels (prices)
-    let cmds := if dims.gridLineCount > 0 then
-      Id.run do
-        let mut cmds := cmds
+      -- Draw Y-axis labels (prices)
+      if dims.gridLineCount > 0 then
         for i in [0:dims.gridLineCount + 1] do
           let ratio := i.toFloat / dims.gridLineCount.toFloat
           let price := minPrice + ratio * priceRange
           let labelY := chartY + chartHeight - (ratio * chartHeight) + 4
           let labelText := formatPrice price
-          cmds := cmds.push (.fillText labelText (rect.x + 4) labelY theme.smallFont theme.textMuted)
-        cmds
-    else cmds
+          RenderM.fillText labelText (rect.x + 4) labelY theme.smallFont theme.textMuted
 
-    -- Draw X-axis labels (dates/times)
-    let cmds := Id.run do
-      let mut cmds := cmds
-      -- Show labels for first, middle, and last candles (or subset for many candles)
-      let labelIndices := if numCandles <= 5 then
-        Array.range numCandles
-      else if numCandles <= 10 then
-        #[0, numCandles / 2, numCandles - 1]
-      else
-        #[0, numCandles / 4, numCandles / 2, 3 * numCandles / 4, numCandles - 1]
-
+      -- Draw X-axis labels (dates/times)
       for idx in labelIndices do
         if idx < numCandles then
           let candle := data.candles[idx]!
@@ -231,16 +217,15 @@ def candlestickChartSpec (data : Data) (theme : Theme)
             let candleX := chartX + dims.candleGap + idx.toFloat * (candleWidth + dims.candleGap)
             let labelX := candleX + candleWidth / 2
             let labelY := chartY + chartHeight + 16
-            cmds := cmds.push (.fillText label labelX labelY theme.smallFont theme.text)
+            RenderM.fillText label labelX labelY theme.smallFont theme.text
           | none => pure ()
-      cmds
 
-    -- Draw axes
-    let axisColor := Color.gray 0.5
-    let yAxisRect := Arbor.Rect.mk' chartX chartY 1.0 chartHeight
-    let cmds := cmds.push (.fillRect yAxisRect axisColor 0.0)
-    let xAxisRect := Arbor.Rect.mk' chartX (chartY + chartHeight) chartWidth 1.0
-    cmds.push (.fillRect xAxisRect axisColor 0.0)
+      -- Draw axes
+      let axisColor := Color.gray 0.5
+      let yAxisRect := Arbor.Rect.mk' chartX chartY 1.0 chartHeight
+      RenderM.fillRect yAxisRect axisColor 0.0
+      let xAxisRect := Arbor.Rect.mk' chartX (chartY + chartHeight) chartWidth 1.0
+      RenderM.fillRect xAxisRect axisColor 0.0
 
   draw := none
 }

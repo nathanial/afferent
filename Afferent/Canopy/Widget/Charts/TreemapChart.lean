@@ -187,20 +187,18 @@ private partial def squarify (items : Array LayoutItem) (rect : LayoutRect)
 /-- Recursively render treemap nodes. -/
 private partial def renderNodes (items : Array (LayoutItem × LayoutRect))
     (theme : Theme) (dims : Dimensions) (depth : Nat)
-    : Array RenderCommand := Id.run do
-  let mut cmds : Array RenderCommand := #[]
-
+    : RenderM Unit := do
   for (item, rect) in items do
     -- Skip tiny rectangles
     if rect.w < 2 || rect.h < 2 then continue
 
     let color := darkenForDepth (getNodeColor item.node item.colorIdx) depth
     let nodeRect := Arbor.Rect.mk' rect.x rect.y rect.w rect.h
-    cmds := cmds.push (.fillRect nodeRect color 2.0)
+    RenderM.fillRect nodeRect color 2.0
 
     -- Draw border
     let borderColor := color.withAlpha 0.3
-    cmds := cmds.push (.strokeRect nodeRect borderColor 1.0)
+    RenderM.strokeRect nodeRect borderColor 1.0
 
     -- Draw label if space permits
     if dims.showLabels && rect.w > 30 && rect.h > 20 then
@@ -211,13 +209,13 @@ private partial def renderNodes (items : Array (LayoutItem × LayoutRect))
         Color.rgba 0.1 0.1 0.1 1.0
       else
         Color.rgba 0.95 0.95 0.95 1.0
-      cmds := cmds.push (.fillText item.node.label labelX labelY theme.smallFont textColor)
+      RenderM.fillText item.node.label labelX labelY theme.smallFont textColor
 
       -- Draw value if space permits
       if dims.showValues && rect.h > 35 then
         let valueY := labelY + 14
         let valueStr := formatValue item.node.totalValue
-        cmds := cmds.push (.fillText valueStr labelX valueY theme.smallFont (textColor.withAlpha 0.8))
+        RenderM.fillText valueStr labelX valueY theme.smallFont (textColor.withAlpha 0.8)
 
     -- Render children if within depth limit and has children
     if depth < dims.maxDepth && !item.node.children.isEmpty then
@@ -231,26 +229,22 @@ private partial def renderNodes (items : Array (LayoutItem × LayoutRect))
         let childItems := item.node.children.mapIdx fun i child =>
           { node := child, value := child.totalValue, colorIdx := item.colorIdx + i + 1 : LayoutItem }
         let childLayout := squarify childItems childRect
-        let childCmds := renderNodes childLayout theme dims (depth + 1)
-        cmds := cmds ++ childCmds
-
-  cmds
+        renderNodes childLayout theme dims (depth + 1)
 
 /-- Custom spec for treemap chart rendering. -/
 def treemapChartSpec (data : Data) (theme : Theme)
     (dims : Dimensions := defaultDimensions) : CustomSpec := {
   measure := fun _ _ => (dims.padding * 2 + 40, dims.padding * 2 + 40)
-  collect := fun layout =>
+  collect := fun layout => RenderM.build do
     let rect := layout.contentRect
     let actualWidth := rect.width
     let actualHeight := rect.height
-    let cmds : Array RenderCommand := #[]
 
-    if data.nodes.isEmpty then cmds else
+    if data.nodes.isEmpty then return
 
     -- Draw background
     let bgRect := Arbor.Rect.mk' rect.x rect.y actualWidth actualHeight
-    let cmds := cmds.push (.fillRect bgRect (theme.panel.background.withAlpha 0.3) 6.0)
+    RenderM.fillRect bgRect (theme.panel.background.withAlpha 0.3) 6.0
 
     -- Create layout items
     let items := data.nodes.mapIdx fun i node =>
@@ -268,8 +262,7 @@ def treemapChartSpec (data : Data) (theme : Theme)
     let layout := squarify items layoutRect
 
     -- Render all nodes
-    let nodeCmds := renderNodes layout theme dims 0
-    cmds ++ nodeCmds
+    renderNodes layout theme dims 0
 
   draw := none
 }

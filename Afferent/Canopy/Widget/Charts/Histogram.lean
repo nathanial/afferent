@@ -168,7 +168,6 @@ def histogramSpec (bins : Array Bin) (variant : HistogramVariant) (theme : Theme
   measure := fun _ _ => (dims.marginLeft + dims.marginRight + 50, dims.marginTop + dims.marginBottom + 30)
   collect := fun layout =>
     let rect := layout.contentRect
-    let cmds : Array RenderCommand := #[]
 
     -- Use actual container size for responsive layout
     let actualWidth := rect.width
@@ -180,7 +179,7 @@ def histogramSpec (bins : Array Bin) (variant : HistogramVariant) (theme : Theme
     let chartWidth := actualWidth - dims.marginLeft - dims.marginRight
     let chartHeight := actualHeight - dims.marginTop - dims.marginBottom
 
-    if bins.isEmpty then cmds else
+    if bins.isEmpty then #[] else
 
     -- Find max frequency/density for scaling
     let maxY : Float := Id.run do
@@ -196,26 +195,21 @@ def histogramSpec (bins : Array Bin) (variant : HistogramVariant) (theme : Theme
     let maxX := bins[bins.size - 1]!.upper
     let rangeX := maxX - minX
 
-    -- Draw background
-    let bgRect := Arbor.Rect.mk' rect.x rect.y actualWidth actualHeight
-    let cmds := cmds.push (.fillRect bgRect (theme.panel.background.withAlpha 0.3) 6.0)
+    let fillColor := variantColor variant theme
+    let axisColor := Color.gray 0.5
 
-    -- Draw horizontal grid lines
-    let cmds := if dims.showGridLines && dims.gridLineCount > 0 then
-      Id.run do
-        let mut cmds := cmds
+    RenderM.build do
+      -- Draw background
+      RenderM.fillRect' rect.x rect.y actualWidth actualHeight (theme.panel.background.withAlpha 0.3) 6.0
+
+      -- Draw horizontal grid lines
+      if dims.showGridLines && dims.gridLineCount > 0 then
         for i in [0:dims.gridLineCount + 1] do
           let ratio := i.toFloat / dims.gridLineCount.toFloat
           let lineY := chartY + chartHeight - (ratio * chartHeight)
-          let lineRect := Arbor.Rect.mk' chartX lineY chartWidth 1.0
-          cmds := cmds.push (.fillRect lineRect (Color.gray 0.3) 0.0)
-        cmds
-    else cmds
+          RenderM.fillRect' chartX lineY chartWidth 1.0 (Color.gray 0.3) 0.0
 
-    -- Draw histogram bars
-    let fillColor := variantColor variant theme
-    let cmds := Id.run do
-      let mut cmds := cmds
+      -- Draw histogram bars
       for b in bins do
         let binWidth := b.upper - b.lower
         let barX := chartX + ((b.lower - minX) / rangeX) * chartWidth
@@ -223,14 +217,10 @@ def histogramSpec (bins : Array Bin) (variant : HistogramVariant) (theme : Theme
         let yVal := if showDensity then b.density else b.count.toFloat
         let barHeight := (yVal / maxY) * chartHeight
         let barY := chartY + chartHeight - barHeight
-        let barRect := Arbor.Rect.mk' barX barY (max 1.0 barWidth) barHeight
-        cmds := cmds.push (.fillRect barRect fillColor dims.cornerRadius)
-      cmds
+        RenderM.fillRect' barX barY (max 1.0 barWidth) barHeight fillColor dims.cornerRadius
 
-    -- Draw Y-axis labels (frequency/density)
-    let cmds := if dims.showFrequencyLabels && dims.gridLineCount > 0 then
-      Id.run do
-        let mut cmds := cmds
+      -- Draw Y-axis labels (frequency/density)
+      if dims.showFrequencyLabels && dims.gridLineCount > 0 then
         for i in [0:dims.gridLineCount + 1] do
           let ratio := i.toFloat / dims.gridLineCount.toFloat
           let value := ratio * maxY
@@ -240,14 +230,10 @@ def histogramSpec (bins : Array Bin) (variant : HistogramVariant) (theme : Theme
             s!"{pct}%"
           else
             formatValue value
-          cmds := cmds.push (.fillText labelText (rect.x + 4) labelY theme.smallFont theme.textMuted)
-        cmds
-    else cmds
+          RenderM.fillText labelText (rect.x + 4) labelY theme.smallFont theme.textMuted
 
-    -- Draw X-axis labels (bin edges)
-    let cmds := if dims.showBinLabels then
-      Id.run do
-        let mut cmds := cmds
+      -- Draw X-axis labels (bin edges)
+      if dims.showBinLabels then
         -- Show a few key bin edges
         let labelCount := min 6 (bins.size + 1)
         let step := if labelCount > 1 then bins.size / (labelCount - 1) else 1
@@ -256,16 +242,11 @@ def histogramSpec (bins : Array Bin) (variant : HistogramVariant) (theme : Theme
           let value := if binIdx < bins.size then bins[binIdx]!.lower else bins[bins.size - 1]!.upper
           let labelX := chartX + ((value - minX) / rangeX) * chartWidth
           let labelY := chartY + chartHeight + 16
-          cmds := cmds.push (.fillText (formatValue value) labelX labelY theme.smallFont theme.textMuted)
-        cmds
-    else cmds
+          RenderM.fillText (formatValue value) labelX labelY theme.smallFont theme.textMuted
 
-    -- Draw axes
-    let axisColor := Color.gray 0.5
-    let yAxisRect := Arbor.Rect.mk' chartX chartY 1.0 chartHeight
-    let cmds := cmds.push (.fillRect yAxisRect axisColor 0.0)
-    let xAxisRect := Arbor.Rect.mk' chartX (chartY + chartHeight) chartWidth 1.0
-    cmds.push (.fillRect xAxisRect axisColor 0.0)
+      -- Draw axes
+      RenderM.fillRect' chartX chartY 1.0 chartHeight axisColor 0.0
+      RenderM.fillRect' chartX (chartY + chartHeight) chartWidth 1.0 axisColor 0.0
 
   draw := none
 }
@@ -277,7 +258,6 @@ def histogramFromCountsSpec (labels : Array String) (counts : Array Nat)
   measure := fun _ _ => (dims.marginLeft + dims.marginRight + 50, dims.marginTop + dims.marginBottom + 30)
   collect := fun layout =>
     let rect := layout.contentRect
-    let cmds : Array RenderCommand := #[]
 
     -- Use actual container size for responsive layout
     let actualWidth := rect.width
@@ -289,7 +269,7 @@ def histogramFromCountsSpec (labels : Array String) (counts : Array Nat)
     let chartHeight := actualHeight - dims.marginTop - dims.marginBottom
 
     let binCount := min labels.size counts.size
-    if binCount == 0 then cmds else
+    if binCount == 0 then #[] else
 
     -- Find max count
     let maxCount := Id.run do
@@ -299,66 +279,47 @@ def histogramFromCountsSpec (labels : Array String) (counts : Array Nat)
       if maxVal == 0 then 1 else maxVal
 
     let barWidth := (chartWidth - dims.barGap * (binCount - 1).toFloat) / binCount.toFloat
+    let fillColor := variantColor variant theme
+    let axisColor := Color.gray 0.5
 
-    -- Draw background
-    let bgRect := Arbor.Rect.mk' rect.x rect.y actualWidth actualHeight
-    let cmds := cmds.push (.fillRect bgRect (theme.panel.background.withAlpha 0.3) 6.0)
+    RenderM.build do
+      -- Draw background
+      RenderM.fillRect' rect.x rect.y actualWidth actualHeight (theme.panel.background.withAlpha 0.3) 6.0
 
-    -- Draw horizontal grid lines
-    let cmds := if dims.showGridLines && dims.gridLineCount > 0 then
-      Id.run do
-        let mut cmds := cmds
+      -- Draw horizontal grid lines
+      if dims.showGridLines && dims.gridLineCount > 0 then
         for i in [0:dims.gridLineCount + 1] do
           let ratio := i.toFloat / dims.gridLineCount.toFloat
           let lineY := chartY + chartHeight - (ratio * chartHeight)
-          let lineRect := Arbor.Rect.mk' chartX lineY chartWidth 1.0
-          cmds := cmds.push (.fillRect lineRect (Color.gray 0.3) 0.0)
-        cmds
-    else cmds
+          RenderM.fillRect' chartX lineY chartWidth 1.0 (Color.gray 0.3) 0.0
 
-    -- Draw bars
-    let fillColor := variantColor variant theme
-    let cmds := Id.run do
-      let mut cmds := cmds
+      -- Draw bars
       for i in [0:binCount] do
         let count := counts[i]!
         let barX := chartX + i.toFloat * (barWidth + dims.barGap)
         let barHeight := (count.toFloat / maxCount.toFloat) * chartHeight
         let barY := chartY + chartHeight - barHeight
-        let barRect := Arbor.Rect.mk' barX barY barWidth barHeight
-        cmds := cmds.push (.fillRect barRect fillColor dims.cornerRadius)
-      cmds
+        RenderM.fillRect' barX barY barWidth barHeight fillColor dims.cornerRadius
 
-    -- Draw Y-axis labels
-    let cmds := if dims.showFrequencyLabels && dims.gridLineCount > 0 then
-      Id.run do
-        let mut cmds := cmds
+      -- Draw Y-axis labels
+      if dims.showFrequencyLabels && dims.gridLineCount > 0 then
         for i in [0:dims.gridLineCount + 1] do
           let ratio := i.toFloat / dims.gridLineCount.toFloat
           let value := ratio * maxCount.toFloat
           let labelY := chartY + chartHeight - (ratio * chartHeight) + 4
-          cmds := cmds.push (.fillText (formatValue value) (rect.x + 4) labelY theme.smallFont theme.textMuted)
-        cmds
-    else cmds
+          RenderM.fillText (formatValue value) (rect.x + 4) labelY theme.smallFont theme.textMuted
 
-    -- Draw X-axis labels
-    let cmds := if dims.showBinLabels then
-      Id.run do
-        let mut cmds := cmds
+      -- Draw X-axis labels
+      if dims.showBinLabels then
         for i in [0:binCount] do
           let label := labels[i]!
           let labelX := chartX + i.toFloat * (barWidth + dims.barGap) + barWidth / 2
           let labelY := chartY + chartHeight + 16
-          cmds := cmds.push (.fillText label labelX labelY theme.smallFont theme.textMuted)
-        cmds
-    else cmds
+          RenderM.fillText label labelX labelY theme.smallFont theme.textMuted
 
-    -- Draw axes
-    let axisColor := Color.gray 0.5
-    let yAxisRect := Arbor.Rect.mk' chartX chartY 1.0 chartHeight
-    let cmds := cmds.push (.fillRect yAxisRect axisColor 0.0)
-    let xAxisRect := Arbor.Rect.mk' chartX (chartY + chartHeight) chartWidth 1.0
-    cmds.push (.fillRect xAxisRect axisColor 0.0)
+      -- Draw axes
+      RenderM.fillRect' chartX chartY 1.0 chartHeight axisColor 0.0
+      RenderM.fillRect' chartX (chartY + chartHeight) chartWidth 1.0 axisColor 0.0
 
   draw := none
 }

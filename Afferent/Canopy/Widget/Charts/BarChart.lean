@@ -76,7 +76,6 @@ def barChartSpec (data : Array Float) (labels : Array String)
   measure := fun _ _ => (dims.marginLeft + dims.marginRight + 50, dims.marginTop + dims.marginBottom + 30)
   collect := fun layout =>
     let rect := layout.contentRect
-    let cmds : Array RenderCommand := #[]
 
     -- Use actual allocated size from layout
     let actualWidth := rect.width
@@ -105,69 +104,48 @@ def barChartSpec (data : Array Float) (labels : Array String)
     let totalGapWidth := if barCount > 1 then dims.barGap * (barCount - 1).toFloat else 0.0
     let barWidth := if barCount > 0 then (chartWidth - totalGapWidth) / barCount.toFloat else 0.0
 
-    -- Draw background
-    let bgRect := Arbor.Rect.mk' rect.x rect.y actualWidth actualHeight
-    let cmds := cmds.push (.fillRect bgRect (theme.panel.background.withAlpha 0.3) 6.0)
+    let fillColor := variantColor variant theme
+    let axisColor := Color.gray 0.5
 
-    -- Draw grid lines
-    let cmds := if dims.showGridLines && dims.gridLineCount > 0 then
-      Id.run do
-        let mut cmds := cmds
+    RenderM.build do
+      -- Draw background
+      RenderM.fillRect' rect.x rect.y actualWidth actualHeight (theme.panel.background.withAlpha 0.3) 6.0
+
+      -- Draw grid lines
+      if dims.showGridLines && dims.gridLineCount > 0 then
         for i in [0:dims.gridLineCount + 1] do
           let ratio := i.toFloat / dims.gridLineCount.toFloat
           let lineY := chartY + chartHeight - (ratio * chartHeight)
-          let lineRect := Arbor.Rect.mk' chartX lineY chartWidth 1.0
-          cmds := cmds.push (.fillRect lineRect (Color.gray 0.3) 0.0)
-        cmds
-    else cmds
+          RenderM.fillRect' chartX lineY chartWidth 1.0 (Color.gray 0.3) 0.0
 
-    -- Draw bars
-    let fillColor := variantColor variant theme
-    let cmds := Id.run do
-      let mut cmds := cmds
+      -- Draw bars
       for i in [0:barCount] do
         let value := data[i]!
         let barHeight := (value / niceMax) * chartHeight
         let barX := chartX + i.toFloat * (barWidth + dims.barGap)
         let barY := chartY + chartHeight - barHeight
-        let barRect := Arbor.Rect.mk' barX barY barWidth barHeight
-        -- Use custom color if provided (for multi-series), otherwise variant color
-        cmds := cmds.push (.fillRect barRect fillColor dims.cornerRadius)
-      cmds
+        RenderM.fillRect' barX barY barWidth barHeight fillColor dims.cornerRadius
 
-    -- Draw Y-axis labels
-    let cmds := if dims.gridLineCount > 0 then
-      Id.run do
-        let mut cmds := cmds
+      -- Draw Y-axis labels
+      if dims.gridLineCount > 0 then
         for i in [0:dims.gridLineCount + 1] do
           let ratio := i.toFloat / dims.gridLineCount.toFloat
           let value := ratio * niceMax
           let labelY := chartY + chartHeight - (ratio * chartHeight) - 6
           let labelText := formatValue value
-          cmds := cmds.push (.fillText labelText (rect.x + 4) labelY theme.smallFont theme.textMuted)
-        cmds
-    else cmds
+          RenderM.fillText labelText (rect.x + 4) labelY theme.smallFont theme.textMuted
 
-    -- Draw X-axis labels
-    let cmds := if labels.size > 0 then
-      Id.run do
-        let mut cmds := cmds
+      -- Draw X-axis labels
+      if labels.size > 0 then
         for i in [0:min labels.size barCount] do
           let label := labels[i]!
           let labelX := chartX + i.toFloat * (barWidth + dims.barGap) + barWidth / 2
           let labelY := chartY + chartHeight + 16
-          cmds := cmds.push (.fillText label labelX labelY theme.smallFont theme.text)
-        cmds
-    else cmds
+          RenderM.fillText label labelX labelY theme.smallFont theme.text
 
-    -- Draw axes
-    let axisColor := Color.gray 0.5
-    -- Y-axis
-    let yAxisRect := Arbor.Rect.mk' chartX chartY 1.0 chartHeight
-    let cmds := cmds.push (.fillRect yAxisRect axisColor 0.0)
-    -- X-axis
-    let xAxisRect := Arbor.Rect.mk' chartX (chartY + chartHeight) chartWidth 1.0
-    cmds.push (.fillRect xAxisRect axisColor 0.0)
+      -- Draw axes
+      RenderM.fillRect' chartX chartY 1.0 chartHeight axisColor 0.0
+      RenderM.fillRect' chartX (chartY + chartHeight) chartWidth 1.0 axisColor 0.0
 
   draw := none
 }
@@ -203,24 +181,6 @@ def multiColorBarChartSpec (data : Array DataPoint)
     let totalGapWidth := if barCount > 1 then dims.barGap * (barCount - 1).toFloat else 0.0
     let barWidth := if barCount > 0 then (chartWidth - totalGapWidth) / barCount.toFloat else 0.0
 
-    let cmds : Array RenderCommand := #[]
-
-    -- Background
-    let bgRect := Arbor.Rect.mk' rect.x rect.y actualWidth actualHeight
-    let cmds := cmds.push (.fillRect bgRect (theme.panel.background.withAlpha 0.3) 6.0)
-
-    -- Grid lines
-    let cmds := if dims.showGridLines && dims.gridLineCount > 0 then
-      Id.run do
-        let mut cmds := cmds
-        for i in [0:dims.gridLineCount + 1] do
-          let ratio := i.toFloat / dims.gridLineCount.toFloat
-          let lineY := chartY + chartHeight - (ratio * chartHeight)
-          let lineRect := Arbor.Rect.mk' chartX lineY chartWidth 1.0
-          cmds := cmds.push (.fillRect lineRect (Color.gray 0.3) 0.0)
-        cmds
-    else cmds
-
     -- Default colors for bars without custom color
     let defaultColors := #[
       theme.primary.background,
@@ -232,51 +192,48 @@ def multiColorBarChartSpec (data : Array DataPoint)
       Color.rgba 0.0 0.7 0.7 1.0
     ]
 
-    -- Draw bars with individual colors
-    let cmds := Id.run do
-      let mut cmds := cmds
+    let axisColor := Color.gray 0.5
+
+    RenderM.build do
+      -- Background
+      RenderM.fillRect' rect.x rect.y actualWidth actualHeight (theme.panel.background.withAlpha 0.3) 6.0
+
+      -- Grid lines
+      if dims.showGridLines && dims.gridLineCount > 0 then
+        for i in [0:dims.gridLineCount + 1] do
+          let ratio := i.toFloat / dims.gridLineCount.toFloat
+          let lineY := chartY + chartHeight - (ratio * chartHeight)
+          RenderM.fillRect' chartX lineY chartWidth 1.0 (Color.gray 0.3) 0.0
+
+      -- Draw bars with individual colors
       for i in [0:barCount] do
         let dp := data[i]!
         let barHeight := (dp.value / niceMax) * chartHeight
         let barX := chartX + i.toFloat * (barWidth + dims.barGap)
         let barY := chartY + chartHeight - barHeight
-        let barRect := Arbor.Rect.mk' barX barY barWidth barHeight
         let color := dp.color.getD (defaultColors[i % defaultColors.size]!)
-        cmds := cmds.push (.fillRect barRect color dims.cornerRadius)
-      cmds
+        RenderM.fillRect' barX barY barWidth barHeight color dims.cornerRadius
 
-    -- Y-axis labels
-    let cmds := if dims.gridLineCount > 0 then
-      Id.run do
-        let mut cmds := cmds
+      -- Y-axis labels
+      if dims.gridLineCount > 0 then
         for i in [0:dims.gridLineCount + 1] do
           let ratio := i.toFloat / dims.gridLineCount.toFloat
           let value := ratio * niceMax
           let labelY := chartY + chartHeight - (ratio * chartHeight) - 6
           let labelText := formatValue value
-          cmds := cmds.push (.fillText labelText (rect.x + 4) labelY theme.smallFont theme.textMuted)
-        cmds
-    else cmds
+          RenderM.fillText labelText (rect.x + 4) labelY theme.smallFont theme.textMuted
 
-    -- X-axis labels
-    let cmds := Id.run do
-      let mut cmds := cmds
+      -- X-axis labels
       for i in [0:barCount] do
         let dp := data[i]!
-        match dp.label with
-        | some label =>
+        if let some label := dp.label then
           let labelX := chartX + i.toFloat * (barWidth + dims.barGap) + barWidth / 2
           let labelY := chartY + chartHeight + 16
-          cmds := cmds.push (.fillText label labelX labelY theme.smallFont theme.text)
-        | none => pure ()
-      cmds
+          RenderM.fillText label labelX labelY theme.smallFont theme.text
 
-    -- Axes
-    let axisColor := Color.gray 0.5
-    let yAxisRect := Arbor.Rect.mk' chartX chartY 1.0 chartHeight
-    let cmds := cmds.push (.fillRect yAxisRect axisColor 0.0)
-    let xAxisRect := Arbor.Rect.mk' chartX (chartY + chartHeight) chartWidth 1.0
-    cmds.push (.fillRect xAxisRect axisColor 0.0)
+      -- Axes
+      RenderM.fillRect' chartX chartY 1.0 chartHeight axisColor 0.0
+      RenderM.fillRect' chartX (chartY + chartHeight) chartWidth 1.0 axisColor 0.0
 
   draw := none
 }

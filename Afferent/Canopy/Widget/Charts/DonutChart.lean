@@ -110,7 +110,6 @@ def donutChartSpec (slices : Array Slice) (theme : Theme)
     let rect := layout.contentRect
     let actualWidth := rect.width
     let actualHeight := rect.height
-    let cmds : Array RenderCommand := #[]
 
     -- Use smaller of width/height for diameter-based sizing
     let actualDiameter := min actualWidth actualHeight
@@ -134,11 +133,9 @@ def donutChartSpec (slices : Array Slice) (theme : Theme)
     let pi := 3.141592653589793
     let twoPi := 2.0 * pi
 
-    -- Draw each slice
-    let cmds := Id.run do
-      let mut cmds := cmds
+    RenderM.build do
+      -- Draw each slice
       let mut startAngle := -pi / 2  -- Start at top (12 o'clock)
-
       for i in [0:slices.size] do
         let slice := slices[i]!
         let proportion := slice.value / total
@@ -152,39 +149,34 @@ def donutChartSpec (slices : Array Slice) (theme : Theme)
         let segmentPath := annularSegment center outerRadius innerRadius startAngle endAngle
 
         -- Fill the segment
-        cmds := cmds.push (.fillPath segmentPath color)
+        RenderM.fillPath segmentPath color
 
         -- Optionally stroke the segment
         if let some strokeColor := dims.strokeColor then
           if dims.strokeWidth > 0.0 then
-            cmds := cmds.push (.strokePath segmentPath strokeColor dims.strokeWidth)
+            RenderM.strokePath segmentPath strokeColor dims.strokeWidth
 
         startAngle := endAngle
 
-      cmds
-
-    -- Draw center label/value if specified
-    let cmds := match dims.centerLabel, dims.centerValue with
+      -- Draw center label/value if specified
+      match dims.centerLabel, dims.centerValue with
       | some label, some value =>
-        let cmds := cmds.push (.fillText label centerX (centerY - 8) theme.font theme.text)
-        cmds.push (.fillText value centerX (centerY + 12) theme.smallFont theme.textMuted)
+        RenderM.fillText label centerX (centerY - 8) theme.font theme.text
+        RenderM.fillText value centerX (centerY + 12) theme.smallFont theme.textMuted
       | some label, none =>
-        cmds.push (.fillText label centerX (centerY + 4) theme.font theme.text)
+        RenderM.fillText label centerX (centerY + 4) theme.font theme.text
       | none, some value =>
-        cmds.push (.fillText value centerX (centerY + 4) theme.font theme.text)
-      | none, none => cmds
+        RenderM.fillText value centerX (centerY + 4) theme.font theme.text
+      | none, none => pure ()
 
-    -- Draw labels outside the ring
-    let cmds := if dims.showLabels || dims.showPercentages then
-      Id.run do
-        let mut cmds := cmds
-        let mut startAngle := -pi / 2
-
+      -- Draw labels outside the ring
+      if dims.showLabels || dims.showPercentages then
+        let mut labelAngle := -pi / 2
         for i in [0:slices.size] do
           let slice := slices[i]!
           let proportion := slice.value / total
           let sweepAngle := proportion * twoPi
-          let midAngle := startAngle + sweepAngle / 2
+          let midAngle := labelAngle + sweepAngle / 2
 
           -- Calculate label position (outside the outer ring)
           let labelRadius := outerRadius + labelOffset
@@ -203,14 +195,9 @@ def donutChartSpec (slices : Array Slice) (theme : Theme)
 
           if labelParts.size > 0 then
             let labelText := String.intercalate " " labelParts.toList
-            cmds := cmds.push (.fillText labelText labelX (labelY + 4) theme.smallFont theme.text)
+            RenderM.fillText labelText labelX (labelY + 4) theme.smallFont theme.text
 
-          startAngle := startAngle + sweepAngle
-
-        cmds
-    else cmds
-
-    cmds
+          labelAngle := labelAngle + sweepAngle
 
   draw := none
 }
@@ -223,7 +210,6 @@ def donutChartWithLegendSpec (slices : Array Slice) (theme : Theme)
     let rect := layout.contentRect
     let actualWidth := rect.width
     let actualHeight := rect.height
-    let cmds : Array RenderCommand := #[]
 
     -- Reserve space for legend (120px on right)
     let chartAreaWidth := actualWidth - 120
@@ -246,11 +232,15 @@ def donutChartWithLegendSpec (slices : Array Slice) (theme : Theme)
     let pi := 3.141592653589793
     let twoPi := 2.0 * pi
 
-    -- Draw each slice
-    let cmds := Id.run do
-      let mut cmds := cmds
-      let mut startAngle := -pi / 2
+    -- Legend positioning
+    let legendX := rect.x + chartDiameter + 50
+    let legendStartY := rect.y + 20
+    let legendItemHeight : Float := 24.0
+    let swatchSize : Float := 14.0
 
+    RenderM.build do
+      -- Draw each slice
+      let mut startAngle := -pi / 2
       for i in [0:slices.size] do
         let slice := slices[i]!
         let proportion := slice.value / total
@@ -260,36 +250,26 @@ def donutChartWithLegendSpec (slices : Array Slice) (theme : Theme)
         let color := slice.color.getD (colors[i % colors.size]!)
         let segmentPath := annularSegment center outerRadius innerRadius startAngle endAngle
 
-        cmds := cmds.push (.fillPath segmentPath color)
+        RenderM.fillPath segmentPath color
 
         if let some strokeColor := dims.strokeColor then
           if dims.strokeWidth > 0.0 then
-            cmds := cmds.push (.strokePath segmentPath strokeColor dims.strokeWidth)
+            RenderM.strokePath segmentPath strokeColor dims.strokeWidth
 
         startAngle := endAngle
 
-      cmds
-
-    -- Draw center label/value
-    let cmds := match dims.centerLabel, dims.centerValue with
+      -- Draw center label/value
+      match dims.centerLabel, dims.centerValue with
       | some label, some value =>
-        let cmds := cmds.push (.fillText label chartCenterX (chartCenterY - 8) theme.font theme.text)
-        cmds.push (.fillText value chartCenterX (chartCenterY + 12) theme.smallFont theme.textMuted)
+        RenderM.fillText label chartCenterX (chartCenterY - 8) theme.font theme.text
+        RenderM.fillText value chartCenterX (chartCenterY + 12) theme.smallFont theme.textMuted
       | some label, none =>
-        cmds.push (.fillText label chartCenterX (chartCenterY + 4) theme.font theme.text)
+        RenderM.fillText label chartCenterX (chartCenterY + 4) theme.font theme.text
       | none, some value =>
-        cmds.push (.fillText value chartCenterX (chartCenterY + 4) theme.font theme.text)
-      | none, none => cmds
+        RenderM.fillText value chartCenterX (chartCenterY + 4) theme.font theme.text
+      | none, none => pure ()
 
-    -- Draw legend
-    let legendX := rect.x + chartDiameter + 50
-    let legendStartY := rect.y + 20
-    let legendItemHeight : Float := 24.0
-    let swatchSize : Float := 14.0
-
-    let cmds := Id.run do
-      let mut cmds := cmds
-
+      -- Draw legend
       for i in [0:slices.size] do
         let slice := slices[i]!
         let proportion := slice.value / total
@@ -297,8 +277,7 @@ def donutChartWithLegendSpec (slices : Array Slice) (theme : Theme)
         let itemY := legendStartY + i.toFloat * legendItemHeight
 
         -- Color swatch
-        let swatchRect := Arbor.Rect.mk' legendX itemY swatchSize swatchSize
-        cmds := cmds.push (.fillRect swatchRect color 2.0)
+        RenderM.fillRect' legendX itemY swatchSize swatchSize color 2.0
 
         -- Label text
         let labelX := legendX + swatchSize + 8
@@ -308,11 +287,7 @@ def donutChartWithLegendSpec (slices : Array Slice) (theme : Theme)
           | some label => s!"{label} ({formatPercent proportion})"
           | none => formatPercent proportion
 
-        cmds := cmds.push (.fillText labelText labelX labelY theme.smallFont theme.text)
-
-      cmds
-
-    cmds
+        RenderM.fillText labelText labelX labelY theme.smallFont theme.text
 
   draw := none
 }
