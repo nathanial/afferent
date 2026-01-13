@@ -78,7 +78,7 @@ def inputSpec (displayText : String) (placeholder : String) (showPlaceholder : B
     -- Use actual font metrics for sizing
     let lineHeight := theme.font.lineHeight
     let height := lineHeight + 4
-    -- Return minimum intrinsic width (container's minWidth handles actual sizing)
+    -- Return minimum intrinsic width (container minWidth handles actual sizing)
     (0, height)
   collect := fun layout =>
     let rect := layout.contentRect
@@ -89,15 +89,13 @@ def inputSpec (displayText : String) (placeholder : String) (showPlaceholder : B
     let ascender := theme.font.ascender
     let verticalOffset := (rect.height - lineHeight) / 2
     let textY := rect.y + verticalOffset + ascender
-    let textCmd := RenderCommand.fillText text rect.x textY theme.font textColor
-    if focused then
-      let cursorX := rect.x + cursorPixelX  -- Use pre-computed cursor position
-      let cursorY := rect.y + verticalOffset
-      let cursorH := lineHeight
-      let cursorCmd := RenderCommand.fillRect (Arbor.Rect.mk' cursorX cursorY 2 cursorH) theme.focusRing 0
-      #[textCmd, cursorCmd]
-    else
-      #[textCmd]
+    RenderM.build do
+      RenderM.fillText text rect.x textY theme.font textColor
+      if focused then
+        let cursorX := rect.x + cursorPixelX  -- Use pre-computed cursor position
+        let cursorY := rect.y + verticalOffset
+        let cursorH := lineHeight
+        RenderM.fillRect (Arbor.Rect.mk' cursorX cursorY 2 cursorH) theme.focusRing 0
   draw := none
 }
 

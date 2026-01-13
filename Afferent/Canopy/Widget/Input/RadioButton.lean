@@ -19,16 +19,14 @@ def circleSpec (selected : Bool) (_hovered : Bool) (theme : Theme) (size : Float
   measure := fun _ _ => (size, size)
   collect := fun layout =>
     let rect := layout.contentRect
-    let cmds : Array RenderCommand := #[]
-    if selected then
-      -- Draw inner filled circle (50% of outer size)
-      let innerSize := size * 0.5
-      let offsetX := (size - innerSize) / 2
-      let offsetY := (size - innerSize) / 2
-      let innerRect := Arbor.Rect.mk' (rect.x + offsetX) (rect.y + offsetY) innerSize innerSize
-      cmds.push (.fillRect innerRect theme.primary.foreground (innerSize / 2))
-    else
-      cmds
+    RenderM.build do
+      if selected then
+        -- Draw inner filled circle (50% of outer size)
+        let innerSize := size * 0.5
+        let offsetX := (size - innerSize) / 2
+        let offsetY := (size - innerSize) / 2
+        let innerRect := Arbor.Rect.mk' (rect.x + offsetX) (rect.y + offsetY) innerSize innerSize
+        RenderM.fillRect innerRect theme.primary.foreground (innerSize / 2)
   draw := none
 }
 

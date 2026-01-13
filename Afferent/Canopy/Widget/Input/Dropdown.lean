@@ -52,11 +52,11 @@ def arrowSpec (isOpen : Bool) (theme : Theme) (dims : Dimensions := defaultDimen
   measure := fun _ _ => (dims.arrowWidth, dims.itemHeight)
   collect := fun layout =>
     let rect := layout.contentRect
-    let cmds : Array RenderCommand := #[]
     let centerX := rect.x + rect.width / 2
     let centerY := rect.y + rect.height / 2
     let path := chevronPath centerX centerY isOpen
-    cmds.push (.strokePath path theme.textMuted 2.0)
+    RenderM.build do
+      RenderM.strokePath path theme.textMuted 2.0
   draw := none
 }
 
@@ -75,11 +75,11 @@ def checkmarkSpec (theme : Theme) : CustomSpec := {
   measure := fun _ _ => (20.0, 20.0)
   collect := fun layout =>
     let rect := layout.contentRect
-    let cmds : Array RenderCommand := #[]
     let centerX := rect.x + rect.width / 2
     let centerY := rect.y + rect.height / 2
     let path := checkmarkPath centerX centerY
-    cmds.push (.strokePath path theme.primary.foreground 2.0)
+    RenderM.build do
+      RenderM.strokePath path theme.primary.foreground 2.0
   draw := none
 }
 
@@ -143,7 +143,7 @@ def dropdownMenuItemVisual (name : String) (optionText : String)
 
   -- Calculate corner radius for first/last items
   let cornerRadius := if isFirst && isLast then theme.cornerRadius
-    else if isFirst then 0  -- Actually want top corners only, but we'll simplify
+    else if isFirst then 0  -- Actually want top corners only, but we will simplify
     else if isLast then 0   -- Actually want bottom corners only
     else 0
 

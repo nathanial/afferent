@@ -356,46 +356,40 @@ def areaSpec (renderState : TextAreaRenderState) (placeholder : String) (showPla
     let lineHeight := renderState.lineHeight
     let lines := renderState.wrappedLines
 
-    -- Clip to viewport
-    let clipRect := Arbor.Rect.mk' rect.x rect.y rect.width viewportHeight
-    let clipCmd := RenderCommand.pushClip clipRect
-
     -- Use actual font ascender for baseline positioning
     let ascender := theme.font.ascender
 
-    let textCmds := if showPlaceholder then
-      -- Render placeholder
-      let textY := rect.y + ascender
-      #[RenderCommand.fillText placeholder rect.x textY theme.font theme.textMuted]
-    else
-      -- Render each visible line
-      let indices := Array.range lines.size
-      indices.filterMap fun i =>
-        match lines[i]? with
-        | some line =>
-          let lineY := rect.y + i.toFloat * lineHeight - scrollOffsetY
-          -- Only render if line is visible
-          if lineY + lineHeight >= rect.y && lineY < rect.y + viewportHeight then
-            let textY := lineY + ascender  -- Baseline position from actual font metrics
-            some (RenderCommand.fillText line.text rect.x textY theme.font theme.text)
-          else
-            none
-        | none => none
+    RenderM.build do
+      -- Clip to viewport
+      let clipRect := Arbor.Rect.mk' rect.x rect.y rect.width viewportHeight
+      RenderM.pushClip clipRect
 
-    -- Render cursor if focused
-    let cursorCmd := if focused then
-      let cursorScreenX := rect.x + renderState.cursorPixelX
-      let cursorScreenY := rect.y + renderState.cursorPixelY - scrollOffsetY
-      -- Only render cursor if visible
-      if cursorScreenY + lineHeight >= rect.y && cursorScreenY < rect.y + viewportHeight then
-        let cursorRect := Arbor.Rect.mk' cursorScreenX cursorScreenY 2 lineHeight
-        #[RenderCommand.fillRect cursorRect theme.focusRing 0]
+      if showPlaceholder then
+        -- Render placeholder
+        let textY := rect.y + ascender
+        RenderM.fillText placeholder rect.x textY theme.font theme.textMuted
       else
-        #[]
-    else
-      #[]
+        -- Render each visible line
+        for i in [:lines.size] do
+          match lines[i]? with
+          | some line =>
+            let lineY := rect.y + i.toFloat * lineHeight - scrollOffsetY
+            -- Only render if line is visible
+            if lineY + lineHeight >= rect.y && lineY < rect.y + viewportHeight then
+              let textY := lineY + ascender  -- Baseline position from actual font metrics
+              RenderM.fillText line.text rect.x textY theme.font theme.text
+          | none => pure ()
 
-    #[clipCmd] ++ textCmds ++ cursorCmd ++ #[RenderCommand.popClip]
+      -- Render cursor if focused
+      if focused then
+        let cursorScreenX := rect.x + renderState.cursorPixelX
+        let cursorScreenY := rect.y + renderState.cursorPixelY - scrollOffsetY
+        -- Only render cursor if visible
+        if cursorScreenY + lineHeight >= rect.y && cursorScreenY < rect.y + viewportHeight then
+          let cursorRect := Arbor.Rect.mk' cursorScreenX cursorScreenY 2 lineHeight
+          RenderM.fillRect cursorRect theme.focusRing 0
+
+      RenderM.popClip
   draw := none
 }
 

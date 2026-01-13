@@ -128,7 +128,8 @@ def arrowSpec (dir : ArrowDirection) (theme : Theme) (size : Float) : CustomSpec
       |>.moveTo p1
       |>.lineTo p2
       |>.lineTo p3
-    #[.strokePath path theme.text 2.0]
+    RenderM.build do
+      RenderM.strokePath path theme.text 2.0
   draw := none
 }
 

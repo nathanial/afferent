@@ -153,20 +153,19 @@ def svSquareSpec (hue saturation value : Float) (size : Float)
     ]
     let valStyle := Afferent.FillStyle.linearGradient topPt bottomPt valStops
 
-    -- Draw both gradient layers
-    let cmds : Array RenderCommand := #[
-      .fillRectStyle svRect satStyle 0,
-      .fillRectStyle svRect valStyle 0
-    ]
+    RenderM.build do
+      -- Draw both gradient layers
+      RenderM.fillRectStyle svRect satStyle 0
+      RenderM.fillRectStyle svRect valStyle 0
 
-    -- Draw selection indicator (white circle with black outline)
-    let indicatorX := rect.x + saturation * rect.width
-    let indicatorY := rect.y + (1.0 - value) * rect.height
-    let indicatorRect := Arbor.Rect.mk'
-      (indicatorX - indicatorRadius) (indicatorY - indicatorRadius)
-      (indicatorRadius * 2) (indicatorRadius * 2)
-    let cmds := cmds.push (.strokeRect indicatorRect Color.black 2.0 indicatorRadius)
-    cmds.push (.strokeRect indicatorRect Color.white 1.0 indicatorRadius)
+      -- Draw selection indicator (white circle with black outline)
+      let indicatorX := rect.x + saturation * rect.width
+      let indicatorY := rect.y + (1.0 - value) * rect.height
+      let indicatorRect := Arbor.Rect.mk'
+        (indicatorX - indicatorRadius) (indicatorY - indicatorRadius)
+        (indicatorRadius * 2) (indicatorRadius * 2)
+      RenderM.strokeRect indicatorRect Color.black 2.0 indicatorRadius
+      RenderM.strokeRect indicatorRect Color.white 1.0 indicatorRadius
 }
 
 /-- CustomSpec for vertical hue bar.
@@ -199,13 +198,14 @@ def hueBarSpec (selectedHue : Float) (width height : Float)
     let hueStyle := Afferent.FillStyle.linearGradient topPt bottomPt hueStops
     let hueRect := Arbor.Rect.mk' rect.x rect.y rect.width rect.height
 
-    let cmds : Array RenderCommand := #[.fillRectStyle hueRect hueStyle cornerRadius]
+    RenderM.build do
+      RenderM.fillRectStyle hueRect hueStyle cornerRadius
 
-    -- Draw hue indicator
-    let indicatorY := rect.y + selectedHue * rect.height - indicatorHeight / 2
-    let indicatorRect := Arbor.Rect.mk' rect.x indicatorY rect.width indicatorHeight
-    let cmds := cmds.push (.fillRect indicatorRect Color.white cornerRadius)
-    cmds.push (.strokeRect indicatorRect (Color.gray 0.3) 1.0 cornerRadius)
+      -- Draw hue indicator
+      let indicatorY := rect.y + selectedHue * rect.height - indicatorHeight / 2
+      let indicatorRect := Arbor.Rect.mk' rect.x indicatorY rect.width indicatorHeight
+      RenderM.fillRect indicatorRect Color.white cornerRadius
+      RenderM.strokeRect indicatorRect (Color.gray 0.3) 1.0 cornerRadius
 }
 
 /-- CustomSpec for vertical alpha bar with checkerboard.
@@ -221,36 +221,35 @@ def alphaBarSpec (selectedAlpha : Float) (currentHSV : HSV)
     let rows := (rect.height / checkSize).ceil.toUInt32.toNat
     let cols := (rect.width / checkSize).ceil.toUInt32.toNat
 
-    let cmds := (List.range rows).foldl (fun acc row =>
-      (List.range cols).foldl (fun acc2 col =>
-        let isLight := (row + col) % 2 == 0
-        let color := if isLight then Color.gray 0.8 else Color.gray 0.5
-        let checkRect := Arbor.Rect.mk'
-          (rect.x + col.toFloat * checkSize)
-          (rect.y + row.toFloat * checkSize)
-          (minFloat checkSize (rect.width - col.toFloat * checkSize))
-          (minFloat checkSize (rect.height - row.toFloat * checkSize))
-        acc2.push (.fillRect checkRect color 0)
-      ) acc
-    ) (#[] : Array RenderCommand)
+    RenderM.build do
+      for row in [:rows] do
+        for col in [:cols] do
+          let isLight := (row + col) % 2 == 0
+          let color := if isLight then Color.gray 0.8 else Color.gray 0.5
+          let checkRect := Arbor.Rect.mk'
+            (rect.x + col.toFloat * checkSize)
+            (rect.y + row.toFloat * checkSize)
+            (minFloat checkSize (rect.width - col.toFloat * checkSize))
+            (minFloat checkSize (rect.height - row.toFloat * checkSize))
+          RenderM.fillRect checkRect color 0
 
-    -- Vertical gradient from opaque (top) to transparent (bottom)
-    let baseColor := HSV.toColor currentHSV 1.0
-    let topPt := Afferent.Point.mk' (rect.x + rect.width / 2) rect.y
-    let bottomPt := Afferent.Point.mk' (rect.x + rect.width / 2) (rect.y + rect.height)
-    let alphaStops : Array Afferent.GradientStop := #[
-      { position := 0.0, color := baseColor },
-      { position := 1.0, color := { baseColor with a := 0.0 } }
-    ]
-    let alphaStyle := Afferent.FillStyle.linearGradient topPt bottomPt alphaStops
-    let alphaRect := Arbor.Rect.mk' rect.x rect.y rect.width rect.height
-    let cmds := cmds.push (.fillRectStyle alphaRect alphaStyle 0)
+      -- Vertical gradient from opaque (top) to transparent (bottom)
+      let baseColor := HSV.toColor currentHSV 1.0
+      let topPt := Afferent.Point.mk' (rect.x + rect.width / 2) rect.y
+      let bottomPt := Afferent.Point.mk' (rect.x + rect.width / 2) (rect.y + rect.height)
+      let alphaStops : Array Afferent.GradientStop := #[
+        { position := 0.0, color := baseColor },
+        { position := 1.0, color := { baseColor with a := 0.0 } }
+      ]
+      let alphaStyle := Afferent.FillStyle.linearGradient topPt bottomPt alphaStops
+      let alphaRect := Arbor.Rect.mk' rect.x rect.y rect.width rect.height
+      RenderM.fillRectStyle alphaRect alphaStyle 0
 
-    -- Draw alpha indicator
-    let indicatorY := rect.y + (1.0 - selectedAlpha) * rect.height - indicatorHeight / 2
-    let indicatorRect := Arbor.Rect.mk' rect.x indicatorY rect.width indicatorHeight
-    let cmds := cmds.push (.fillRect indicatorRect Color.white cornerRadius)
-    cmds.push (.strokeRect indicatorRect (Color.gray 0.3) 1.0 cornerRadius)
+      -- Draw alpha indicator
+      let indicatorY := rect.y + (1.0 - selectedAlpha) * rect.height - indicatorHeight / 2
+      let indicatorRect := Arbor.Rect.mk' rect.x indicatorY rect.width indicatorHeight
+      RenderM.fillRect indicatorRect Color.white cornerRadius
+      RenderM.strokeRect indicatorRect (Color.gray 0.3) 1.0 cornerRadius
 }
 
 /-- CustomSpec for color preview rectangle. -/
@@ -263,23 +262,22 @@ def colorPreviewSpec (color : Color) (width height cornerRadius : Float) : Custo
     let rows := (rect.height / checkSize).ceil.toUInt32.toNat
     let cols := (rect.width / checkSize).ceil.toUInt32.toNat
 
-    let cmds := (List.range rows).foldl (fun acc row =>
-      (List.range cols).foldl (fun acc2 col =>
-        let isLight := (row + col) % 2 == 0
-        let checkColor := if isLight then Color.gray 0.8 else Color.gray 0.5
-        let checkRect := Arbor.Rect.mk'
-          (rect.x + col.toFloat * checkSize)
-          (rect.y + row.toFloat * checkSize)
-          (minFloat checkSize (rect.width - col.toFloat * checkSize))
-          (minFloat checkSize (rect.height - row.toFloat * checkSize))
-        acc2.push (.fillRect checkRect checkColor 0)
-      ) acc
-    ) (#[] : Array RenderCommand)
+    RenderM.build do
+      for row in [:rows] do
+        for col in [:cols] do
+          let isLight := (row + col) % 2 == 0
+          let checkColor := if isLight then Color.gray 0.8 else Color.gray 0.5
+          let checkRect := Arbor.Rect.mk'
+            (rect.x + col.toFloat * checkSize)
+            (rect.y + row.toFloat * checkSize)
+            (minFloat checkSize (rect.width - col.toFloat * checkSize))
+            (minFloat checkSize (rect.height - row.toFloat * checkSize))
+          RenderM.fillRect checkRect checkColor 0
 
-    -- Draw current color overlay
-    let previewRect := Arbor.Rect.mk' rect.x rect.y rect.width rect.height
-    let cmds := cmds.push (.fillRect previewRect color cornerRadius)
-    cmds.push (.strokeRect previewRect (Color.gray 0.3) 1.0 cornerRadius)
+      -- Draw current color overlay
+      let previewRect := Arbor.Rect.mk' rect.x rect.y rect.width rect.height
+      RenderM.fillRect previewRect color cornerRadius
+      RenderM.strokeRect previewRect (Color.gray 0.3) 1.0 cornerRadius
 }
 
 end ColorPicker

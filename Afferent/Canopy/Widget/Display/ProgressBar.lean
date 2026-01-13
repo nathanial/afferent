@@ -48,24 +48,20 @@ def determinateSpec (value : Float) (variant : ProgressVariant)
   measure := fun _ _ => (dims.width, dims.height)
   collect := fun layout =>
     let rect := layout.contentRect
-    let cmds : Array RenderCommand := #[]
-
     -- Clamp value to valid range
     let v := if value < 0.0 then 0.0 else if value > 1.0 then 1.0 else value
-
-    -- Background track
     let trackRect := Arbor.Rect.mk' rect.x rect.y dims.width dims.height
     let trackBg := Color.gray 0.25
-    let cmds := cmds.push (.fillRect trackRect trackBg dims.cornerRadius)
-
-    -- Filled portion
     let filledWidth := dims.width * v
-    if filledWidth > 0 then
-      let filledRect := Arbor.Rect.mk' rect.x rect.y filledWidth dims.height
-      let fillColor := variantColor variant theme
-      cmds.push (.fillRect filledRect fillColor dims.cornerRadius)
-    else
-      cmds
+    let filledRect := Arbor.Rect.mk' rect.x rect.y filledWidth dims.height
+    let fillColor := variantColor variant theme
+
+    RenderM.build do
+      -- Background track
+      RenderM.fillRect trackRect trackBg dims.cornerRadius
+      -- Filled portion
+      if filledWidth > 0 then
+        RenderM.fillRect filledRect fillColor dims.cornerRadius
   draw := none
 }
 
@@ -76,23 +72,22 @@ def indeterminateSpec (animationProgress : Float) (variant : ProgressVariant)
   measure := fun _ _ => (dims.width, dims.height)
   collect := fun layout =>
     let rect := layout.contentRect
-    let cmds : Array RenderCommand := #[]
-
-    -- Background track
     let trackRect := Arbor.Rect.mk' rect.x rect.y dims.width dims.height
     let trackBg := Color.gray 0.25
-    let cmds := cmds.push (.fillRect trackRect trackBg dims.cornerRadius)
-
     -- Animated segment (slides back and forth)
     let segmentWidth := dims.width * 0.3
     -- Use sine wave for smooth back-and-forth motion
     let t := animationProgress * 2.0 * Path.pi
     let normalizedPos := (Float.sin t + 1.0) / 2.0  -- 0.0 to 1.0
     let segmentX := rect.x + normalizedPos * (dims.width - segmentWidth)
-
     let segmentRect := Arbor.Rect.mk' segmentX rect.y segmentWidth dims.height
     let fillColor := variantColor variant theme
-    cmds.push (.fillRect segmentRect fillColor dims.cornerRadius)
+
+    RenderM.build do
+      -- Background track
+      RenderM.fillRect trackRect trackBg dims.cornerRadius
+      -- Animated segment
+      RenderM.fillRect segmentRect fillColor dims.cornerRadius
   draw := none
 }
 

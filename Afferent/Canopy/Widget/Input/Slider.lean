@@ -35,24 +35,23 @@ def trackSpec (value : Float) (hovered : Bool) (focused : Bool)
   measure := fun _ _ => (dims.trackWidth, dims.thumbSize)
   collect := fun layout =>
     let rect := layout.contentRect
-    let cmds : Array RenderCommand := #[]
+    RenderM.build do
+      -- Clamp value to valid range
+      let v := if value < 0.0 then 0.0 else if value > 1.0 then 1.0 else value
 
-    -- Clamp value to valid range
-    let v := if value < 0.0 then 0.0 else if value > 1.0 then 1.0 else value
+      -- Track vertical center
+      let trackY := rect.y + (rect.height - dims.trackHeight) / 2
+      let trackRect := Arbor.Rect.mk' rect.x trackY dims.trackWidth dims.trackHeight
 
-    -- Track vertical center
-    let trackY := rect.y + (rect.height - dims.trackHeight) / 2
-    let trackRect := Arbor.Rect.mk' rect.x trackY dims.trackWidth dims.trackHeight
+      -- Background track (gray)
+      let trackBg := Color.gray 0.3
+      RenderM.fillRect trackRect trackBg (dims.trackHeight / 2)
 
-    -- Background track (gray)
-    let trackBg := Color.gray 0.3
-    let cmds := cmds.push (.fillRect trackRect trackBg (dims.trackHeight / 2))
-
-    -- Filled portion (primary color)
-    let filledWidth := dims.trackWidth * v
-    if filledWidth > 0 then
-      let filledRect := Arbor.Rect.mk' rect.x trackY filledWidth dims.trackHeight
-      let cmds := cmds.push (.fillRect filledRect theme.primary.background (dims.trackHeight / 2))
+      -- Filled portion (primary color)
+      let filledWidth := dims.trackWidth * v
+      if filledWidth > 0 then
+        let filledRect := Arbor.Rect.mk' rect.x trackY filledWidth dims.trackHeight
+        RenderM.fillRect filledRect theme.primary.background (dims.trackHeight / 2)
 
       -- Thumb position (centered on value position)
       let thumbX := rect.x + (dims.trackWidth - dims.thumbSize) * v
@@ -61,29 +60,13 @@ def trackSpec (value : Float) (hovered : Bool) (focused : Bool)
 
       -- Thumb color: white normally, slightly gray when hovered
       let thumbColor := if hovered then Color.gray 0.95 else Color.white
-      let cmds := cmds.push (.fillRect thumbRect thumbColor (dims.thumbSize / 2))
+      RenderM.fillRect thumbRect thumbColor (dims.thumbSize / 2)
 
       -- Focus ring on thumb
       if focused then
         let focusRect := Arbor.Rect.mk' (thumbX - 2) (thumbY - 2)
                                          (dims.thumbSize + 4) (dims.thumbSize + 4)
-        cmds.push (.strokeRect focusRect theme.focusRing 2.0 ((dims.thumbSize + 4) / 2))
-      else
-        cmds
-    else
-      -- Thumb at start position
-      let thumbX := rect.x
-      let thumbY := rect.y + (rect.height - dims.thumbSize) / 2
-      let thumbRect := Arbor.Rect.mk' thumbX thumbY dims.thumbSize dims.thumbSize
-      let thumbColor := if hovered then Color.gray 0.95 else Color.white
-      let cmds := cmds.push (.fillRect thumbRect thumbColor (dims.thumbSize / 2))
-
-      if focused then
-        let focusRect := Arbor.Rect.mk' (thumbX - 2) (thumbY - 2)
-                                         (dims.thumbSize + 4) (dims.thumbSize + 4)
-        cmds.push (.strokeRect focusRect theme.focusRing 2.0 ((dims.thumbSize + 4) / 2))
-      else
-        cmds
+        RenderM.strokeRect focusRect theme.focusRing 2.0 ((dims.thumbSize + 4) / 2)
   draw := none
 }
 
