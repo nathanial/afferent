@@ -445,9 +445,6 @@ def when' (condition : Dynamic Spider Bool) (content : WidgetM Unit) : WidgetM U
     else
       pure (Afferent.Arbor.spacer 0 0)
 
-/-- Emit a dynamic widget (the IO action is run at render time). -/
-def emitDynamic (render : ComponentRender) : WidgetM Unit := emit render
-
 /-! ## Dynamic Widget Subtrees
 
 `dynWidget` enables rebuilding entire widget subtrees when a Dynamic value changes.

@@ -53,7 +53,7 @@ structure Link where
   value : Float
   /-- Optional color (defaults to source node color). -/
   color : Option Color := none
-deriving Repr, Inhabited
+deriving Repr, Inhabited, BEq
 
 /-- Sankey diagram data. -/
 structure Data where
@@ -92,17 +92,17 @@ private def formatValue (v : Float) : String :=
     let frac := ((v - v.floor) * 10).floor.toUInt32
     s!"{whole}.{frac}"
 
-/-- Computed layout for a node. -/
-private structure NodeLayout where
+/-- Computed layout for a node (positions relative to chart origin). -/
+structure NodeLayout where
   node : Node
   x : Float
   y : Float
   height : Float
   color : Color
-deriving Repr
+deriving Repr, Inhabited, BEq
 
-/-- Computed layout for a link. -/
-private structure LinkLayout where
+/-- Computed layout for a link (positions relative to chart origin). -/
+structure LinkLayout where
   link : Link
   sourceX : Float
   sourceY : Float
@@ -111,7 +111,14 @@ private structure LinkLayout where
   targetY : Float
   targetHeight : Float
   color : Color
-deriving Repr
+deriving Repr, Inhabited, BEq
+
+/-- Pre-computed layout for the entire diagram. -/
+structure CachedLayout where
+  nodeLayouts : Array NodeLayout
+  linkLayouts : Array LinkLayout
+  maxColumn : Nat
+deriving Repr, Inhabited, BEq
 
 /-- Calculate the total incoming value for a node. -/
 private def nodeInValue (nodeId : String) (links : Array Link) : Float :=
@@ -129,11 +136,14 @@ private def nodeOutValue (nodeId : String) (links : Array Link) : Float :=
 private def nodeValue (nodeId : String) (links : Array Link) : Float :=
   max (nodeInValue nodeId links) (nodeOutValue nodeId links)
 
-/-- Layout the Sankey diagram. -/
-private def layoutDiagram (data : Data) (dims : Dimensions)
-    (chartX chartY chartWidth chartHeight : Float)
-    : (Array NodeLayout × Array LinkLayout) := Id.run do
-  if data.nodes.isEmpty then return (#[], #[])
+/-- Compute the layout for a Sankey diagram.
+    Positions are relative to (0, 0) - add screen offset when rendering.
+    This is called once and cached, not every frame. -/
+def computeLayout (data : Data) (dims : Dimensions) : CachedLayout := Id.run do
+  if data.nodes.isEmpty then return { nodeLayouts := #[], linkLayouts := #[], maxColumn := 0 }
+
+  let chartWidth := dims.width - dims.marginLeft - dims.marginRight
+  let chartHeight := dims.height - dims.marginTop - dims.marginBottom
 
   -- Find number of columns
   let maxColumn := data.nodes.foldl (fun acc n => max acc n.column) 0
@@ -162,9 +172,9 @@ private def layoutDiagram (data : Data) (dims : Dimensions)
     let totalPadding := dims.nodePadding * (colNodes.size - 1).toFloat
     let availableHeight := chartHeight - totalPadding
 
-    -- Position nodes vertically
-    let mut currentY := chartY
-    let columnX := chartX + col.toFloat * columnWidth
+    -- Position nodes vertically (relative to 0, 0)
+    let mut currentY : Float := 0
+    let columnX := col.toFloat * columnWidth
 
     for i in [0:colNodes.size] do
       let node := colNodes[i]!
@@ -231,72 +241,70 @@ private def layoutDiagram (data : Data) (dims : Dimensions)
       targetOffsets := targetOffsets.insert link.target (tgtOffset + tgtLinkHeight)
     | _, _ => continue
 
-  (nodeLayouts, linkLayouts)
+  { nodeLayouts, linkLayouts, maxColumn }
 
-/-- Draw a curved link path (Bezier curve). -/
-private def linkPath (l : LinkLayout) : Arbor.Path :=
-  let midX := (l.sourceX + l.targetX) / 2
+/-- Draw a curved link path (Bezier curve) with offset. -/
+private def linkPath (l : LinkLayout) (ox oy : Float) : Arbor.Path :=
+  let sx := l.sourceX + ox
+  let sy := l.sourceY + oy
+  let tx := l.targetX + ox
+  let ty := l.targetY + oy
+  let midX := (sx + tx) / 2
   -- Top edge of the link
   Arbor.Path.empty
-    |>.moveTo (Arbor.Point.mk' l.sourceX l.sourceY)
+    |>.moveTo (Arbor.Point.mk' sx sy)
     |>.bezierCurveTo
-      (Arbor.Point.mk' midX l.sourceY)
-      (Arbor.Point.mk' midX l.targetY)
-      (Arbor.Point.mk' l.targetX l.targetY)
-    |>.lineTo (Arbor.Point.mk' l.targetX (l.targetY + l.targetHeight))
+      (Arbor.Point.mk' midX sy)
+      (Arbor.Point.mk' midX ty)
+      (Arbor.Point.mk' tx ty)
+    |>.lineTo (Arbor.Point.mk' tx (ty + l.targetHeight))
     |>.bezierCurveTo
-      (Arbor.Point.mk' midX (l.targetY + l.targetHeight))
-      (Arbor.Point.mk' midX (l.sourceY + l.sourceHeight))
-      (Arbor.Point.mk' l.sourceX (l.sourceY + l.sourceHeight))
+      (Arbor.Point.mk' midX (ty + l.targetHeight))
+      (Arbor.Point.mk' midX (sy + l.sourceHeight))
+      (Arbor.Point.mk' sx (sy + l.sourceHeight))
     |>.closePath
 
-/-- Custom spec for Sankey diagram rendering. -/
-def sankeyDiagramSpec (data : Data) (theme : Theme)
+/-- Custom spec for Sankey diagram rendering with pre-computed cached layout.
+    Only performs offset calculations and render command generation - no layout computation. -/
+def sankeyDiagramSpecCached (cached : CachedLayout) (data : Data) (theme : Theme)
     (dims : Dimensions := defaultDimensions) : CustomSpec := {
   measure := fun _ _ => (dims.width, dims.height)
   collect := fun layout =>
     let rect := layout.contentRect
     let cmds : Array RenderCommand := #[]
 
-    if data.nodes.isEmpty then cmds else
+    if cached.nodeLayouts.isEmpty then cmds else
 
-    -- Calculate chart area
-    let chartX := rect.x + dims.marginLeft
-    let chartY := rect.y + dims.marginTop
-    let chartWidth := dims.width - dims.marginLeft - dims.marginRight
-    let chartHeight := dims.height - dims.marginTop - dims.marginBottom
+    -- Offset from screen position
+    let ox := rect.x + dims.marginLeft
+    let oy := rect.y + dims.marginTop
 
     -- Draw background
     let bgRect := Arbor.Rect.mk' rect.x rect.y dims.width dims.height
     let cmds := cmds.push (.fillRect bgRect (theme.panel.background.withAlpha 0.3) 6.0)
 
-    -- Layout the diagram
-    let (nodeLayouts, linkLayouts) := layoutDiagram data dims chartX chartY chartWidth chartHeight
-
-    -- Draw links first (behind nodes)
-    let cmds := linkLayouts.foldl (fun cmds l =>
-      let path := linkPath l
+    -- Draw links first (behind nodes) - just offset pre-computed positions
+    let cmds := cached.linkLayouts.foldl (fun cmds l =>
+      let path := linkPath l ox oy
       cmds.push (.fillPath path l.color)
     ) cmds
 
-    -- Draw nodes
-    let cmds := nodeLayouts.foldl (fun cmds n =>
-      let nodeRect := Arbor.Rect.mk' n.x n.y dims.nodeWidth n.height
+    -- Draw nodes - just offset pre-computed positions
+    let cmds := cached.nodeLayouts.foldl (fun cmds n =>
+      let nodeRect := Arbor.Rect.mk' (n.x + ox) (n.y + oy) dims.nodeWidth n.height
       cmds.push (.fillRect nodeRect n.color 2.0)
     ) cmds
 
-    -- Draw labels
+    -- Draw labels - just offset pre-computed positions
     let cmds := if dims.showLabels then
-      nodeLayouts.foldl (fun cmds n =>
-        let labelY := n.y + n.height / 2 + 4
-        -- Place label to the right of rightmost column nodes, left of others
-        let maxCol := data.nodes.foldl (fun acc node => max acc node.column) 0
-        let (labelX, _align) := if n.node.column == maxCol then
-          (n.x + dims.nodeWidth + 6, 0)  -- Right side
+      cached.nodeLayouts.foldl (fun cmds n =>
+        let labelY := n.y + oy + n.height / 2 + 4
+        let (labelX, _align) := if n.node.column == cached.maxColumn then
+          (n.x + ox + dims.nodeWidth + 6, 0)  -- Right side
         else if n.node.column == 0 then
-          (n.x - 6, 1)  -- Left side (right-aligned)
+          (n.x + ox - 6, 1)  -- Left side (right-aligned)
         else
-          (n.x + dims.nodeWidth + 6, 0)  -- Default right
+          (n.x + ox + dims.nodeWidth + 6, 0)  -- Default right
 
         let labelText := if dims.showValues then
           let v := nodeValue n.node.id data.links
@@ -315,17 +323,19 @@ def sankeyDiagramSpec (data : Data) (theme : Theme)
 
 end SankeyDiagram
 
-/-- Build a Sankey diagram visual (WidgetBuilder version).
+/-- Build a Sankey diagram visual with pre-computed cached layout (WidgetBuilder version).
     - `name`: Widget name for identification
-    - `data`: Sankey diagram data with nodes and links
+    - `cached`: Pre-computed layout (compute once, reuse every frame)
+    - `data`: Original data (for label values)
     - `theme`: Theme for styling
     - `dims`: Diagram dimensions
 -/
-def sankeyDiagramVisual (name : String) (data : SankeyDiagram.Data)
-    (theme : Theme) (dims : SankeyDiagram.Dimensions := SankeyDiagram.defaultDimensions)
+def sankeyDiagramVisualCached (name : String) (cached : SankeyDiagram.CachedLayout)
+    (data : SankeyDiagram.Data) (theme : Theme)
+    (dims : SankeyDiagram.Dimensions := SankeyDiagram.defaultDimensions)
     : WidgetBuilder := do
   let wid ← freshId
-  let chart ← custom (SankeyDiagram.sankeyDiagramSpec data theme dims) {
+  let chart ← custom (SankeyDiagram.sankeyDiagramSpecCached cached data theme dims) {
     minWidth := some dims.width
     minHeight := some dims.height
   }
@@ -334,7 +344,8 @@ def sankeyDiagramVisual (name : String) (data : SankeyDiagram.Data)
 
 /-! ## Reactive SankeyDiagram Components (FRP-based)
 
-These use WidgetM for declarative composition.
+These use WidgetM for declarative composition with FRP-based layout caching.
+Layout is computed once and cached - only recomputed when data changes.
 -/
 
 open Reactive Reactive.Host
@@ -345,7 +356,8 @@ structure SankeyDiagramResult where
   /-- The data being displayed. -/
   data : Reactive.Dynamic Spider SankeyDiagram.Data
 
-/-- Create a Sankey diagram component using WidgetM.
+/-- Create a Sankey diagram component using WidgetM with FRP-based layout caching.
+    Layout is computed once at creation time and reused every frame.
     - `data`: Sankey diagram data with nodes and links
     - `theme`: Theme for styling
     - `dims`: Diagram dimensions
@@ -355,14 +367,20 @@ def sankeyDiagram (data : SankeyDiagram.Data)
     : WidgetM SankeyDiagramResult := do
   let name ← registerComponentW "sankey-diagram" (isInteractive := false)
 
+  -- Create data Dynamic
   let dataDyn ← Dynamic.pureM data
 
-  emit do
-    pure (sankeyDiagramVisual name data theme dims)
+  -- Pre-compute layout once (cached via Dynamic.mapM - only recomputes if data changes)
+  let layoutDyn ← Dynamic.mapM (fun d => SankeyDiagram.computeLayout d dims) dataDyn
+
+  -- dynWidget rebuilds visual only when cached layout changes
+  let _ ← dynWidget layoutDyn fun cached =>
+    emit (pure (sankeyDiagramVisualCached name cached data theme dims))
 
   pure { data := dataDyn }
 
 /-- Create a Sankey diagram that updates based on an external event stream.
+    Layout is automatically recomputed when data changes via FRP caching.
     - `initialData`: Initial diagram data
     - `dataUpdates`: Event stream of data updates
     - `theme`: Theme for styling
@@ -374,11 +392,17 @@ def sankeyDiagramWithEvents (initialData : SankeyDiagram.Data)
     : WidgetM SankeyDiagramResult := do
   let name ← registerComponentW "sankey-diagram" (isInteractive := false)
 
+  -- Data Dynamic that updates on events
   let dataDyn ← Reactive.holdDyn initialData dataUpdates
 
-  emit do
-    let d ← dataDyn.sample
-    pure (sankeyDiagramVisual name d theme dims)
+  -- Cached layout - recomputes only when dataDyn changes
+  let layoutDyn ← Dynamic.mapM (fun d => SankeyDiagram.computeLayout d dims) dataDyn
+
+  -- dynWidget rebuilds visual only when cached layout changes
+  let _ ← dynWidget layoutDyn fun cached => do
+    -- Need current data for label values
+    let d ← SpiderM.liftIO dataDyn.sample
+    emit (pure (sankeyDiagramVisualCached name cached d theme dims))
 
   pure { data := dataDyn }
 

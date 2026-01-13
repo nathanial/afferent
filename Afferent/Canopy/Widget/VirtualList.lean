@@ -213,9 +213,8 @@ def virtualList (itemCount : Nat) (itemBuilder : Nat → WidgetBuilder) (theme :
   ) allClicks
   performEvent_ clickActions
 
-  emitDynamic do
-    let scroll ← scrollState.sample
-    let (start, stop) ← visibleRange.sample
+  let combined ← Dynamic.zipWithM Prod.mk scrollState visibleRange
+  let _ ← dynWidget combined fun (scroll, (start, stop)) => do
     let itemHeight := VirtualList.safeItemHeight config.itemHeight
     let topHeight := start.toFloat * itemHeight
     let bottomHeight := (itemCount - stop).toFloat * itemHeight
@@ -238,7 +237,7 @@ def virtualList (itemCount : Nat) (itemBuilder : Nat → WidgetBuilder) (theme :
       maxHeight := some scrollConfig.height
     }
     let scrollbarConfig := buildScrollbarConfig scrollConfig theme
-    pure (namedScroll name scrollStyle contentW contentH scroll scrollbarConfig listBuilder)
+    emit (pure (namedScroll name scrollStyle contentW contentH scroll scrollbarConfig listBuilder))
 
   pure { scrollState, visibleRange, onItemClick := itemClickTrigger }
 
