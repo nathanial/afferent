@@ -31,6 +31,9 @@ def hashLayoutRect (r : Trellis.LayoutRect) : UInt64 :=
 structure CachedRenderCommands where
   commands : Array RenderCommand
   layoutHash : UInt64
+  /-- Generation counter from dynWidget. When generation changes, cache is stale.
+      This allows animated widgets to update in place rather than creating new entries. -/
+  generation : Nat := 0
 
 /-- Persistent cache for render commands across frames.
     Keyed by widget name (from registerComponentW). -/

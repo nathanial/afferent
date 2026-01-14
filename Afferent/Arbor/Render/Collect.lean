@@ -495,30 +495,31 @@ partial def collectWidgetCached (cache : IO.Ref RenderCache)
     collectBoxStyleCached borderRect style
     let layoutHash := hashLayoutRect contentRect
 
-    -- Use widget name if provided, otherwise use path + generation.
-    -- Named widgets use stable names (for expensive widgets like charts).
-    -- Unnamed widgets include generation so cache is invalidated when dynWidget rebuilds.
+    -- Cache key: widget name if provided, otherwise path.
+    -- We store generation in the cache entry itself, not in the key.
+    -- This allows animated widgets to update in place (same key) rather than
+    -- creating new entries each frame, preventing unbounded memory growth.
     let cacheKey := match name with
       | some widgetName => widgetName
-      | none => s!"@{path}:{spec.generation}"
+      | none => s!"@{path}"
 
     let renderCache ← cache.get
     match renderCache.find? cacheKey with
     | some cached =>
-      if cached.layoutHash == layoutHash then
-        -- Cache hit! Use cached commands
+      -- Cache hit only if BOTH generation and layout match
+      if cached.generation == spec.generation && cached.layoutHash == layoutHash then
         CachedCollectM.emitAll cached.commands
         CachedCollectM.recordCacheHit
       else
-        -- Layout changed, recompute and update cache
+        -- Generation or layout changed, recompute and update in place
         let cmds := spec.collect computed
-        cache.modify fun rc => rc.insert cacheKey ⟨cmds, layoutHash⟩
+        cache.modify fun rc => rc.insert cacheKey ⟨cmds, layoutHash, spec.generation⟩
         CachedCollectM.emitAll cmds
         CachedCollectM.recordCacheMiss
     | none =>
       -- First time seeing this widget, compute and cache
       let cmds := spec.collect computed
-      cache.modify fun rc => rc.insert cacheKey ⟨cmds, layoutHash⟩
+      cache.modify fun rc => rc.insert cacheKey ⟨cmds, layoutHash, spec.generation⟩
       CachedCollectM.emitAll cmds
       CachedCollectM.recordCacheMiss
 
