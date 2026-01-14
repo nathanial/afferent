@@ -5,11 +5,13 @@
 import Reactive
 import Afferent.Canopy.Core
 import Afferent.Canopy.Theme
+import Reactive.Host.Spider
 import Afferent.Canopy.Reactive.Component
 
 namespace Afferent.Canopy
 
 open Afferent.Arbor hiding Event
+open Reactive.Host.Spider
 
 namespace StackedAreaChart
 
@@ -307,26 +309,38 @@ open Afferent.Canopy.Reactive
 /-- StackedAreaChart result - provides access to chart state. -/
 structure StackedAreaChartResult where
   /-- The data being displayed. -/
-  data : Reactive.Dynamic Spider StackedAreaChart.Data
+  data : Dyn StackedAreaChart.Data
 
-/-- Create a stacked area chart component using WidgetM.
-    - `data`: Stacked area chart data with labels and series
+/-- Create a stacked area chart component using WidgetM with dynamic data.
+    The chart automatically rebuilds when the data Dynamic changes.
+    - `data`: Dynamic stacked area chart data with labels and series
     - `theme`: Theme for styling
     - `dims`: Chart dimensions
 -/
-def stackedAreaChart (data : StackedAreaChart.Data)
+def stackedAreaChart (data : Dyn StackedAreaChart.Data)
     (theme : Theme) (dims : StackedAreaChart.Dimensions := StackedAreaChart.defaultDimensions)
     : WidgetM StackedAreaChartResult := do
-  let name ← registerComponentW "stacked-area-chart" (isInteractive := false)
+  -- Use dynWidget to rebuild the chart when data changes
+  let _ ← dynWidget data fun currentData => do
+    let name ← registerComponentW "stacked-area-chart" (isInteractive := false)
+    emit do
+      pure (stackedAreaChartVisual name currentData theme dims)
 
+  pure { data }
+
+/-- Create a stacked area chart with static data.
+    Convenience function that wraps static data in a constant Dynamic.
+    - `data`: Static stacked area chart data with labels and series
+    - `theme`: Theme for styling
+    - `dims`: Chart dimensions
+-/
+def stackedAreaChart' (data : StackedAreaChart.Data)
+    (theme : Theme) (dims : StackedAreaChart.Dimensions := StackedAreaChart.defaultDimensions)
+    : WidgetM StackedAreaChartResult := do
   let dataDyn ← Dynamic.pureM data
+  stackedAreaChart dataDyn theme dims
 
-  emit do
-    pure (stackedAreaChartVisual name data theme dims)
-
-  pure { data := dataDyn }
-
-/-- Create a stacked area chart from simple arrays.
+/-- Create a stacked area chart from simple arrays (static data).
     - `labels`: X-axis labels
     - `seriesNames`: Names for each series (for legend)
     - `seriesData`: Array of value arrays, one per series
@@ -348,6 +362,6 @@ def stackedAreaChartFromArrays (labels : Array String)
       result := result.push { name, values, color }
     result
   let data : StackedAreaChart.Data := { labels, series }
-  stackedAreaChart data theme dims
+  stackedAreaChart' data theme dims
 
 end Afferent.Canopy

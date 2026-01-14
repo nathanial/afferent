@@ -144,9 +144,6 @@ holdDyn : α → Event Spider α → m (Dynamic Spider α)
 -- Fold over events (like Redux reducer)
 foldDyn : (α → β → β) → β → Event Spider α → m (Dynamic Spider β)
 
--- Sample a behavior/dynamic
-sample : Behavior Spider α → m α
-
 -- Transform events
 Event.map : (α → β) → Event Spider α → Event Spider β
 Event.mapM : (α → m β) → Event Spider α → m (Event Spider β)
@@ -158,6 +155,25 @@ Event.leftmost : List (Event Spider α) → m (Event Spider α)
 -- Execute IO effects when event fires
 performEvent_ : Event Spider (IO Unit) → m Unit
 ```
+
+### IMPORTANT: Never Use `sample` in Widgets
+
+**Do NOT use `sample` or `Dynamic.sample` in Canopy widgets.** Sampling breaks the reactive data flow by pulling values imperatively instead of pushing updates through the FRP network.
+
+Instead, use `dynWidget` to rebuild widget subtrees when dynamics change:
+
+```lean
+-- BAD: Sampling breaks reactivity
+emit do
+  let value ← someDynamic.sample  -- DON'T DO THIS
+  pure (someVisual value)
+
+-- GOOD: dynWidget rebuilds when the dynamic changes
+let _ ← dynWidget someDynamic fun value => do
+  emit do pure (someVisual value)
+```
+
+The `dynWidget` combinator properly subscribes to the Dynamic's update event and rebuilds the widget subtree whenever the value changes.
 
 ### Component Hooks
 
@@ -240,15 +256,14 @@ heading1' heading2' heading3' bodyText' caption' : String → Theme → WidgetM 
 ### Dynamic Rendering
 
 ```lean
--- Emit widget that samples dynamics at render time
-emitDynamic : IO WidgetBuilder → WidgetM Unit
-
 -- Conditional rendering
 when' : Dynamic Spider Bool → WidgetM Unit → WidgetM Unit
 
 -- Rebuild subtree when dynamic changes (like Reflex's dyn)
 dynWidget : Dynamic Spider α → (α → WidgetM β) → WidgetM (Dynamic Spider β)
 ```
+
+Use `dynWidget` to create widgets that update reactively when their input Dynamic changes.
 
 ### Cross-Tree Wiring
 
@@ -260,10 +275,9 @@ let (clickTrigger, fireClick) ← newTriggerEvent (t := Spider) (a := Unit)
 let clickCount ← foldDyn (fun _ n => n + 1) 0 clickTrigger
 
 let (_, render) ← runWidget do
-  -- Display (samples clickCount from outer scope)
-  emitDynamic do
-    let count ← clickCount.sample
-    pure (caption s!"Clicks: {count}" theme)
+  -- Display updates reactively when clickCount changes
+  let _ ← dynWidget clickCount fun count => do
+    caption' s!"Clicks: {count}" theme
 
   -- Button (fires trigger)
   let click ← button "Click Me" theme .primary
@@ -282,13 +296,12 @@ def clickCounterPanel (theme : Theme) : WidgetM Unit :=
     let onClick ← useClick name
     -- Count clicks using foldDyn
     let clickCount ← foldDyn (fun _ n => n + 1) 0 onClick
-    -- Emit button with dynamic label
-    emitDynamic do
-      let count ← clickCount.sample
-      let hovered ← isHovered.sample
+    -- Combine dynamics and rebuild button when either changes
+    let buttonState ← Dynamic.zipWithM (fun count hovered => (count, hovered)) clickCount isHovered
+    let _ ← dynWidget buttonState fun (count, hovered) => do
       let state := { hovered, pressed := false, focused := false }
       let label := if count == 0 then "Click me!" else s!"Clicked {count} times"
-      pure (buttonVisual name label theme .primary state)
+      emit do pure (buttonVisual name label theme .primary state)
 ```
 
 ### Example: Dependent Dropdowns
