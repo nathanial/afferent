@@ -501,22 +501,20 @@ def dynWidget (dynValue : Dynamic Spider a) (builder : a → WidgetM b)
   -- Subscribe to rebuilds when dynValue changes
   let subscribeAction : SpiderM Unit := ⟨fun env => do
     let unsub ← Reactive.Event.subscribe dynValue.updated fun newValue => do
-      -- Dispose old child scope (cleans up old subscriptions)
-      let oldScope ← childScopeRef.get
-      oldScope.dispose
-
-      -- Create new child scope for this rebuild
-      let newScope ← env.currentScope.child
-      childScopeRef.set newScope
+      -- Clear the child scope's subscriptions (but keep the scope alive for reuse).
+      -- Using clear instead of dispose+child prevents leaking entries in the parent
+      -- scope's subscriptions array, which would grow unboundedly for animated widgets.
+      let childScope ← childScopeRef.get
+      childScope.clear
 
       -- Increment cache generation to invalidate cached render commands
       generationRef.modify (· + 1)
 
-      -- Run the builder with the new value in the new child scope
+      -- Run the builder with the new value, reusing the same child scope
       let widgetM := runWidgetChildren (builder newValue)
       let reactiveM := widgetM.run { children := #[] }
       let spiderM := reactiveM.run events
-      let ((result, renders), _) ← spiderM.run { env with currentScope := newScope }
+      let ((result, renders), _) ← spiderM.run { env with currentScope := childScope }
       rendersRef.set renders
       fireResult result
     env.currentScope.register unsub⟩
