@@ -191,11 +191,13 @@ def switch (label : Option String) (theme : Theme) (initialOn : Bool := false)
       animFrames
     Reactive.holdDyn initialAnim updateEvent
 
-  emit do
-    let hovered ← isHovered.sample
-    let anim ← animProgress.sample
+  -- Combine dynamics for efficient change-driven rebuilds
+  let renderState ← Dynamic.zipWithM (fun h a => (h, a)) isHovered animProgress
+
+  -- Only rebuild widget when hover or animation state actually changes
+  let _ ← dynWidget renderState fun (hovered, anim) => do
     let state : WidgetState := { hovered, pressed := false, focused := false }
-    pure (animatedSwitchVisual name label theme anim state)
+    emit do pure (animatedSwitchVisual name label theme anim state)
 
   pure { onToggle, isOn, animProgress }
 
