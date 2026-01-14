@@ -20,6 +20,7 @@ import Afferent.Tests.TreeViewTests
 import Afferent.Tests.ColorPickerTests
 import Afferent.Tests.ReactiveLayoutTests
 import Afferent.Tests.DynWidgetTests
+import Afferent.Tests.ChartPerformanceTests
 import Crucible
 
 open Crucible
