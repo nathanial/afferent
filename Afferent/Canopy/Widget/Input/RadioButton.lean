@@ -114,16 +114,16 @@ def radioGroup (options : Array RadioOption) (theme : Theme) (initialSelection :
 
   let optionsWithNames := options.zip optionNames
 
-  emit do
-    let selectedValue ← selected.sample
-    let hoveredName ← hoveredOption.sample
+  -- Use dynWidget for efficient change-driven rebuilds
+  let renderState ← Dynamic.zipWithM (fun s h => (s, h)) selected hoveredOption
+  let _ ← dynWidget renderState fun (selectedValue, hoveredName) => do
     let mut builders : Array WidgetBuilder := #[]
     for (opt, name) in optionsWithNames do
       let isHovered := hoveredName == some name
       let isSelected := selectedValue == opt.value
       let state : WidgetState := { hovered := isHovered, pressed := false, focused := false }
       builders := builders.push (radioButtonVisual name opt.label theme isSelected state)
-    pure (column (gap := 8) (style := {}) builders)
+    emit do pure (column (gap := 8) (style := {}) builders)
 
   pure { onSelect, selected }
 

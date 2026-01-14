@@ -235,19 +235,18 @@ def tabView (tabs : Array TabDef) (theme : Theme) (initialTab : Nat := 0)
 
   let tabsRef := tabs
 
-  emit do
-    let active ← activeTab.sample
-    let hovered ← hoveredTab.sample
-
-    let mut tabDefs : Array (String × WidgetBuilder) := #[]
-    for i in [:tabsRef.size] do
-      let tab := tabsRef[i]!
-      let renders := tabContentRenders[i]!
-      let contentWidgets ← renders.mapM id
-      let content := column (gap := 0) (style := {}) contentWidgets
-      tabDefs := tabDefs.push (tab.label, content)
-
-    pure (tabViewVisual containerName headerNameFn tabDefs active hovered theme)
+  -- Use dynWidget for efficient change-driven rebuilds
+  let renderState ← Dynamic.zipWithM (fun a h => (a, h)) activeTab hoveredTab
+  let _ ← dynWidget renderState fun (active, hovered) => do
+    emit do
+      let mut tabDefs : Array (String × WidgetBuilder) := #[]
+      for i in [:tabsRef.size] do
+        let tab := tabsRef[i]!
+        let renders := tabContentRenders[i]!
+        let contentWidgets ← renders.mapM id
+        let content := column (gap := 0) (style := {}) contentWidgets
+        tabDefs := tabDefs.push (tab.label, content)
+      pure (tabViewVisual containerName headerNameFn tabDefs active hovered theme)
 
   pure { onTabChange, activeTab }
 

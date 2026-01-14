@@ -577,9 +577,9 @@ def spinner (theme : Theme) (config : Spinner.Config := {}) : WidgetM SpinnerRes
   let animationTime ← Reactive.foldDyn (fun dt acc => floatMod (acc + dt) cycleDuration) 0.0 animFrame
   let animationProgress ← Dynamic.mapM (· / cycleDuration) animationTime
 
-  emit do
-    let progress ← animationProgress.sample
-    pure (spinnerVisual name progress config theme)
+  -- Use dynWidget for efficient change-driven rebuilds
+  let _ ← dynWidget animationProgress fun progress => do
+    emit do pure (spinnerVisual name progress config theme)
 
   pure { animationProgress }
 

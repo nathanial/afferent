@@ -312,13 +312,13 @@ def dropdown (options : Array String) (theme : Theme) (initialSelection : Nat :=
   let mergedHover ← Event.mergeM gatedHover resetHover
   let hoveredOption ← Reactive.holdDyn none mergedHover
 
-  emit do
-    let triggerHovered ← isTriggerHovered.sample
-    let open_ ← isOpen.sample
-    let sel ← selection.sample
-    let hoverOpt ← hoveredOption.sample
+  -- Use dynWidget for efficient change-driven rebuilds
+  let renderState1 ← Dynamic.zipWithM (fun h o => (h, o)) isTriggerHovered isOpen
+  let renderState2 ← Dynamic.zipWithM (fun (h, o) s => (h, o, s)) renderState1 selection
+  let renderState3 ← Dynamic.zipWithM (fun (h, o, s) hOpt => (h, o, s, hOpt)) renderState2 hoveredOption
+  let _ ← dynWidget renderState3 fun (triggerHovered, open_, sel, hoverOpt) => do
     let triggerState : WidgetState := { hovered := triggerHovered, pressed := false, focused := false }
-    pure (dropdownVisual containerName triggerName optionNameFn options sel open_ hoverOpt theme triggerState)
+    emit do pure (dropdownVisual containerName triggerName optionNameFn options sel open_ hoverOpt theme triggerState)
 
   pure { onSelect, selection, isOpen }
 

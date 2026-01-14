@@ -448,10 +448,9 @@ def colorPicker (theme : Theme) (initialColor : Color := Color.red)
   -- Create change event
   let onChange ← Event.mapM (fun s => HSV.toColor s.hsv s.alpha) combinedState.updated
 
-  -- Emit the visual widget
-  emit do
-    let s ← combinedState.sample
-    pure (colorPickerVisual pickerName svName hueName alphaName config s theme)
+  -- Use dynWidget for efficient change-driven rebuilds
+  let _ ← dynWidget combinedState fun s => do
+    emit do pure (colorPickerVisual pickerName svName hueName alphaName config s theme)
 
   pure { onChange, color := colorDyn, hsv := hsvDyn, alpha := alphaDyn }
 

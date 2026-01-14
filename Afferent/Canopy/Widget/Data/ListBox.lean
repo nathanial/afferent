@@ -160,10 +160,10 @@ def listBox (items : Array String) (theme : Theme)
 
   -- Use scroll container for scrolling - items are emitted INSIDE
   let (_, _) ← scrollContainer scrollConfig theme do
-    emit do
-      let selected ← selectedItems.sample
-      let hovered ← hoveredItem.sample
-      pure (listBoxItemsVisual itemNameFn items selected hovered theme config)
+    -- Use dynWidget for efficient change-driven rebuilds
+    let renderState ← Dynamic.zipWithM (fun s h => (s, h)) selectedItems hoveredItem
+    let _ ← dynWidget renderState fun (selected, hovered) => do
+      emit do pure (listBoxItemsVisual itemNameFn items selected hovered theme config)
     pure ()
 
   pure { onSelect := itemClickTrigger, selectedItems, hoveredItem }
@@ -230,10 +230,10 @@ def listBoxWithSelection (items : Array String) (initialSelection : Array Nat)
 
   -- Use scroll container for scrolling - items are emitted INSIDE
   let (_, _) ← scrollContainer scrollConfig theme do
-    emit do
-      let selected ← selectedItems.sample
-      let hovered ← hoveredItem.sample
-      pure (listBoxItemsVisual itemNameFn items selected hovered theme config)
+    -- Use dynWidget for efficient change-driven rebuilds
+    let renderState ← Dynamic.zipWithM (fun s h => (s, h)) selectedItems hoveredItem
+    let _ ← dynWidget renderState fun (selected, hovered) => do
+      emit do pure (listBoxItemsVisual itemNameFn items selected hovered theme config)
     pure ()
 
   pure { onSelect := itemClickTrigger, selectedItems, hoveredItem }

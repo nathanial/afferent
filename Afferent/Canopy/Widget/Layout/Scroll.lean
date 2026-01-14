@@ -282,21 +282,22 @@ def scrollContainer (config : ScrollContainerConfig) (theme : Theme)
   -- Extract just the scroll state for the result
   let scrollState ← Dynamic.mapM (fun s => s.scroll) combinedState
 
-  emit do
-    let state ← combinedState.sample
-    let widgets ← childRenders.mapM id
-    -- Build the child column (fill width for vertical-only scroll)
-    let childStyle : BoxStyle := if config.horizontalScroll then {} else { width := .percent 1.0 }
-    let childBuilder := column (gap := 0) (style := childStyle) widgets
-    -- Run the builder to measure actual widget count
-    let (builtChild, _builderState) ← childBuilder.run {}
-    let widgetCount := builtChild.widgetCount
-    -- Estimate height based on actual widget count (28px per widget)
-    let contentH := max config.height (widgetCount.toFloat * 28.0)
-    let contentW := config.width
-    contentSizeRef.set (contentW, contentH)
-    -- Pass the builder (not the built widget) so IDs are fresh
-    pure (scrollContainerVisual name config theme state.scroll contentW contentH childBuilder)
+  -- Use dynWidget for efficient change-driven rebuilds
+  let _ ← dynWidget combinedState fun state => do
+    emit do
+      let widgets ← childRenders.mapM id
+      -- Build the child column (fill width for vertical-only scroll)
+      let childStyle : BoxStyle := if config.horizontalScroll then {} else { width := .percent 1.0 }
+      let childBuilder := column (gap := 0) (style := childStyle) widgets
+      -- Run the builder to measure actual widget count
+      let (builtChild, _builderState) ← childBuilder.run {}
+      let widgetCount := builtChild.widgetCount
+      -- Estimate height based on actual widget count (28px per widget)
+      let contentH := max config.height (widgetCount.toFloat * 28.0)
+      let contentW := config.width
+      contentSizeRef.set (contentW, contentH)
+      -- Pass the builder (not the built widget) so IDs are fresh
+      pure (scrollContainerVisual name config theme state.scroll contentW contentH childBuilder)
 
   pure (result, { scrollState })
 

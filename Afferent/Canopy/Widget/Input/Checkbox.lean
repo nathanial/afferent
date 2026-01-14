@@ -108,11 +108,11 @@ def checkbox (label : String) (theme : Theme) (initialChecked : Bool := false)
   let isChecked ← Reactive.foldDyn (fun _ checked => !checked) initialChecked clicks
   let onToggle := isChecked.updated
 
-  emit do
-    let hovered ← isHovered.sample
-    let checked ← isChecked.sample
+  -- Use dynWidget for efficient change-driven rebuilds
+  let renderState ← Dynamic.zipWithM (fun h c => (h, c)) isHovered isChecked
+  let _ ← dynWidget renderState fun (hovered, checked) => do
     let state : WidgetState := { hovered, pressed := false, focused := false }
-    pure (checkboxVisual name label theme checked state)
+    emit do pure (checkboxVisual name label theme checked state)
 
   pure { onToggle, isChecked }
 

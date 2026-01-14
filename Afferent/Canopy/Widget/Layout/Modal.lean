@@ -300,15 +300,16 @@ def modal (title : String) (theme : Theme) (content : WidgetM Unit)
   let closeEvents ← Event.filterM (fun open_ => !open_) isOpen.updated
   let onClose ← Event.voidM closeEvents
 
-  emit do
-    let open_ ← isOpen.sample
-    if open_ then
-      let closeHovered ← isCloseHovered.sample
-      let contentWidgets ← contentRenders.mapM id
-      let contentWidget := column (gap := 0) (style := {}) contentWidgets
-      pure (modalVisual containerName backdropName closeName title true theme closeHovered {} contentWidget)
-    else
-      pure (spacer 0 0)
+  -- Use dynWidget for efficient change-driven rebuilds
+  let _ ← dynWidget isOpen fun open_ => do
+    let _ ← dynWidget isCloseHovered fun closeHovered => do
+      emit do
+        if open_ then
+          let contentWidgets ← contentRenders.mapM id
+          let contentWidget := column (gap := 0) (style := {}) contentWidgets
+          pure (modalVisual containerName backdropName closeName title true theme closeHovered {} contentWidget)
+        else
+          pure (spacer 0 0)
 
   pure {
     onClose

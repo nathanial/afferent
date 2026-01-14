@@ -241,11 +241,11 @@ def textInput (theme : Theme) (font : Afferent.Font) (placeholder : String) (ini
 
   let text ← Dynamic.mapM (·.value) textState
 
-  emit do
-    let state ← textState.sample
-    let focused ← focusedInput.sample
+  -- Use dynWidget for efficient change-driven rebuilds
+  let renderState ← Dynamic.zipWithM (fun s f => (s, f)) textState focusedInput
+  let _ ← dynWidget renderState fun (state, focused) => do
     let isFoc := focused == some name
-    pure (textInputVisual name theme { state with focused := isFoc } placeholder)
+    emit do pure (textInputVisual name theme { state with focused := isFoc } placeholder)
 
   pure { onChange, onFocus, onBlur, text, isFocused }
 

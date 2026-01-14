@@ -183,23 +183,24 @@ def tooltip (config : TooltipConfig) (theme : Theme) (font : Afferent.Font)
 
   let isVisible ← Dynamic.mapM (fun s => s.isVisible) tooltipState
 
-  emit do
-    let visible ← isVisible.sample
-    let widgets ← targetRenders.mapM id
-    let (targetWidth, targetHeight) ← targetDimsRef.get
+  -- Use dynWidget for efficient change-driven rebuilds
+  let _ ← dynWidget isVisible fun visible => do
+    emit do
+      let widgets ← targetRenders.mapM id
+      let (targetWidth, targetHeight) ← targetDimsRef.get
 
-    -- Build target with the registered name for hover detection
-    let targetBuilder := namedColumn name (gap := 0) (style := {}) widgets
+      -- Build target with the registered name for hover detection
+      let targetBuilder := namedColumn name (gap := 0) (style := {}) widgets
 
-    -- Always emit the same tree structure to prevent hover flicker
-    -- When not visible, use zero-sized spacer with absolute positioning
-    let tooltipOrPlaceholder ← if visible then
-      tooltipVisual config.text theme font config.position targetWidth targetHeight
-    else
-      -- Invisible placeholder - absolute positioned so doesn't affect layout
-      pure (spacer 0 0)
+      -- Always emit the same tree structure to prevent hover flicker
+      -- When not visible, use zero-sized spacer with absolute positioning
+      let tooltipOrPlaceholder ← if visible then
+        tooltipVisual config.text theme font config.position targetWidth targetHeight
+      else
+        -- Invisible placeholder - absolute positioned so doesn't affect layout
+        pure (spacer 0 0)
 
-    pure (column (gap := 0) (style := {}) #[targetBuilder, tooltipOrPlaceholder])
+      pure (column (gap := 0) (style := {}) #[targetBuilder, tooltipOrPlaceholder])
 
   pure (result, { isVisible })
 

@@ -230,9 +230,9 @@ def progressBarIndeterminate (theme : Theme)
   let animationTime ← Reactive.foldDyn (fun dt acc => floatMod (acc + dt) cycleDuration) 0.0 animFrame
   let animationProgress ← Dynamic.mapM (· / cycleDuration) animationTime
 
-  emit do
-    let progress ← animationProgress.sample
-    pure (progressBarIndeterminateVisual name progress variant theme label)
+  -- Use dynWidget for efficient change-driven rebuilds
+  let _ ← dynWidget animationProgress fun progress => do
+    emit do pure (progressBarIndeterminateVisual name progress variant theme label)
 
   pure { animationProgress }
 
@@ -254,9 +254,9 @@ def progressBarWithEvents (theme : Theme) (valueUpdates : Reactive.Event Spider 
 
   let value ← Reactive.holdDyn initialValue valueUpdates
 
-  emit do
-    let v ← value.sample
-    pure (progressBarVisual name v variant theme label showPercentage)
+  -- Use dynWidget for efficient change-driven rebuilds
+  let _ ← dynWidget value fun v => do
+    emit do pure (progressBarVisual name v variant theme label showPercentage)
 
   pure { value }
 

@@ -389,11 +389,11 @@ def datePicker (theme : Theme) (initialDate : DatePickerDate)
   let selectedDyn ← Dynamic.mapM (fun s => s.selected) combinedState
   let onSelect := selectTrigger
 
-  emit do
-    let state ← combinedState.sample
-    let prevH ← prevHover.sample
-    let nextH ← nextHover.sample
-    pure (datePickerVisual containerName prevName nextName cellNameFn
+  -- Use dynWidget for efficient change-driven rebuilds
+  let renderState1 ← Dynamic.zipWithM (fun s p => (s, p)) combinedState prevHover
+  let renderState2 ← Dynamic.zipWithM (fun (s, p) n => (s, p, n)) renderState1 nextHover
+  let _ ← dynWidget renderState2 fun (state, prevH, nextH) => do
+    emit do pure (datePickerVisual containerName prevName nextName cellNameFn
       state.viewYear state.viewMonth state.selected state.hovered prevH nextH theme config)
 
   pure { onSelect, selected := selectedDyn }

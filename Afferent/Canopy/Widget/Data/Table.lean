@@ -238,11 +238,10 @@ def table (columns : Array TableColumn) (rows : Array (Array String))
   let hoveredRowEvents ← Event.mapM findHoveredRow allHovers
   let hoveredRow ← Reactive.holdDyn none hoveredRowEvents
 
-  -- Emit visual
-  emit do
-    let selected ← selectedRows.sample
-    let hovered ← hoveredRow.sample
-    pure (tableVisual containerName headerRowName headerCellNameFn rowNameFn cellNameFn
+  -- Use dynWidget for efficient change-driven rebuilds
+  let renderState ← Dynamic.zipWithM (fun s h => (s, h)) selectedRows hoveredRow
+  let _ ← dynWidget renderState fun (selected, hovered) => do
+    emit do pure (tableVisual containerName headerRowName headerCellNameFn rowNameFn cellNameFn
       columns rows selected hovered theme config)
 
   pure { onRowSelect := rowClicks, selectedRows, hoveredRow }

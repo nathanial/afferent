@@ -173,11 +173,11 @@ def slider (label : Option String) (theme : Theme) (initialValue : Float := 0.5)
   let onChange ← Event.mapMaybeM
     (fun (old, new) => if old != new then some new else none) valueChanges
 
-  emit do
-    let hovered ← isHovered.sample
-    let s ← combinedState.sample
+  -- Use dynWidget for efficient change-driven rebuilds
+  let renderState ← Dynamic.zipWithM (fun h s => (h, s)) isHovered combinedState
+  let _ ← dynWidget renderState fun (hovered, s) => do
     let state : WidgetState := { hovered, pressed := s.pressed, focused := false }
-    pure (sliderVisual name label theme s.value state)
+    emit do pure (sliderVisual name label theme s.value state)
 
   pure { onChange, value := valueDyn }
 

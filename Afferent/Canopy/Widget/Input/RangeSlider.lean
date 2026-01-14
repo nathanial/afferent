@@ -195,10 +195,10 @@ def rangeSlider (theme : Theme) (initialLow : Float := 0.25) (initialHigh : Floa
   let rangeChanges ← Dynamic.changesM rangeDyn
   let onChange ← Event.mapM (fun (_, new) => new) rangeChanges
 
-  emit do
-    let state ← combinedState.sample
-    let hovered ← isHovered.sample
-    pure (rangeSliderVisual name theme state.low state.high hovered state.dragTarget dims)
+  -- Use dynWidget for efficient change-driven rebuilds
+  let renderState ← Dynamic.zipWithM (fun s h => (s, h)) combinedState isHovered
+  let _ ← dynWidget renderState fun (state, hovered) => do
+    emit do pure (rangeSliderVisual name theme state.low state.high hovered state.dragTarget dims)
 
   pure { onChange, low := lowDyn, high := highDyn }
 

@@ -16,6 +16,11 @@ open Reactive Reactive.Host
 open Afferent.Canopy.Reactive
 open Trellis
 
+-- BEq instance for HashSet based on size and element containment
+-- Used by Dynamic.zipWithM for change detection
+instance [BEq α] [Hashable α] : BEq (Std.HashSet α) where
+  beq a b := a.size == b.size && a.toArray.all (b.contains ·)
+
 /-- A tree node can be a leaf (no children) or a branch (with children). -/
 inductive TreeNode where
   | leaf (label : String) (enabled : Bool := true)
@@ -357,12 +362,13 @@ def treeView (nodes : Array TreeNode) (theme : Theme)
 
   -- Use scroll container for scrolling
   let (_, _) ← scrollContainer scrollConfig theme do
-    emit do
-      let expanded ← expandedNodes.sample
-      let selected ← selectedNode.sample
-      let hovered ← hoveredNode.sample
+    -- Use dynWidget for efficient change-driven rebuilds
+    -- Chain zipWithM for 3 dynamics
+    let renderState ← Dynamic.zipWithM (fun e s => (e, s)) expandedNodes selectedNode
+    let renderState2 ← Dynamic.zipWithM (fun (e, s) h => (e, s, h)) renderState hoveredNode
+    let _ ← dynWidget renderState2 fun (expanded, selected, hovered) => do
       let flatItems := TreeView.flattenVisible nodes expanded
-      pure (treeViewItemsVisual itemNameFn toggleNameFn flatItems expanded selected hovered theme config)
+      emit do pure (treeViewItemsVisual itemNameFn toggleNameFn flatItems expanded selected hovered theme config)
     pure ()
 
   pure { onNodeSelect := selectTrigger, onNodeToggle := toggleTrigger, expandedNodes, selectedNode }
@@ -454,12 +460,13 @@ def treeViewWithExpanded (nodes : Array TreeNode) (initialExpanded : Array TreeP
 
   -- Use scroll container for scrolling
   let (_, _) ← scrollContainer scrollConfig theme do
-    emit do
-      let expanded ← expandedNodes.sample
-      let selected ← selectedNode.sample
-      let hovered ← hoveredNode.sample
+    -- Use dynWidget for efficient change-driven rebuilds
+    -- Chain zipWithM for 3 dynamics
+    let renderState ← Dynamic.zipWithM (fun e s => (e, s)) expandedNodes selectedNode
+    let renderState2 ← Dynamic.zipWithM (fun (e, s) h => (e, s, h)) renderState hoveredNode
+    let _ ← dynWidget renderState2 fun (expanded, selected, hovered) => do
       let flatItems := TreeView.flattenVisible nodes expanded
-      pure (treeViewItemsVisual itemNameFn toggleNameFn flatItems expanded selected hovered theme config)
+      emit do pure (treeViewItemsVisual itemNameFn toggleNameFn flatItems expanded selected hovered theme config)
     pure ()
 
   pure { onNodeSelect := selectTrigger, onNodeToggle := toggleTrigger, expandedNodes, selectedNode }

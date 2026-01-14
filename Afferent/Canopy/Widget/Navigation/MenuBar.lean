@@ -308,19 +308,20 @@ def menuBar (menus : Array MenuBarMenu) (theme : Theme)
   -- Selection event
   let onSelect ← Event.mapMaybeM findClickedAction allClicks
 
-  -- Emit visual
-  emit do
-    let openIdx ← openMenu.sample
-    let openPath ← openSubmenuPath.sample
-    let hoveredWithMenu ← hoveredPathWithMenu.sample
-    let hovTrigger ← hoveredTrigger.sample
-    let widths ← triggerWidthsRef.get
-    -- Extract hovered path only if it's in the currently open menu
-    let hoveredPath : Option MenuPath := match openIdx, hoveredWithMenu with
-      | some idx, some (menuIdx, path) => if idx == menuIdx then some path else none
-      | _, _ => none
-    pure (menuBarVisual triggerNames containerNameFn itemNameFn menus
-      openIdx openPath hoveredPath hovTrigger widths theme config)
+  -- Use dynWidget for efficient change-driven rebuilds
+  -- Chain zipWithM to combine 4 dynamics into a tuple
+  let renderState ← Dynamic.zipWithM (fun o p => (o, p)) openMenu openSubmenuPath
+  let renderState2 ← Dynamic.zipWithM (fun (o, p) h => (o, p, h)) renderState hoveredPathWithMenu
+  let renderState3 ← Dynamic.zipWithM (fun (o, p, h) t => (o, p, h, t)) renderState2 hoveredTrigger
+  let _ ← dynWidget renderState3 fun (openIdx, openPath, hoveredWithMenu, hovTrigger) => do
+    emit do
+      let widths ← triggerWidthsRef.get
+      -- Extract hovered path only if it's in the currently open menu
+      let hoveredPath : Option MenuPath := match openIdx, hoveredWithMenu with
+        | some idx, some (menuIdx, path) => if idx == menuIdx then some path else none
+        | _, _ => none
+      pure (menuBarVisual triggerNames containerNameFn itemNameFn menus
+        openIdx openPath hoveredPath hovTrigger widths theme config)
 
   pure { onSelect, openMenu }
 

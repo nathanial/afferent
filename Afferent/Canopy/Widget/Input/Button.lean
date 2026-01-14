@@ -87,10 +87,10 @@ def button (label : String) (theme : Theme) (variant : ButtonVariant := .primary
   let isHovered ← useHover name
   let onClick ← useClick name
 
-  emit do
-    let hovered ← isHovered.sample
+  -- Use dynWidget for efficient change-driven rebuilds
+  let _ ← dynWidget isHovered fun hovered => do
     let state : WidgetState := { hovered, pressed := false, focused := false }
-    pure (buttonVisual name label theme variant state)
+    emit do pure (buttonVisual name label theme variant state)
 
   pure onClick
 

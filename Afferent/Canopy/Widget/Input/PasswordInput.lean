@@ -180,13 +180,13 @@ def passwordInput (theme : Theme) (font : Afferent.Font)
 
   let text ← Dynamic.mapM (·.value) textState
 
-  emit do
-    let state ← combinedState.sample
-    let focused ← focusedInput.sample
+  -- Use dynWidget for efficient change-driven rebuilds
+  let renderState1 ← Dynamic.zipWithM (fun s f => (s, f)) combinedState focusedInput
+  let renderState2 ← Dynamic.zipWithM (fun (s, f) h => (s, f, h)) renderState1 toggleHovered
+  let _ ← dynWidget renderState2 fun (state, focused, toggleH) => do
     let isFoc := focused == some name
-    let toggleH ← toggleHovered.sample
     let displayState : TextInputState := { state.text with focused := isFoc }
-    pure (passwordInputVisual name toggleName theme displayState state.revealed toggleH placeholder)
+    emit do pure (passwordInputVisual name toggleName theme displayState state.revealed toggleH placeholder)
 
   pure { onChange, onFocus, onBlur, text, isFocused }
 

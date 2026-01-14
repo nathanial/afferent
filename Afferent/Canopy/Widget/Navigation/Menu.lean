@@ -478,14 +478,16 @@ def menu (items : Array MenuItem) (theme : Theme)
   -- Selection event (only fires for enabled action items)
   let onSelect ← Event.mapMaybeM findClickedAction allClicks
 
-  emit do
-    let open_ ← isOpen.sample
-    let hoverPath ← hoveredPath.sample
-    let openPath ← openSubmenuPath.sample
-    let (_, triggerHeight) ← triggerDimsRef.get
-    -- Get trigger widget builders (ComponentRender = IO WidgetBuilder)
-    let triggerBuilders ← triggerRenders.mapM id
-    pure (menuVisual containerNameFn triggerName itemNameFn items open_ openPath hoverPath theme config triggerHeight triggerBuilders)
+  -- Use dynWidget for efficient change-driven rebuilds
+  -- Chain zipWithM to combine 3 dynamics into a tuple
+  let renderState ← Dynamic.zipWithM (fun o h => (o, h)) isOpen hoveredPath
+  let renderState2 ← Dynamic.zipWithM (fun (o, h) p => (o, h, p)) renderState openSubmenuPath
+  let _ ← dynWidget renderState2 fun (open_, hoverPath, openPath) => do
+    emit do
+      let (_, triggerHeight) ← triggerDimsRef.get
+      -- Get trigger widget builders (ComponentRender = IO WidgetBuilder)
+      let triggerBuilders ← triggerRenders.mapM id
+      pure (menuVisual containerNameFn triggerName itemNameFn items open_ openPath hoverPath theme config triggerHeight triggerBuilders)
 
   pure (triggerResult, { onSelect, isOpen })
 

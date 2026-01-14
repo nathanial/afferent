@@ -263,15 +263,16 @@ def splitPane (config : SplitPaneConfig) (theme : Theme)
   let ratioDyn ← Dynamic.mapM (fun s => s.ratio) combinedState
   let onResize ← Event.mapM (fun s => s.ratio) combinedState.updated
 
-  emit do
-    let state ← combinedState.sample
-    let hovered ← handleHovered.sample
-    let firstWidgets ← firstRenders.mapM id
-    let secondWidgets ← secondRenders.mapM id
-    let firstContent := column (gap := 0) (style := {}) firstWidgets
-    let secondContent := column (gap := 0) (style := {}) secondWidgets
-    pure (splitPaneVisual containerName handleName config theme state.ratio hovered state.isDragging
-      firstContent secondContent)
+  -- Use dynWidget for efficient change-driven rebuilds
+  let renderState ← Dynamic.zipWithM (fun s h => (s, h)) combinedState handleHovered
+  let _ ← dynWidget renderState fun (state, hovered) => do
+    emit do
+      let firstWidgets ← firstRenders.mapM id
+      let secondWidgets ← secondRenders.mapM id
+      let firstContent := column (gap := 0) (style := {}) firstWidgets
+      let secondContent := column (gap := 0) (style := {}) secondWidgets
+      pure (splitPaneVisual containerName handleName config theme state.ratio hovered state.isDragging
+        firstContent secondContent)
 
   pure ((firstResult, secondResult), { onResize, ratio := ratioDyn })
 

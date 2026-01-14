@@ -230,19 +230,19 @@ def toastManager (theme : Theme) (defaultDuration : Float := 3.0)
   let showToast (msg : String) (variant : ToastVariant) : IO Unit :=
     fireShow (msg, variant)
 
-  -- Emit toast visuals
-  emit do
-    let currentToasts ← toasts.sample
-    if currentToasts.isEmpty then
-      pure (spacer 0 0)
-    else
-      pure do
-        let mut toastWidgets : Array Widget := #[]
-        for toast in currentToasts do
-          let toastName := s!"toast-{toast.id}"
-          let widget ← toastVisual toastName toast.message toast.variant theme
-          toastWidgets := toastWidgets.push widget
-        toastContainerVisual containerName toastWidgets
+  -- Use dynWidget for efficient change-driven rebuilds
+  let _ ← dynWidget toasts fun currentToasts => do
+    emit do
+      if currentToasts.isEmpty then
+        pure (spacer 0 0)
+      else
+        pure do
+          let mut toastWidgets : Array Widget := #[]
+          for toast in currentToasts do
+            let toastName := s!"toast-{toast.id}"
+            let widget ← toastVisual toastName toast.message toast.variant theme
+            toastWidgets := toastWidgets.push widget
+          toastContainerVisual containerName toastWidgets
 
   pure {
     showInfo := fun msg => showToast msg .info
