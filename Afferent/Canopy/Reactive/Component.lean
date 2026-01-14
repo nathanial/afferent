@@ -457,8 +457,9 @@ This is similar to Reflex's `dyn` combinator.
 
     Similar to Reflex's `dyn`, but takes a builder function to avoid BEq constraints.
 
-    Note: Old subscriptions from previous builds are not explicitly cleaned up,
-    but become harmless no-ops since widget names are unique per build.
+    Each build runs in its own child scope. When the dynamic updates, the previous
+    build's scope is disposed (cleaning up all subscriptions from that build) before
+    creating a new scope for the rebuild. This prevents subscription leaks.
 
     Example (dependent dropdowns):
     ```
@@ -471,27 +472,45 @@ def dynWidget (dynValue : Dynamic Spider a) (builder : a → WidgetM b)
     : WidgetM (Dynamic Spider b) := do
   let events ← getEventsW  -- Capture ReactiveEvents context
 
-  -- Initial build (Dynamic.sample is IO, so lift it)
-  let initialValue ← SpiderM.liftIO dynValue.sample
-  let (initialResult, initialRenders) ← runWidgetChildren (builder initialValue)
+  -- All scope and initial build logic in one SpiderM block to access env.currentScope
+  let (initialResult, childScopeRef, rendersRef) ← (⟨fun env => do
+    -- Create child scope for builder subscriptions (enables cleanup on rebuild)
+    let initialChildScope ← env.currentScope.child
+    let scopeRef : IO.Ref Reactive.SubscriptionScope ← IO.mkRef initialChildScope
 
-  -- Refs for current state
-  let rendersRef : IO.Ref (Array ComponentRender) ← SpiderM.liftIO (IO.mkRef initialRenders)
+    -- Initial build in child scope
+    let initialValue ← dynValue.sample
+    let widgetM := runWidgetChildren (builder initialValue)
+    let reactiveM := widgetM.run { children := #[] }
+    let spiderM := reactiveM.run events
+    let ((result, renders), _) ← spiderM.run { env with currentScope := initialChildScope }
+
+    -- Refs for current state
+    let renRef : IO.Ref (Array ComponentRender) ← IO.mkRef renders
+
+    pure (result, scopeRef, renRef)
+  ⟩ : SpiderM (b × IO.Ref Reactive.SubscriptionScope × IO.Ref (Array ComponentRender)))
 
   -- Result tracking via trigger event
   let (resultTrigger, fireResult) ← Reactive.newTriggerEvent
   let resultDyn ← Reactive.holdDyn initialResult resultTrigger
 
   -- Subscribe to rebuilds when dynValue changes
-  -- We need to construct a SpiderM action that captures the env for running WidgetM
   let subscribeAction : SpiderM Unit := ⟨fun env => do
     let unsub ← Reactive.Event.subscribe dynValue.updated fun newValue => do
-      -- Run the builder with the new value in captured context
-      -- WidgetM → ReactiveM via .run, ReactiveM → SpiderM via .run, SpiderM → IO via .run env
+      -- Dispose old child scope (cleans up old subscriptions)
+      let oldScope ← childScopeRef.get
+      oldScope.dispose
+
+      -- Create new child scope for this rebuild
+      let newScope ← env.currentScope.child
+      childScopeRef.set newScope
+
+      -- Run the builder with the new value in the new child scope
       let widgetM := runWidgetChildren (builder newValue)
       let reactiveM := widgetM.run { children := #[] }
       let spiderM := reactiveM.run events
-      let ((result, renders), _) ← spiderM.run env
+      let ((result, renders), _) ← spiderM.run { env with currentScope := newScope }
       rendersRef.set renders
       fireResult result
     env.currentScope.register unsub⟩

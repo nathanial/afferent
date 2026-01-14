@@ -701,6 +701,53 @@ test "nested tree preserves structure with updated inner text" := do
   ).run spiderEnv
   pure ()
 
+/-! ## Subscription Cleanup Tests -/
+
+test "dynWidget disposes child scope on rebuild" := do
+  -- Verifies that the child scope is disposed when dynWidget rebuilds.
+  -- We track this by having the builder register a cleanup action in the child scope.
+  let spiderEnv ← SpiderEnv.new defaultErrorHandler
+  let _ ← (do
+    let (events, _) ← createInputs
+    let (trigger, fire) ← newTriggerEvent (t := Spider) (a := Nat)
+    let valueDyn ← holdDyn 0 trigger
+    let cleanupCount ← SpiderM.liftIO (IO.mkRef 0)
+
+    let (_, render) ← ReactiveM.run events do
+      runWidget do
+        let _ ← dynWidget valueDyn fun _count => do
+          -- Register a cleanup action that will be called when scope is disposed
+          let registerCleanup : SpiderM Unit := ⟨fun env => do
+            env.currentScope.register (cleanupCount.modify (· + 1))
+          ⟩
+          registerCleanup
+          emit (pure (spacer 10 10))
+        pure ()
+
+    let _ ← render
+    let count0 ← SpiderM.liftIO cleanupCount.get
+    ensure (count0 == 0) s!"No cleanups yet, got {count0}"
+
+    -- First update should dispose the initial build's scope
+    fire 1
+    let count1 ← SpiderM.liftIO cleanupCount.get
+    ensure (count1 == 1) s!"First update should trigger 1 cleanup, got {count1}"
+
+    -- Second update should dispose the first rebuild's scope
+    fire 2
+    let count2 ← SpiderM.liftIO cleanupCount.get
+    ensure (count2 == 2) s!"Second update should trigger 2 total cleanups, got {count2}"
+
+    -- Fire 8 more updates
+    for i in [3:11] do
+      fire i
+
+    let countFinal ← SpiderM.liftIO cleanupCount.get
+    -- Each of the 10 fires should have triggered a cleanup (disposing previous scope)
+    ensure (countFinal == 10) s!"After 10 updates, should have 10 cleanups, got {countFinal}"
+  ).run spiderEnv
+  pure ()
+
 #generate_tests
 
 end Afferent.Tests.DynWidgetTests
