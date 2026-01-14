@@ -418,6 +418,78 @@ AfferentResult create_pipelines(struct AfferentRenderer* renderer) {
         return AFFERENT_ERROR_PIPELINE_FAILED;
     }
 
+    // Create batched rect pipeline (for charts - axis-aligned rects with variable dimensions)
+    id<MTLFunction> batchedRectVertexFunc = [instancedLibrary newFunctionWithName:@"batched_rect_vertex"];
+    id<MTLFunction> batchedRectFragmentFunc = [instancedLibrary newFunctionWithName:@"batched_rect_fragment"];
+    if (!batchedRectVertexFunc || !batchedRectFragmentFunc) {
+        NSLog(@"Failed to find batched rect shader functions");
+        return AFFERENT_ERROR_PIPELINE_FAILED;
+    }
+
+    MTLRenderPipelineDescriptor *batchedRectPipelineDesc = [[MTLRenderPipelineDescriptor alloc] init];
+    batchedRectPipelineDesc.vertexFunction = batchedRectVertexFunc;
+    batchedRectPipelineDesc.fragmentFunction = batchedRectFragmentFunc;
+    batchedRectPipelineDesc.colorAttachments[0].pixelFormat = MTLPixelFormatBGRA8Unorm;
+    batchedRectPipelineDesc.colorAttachments[0].blendingEnabled = YES;
+    batchedRectPipelineDesc.colorAttachments[0].sourceRGBBlendFactor = MTLBlendFactorSourceAlpha;
+    batchedRectPipelineDesc.colorAttachments[0].destinationRGBBlendFactor = MTLBlendFactorOneMinusSourceAlpha;
+    batchedRectPipelineDesc.colorAttachments[0].sourceAlphaBlendFactor = MTLBlendFactorOne;
+    batchedRectPipelineDesc.colorAttachments[0].destinationAlphaBlendFactor = MTLBlendFactorOneMinusSourceAlpha;
+
+    batchedRectPipelineDesc.rasterSampleCount = 4;  // MSAA
+    renderer->batchedRectPipelineStateMSAA = [renderer->device newRenderPipelineStateWithDescriptor:batchedRectPipelineDesc
+                                                                                              error:&error];
+    if (!renderer->batchedRectPipelineStateMSAA) {
+        NSLog(@"Batched rect pipeline creation failed (MSAA): %@", error);
+        return AFFERENT_ERROR_PIPELINE_FAILED;
+    }
+
+    batchedRectPipelineDesc.rasterSampleCount = 1;  // No MSAA
+    renderer->batchedRectPipelineStateNoMSAA = [renderer->device newRenderPipelineStateWithDescriptor:batchedRectPipelineDesc
+                                                                                                error:&error];
+    if (!renderer->batchedRectPipelineStateNoMSAA) {
+        NSLog(@"Batched rect pipeline creation failed (no MSAA): %@", error);
+        return AFFERENT_ERROR_PIPELINE_FAILED;
+    }
+
+    renderer->batchedRectPipelineState = renderer->batchedRectPipelineStateMSAA;
+
+    // Create batched circle pipeline (for scatter plots, bubble charts)
+    id<MTLFunction> batchedCircleVertexFunc = [instancedLibrary newFunctionWithName:@"batched_circle_vertex"];
+    id<MTLFunction> batchedCircleFragmentFunc = [instancedLibrary newFunctionWithName:@"batched_circle_fragment"];
+    if (!batchedCircleVertexFunc || !batchedCircleFragmentFunc) {
+        NSLog(@"Failed to find batched circle shader functions");
+        return AFFERENT_ERROR_PIPELINE_FAILED;
+    }
+
+    MTLRenderPipelineDescriptor *batchedCirclePipelineDesc = [[MTLRenderPipelineDescriptor alloc] init];
+    batchedCirclePipelineDesc.vertexFunction = batchedCircleVertexFunc;
+    batchedCirclePipelineDesc.fragmentFunction = batchedCircleFragmentFunc;
+    batchedCirclePipelineDesc.colorAttachments[0].pixelFormat = MTLPixelFormatBGRA8Unorm;
+    batchedCirclePipelineDesc.colorAttachments[0].blendingEnabled = YES;
+    batchedCirclePipelineDesc.colorAttachments[0].sourceRGBBlendFactor = MTLBlendFactorSourceAlpha;
+    batchedCirclePipelineDesc.colorAttachments[0].destinationRGBBlendFactor = MTLBlendFactorOneMinusSourceAlpha;
+    batchedCirclePipelineDesc.colorAttachments[0].sourceAlphaBlendFactor = MTLBlendFactorOne;
+    batchedCirclePipelineDesc.colorAttachments[0].destinationAlphaBlendFactor = MTLBlendFactorOneMinusSourceAlpha;
+
+    batchedCirclePipelineDesc.rasterSampleCount = 4;  // MSAA
+    renderer->batchedCirclePipelineStateMSAA = [renderer->device newRenderPipelineStateWithDescriptor:batchedCirclePipelineDesc
+                                                                                                error:&error];
+    if (!renderer->batchedCirclePipelineStateMSAA) {
+        NSLog(@"Batched circle pipeline creation failed (MSAA): %@", error);
+        return AFFERENT_ERROR_PIPELINE_FAILED;
+    }
+
+    batchedCirclePipelineDesc.rasterSampleCount = 1;  // No MSAA
+    renderer->batchedCirclePipelineStateNoMSAA = [renderer->device newRenderPipelineStateWithDescriptor:batchedCirclePipelineDesc
+                                                                                                  error:&error];
+    if (!renderer->batchedCirclePipelineStateNoMSAA) {
+        NSLog(@"Batched circle pipeline creation failed (no MSAA): %@", error);
+        return AFFERENT_ERROR_PIPELINE_FAILED;
+    }
+
+    renderer->batchedCirclePipelineState = renderer->batchedCirclePipelineStateMSAA;
+
     // Create sprite pipeline (textured quads)
     id<MTLLibrary> spriteLibrary = [renderer->device newLibraryWithSource:spriteShaderSource
                                                                   options:nil

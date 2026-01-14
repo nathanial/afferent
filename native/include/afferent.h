@@ -547,6 +547,34 @@ void afferent_renderer_draw_ocean_projected_grid_with_fog(
 );
 
 // ============================================================================
+// Batched Rectangle/Circle rendering (for charts)
+// ============================================================================
+
+// Draw multiple axis-aligned rectangles in a single draw call.
+// Optimized for charts (heatmaps, bar charts, scatter plots, etc.)
+// instance_data: Array of 8 floats per rect [x, y, width, height, r, g, b, a]
+// corner_radius: Uniform corner radius for all rects in the batch (0 for sharp corners)
+void afferent_renderer_draw_rects_batch(
+    AfferentRendererRef renderer,
+    const float* instance_data,
+    uint32_t instance_count,
+    float corner_radius,
+    float canvas_width,
+    float canvas_height
+);
+
+// Draw multiple circles in a single draw call.
+// Optimized for scatter plots and bubble charts.
+// instance_data: Array of 8 floats per circle [centerX, centerY, radius, padding, r, g, b, a]
+void afferent_renderer_draw_circles_batch(
+    AfferentRendererRef renderer,
+    const float* instance_data,
+    uint32_t instance_count,
+    float canvas_width,
+    float canvas_height
+);
+
+// ============================================================================
 // Textured 3D Mesh rendering
 // ============================================================================
 

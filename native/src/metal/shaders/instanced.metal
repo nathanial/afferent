@@ -189,3 +189,153 @@ fragment float4 instanced_circle_fragment(CircleVertexOut in [[stage_in]]) {
     if (alpha < 0.01) discard_fragment();
     return float4(in.color.rgb, in.color.a * alpha);
 }
+
+// =============================================================================
+// BATCHED AXIS-ALIGNED RECT SHADER
+// Optimized for charts (heatmaps, scatter plots, bar charts) where each rect
+// has variable dimensions: [x, y, width, height, r, g, b, a] per instance
+// =============================================================================
+
+// Instance data for batched rects: 8 floats per rect
+struct BatchedRectInstance {
+    packed_float2 pos;        // Top-left corner (x, y) in pixels
+    packed_float2 size;       // Width, height in pixels
+    packed_float4 color;      // RGBA
+};  // 32 bytes total
+
+// Uniforms for batched rects
+struct BatchedRectUniforms {
+    float2 viewport;          // Canvas width, height for NDC conversion
+    float cornerRadius;       // Uniform corner radius (0 for sharp corners)
+    float padding;
+};
+
+struct BatchedRectVertexOut {
+    float4 position [[position]];
+    float4 color;
+    float2 uv;                // 0-1 UV within the rect
+    float2 rectSize;          // Rect size in pixels (for corner radius)
+    float cornerRadius;       // Pass corner radius to fragment
+};
+
+vertex BatchedRectVertexOut batched_rect_vertex(
+    uint vid [[vertex_id]],
+    uint iid [[instance_id]],
+    constant BatchedRectInstance* instances [[buffer(0)]],
+    constant BatchedRectUniforms& uniforms [[buffer(1)]]
+) {
+    // Quad vertices for triangle strip: 0=TL, 1=TR, 2=BL, 3=BR
+    float2 unitQuad[4] = {
+        float2(0, 0),   // 0: top-left
+        float2(1, 0),   // 1: top-right
+        float2(0, 1),   // 2: bottom-left
+        float2(1, 1)    // 3: bottom-right
+    };
+
+    BatchedRectInstance inst = instances[iid];
+    float2 uv = unitQuad[vid];
+
+    // Compute pixel position
+    float2 pixelPos = inst.pos + uv * inst.size;
+
+    // Convert to NDC: x: 0..width -> -1..1, y: 0..height -> 1..-1 (Y flipped)
+    float2 ndc;
+    ndc.x = (pixelPos.x / uniforms.viewport.x) * 2.0 - 1.0;
+    ndc.y = 1.0 - (pixelPos.y / uniforms.viewport.y) * 2.0;
+
+    BatchedRectVertexOut out;
+    out.position = float4(ndc, 0.0, 1.0);
+    out.color = inst.color;
+    out.uv = uv;
+    out.rectSize = inst.size;
+    out.cornerRadius = uniforms.cornerRadius;
+    return out;
+}
+
+fragment float4 batched_rect_fragment(BatchedRectVertexOut in [[stage_in]]) {
+    if (in.cornerRadius <= 0.0) {
+        // No corner radius - simple solid rect
+        return in.color;
+    }
+
+    // Rounded corners using SDF
+    float2 halfSize = in.rectSize * 0.5;
+    float2 center = float2(0.5, 0.5);
+    float2 localPos = (in.uv - center) * in.rectSize;  // Position relative to center
+
+    // Clamp corner radius to half the smaller dimension
+    float r = min(in.cornerRadius, min(halfSize.x, halfSize.y));
+
+    // Distance to rounded rect edge
+    float2 q = abs(localPos) - (halfSize - r);
+    float dist = min(max(q.x, q.y), 0.0) + length(max(q, 0.0)) - r;
+
+    // Anti-aliased edge (1 pixel transition)
+    float alpha = 1.0 - smoothstep(-1.0, 0.0, dist);
+    if (alpha < 0.01) discard_fragment();
+
+    return float4(in.color.rgb, in.color.a * alpha);
+}
+
+// =============================================================================
+// BATCHED CIRCLE SHADER (for scatter plots, bubble charts)
+// Instance data: [centerX, centerY, radius, r, g, b, a] = 7 floats per circle
+// Padded to 8 floats for alignment: [centerX, centerY, radius, padding, r, g, b, a]
+// =============================================================================
+
+struct BatchedCircleInstance {
+    packed_float2 center;     // Center position in pixels
+    float radius;             // Radius in pixels
+    float padding;            // Alignment padding
+    packed_float4 color;      // RGBA
+};  // 32 bytes total
+
+struct BatchedCircleUniforms {
+    float2 viewport;          // Canvas width, height for NDC conversion
+};
+
+struct BatchedCircleVertexOut {
+    float4 position [[position]];
+    float4 color;
+    float2 uv;                // -1 to 1, for distance calculation
+};
+
+vertex BatchedCircleVertexOut batched_circle_vertex(
+    uint vid [[vertex_id]],
+    uint iid [[instance_id]],
+    constant BatchedCircleInstance* instances [[buffer(0)]],
+    constant BatchedCircleUniforms& uniforms [[buffer(1)]]
+) {
+    // Quad vertices covering the circle bounding box
+    float2 unitQuad[4] = {
+        float2(-1, -1),  // 0: bottom-left
+        float2( 1, -1),  // 1: bottom-right
+        float2(-1,  1),  // 2: top-left
+        float2( 1,  1)   // 3: top-right
+    };
+
+    BatchedCircleInstance inst = instances[iid];
+    float2 uv = unitQuad[vid];
+
+    // Compute pixel position (quad covers bounding box of circle)
+    float2 pixelPos = inst.center + uv * inst.radius;
+
+    // Convert to NDC
+    float2 ndc;
+    ndc.x = (pixelPos.x / uniforms.viewport.x) * 2.0 - 1.0;
+    ndc.y = 1.0 - (pixelPos.y / uniforms.viewport.y) * 2.0;
+
+    BatchedCircleVertexOut out;
+    out.position = float4(ndc, 0.0, 1.0);
+    out.color = inst.color;
+    out.uv = uv;
+    return out;
+}
+
+fragment float4 batched_circle_fragment(BatchedCircleVertexOut in [[stage_in]]) {
+    float dist = length(in.uv);
+    // Smooth edge with anti-aliasing
+    float alpha = 1.0 - smoothstep(0.95, 1.0, dist);
+    if (alpha < 0.01) discard_fragment();
+    return float4(in.color.rgb, in.color.a * alpha);
+}

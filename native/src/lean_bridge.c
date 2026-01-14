@@ -2185,3 +2185,91 @@ LEAN_EXPORT lean_obj_res lean_afferent_renderer_draw_mesh_3d_textured(
 
     return lean_io_result_mk_ok(lean_box(0));
 }
+
+// =============================================================================
+// BATCHED RECT/CIRCLE DRAWING - Optimized for charts
+// =============================================================================
+
+// Draw batched axis-aligned rects (heatmaps, bar charts, etc.)
+// instance_data: [x, y, width, height, r, g, b, a] per rect (8 floats)
+LEAN_EXPORT lean_obj_res lean_afferent_renderer_draw_rects_batch(
+    lean_obj_arg renderer_obj,
+    lean_obj_arg instance_data_arr,
+    uint32_t instance_count,
+    double corner_radius,
+    double canvas_width,
+    double canvas_height,
+    lean_obj_arg world
+) {
+    AfferentRendererRef renderer = (AfferentRendererRef)lean_get_external_data(renderer_obj);
+
+    size_t arr_size = lean_array_size(instance_data_arr);
+    size_t expected_size = (size_t)instance_count * 8;
+
+    if (arr_size < expected_size || instance_count == 0) {
+        return lean_io_result_mk_ok(lean_box(0));
+    }
+
+    // Allocate temporary buffer for float conversion
+    float* data = malloc(arr_size * sizeof(float));
+    if (!data) {
+        return lean_io_result_mk_ok(lean_box(0));
+    }
+
+    for (size_t i = 0; i < arr_size; i++) {
+        data[i] = (float)lean_unbox_float(lean_array_get_core(instance_data_arr, i));
+    }
+
+    afferent_renderer_draw_rects_batch(
+        renderer,
+        data,
+        instance_count,
+        (float)corner_radius,
+        (float)canvas_width,
+        (float)canvas_height
+    );
+
+    free(data);
+    return lean_io_result_mk_ok(lean_box(0));
+}
+
+// Draw batched circles (scatter plots, bubble charts)
+// instance_data: [centerX, centerY, radius, padding, r, g, b, a] per circle (8 floats)
+LEAN_EXPORT lean_obj_res lean_afferent_renderer_draw_circles_batch(
+    lean_obj_arg renderer_obj,
+    lean_obj_arg instance_data_arr,
+    uint32_t instance_count,
+    double canvas_width,
+    double canvas_height,
+    lean_obj_arg world
+) {
+    AfferentRendererRef renderer = (AfferentRendererRef)lean_get_external_data(renderer_obj);
+
+    size_t arr_size = lean_array_size(instance_data_arr);
+    size_t expected_size = (size_t)instance_count * 8;
+
+    if (arr_size < expected_size || instance_count == 0) {
+        return lean_io_result_mk_ok(lean_box(0));
+    }
+
+    // Allocate temporary buffer for float conversion
+    float* data = malloc(arr_size * sizeof(float));
+    if (!data) {
+        return lean_io_result_mk_ok(lean_box(0));
+    }
+
+    for (size_t i = 0; i < arr_size; i++) {
+        data[i] = (float)lean_unbox_float(lean_array_get_core(instance_data_arr, i));
+    }
+
+    afferent_renderer_draw_circles_batch(
+        renderer,
+        data,
+        instance_count,
+        (float)canvas_width,
+        (float)canvas_height
+    );
+
+    free(data);
+    return lean_io_result_mk_ok(lean_box(0));
+}

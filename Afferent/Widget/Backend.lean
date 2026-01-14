@@ -189,7 +189,125 @@ def executeCommand (reg : FontRegistry) (cmd : Afferent.Arbor.RenderCommand) : C
   | .restore =>
     CanvasM.restore
 
-/-- Execute an array of RenderCommands using CanvasM. -/
+/-! ## Command Batching
+
+Batching groups consecutive fillRect commands with the same corner radius into
+a single GPU draw call. This dramatically improves performance for charts that
+draw many rectangles (heatmaps, bar charts, scatter plots, etc.).
+
+Example: A 20x20 heatmap generates 400 fillRect commands.
+- Without batching: 400 separate draw calls
+- With batching: 1 batched draw call
+-/
+
+/-- Statistics from batched command execution. -/
+structure BatchStats where
+  /-- Number of batched draw calls (multiple rects in one call). -/
+  batchedCalls : Nat := 0
+  /-- Number of individual draw calls (non-batchable commands). -/
+  individualCalls : Nat := 0
+  /-- Total commands processed. -/
+  totalCommands : Nat := 0
+  /-- Number of rects batched. -/
+  rectsBatched : Nat := 0
+  deriving Repr, Inhabited
+
+/-- Entry for a batched rectangle. -/
+structure RectBatchEntry where
+  x : Float
+  y : Float
+  width : Float
+  height : Float
+  r : Float
+  g : Float
+  b : Float
+  a : Float
+
+/-- Execute a batch of fillRect commands in a single draw call. -/
+def executeFillRectBatch (rects : Array RectBatchEntry) (cornerRadius : Float) : CanvasM Unit := do
+  if rects.isEmpty then return
+  let canvas ← CanvasM.getCanvas
+  -- Use current drawable size for NDC conversion (dynamic resize support)
+  let (canvasWidth, canvasHeight) ← canvas.ctx.getCurrentSize
+  -- Pack into Float array: [x, y, w, h, r, g, b, a] per rect
+  let data := rects.foldl (init := #[]) fun acc entry =>
+    acc.push entry.x |>.push entry.y |>.push entry.width |>.push entry.height
+       |>.push entry.r |>.push entry.g |>.push entry.b |>.push entry.a
+  canvas.ctx.renderer.drawRectsBatch data rects.size.toUInt32 cornerRadius
+    canvasWidth canvasHeight
+
+/-- Execute an array of RenderCommands using CanvasM with batching optimization.
+    Groups consecutive fillRect commands with the same corner radius into
+    batched draw calls for better GPU performance.
+    Returns batch statistics for performance monitoring. -/
+def executeCommandsBatchedWithStats (reg : FontRegistry) (cmds : Array Afferent.Arbor.RenderCommand) : CanvasM BatchStats := do
+  let mut i := 0
+  let mut currentBatch : Array RectBatchEntry := #[]
+  let mut currentCornerRadius : Float := 0.0
+  let mut stats : BatchStats := { totalCommands := cmds.size }
+
+  while h : i < cmds.size do
+    let cmd := cmds[i]
+    match cmd with
+    | .fillRect rect color cornerRadius =>
+      -- Check if we can add to current batch
+      if currentBatch.isEmpty || currentCornerRadius == cornerRadius then
+        -- Add to batch
+        let entry : RectBatchEntry := {
+          x := rect.origin.x
+          y := rect.origin.y
+          width := rect.size.width
+          height := rect.size.height
+          r := color.r
+          g := color.g
+          b := color.b
+          a := color.a
+        }
+        currentBatch := currentBatch.push entry
+        currentCornerRadius := cornerRadius
+      else
+        -- Different corner radius - flush current batch and start new one
+        executeFillRectBatch currentBatch currentCornerRadius
+        stats := { stats with batchedCalls := stats.batchedCalls + 1, rectsBatched := stats.rectsBatched + currentBatch.size }
+        let entry : RectBatchEntry := {
+          x := rect.origin.x
+          y := rect.origin.y
+          width := rect.size.width
+          height := rect.size.height
+          r := color.r
+          g := color.g
+          b := color.b
+          a := color.a
+        }
+        currentBatch := #[entry]
+        currentCornerRadius := cornerRadius
+
+    | _ =>
+      -- Non-batchable command - flush any pending batch first
+      if !currentBatch.isEmpty then
+        executeFillRectBatch currentBatch currentCornerRadius
+        stats := { stats with batchedCalls := stats.batchedCalls + 1, rectsBatched := stats.rectsBatched + currentBatch.size }
+        currentBatch := #[]
+      -- Execute the command individually
+      executeCommand reg cmd
+      stats := { stats with individualCalls := stats.individualCalls + 1 }
+
+    i := i + 1
+
+  -- Flush any remaining batch
+  if !currentBatch.isEmpty then
+    executeFillRectBatch currentBatch currentCornerRadius
+    stats := { stats with batchedCalls := stats.batchedCalls + 1, rectsBatched := stats.rectsBatched + currentBatch.size }
+
+  return stats
+
+/-- Execute an array of RenderCommands using CanvasM with batching optimization.
+    Groups consecutive fillRect commands with the same corner radius into
+    batched draw calls for better GPU performance. -/
+def executeCommandsBatched (reg : FontRegistry) (cmds : Array Afferent.Arbor.RenderCommand) : CanvasM Unit := do
+  let _ ← executeCommandsBatchedWithStats reg cmds
+
+/-- Execute an array of RenderCommands using CanvasM (unbatched, for compatibility). -/
 def executeCommands (reg : FontRegistry) (cmds : Array Afferent.Arbor.RenderCommand) : CanvasM Unit := do
   for cmd in cmds do
     executeCommand reg cmd
@@ -237,8 +355,8 @@ def renderArborWidget (reg : FontRegistry) (widget : Afferent.Arbor.Widget)
   let canvas ← CanvasM.getCanvas
   let commands ← Afferent.Arbor.collectCommandsCached canvas.renderCache measuredWidget layouts
 
-  -- Execute commands
-  executeCommands reg commands
+  -- Execute commands with batching optimization
+  executeCommandsBatched reg commands
 
 /-- Render an Arbor widget tree and run any custom CanvasM draw hooks. -/
 def renderArborWidgetWithCustom (reg : FontRegistry) (widget : Afferent.Arbor.Widget)
@@ -249,7 +367,7 @@ def renderArborWidgetWithCustom (reg : FontRegistry) (widget : Afferent.Arbor.Wi
   let layouts := Trellis.layout layoutNode availWidth availHeight
   let canvas ← CanvasM.getCanvas
   let commands ← Afferent.Arbor.collectCommandsCached canvas.renderCache measuredWidget layouts
-  executeCommands reg commands
+  executeCommandsBatched reg commands
   renderCustomWidgets measuredWidget layouts
 
 /-- Render an Arbor widget tree and return cache statistics.
@@ -262,7 +380,7 @@ def renderArborWidgetWithStats (reg : FontRegistry) (widget : Afferent.Arbor.Wid
   let layouts := Trellis.layout layoutNode availWidth availHeight
   let canvas ← CanvasM.getCanvas
   let (commands, hits, misses) ← Afferent.Arbor.collectCommandsCachedWithStats canvas.renderCache measuredWidget layouts
-  executeCommands reg commands
+  executeCommandsBatched reg commands
   pure (hits, misses)
 
 /-- Convenience function to render a widget built with Arbor's DSL.
@@ -298,7 +416,7 @@ def renderArborWidgetCentered (reg : FontRegistry) (widget : Afferent.Arbor.Widg
   -- Save state, translate, render, restore
   CanvasM.save
   CanvasM.translate offsetX offsetY
-  executeCommands reg commands
+  executeCommandsBatched reg commands
   CanvasM.restore
 
 /-- Render an Arbor widget tree centered with debug borders.
@@ -327,7 +445,7 @@ def renderArborWidgetDebug (reg : FontRegistry) (widget : Afferent.Arbor.Widget)
   -- Save state, translate, render, restore
   CanvasM.save
   CanvasM.translate offsetX offsetY
-  executeCommands reg commands
+  executeCommandsBatched reg commands
   CanvasM.restore
 
 end Afferent.Widget

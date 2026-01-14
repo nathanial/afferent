@@ -143,6 +143,8 @@ void afferent_renderer_set_msaa_enabled(AfferentRendererRef renderer, bool enabl
     renderer->textPipelineState = enabled ? renderer->textPipelineStateMSAA : renderer->textPipelineStateNoMSAA;
     renderer->spritePipelineState = enabled ? renderer->spritePipelineStateMSAA : renderer->spritePipelineStateNoMSAA;
     renderer->texturedSpritePipelineState = enabled ? renderer->texturedSpritePipelineStateMSAA : renderer->texturedSpritePipelineStateNoMSAA;
+    renderer->batchedRectPipelineState = enabled ? renderer->batchedRectPipelineStateMSAA : renderer->batchedRectPipelineStateNoMSAA;
+    renderer->batchedCirclePipelineState = enabled ? renderer->batchedCirclePipelineStateMSAA : renderer->batchedCirclePipelineStateNoMSAA;
     renderer->pipeline3D = enabled ? renderer->pipeline3DMSAA : renderer->pipeline3DNoMSAA;
     renderer->pipeline3DOcean = enabled ? renderer->pipeline3DOceanMSAA : renderer->pipeline3DOceanNoMSAA;
 }

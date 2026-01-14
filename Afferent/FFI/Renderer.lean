@@ -161,6 +161,31 @@ def Renderer.drawInstancedCirclesBuffer (r : Renderer) (buf : FloatBuffer) (n : 
   r.drawInstancedShapesBuffer 2 buf n a b c d' tx ty vw vh sm t hs cm
 
 -- ============================================================================
+-- BATCHED RECTANGLE RENDERING - For chart/widget optimization
+-- ============================================================================
+
+-- Draw multiple axis-aligned rectangles in a single draw call.
+-- Used to batch fillRect commands for charts (heatmaps, scatter plots, etc.)
+-- instanceData: Array of 8 floats per rect [x, y, width, height, r, g, b, a]
+-- cornerRadius: Uniform corner radius for all rects in the batch (0 for sharp corners)
+@[extern "lean_afferent_renderer_draw_rects_batch"]
+opaque Renderer.drawRectsBatch
+  (renderer : @& Renderer)
+  (instanceData : @& Array Float)
+  (instanceCount : UInt32)
+  (cornerRadius : Float)
+  (canvasWidth canvasHeight : Float) : IO Unit
+
+-- Draw multiple circles in a single draw call.
+-- instanceData: Array of 6 floats per circle [centerX, centerY, radius, r, g, b, a]
+@[extern "lean_afferent_renderer_draw_circles_batch"]
+opaque Renderer.drawCirclesBatch
+  (renderer : @& Renderer)
+  (instanceData : @& Array Float)
+  (instanceCount : UInt32)
+  (canvasWidth canvasHeight : Float) : IO Unit
+
+-- ============================================================================
 -- TEXTURED RECTANGLE RENDERING - Map tile rendering with source/dest rects
 -- ============================================================================
 
