@@ -6,10 +6,12 @@ import Reactive
 import Afferent.Canopy.Core
 import Afferent.Canopy.Theme
 import Afferent.Canopy.Reactive.Component
+import Afferent.Canopy.Widget.Charts.ChartUtils
 
 namespace Afferent.Canopy
 
 open Afferent.Arbor hiding Event
+open ChartUtils
 
 /-- Bar chart color variant. -/
 inductive BarChartVariant where
@@ -55,19 +57,6 @@ def variantColor (variant : BarChartVariant) (theme : Theme) : Color :=
   | .warning => Color.rgba 1.0 0.7 0.0 1.0
   | .error => Color.rgba 0.9 0.2 0.2 1.0
 
-/-- Format a float value for axis labels. -/
-private def formatValue (v : Float) : String :=
-  if v >= 1000000 then
-    s!"{(v / 1000000).floor.toUInt32}M"
-  else if v >= 1000 then
-    s!"{(v / 1000).floor.toUInt32}K"
-  else if v == v.floor then
-    s!"{v.floor.toUInt32}"
-  else
-    -- Show one decimal place
-    let whole := v.floor.toInt32
-    let frac := ((v - v.floor) * 10).floor.toUInt32
-    s!"{whole}.{frac}"
 
 /-- Custom spec for bar chart rendering. -/
 def barChartSpec (data : Array Float) (labels : Array String)
@@ -132,7 +121,7 @@ def barChartSpec (data : Array Float) (labels : Array String)
           let ratio := i.toFloat / dims.gridLineCount.toFloat
           let value := ratio * niceMax
           let labelY := chartY + chartHeight - (ratio * chartHeight) - 6
-          let labelText := formatValue value
+          let labelText := ChartUtils.formatValue value
           RenderM.fillText labelText (rect.x + 4) labelY theme.smallFont theme.textMuted
 
       -- Draw X-axis labels
@@ -182,15 +171,7 @@ def multiColorBarChartSpec (data : Array DataPoint)
     let barWidth := if barCount > 0 then (chartWidth - totalGapWidth) / barCount.toFloat else 0.0
 
     -- Default colors for bars without custom color
-    let defaultColors := #[
-      theme.primary.background,
-      theme.secondary.background,
-      Color.rgba 0.2 0.8 0.3 1.0,
-      Color.rgba 1.0 0.7 0.0 1.0,
-      Color.rgba 0.9 0.2 0.2 1.0,
-      Color.rgba 0.5 0.3 0.9 1.0,
-      Color.rgba 0.0 0.7 0.7 1.0
-    ]
+    let defaultColors := ChartUtils.defaultColors theme
 
     let axisColor := Color.gray 0.5
 
@@ -220,7 +201,7 @@ def multiColorBarChartSpec (data : Array DataPoint)
           let ratio := i.toFloat / dims.gridLineCount.toFloat
           let value := ratio * niceMax
           let labelY := chartY + chartHeight - (ratio * chartHeight) - 6
-          let labelText := formatValue value
+          let labelText := ChartUtils.formatValue value
           RenderM.fillText labelText (rect.x + 4) labelY theme.smallFont theme.textMuted
 
       -- X-axis labels

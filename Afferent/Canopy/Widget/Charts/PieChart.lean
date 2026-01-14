@@ -6,10 +6,12 @@ import Reactive
 import Afferent.Canopy.Core
 import Afferent.Canopy.Theme
 import Afferent.Canopy.Reactive.Component
+import Afferent.Canopy.Widget.Charts.ChartUtils
 
 namespace Afferent.Canopy
 
 open Afferent.Arbor hiding Event
+open ChartUtils
 
 namespace PieChart
 
@@ -36,38 +38,6 @@ structure Slice where
   color : Option Color := none
 deriving Repr, Inhabited
 
-/-- Default colors for pie slices. -/
-def defaultColors (theme : Theme) : Array Color := #[
-  theme.primary.background,
-  theme.secondary.background,
-  Color.rgba 0.2 0.8 0.3 1.0,
-  Color.rgba 1.0 0.7 0.0 1.0,
-  Color.rgba 0.9 0.2 0.2 1.0,
-  Color.rgba 0.5 0.3 0.9 1.0,
-  Color.rgba 0.0 0.7 0.7 1.0,
-  Color.rgba 0.9 0.5 0.7 1.0,
-  Color.rgba 0.6 0.4 0.2 1.0,
-  Color.rgba 0.3 0.6 0.9 1.0
-]
-
-/-- Format a percentage value. -/
-private def formatPercent (v : Float) : String :=
-  let pct := (v * 100).floor.toUInt32
-  s!"{pct}%"
-
-/-- Format a value for display. -/
-private def formatValue (v : Float) : String :=
-  if v >= 1000000 then
-    s!"{(v / 1000000).floor.toUInt32}M"
-  else if v >= 1000 then
-    s!"{(v / 1000).floor.toUInt32}K"
-  else if v == v.floor then
-    s!"{v.floor.toUInt32}"
-  else
-    let whole := v.floor.toInt32
-    let frac := ((v - v.floor) * 10).floor.toUInt32
-    s!"{whole}.{frac}"
-
 /-- Custom spec for pie chart rendering. -/
 def pieChartSpec (slices : Array Slice) (theme : Theme)
     (dims : Dimensions := defaultDimensions) : CustomSpec := {
@@ -93,7 +63,7 @@ def pieChartSpec (slices : Array Slice) (theme : Theme)
     let total := slices.foldl (fun acc s => acc + s.value) 0.0
     let total := if total <= 0.0 then 1.0 else total
 
-    let colors := defaultColors theme
+    let colors := ChartUtils.defaultColors theme
     let pi := 3.141592653589793
     let twoPi := 2.0 * pi
 
@@ -147,9 +117,9 @@ def pieChartSpec (slices : Array Slice) (theme : Theme)
               if let some label := slice.label then
                 parts := parts.push label
             if dims.showValues then
-              parts := parts.push (formatValue slice.value)
+              parts := parts.push (ChartUtils.formatValue slice.value)
             if dims.showPercentages then
-              parts := parts.push (formatPercent proportion)
+              parts := parts.push (ChartUtils.formatPercent proportion)
             parts
 
           if labelParts.size > 0 then
@@ -186,15 +156,13 @@ def pieChartWithLegendSpec (slices : Array Slice) (theme : Theme)
     let total := slices.foldl (fun acc s => acc + s.value) 0.0
     let total := if total <= 0.0 then 1.0 else total
 
-    let colors := defaultColors theme
+    let colors := ChartUtils.defaultColors theme
     let pi := 3.141592653589793
     let twoPi := 2.0 * pi
 
     -- Legend positioning
     let legendX := rect.x + radius * 2 + 50
     let legendStartY := rect.y + 20
-    let legendItemHeight : Float := 24.0
-    let swatchSize : Float := 14.0
 
     RenderM.build do
       -- Draw each slice
@@ -216,25 +184,17 @@ def pieChartWithLegendSpec (slices : Array Slice) (theme : Theme)
 
         startAngle := endAngle
 
-      -- Draw legend on the right
-      for i in [0:slices.size] do
-        let slice := slices[i]!
-        let proportion := slice.value / total
-        let color := slice.color.getD (colors[i % colors.size]!)
-        let itemY := legendStartY + i.toFloat * legendItemHeight
-
-        -- Color swatch
-        RenderM.fillRect' legendX itemY swatchSize swatchSize color 2.0
-
-        -- Label text
-        let labelX := legendX + swatchSize + 8
-        let labelY := itemY + swatchSize / 2 + 4
-
-        let labelText := match slice.label with
-          | some label => s!"{label} ({formatPercent proportion})"
-          | none => formatPercent proportion
-
-        RenderM.fillText labelText labelX labelY theme.smallFont theme.text
+      -- Build legend items and draw using shared utility
+      let legendItems : Array ChartUtils.LegendItem := Id.run do
+        let mut items : Array ChartUtils.LegendItem := #[]
+        for idx in [0:slices.size] do
+          let slice := slices[idx]!
+          let proportion := slice.value / total
+          let color := slice.color.getD (colors[idx % colors.size]!)
+          let label := slice.label.getD s!"Item {idx + 1}"
+          items := items.push { label, color, suffix := some (ChartUtils.formatPercent proportion) }
+        items
+      let _ ← ChartUtils.drawLegend legendItems legendX legendStartY theme
 
   draw := none
 }

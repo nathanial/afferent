@@ -6,10 +6,12 @@ import Reactive
 import Afferent.Canopy.Core
 import Afferent.Canopy.Theme
 import Afferent.Canopy.Reactive.Component
+import Afferent.Canopy.Widget.Charts.ChartUtils
 
 namespace Afferent.Canopy
 
 open Afferent.Arbor hiding Event
+open ChartUtils
 
 /-- Line chart color variant. -/
 inductive LineChartVariant where
@@ -56,28 +58,6 @@ def variantColor (variant : LineChartVariant) (theme : Theme) : Color :=
   | .warning => Color.rgba 1.0 0.7 0.0 1.0
   | .error => Color.rgba 0.9 0.2 0.2 1.0
 
-/-- Format a float value for axis labels. -/
-private def formatValue (v : Float) : String :=
-  if v >= 1000000 then
-    s!"{(v / 1000000).floor.toUInt32}M"
-  else if v >= 1000 then
-    s!"{(v / 1000).floor.toUInt32}K"
-  else if v == v.floor then
-    s!"{v.floor.toUInt32}"
-  else
-    let whole := v.floor.toInt32
-    let frac := ((v - v.floor) * 10).floor.toUInt32
-    s!"{whole}.{frac}"
-
-/-- Calculate nice max value for axis scaling. -/
-private def niceMax (maxVal : Float) : Float :=
-  if maxVal <= 0.0 then 1.0
-  else if maxVal <= 10 then 10.0
-  else if maxVal <= 50 then 50.0
-  else if maxVal <= 100 then 100.0
-  else if maxVal <= 500 then 500.0
-  else if maxVal <= 1000 then 1000.0
-  else (maxVal / 100).ceil * 100
 
 /-- Custom spec for single-series line chart rendering. -/
 def lineChartSpec (data : Array Float) (labels : Array String)
@@ -99,7 +79,7 @@ def lineChartSpec (data : Array Float) (labels : Array String)
 
     -- Find max value for scaling
     let maxVal := data.foldl (fun acc v => if v > acc then v else acc) 0.0
-    let niceMaxVal := niceMax maxVal
+    let niceMaxVal := ChartUtils.niceMax maxVal
 
     let pointCount := data.size
     let stepX := if pointCount > 1 then chartWidth / (pointCount - 1).toFloat else 0.0
@@ -149,7 +129,7 @@ def lineChartSpec (data : Array Float) (labels : Array String)
           let ratio := i.toFloat / dims.gridLineCount.toFloat
           let value := ratio * niceMaxVal
           let labelY := chartY + chartHeight - (ratio * chartHeight) - 6
-          let labelText := formatValue value
+          let labelText := ChartUtils.formatValue value
           RenderM.fillText labelText (rect.x + 4) labelY theme.smallFont theme.textMuted
 
       -- Draw X-axis labels
@@ -168,15 +148,7 @@ def lineChartSpec (data : Array Float) (labels : Array String)
 }
 
 /-- Default colors for multi-series charts. -/
-def defaultSeriesColors (theme : Theme) : Array Color := #[
-  theme.primary.background,
-  theme.secondary.background,
-  Color.rgba 0.2 0.8 0.3 1.0,
-  Color.rgba 1.0 0.7 0.0 1.0,
-  Color.rgba 0.9 0.2 0.2 1.0,
-  Color.rgba 0.5 0.3 0.9 1.0,
-  Color.rgba 0.0 0.7 0.7 1.0
-]
+def defaultSeriesColors (theme : Theme) : Array Color := ChartUtils.defaultColors theme
 
 /-- Custom spec for multi-series line chart rendering. -/
 def multiSeriesSpec (series : Array Series) (labels : Array String)
@@ -197,7 +169,7 @@ def multiSeriesSpec (series : Array Series) (labels : Array String)
     -- Find global max value across all series
     let maxVal := series.foldl (fun acc s =>
       s.values.foldl (fun acc2 v => if v > acc2 then v else acc2) acc) 0.0
-    let niceMaxVal := niceMax maxVal
+    let niceMaxVal := ChartUtils.niceMax maxVal
 
     -- Find max point count
     let maxPoints := series.foldl (fun acc s => max acc s.values.size) 0
@@ -254,7 +226,7 @@ def multiSeriesSpec (series : Array Series) (labels : Array String)
           let ratio := i.toFloat / dims.gridLineCount.toFloat
           let value := ratio * niceMaxVal
           let labelY := chartY + chartHeight - (ratio * chartHeight) - 6
-          let labelText := formatValue value
+          let labelText := ChartUtils.formatValue value
           RenderM.fillText labelText (rect.x + 4) labelY theme.smallFont theme.textMuted
 
       -- Draw X-axis labels

@@ -6,10 +6,12 @@ import Reactive
 import Afferent.Canopy.Core
 import Afferent.Canopy.Theme
 import Afferent.Canopy.Reactive.Component
+import Afferent.Canopy.Widget.Charts.ChartUtils
 
 namespace Afferent.Canopy
 
 open Afferent.Arbor hiding Event
+open ChartUtils
 
 namespace ScatterPlot
 
@@ -44,40 +46,6 @@ structure Series where
   pointRadius : Option Float := none
 deriving Repr, Inhabited
 
-/-- Default colors for scatter plot series. -/
-def defaultColors (theme : Theme) : Array Color := #[
-  theme.primary.background,
-  theme.secondary.background,
-  Color.rgba 0.2 0.8 0.3 1.0,
-  Color.rgba 1.0 0.7 0.0 1.0,
-  Color.rgba 0.9 0.2 0.2 1.0,
-  Color.rgba 0.5 0.3 0.9 1.0,
-  Color.rgba 0.0 0.7 0.7 1.0
-]
-
-/-- Format a float value for axis labels. -/
-private def formatValue (v : Float) : String :=
-  if v >= 1000000 then
-    s!"{(v / 1000000).floor.toUInt32}M"
-  else if v >= 1000 then
-    s!"{(v / 1000).floor.toUInt32}K"
-  else if v == v.floor then
-    s!"{v.floor.toInt32}"
-  else
-    let whole := v.floor.toInt32
-    let frac := ((v - v.floor).abs * 10).floor.toUInt32
-    s!"{whole}.{frac}"
-
-/-- Calculate nice axis bounds (min, max) for scaling. -/
-private def niceAxisBounds (minVal maxVal : Float) : Float × Float :=
-  let range := maxVal - minVal
-  if range <= 0.0 then (minVal - 1.0, maxVal + 1.0)
-  else
-    -- Add 10% padding
-    let padding := range * 0.1
-    let niceMin := if minVal >= 0.0 then 0.0 else minVal - padding
-    let niceMax := maxVal + padding
-    (niceMin, niceMax)
 
 /-- Custom spec for single-series scatter plot rendering. -/
 def scatterPlotSpec (points : Array DataPoint) (theme : Theme)
@@ -113,8 +81,8 @@ def scatterPlotSpec (points : Array DataPoint) (theme : Theme)
           if p.y > maxY then maxY := p.y
         (minX, maxX, minY, maxY)
 
-    let (niceMinX, niceMaxX) := niceAxisBounds minX maxX
-    let (niceMinY, niceMaxY) := niceAxisBounds minY maxY
+    let (niceMinX, niceMaxX) := ChartUtils.niceAxisBounds minX maxX
+    let (niceMinY, niceMaxY) := ChartUtils.niceAxisBounds minY maxY
     let rangeX := niceMaxX - niceMinX
     let rangeY := niceMaxY - niceMinY
 
@@ -151,7 +119,7 @@ def scatterPlotSpec (points : Array DataPoint) (theme : Theme)
           let ratio := i.toFloat / dims.gridLineCount.toFloat
           let value := niceMinY + ratio * rangeY
           let labelY := chartY + chartHeight - (ratio * chartHeight) - 6
-          let labelText := formatValue value
+          let labelText := ChartUtils.formatValue value
           RenderM.fillText labelText (rect.x + 4) labelY theme.smallFont theme.textMuted
 
       -- Draw X-axis labels
@@ -161,7 +129,7 @@ def scatterPlotSpec (points : Array DataPoint) (theme : Theme)
           let value := niceMinX + ratio * rangeX
           let labelX := chartX + (ratio * chartWidth)
           let labelY := chartY + chartHeight + 16
-          let labelText := formatValue value
+          let labelText := ChartUtils.formatValue value
           RenderM.fillText labelText labelX labelY theme.smallFont theme.textMuted
 
       -- Draw axes
@@ -208,12 +176,12 @@ def multiSeriesSpec (series : Array Series) (theme : Theme)
             if p.y > maxY then maxY := p.y
       (minX, maxX, minY, maxY)
 
-    let (niceMinX, niceMaxX) := niceAxisBounds minX maxX
-    let (niceMinY, niceMaxY) := niceAxisBounds minY maxY
+    let (niceMinX, niceMaxX) := ChartUtils.niceAxisBounds minX maxX
+    let (niceMinY, niceMaxY) := ChartUtils.niceAxisBounds minY maxY
     let rangeX := niceMaxX - niceMinX
     let rangeY := niceMaxY - niceMinY
 
-    let colors := defaultColors theme
+    let colors := ChartUtils.defaultColors theme
     let axisColor := Color.gray 0.5
 
     RenderM.build do
@@ -249,7 +217,7 @@ def multiSeriesSpec (series : Array Series) (theme : Theme)
           let ratio := i.toFloat / dims.gridLineCount.toFloat
           let value := niceMinY + ratio * rangeY
           let labelY := chartY + chartHeight - (ratio * chartHeight) - 6
-          let labelText := formatValue value
+          let labelText := ChartUtils.formatValue value
           RenderM.fillText labelText (rect.x + 4) labelY theme.smallFont theme.textMuted
 
       -- Draw X-axis labels
@@ -259,7 +227,7 @@ def multiSeriesSpec (series : Array Series) (theme : Theme)
           let value := niceMinX + ratio * rangeX
           let labelX := chartX + (ratio * chartWidth)
           let labelY := chartY + chartHeight + 16
-          let labelText := formatValue value
+          let labelText := ChartUtils.formatValue value
           RenderM.fillText labelText labelX labelY theme.smallFont theme.textMuted
 
       -- Draw axes

@@ -6,10 +6,12 @@ import Reactive
 import Afferent.Canopy.Core
 import Afferent.Canopy.Theme
 import Afferent.Canopy.Reactive.Component
+import Afferent.Canopy.Widget.Charts.ChartUtils
 
 namespace Afferent.Canopy
 
 open Afferent.Arbor hiding Event
+open ChartUtils
 
 namespace RadarChart
 
@@ -101,15 +103,6 @@ private def findMaxValue (data : Data) : Float :=
       maxV
     if maxVal <= 0.0 then 1.0 else maxVal
 
-/-- Calculate nice max value for axis scaling. -/
-private def niceMax (maxVal : Float) : Float :=
-  if maxVal <= 0.0 then 1.0
-  else if maxVal <= 10 then 10.0
-  else if maxVal <= 50 then 50.0
-  else if maxVal <= 100 then 100.0
-  else if maxVal <= 500 then 500.0
-  else if maxVal <= 1000 then 1000.0
-  else (maxVal / 100).ceil * 100
 
 /-- Custom spec for radar chart rendering. -/
 def radarChartSpec (data : Data) (theme : Theme)
@@ -135,7 +128,7 @@ def radarChartSpec (data : Data) (theme : Theme)
 
     -- Find max value for scaling
     let maxVal := findMaxValue data
-    let niceMaxVal := niceMax maxVal
+    let niceMaxVal := ChartUtils.niceMax maxVal
 
     RenderM.build do
       -- Draw background
@@ -249,18 +242,23 @@ def radarChartSpec (data : Data) (theme : Theme)
               let markerPath := Arbor.Path.circle (Arbor.Point.mk' x y) dims.markerRadius
               RenderM.fillPath markerPath color
 
-      -- Draw legend
+      -- Draw legend using shared utility
       if dims.showLegend && data.series.size > 0 then
         let legendX := rect.x + dims.marginLeft + chartWidth + 16
         let legendY := rect.y + dims.marginTop
-        for i in [0:data.series.size] do
-          let series := data.series[i]!
-          let color := getSeriesColor series i
-          let itemY := legendY + i.toFloat * (dims.legendItemHeight + 4)
-          -- Color box
-          RenderM.fillRect' legendX itemY 12.0 12.0 color 2.0
-          -- Label
-          RenderM.fillText series.name (legendX + 16) (itemY + 10) theme.smallFont theme.text
+        let legendItems : Array ChartUtils.LegendItem := Id.run do
+          let mut items : Array ChartUtils.LegendItem := #[]
+          for idx in [0:data.series.size] do
+            let series := data.series[idx]!
+            let color := getSeriesColor series idx
+            items := items.push { label := series.name, color, suffix := none }
+          items
+        let legendConfig : ChartUtils.LegendConfig := {
+          swatchSize := 12.0
+          itemHeight := dims.legendItemHeight + 4
+          spacing := 4.0
+        }
+        let _ ← ChartUtils.drawLegend legendItems legendX legendY theme legendConfig
 
   draw := none
 }
