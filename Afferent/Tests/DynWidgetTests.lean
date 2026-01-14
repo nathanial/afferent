@@ -596,6 +596,111 @@ test "builder accesses outer scope correctly" := do
   ).run spiderEnv
   pure ()
 
+/-! ## Tree Correctness Tests -/
+
+test "inner dynWidget update produces correct tree text" := do
+  -- Verifies that when an inner dynWidget rebuilds (outer stays constant),
+  -- the rendered tree contains the updated text content
+  let spiderEnv ← SpiderEnv.new defaultErrorHandler
+  let _ ← (do
+    let (events, _) ← createInputs
+    let outerDyn ← Dynamic.pureM 0  -- Outer never changes
+    let (innerTrigger, fireInner) ← newTriggerEvent (t := Spider) (a := Nat)
+    let innerDyn ← holdDyn 0 innerTrigger
+
+    let (_, render) ← ReactiveM.run events do
+      runWidget do
+        let _ ← dynWidget outerDyn fun _ => do
+          let _ ← dynWidget innerDyn fun count => do
+            emit (pure (text' s!"Count: {count}" testFont))
+          pure ()
+        pure ()
+
+    -- Initial render should show "Count: 0"
+    let builder1 ← render
+    let widget1 := buildFrom 0 builder1
+    match widget1 with
+    | .text _ _ content .. =>
+        ensure (content == "Count: 0") s!"Initial text should be 'Count: 0', got '{content}'"
+    | other => ensure false s!"Expected text widget, got other"
+
+    -- Fire inner update to 5
+    fireInner 5
+    let builder2 ← render
+    let widget2 := buildFrom 0 builder2
+    match widget2 with
+    | .text _ _ content .. =>
+        ensure (content == "Count: 5") s!"After update, text should be 'Count: 5', got '{content}'"
+    | _ => ensure false "Expected text widget after update"
+
+    -- Fire again to 42
+    fireInner 42
+    let builder3 ← render
+    let widget3 := buildFrom 0 builder3
+    match widget3 with
+    | .text _ _ content .. =>
+        ensure (content == "Count: 42") s!"After second update, text should be 'Count: 42', got '{content}'"
+    | _ => ensure false "Expected text widget after second update"
+  ).run spiderEnv
+  pure ()
+
+test "nested tree preserves structure with updated inner text" := do
+  -- Verifies that outer structure stays intact while inner text updates
+  let spiderEnv ← SpiderEnv.new defaultErrorHandler
+  let _ ← (do
+    let (events, _) ← createInputs
+    let outerDyn ← Dynamic.pureM 0
+    let (innerTrigger, fireInner) ← newTriggerEvent (t := Spider) (a := Nat)
+    let innerDyn ← holdDyn 1 innerTrigger
+    let outerRebuildCount ← SpiderM.liftIO (IO.mkRef 0)
+
+    let (_, render) ← ReactiveM.run events do
+      runWidget do
+        let _ ← dynWidget outerDyn fun _ => do
+          SpiderM.liftIO (outerRebuildCount.modify (· + 1))
+          -- Outer emits: fixed label + dynamic counter
+          emit (pure (text' "Label:" testFont))
+          let _ ← dynWidget innerDyn fun count => do
+            emit (pure (text' s!"Value is {count}" testFont))
+          pure ()
+        pure ()
+
+    -- Initial: column with 2 text children
+    let builder1 ← render
+    let widget1 := buildFrom 0 builder1
+    match widget1 with
+    | .flex _ _ props _ children =>
+        ensure (props.direction == FlexDirection.column) "Should be column"
+        ensure (children.size == 2) s!"Expected 2 children, got {children.size}"
+        match children[0]!, children[1]! with
+        | .text _ _ label .., .text _ _ value .. =>
+            ensure (label == "Label:") s!"First child should be 'Label:', got '{label}'"
+            ensure (value == "Value is 1") s!"Second child should be 'Value is 1', got '{value}'"
+        | _, _ => ensure false "Expected two text widgets"
+    | _ => ensure false "Expected flex column"
+
+    -- Fire to change inner value
+    fireInner 99
+    let builder2 ← render
+    let widget2 := buildFrom 0 builder2
+
+    -- Outer should NOT have rebuilt
+    let outerCount ← SpiderM.liftIO outerRebuildCount.get
+    ensure (outerCount == 1) s!"Outer should only build once, got {outerCount}"
+
+    -- Structure preserved, inner text updated
+    match widget2 with
+    | .flex _ _ _ _ children =>
+        ensure (children.size == 2) s!"Still 2 children, got {children.size}"
+        match children[0]!, children[1]! with
+        | .text _ _ label .., .text _ _ value .. =>
+            ensure (label == "Label:") s!"Label unchanged: '{label}'"
+            ensure (value == "Value is 99") s!"Value updated to 'Value is 99', got '{value}'"
+        | _, _ => ensure false "Expected two text widgets after update"
+    | _ => ensure false "Expected flex column after update"
+  ).run spiderEnv
+  pure ()
+
 #generate_tests
 
 end Afferent.Tests.DynWidgetTests
