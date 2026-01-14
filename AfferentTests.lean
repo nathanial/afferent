@@ -19,6 +19,7 @@ import Afferent.Tests.ListBoxTests
 import Afferent.Tests.TreeViewTests
 import Afferent.Tests.ColorPickerTests
 import Afferent.Tests.ReactiveLayoutTests
+import Afferent.Tests.DynWidgetTests
 import Crucible
 
 open Crucible
