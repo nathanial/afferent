@@ -551,26 +551,6 @@ def bubbleChartWithLegend (series : Array BubbleChart.Series)
 
   pure { series := seriesDyn }
 
-/-- Create a bubble chart that updates based on an external event stream.
-    - `initialPoints`: Initial data points
-    - `pointUpdates`: Event stream of point updates
-    - `theme`: Theme for styling
-    - `dims`: Chart dimensions
--/
-def bubbleChartWithEvents (initialPoints : Array BubbleChart.DataPoint)
-    (pointUpdates : Reactive.Event Spider (Array BubbleChart.DataPoint))
-    (theme : Theme) (dims : BubbleChart.Dimensions := BubbleChart.defaultDimensions)
-    : WidgetM BubbleChartResult := do
-  let name ← registerComponentW "bubble-chart" (isInteractive := false)
-
-  let pointsDyn ← Reactive.holdDyn initialPoints pointUpdates
-
-  emit do
-    let p ← pointsDyn.sample
-    pure (bubbleChartVisual name p theme dims)
-
-  pure { points := pointsDyn }
-
 /-- Helper to create bubble data points from (x, y, size) tuples. -/
 def BubbleChart.DataPoint.fromTuples (tuples : Array (Float × Float × Float)) : Array BubbleChart.DataPoint :=
   tuples.map fun (x, y, size) => { x, y, size }

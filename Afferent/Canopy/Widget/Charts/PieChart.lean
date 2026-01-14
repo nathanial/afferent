@@ -327,26 +327,6 @@ def pieChartWithLegend (slices : Array PieChart.Slice)
 
   pure { slices := slicesDyn }
 
-/-- Create a pie chart that updates based on an external event stream.
-    - `initialSlices`: Initial slice data
-    - `sliceUpdates`: Event stream of slice updates
-    - `theme`: Theme for styling
-    - `dims`: Chart dimensions
--/
-def pieChartWithEvents (initialSlices : Array PieChart.Slice)
-    (sliceUpdates : Reactive.Event Spider (Array PieChart.Slice))
-    (theme : Theme) (dims : PieChart.Dimensions := PieChart.defaultDimensions)
-    : WidgetM PieChartResult := do
-  let name ← registerComponentW "pie-chart" (isInteractive := false)
-
-  let slicesDyn ← Reactive.holdDyn initialSlices sliceUpdates
-
-  emit do
-    let s ← slicesDyn.sample
-    pure (pieChartVisual name s theme dims)
-
-  pure { slices := slicesDyn }
-
 /-- Helper to create slices from simple value/label pairs. -/
 def PieChart.Slice.fromPairs (pairs : Array (Float × String)) : Array PieChart.Slice :=
   pairs.map fun (value, label) => { value, label := some label }

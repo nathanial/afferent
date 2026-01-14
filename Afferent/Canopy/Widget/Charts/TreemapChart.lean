@@ -347,24 +347,4 @@ def treemapChartFromArrays (labels : Array String) (values : Array Float)
   let data : TreemapChart.Data := { nodes }
   treemapChart data theme dims
 
-/-- Create a treemap chart that updates based on an external event stream.
-    - `initialData`: Initial chart data
-    - `dataUpdates`: Event stream of data updates
-    - `theme`: Theme for styling
-    - `dims`: Chart dimensions
--/
-def treemapChartWithEvents (initialData : TreemapChart.Data)
-    (dataUpdates : Reactive.Event Spider TreemapChart.Data)
-    (theme : Theme) (dims : TreemapChart.Dimensions := TreemapChart.defaultDimensions)
-    : WidgetM TreemapChartResult := do
-  let name ← registerComponentW "treemap-chart" (isInteractive := false)
-
-  let dataDyn ← Reactive.holdDyn initialData dataUpdates
-
-  emit do
-    let d ← dataDyn.sample
-    pure (treemapChartVisual name d theme dims)
-
-  pure { data := dataDyn }
-
 end Afferent.Canopy

@@ -319,30 +319,6 @@ def horizontalBarChart (data : Array Float) (labels : Array String := #[])
 
   pure { data := dataDyn }
 
-/-- Create a horizontal bar chart that updates based on an external event stream.
-    - `initialData`: Initial data values
-    - `dataUpdates`: Event stream of data updates
-    - `labels`: Labels for each bar
-    - `theme`: Theme for styling
-    - `variant`: Color variant
-    - `dims`: Chart dimensions
--/
-def horizontalBarChartWithEvents (initialData : Array Float)
-    (dataUpdates : Reactive.Event Spider (Array Float))
-    (labels : Array String := #[])
-    (theme : Theme) (variant : HorizontalBarChartVariant := .primary)
-    (dims : HorizontalBarChart.Dimensions := HorizontalBarChart.defaultDimensions)
-    : WidgetM HorizontalBarChartResult := do
-  let name ← registerComponentW "horizontal-bar-chart" (isInteractive := false)
-
-  let dataDyn ← Reactive.holdDyn initialData dataUpdates
-
-  emit do
-    let d ← dataDyn.sample
-    pure (horizontalBarChartVisual name d labels variant theme dims)
-
-  pure { data := dataDyn }
-
 /-- MultiColorHorizontalBarChart result. -/
 structure MultiColorHorizontalBarChartResult where
   data : Reactive.Dynamic Spider (Array HorizontalBarChart.DataPoint)

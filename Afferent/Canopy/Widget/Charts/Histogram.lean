@@ -474,28 +474,4 @@ def histogramFromCounts (labels : Array String) (counts : Array Nat)
 
   pure { counts := countsDyn }
 
-/-- Create a histogram that updates based on an external bin event stream.
-    - `initialBins`: Initial computed bins
-    - `binUpdates`: Event stream of bin updates
-    - `theme`: Theme for styling
-    - `variant`: Color variant
-    - `dims`: Chart dimensions
-    - `showDensity`: Whether to show density instead of counts
--/
-def histogramWithEvents (initialBins : Array Histogram.Bin)
-    (binUpdates : Reactive.Event Spider (Array Histogram.Bin))
-    (theme : Theme) (variant : HistogramVariant := .primary)
-    (dims : Histogram.Dimensions := Histogram.defaultDimensions)
-    (showDensity : Bool := false)
-    : WidgetM HistogramResult := do
-  let name ← registerComponentW "histogram" (isInteractive := false)
-
-  let binsDyn ← Reactive.holdDyn initialBins binUpdates
-
-  emit do
-    let bins ← binsDyn.sample
-    pure (histogramFromBinsVisual name bins variant theme dims showDensity)
-
-  pure { bins := binsDyn }
-
 end Afferent.Canopy

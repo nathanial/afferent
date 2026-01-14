@@ -411,31 +411,4 @@ def sankeyDiagram (data : SankeyDiagram.Data)
 
   pure { data := dataDyn }
 
-/-- Create a Sankey diagram that updates based on an external event stream.
-    Layout is automatically recomputed when data changes via FRP caching.
-    - `initialData`: Initial diagram data
-    - `dataUpdates`: Event stream of data updates
-    - `theme`: Theme for styling
-    - `dims`: Diagram dimensions
--/
-def sankeyDiagramWithEvents (initialData : SankeyDiagram.Data)
-    (dataUpdates : Reactive.Event Spider SankeyDiagram.Data)
-    (theme : Theme) (dims : SankeyDiagram.Dimensions := SankeyDiagram.defaultDimensions)
-    : WidgetM SankeyDiagramResult := do
-  let name ← registerComponentW "sankey-diagram" (isInteractive := false)
-
-  -- Data Dynamic that updates on events
-  let dataDyn ← Reactive.holdDyn initialData dataUpdates
-
-  -- Cached layout - recomputes only when dataDyn changes
-  let layoutDyn ← Dynamic.mapM (fun d => SankeyDiagram.computeLayout d dims) dataDyn
-
-  -- dynWidget rebuilds visual only when cached layout changes
-  let _ ← dynWidget layoutDyn fun cached => do
-    -- Need current data for label values
-    let d ← SpiderM.liftIO dataDyn.sample
-    emit (pure (sankeyDiagramVisualCached name cached d theme dims))
-
-  pure { data := dataDyn }
-
 end Afferent.Canopy

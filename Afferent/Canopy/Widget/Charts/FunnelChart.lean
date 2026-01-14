@@ -252,24 +252,4 @@ def funnelChartFromArrays (labels : Array String) (values : Array Float)
   let data : FunnelChart.Data := { stages }
   funnelChart data theme dims
 
-/-- Create a funnel chart that updates based on an external event stream.
-    - `initialData`: Initial chart data
-    - `dataUpdates`: Event stream of data updates
-    - `theme`: Theme for styling
-    - `dims`: Chart dimensions
--/
-def funnelChartWithEvents (initialData : FunnelChart.Data)
-    (dataUpdates : Reactive.Event Spider FunnelChart.Data)
-    (theme : Theme) (dims : FunnelChart.Dimensions := FunnelChart.defaultDimensions)
-    : WidgetM FunnelChartResult := do
-  let name ← registerComponentW "funnel-chart" (isInteractive := false)
-
-  let dataDyn ← Reactive.holdDyn initialData dataUpdates
-
-  emit do
-    let d ← dataDyn.sample
-    pure (funnelChartVisual name d theme dims)
-
-  pure { data := dataDyn }
-
 end Afferent.Canopy

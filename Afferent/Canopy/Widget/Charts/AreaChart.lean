@@ -362,31 +362,6 @@ def areaChart (data : Array Float) (labels : Array String := #[])
 
   pure { data := dataDyn }
 
-/-- Create an area chart that updates based on an external event stream.
-    Useful for showing real-time data.
-    - `initialData`: Initial data values
-    - `dataUpdates`: Event stream of data updates
-    - `labels`: Labels for each data point
-    - `theme`: Theme for styling
-    - `variant`: Color variant
-    - `dims`: Chart dimensions
--/
-def areaChartWithEvents (initialData : Array Float)
-    (dataUpdates : Reactive.Event Spider (Array Float))
-    (labels : Array String := #[])
-    (theme : Theme) (variant : AreaChartVariant := .primary)
-    (dims : AreaChart.Dimensions := AreaChart.defaultDimensions)
-    : WidgetM AreaChartResult := do
-  let name ← registerComponentW "area-chart" (isInteractive := false)
-
-  let dataDyn ← Reactive.holdDyn initialData dataUpdates
-
-  emit do
-    let d ← dataDyn.sample
-    pure (areaChartVisual name d labels variant theme dims)
-
-  pure { data := dataDyn }
-
 /-- MultiSeriesAreaChart result. -/
 structure MultiSeriesAreaChartResult where
   series : Reactive.Dynamic Spider (Array AreaChart.Series)

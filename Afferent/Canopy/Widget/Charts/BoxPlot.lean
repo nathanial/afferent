@@ -515,24 +515,4 @@ def horizontalBoxPlotFromData (dataArrays : Array (Array Float)) (labels : Array
 
   pure { summaries := summariesDyn }
 
-/-- Create a box plot that updates based on an external event stream.
-    - `initialSummaries`: Initial summaries
-    - `summaryUpdates`: Event stream of summary updates
-    - `theme`: Theme for styling
-    - `dims`: Chart dimensions
--/
-def boxPlotWithEvents (initialSummaries : Array BoxPlot.Summary)
-    (summaryUpdates : Reactive.Event Spider (Array BoxPlot.Summary))
-    (theme : Theme) (dims : BoxPlot.Dimensions := BoxPlot.defaultDimensions)
-    : WidgetM BoxPlotResult := do
-  let name ← registerComponentW "box-plot" (isInteractive := false)
-
-  let summariesDyn ← Reactive.holdDyn initialSummaries summaryUpdates
-
-  emit do
-    let s ← summariesDyn.sample
-    pure (boxPlotVisual name s theme dims)
-
-  pure { summaries := summariesDyn }
-
 end Afferent.Canopy

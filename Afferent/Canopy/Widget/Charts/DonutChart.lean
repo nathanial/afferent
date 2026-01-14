@@ -380,26 +380,6 @@ def donutChartWithLegend (slices : Array DonutChart.Slice)
 
   pure { slices := slicesDyn }
 
-/-- Create a donut chart that updates based on an external event stream.
-    - `initialSlices`: Initial slice data
-    - `sliceUpdates`: Event stream of slice updates
-    - `theme`: Theme for styling
-    - `dims`: Chart dimensions
--/
-def donutChartWithEvents (initialSlices : Array DonutChart.Slice)
-    (sliceUpdates : Reactive.Event Spider (Array DonutChart.Slice))
-    (theme : Theme) (dims : DonutChart.Dimensions := DonutChart.defaultDimensions)
-    : WidgetM DonutChartResult := do
-  let name ← registerComponentW "donut-chart" (isInteractive := false)
-
-  let slicesDyn ← Reactive.holdDyn initialSlices sliceUpdates
-
-  emit do
-    let s ← slicesDyn.sample
-    pure (donutChartVisual name s theme dims)
-
-  pure { slices := slicesDyn }
-
 /-- Helper to create slices from simple value/label pairs. -/
 def DonutChart.Slice.fromPairs (pairs : Array (Float × String)) : Array DonutChart.Slice :=
   pairs.map fun (value, label) => { value, label := some label }

@@ -361,26 +361,6 @@ def multiSeriesScatterPlot (series : Array ScatterPlot.Series)
 
   pure { series := seriesDyn }
 
-/-- Create a scatter plot that updates based on an external event stream.
-    - `initialPoints`: Initial data points
-    - `pointUpdates`: Event stream of point updates
-    - `theme`: Theme for styling
-    - `dims`: Chart dimensions
--/
-def scatterPlotWithEvents (initialPoints : Array ScatterPlot.DataPoint)
-    (pointUpdates : Reactive.Event Spider (Array ScatterPlot.DataPoint))
-    (theme : Theme) (dims : ScatterPlot.Dimensions := ScatterPlot.defaultDimensions)
-    : WidgetM ScatterPlotResult := do
-  let name ← registerComponentW "scatter-plot" (isInteractive := false)
-
-  let pointsDyn ← Reactive.holdDyn initialPoints pointUpdates
-
-  emit do
-    let p ← pointsDyn.sample
-    pure (scatterPlotVisual name p theme dims)
-
-  pure { points := pointsDyn }
-
 /-- Helper to create data points from X/Y pairs. -/
 def ScatterPlot.DataPoint.fromPairs (pairs : Array (Float × Float)) : Array ScatterPlot.DataPoint :=
   pairs.map fun (x, y) => { x, y }

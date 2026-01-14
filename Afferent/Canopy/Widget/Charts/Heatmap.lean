@@ -319,26 +319,4 @@ def correlationMatrix (values : Array (Array Float)) (labels : Array String := #
   }
   heatmap data .blueWhiteRed theme dims
 
-/-- Create a heatmap that updates based on an external event stream.
-    - `initialData`: Initial heatmap data
-    - `dataUpdates`: Event stream of data updates
-    - `scale`: Color scale
-    - `theme`: Theme for styling
-    - `dims`: Chart dimensions
--/
-def heatmapWithEvents (initialData : Heatmap.Data)
-    (dataUpdates : Reactive.Event Spider Heatmap.Data)
-    (scale : Heatmap.ColorScale := .viridis)
-    (theme : Theme) (dims : Heatmap.Dimensions := Heatmap.defaultDimensions)
-    : WidgetM HeatmapResult := do
-  let name ← registerComponentW "heatmap" (isInteractive := false)
-
-  let dataDyn ← Reactive.holdDyn initialData dataUpdates
-
-  emit do
-    let d ← dataDyn.sample
-    pure (heatmapVisual name d scale theme dims)
-
-  pure { data := dataDyn }
-
 end Afferent.Canopy

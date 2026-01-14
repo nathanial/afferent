@@ -275,24 +275,4 @@ def groupedBarChartFromArrays (categories : Array String)
   let data : GroupedBarChart.Data := { categories, series }
   groupedBarChart data theme dims
 
-/-- Create a grouped bar chart that updates based on an external event stream.
-    - `initialData`: Initial chart data
-    - `dataUpdates`: Event stream of data updates
-    - `theme`: Theme for styling
-    - `dims`: Chart dimensions
--/
-def groupedBarChartWithEvents (initialData : GroupedBarChart.Data)
-    (dataUpdates : Reactive.Event Spider GroupedBarChart.Data)
-    (theme : Theme) (dims : GroupedBarChart.Dimensions := GroupedBarChart.defaultDimensions)
-    : WidgetM GroupedBarChartResult := do
-  let name ← registerComponentW "grouped-bar-chart" (isInteractive := false)
-
-  let dataDyn ← Reactive.holdDyn initialData dataUpdates
-
-  emit do
-    let d ← dataDyn.sample
-    pure (groupedBarChartVisual name d theme dims)
-
-  pure { data := dataDyn }
-
 end Afferent.Canopy

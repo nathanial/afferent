@@ -269,24 +269,4 @@ def stackedBarChartFromArrays (categories : Array String)
   let data : StackedBarChart.Data := { categories, series }
   stackedBarChart data theme dims
 
-/-- Create a stacked bar chart that updates based on an external event stream.
-    - `initialData`: Initial chart data
-    - `dataUpdates`: Event stream of data updates
-    - `theme`: Theme for styling
-    - `dims`: Chart dimensions
--/
-def stackedBarChartWithEvents (initialData : StackedBarChart.Data)
-    (dataUpdates : Reactive.Event Spider StackedBarChart.Data)
-    (theme : Theme) (dims : StackedBarChart.Dimensions := StackedBarChart.defaultDimensions)
-    : WidgetM StackedBarChartResult := do
-  let name ← registerComponentW "stacked-bar-chart" (isInteractive := false)
-
-  let dataDyn ← Reactive.holdDyn initialData dataUpdates
-
-  emit do
-    let d ← dataDyn.sample
-    pure (stackedBarChartVisual name d theme dims)
-
-  pure { data := dataDyn }
-
 end Afferent.Canopy

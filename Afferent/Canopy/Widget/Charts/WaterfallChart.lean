@@ -322,26 +322,4 @@ def waterfallChartFromArrays (labels : Array String) (values : Array Float)
   let data : WaterfallChart.Data := { bars }
   waterfallChart data theme colors dims
 
-/-- Create a waterfall chart that updates based on an external event stream.
-    - `initialData`: Initial chart data
-    - `dataUpdates`: Event stream of data updates
-    - `theme`: Theme for styling
-    - `colors`: Chart colors
-    - `dims`: Chart dimensions
--/
-def waterfallChartWithEvents (initialData : WaterfallChart.Data)
-    (dataUpdates : Reactive.Event Spider WaterfallChart.Data)
-    (theme : Theme) (colors : WaterfallChart.ChartColors := WaterfallChart.defaultColors)
-    (dims : WaterfallChart.Dimensions := WaterfallChart.defaultDimensions)
-    : WidgetM WaterfallChartResult := do
-  let name ← registerComponentW "waterfall-chart" (isInteractive := false)
-
-  let dataDyn ← Reactive.holdDyn initialData dataUpdates
-
-  emit do
-    let d ← dataDyn.sample
-    pure (waterfallChartVisual name d theme colors dims)
-
-  pure { data := dataDyn }
-
 end Afferent.Canopy

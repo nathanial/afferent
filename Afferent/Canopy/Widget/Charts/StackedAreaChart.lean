@@ -350,24 +350,4 @@ def stackedAreaChartFromArrays (labels : Array String)
   let data : StackedAreaChart.Data := { labels, series }
   stackedAreaChart data theme dims
 
-/-- Create a stacked area chart that updates based on an external event stream.
-    - `initialData`: Initial chart data
-    - `dataUpdates`: Event stream of data updates
-    - `theme`: Theme for styling
-    - `dims`: Chart dimensions
--/
-def stackedAreaChartWithEvents (initialData : StackedAreaChart.Data)
-    (dataUpdates : Reactive.Event Spider StackedAreaChart.Data)
-    (theme : Theme) (dims : StackedAreaChart.Dimensions := StackedAreaChart.defaultDimensions)
-    : WidgetM StackedAreaChartResult := do
-  let name ← registerComponentW "stacked-area-chart" (isInteractive := false)
-
-  let dataDyn ← Reactive.holdDyn initialData dataUpdates
-
-  emit do
-    let d ← dataDyn.sample
-    pure (stackedAreaChartVisual name d theme dims)
-
-  pure { data := dataDyn }
-
 end Afferent.Canopy

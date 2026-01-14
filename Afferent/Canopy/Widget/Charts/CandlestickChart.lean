@@ -316,26 +316,4 @@ def candlestickChartFromArrays (opens highs lows closes : Array Float)
   let data : CandlestickChart.Data := { candles }
   candlestickChart data theme colors dims
 
-/-- Create a candlestick chart that updates based on an external event stream.
-    - `initialData`: Initial chart data
-    - `dataUpdates`: Event stream of data updates
-    - `theme`: Theme for styling
-    - `colors`: Candle colors
-    - `dims`: Chart dimensions
--/
-def candlestickChartWithEvents (initialData : CandlestickChart.Data)
-    (dataUpdates : Reactive.Event Spider CandlestickChart.Data)
-    (theme : Theme) (colors : CandlestickChart.CandleColors := CandlestickChart.defaultColors)
-    (dims : CandlestickChart.Dimensions := CandlestickChart.defaultDimensions)
-    : WidgetM CandlestickChartResult := do
-  let name ← registerComponentW "candlestick-chart" (isInteractive := false)
-
-  let dataDyn ← Reactive.holdDyn initialData dataUpdates
-
-  emit do
-    let d ← dataDyn.sample
-    pure (candlestickChartVisual name d theme colors dims)
-
-  pure { data := dataDyn }
-
 end Afferent.Canopy

@@ -292,26 +292,4 @@ def gaugeChartSimple (value : Float)
   let data : GaugeChart.Data := { value, minValue, maxValue, label, unit }
   gaugeChart data theme GaugeChart.defaultColors dims
 
-/-- Create a gauge chart that updates based on an external event stream.
-    - `initialData`: Initial chart data
-    - `dataUpdates`: Event stream of data updates
-    - `theme`: Theme for styling
-    - `colors`: Chart colors
-    - `dims`: Chart dimensions
--/
-def gaugeChartWithEvents (initialData : GaugeChart.Data)
-    (dataUpdates : Reactive.Event Spider GaugeChart.Data)
-    (theme : Theme) (colors : GaugeChart.ChartColors := GaugeChart.defaultColors)
-    (dims : GaugeChart.Dimensions := GaugeChart.defaultDimensions)
-    : WidgetM GaugeChartResult := do
-  let name ← registerComponentW "gauge-chart" (isInteractive := false)
-
-  let dataDyn ← Reactive.holdDyn initialData dataUpdates
-
-  emit do
-    let d ← dataDyn.sample
-    pure (gaugeChartVisual name d theme colors dims)
-
-  pure { data := dataDyn }
-
 end Afferent.Canopy

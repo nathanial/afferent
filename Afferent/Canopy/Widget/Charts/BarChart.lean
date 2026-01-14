@@ -323,31 +323,6 @@ def barChart (data : Array Float) (labels : Array String := #[])
 
   pure { data := dataDyn }
 
-/-- Create a bar chart that updates based on an external event stream.
-    Useful for showing dynamic data that changes over time.
-    - `initialData`: Initial data values
-    - `dataUpdates`: Event stream of data updates
-    - `labels`: Labels for each bar
-    - `theme`: Theme for styling
-    - `variant`: Color variant
-    - `dims`: Chart dimensions
--/
-def barChartWithEvents (initialData : Array Float)
-    (dataUpdates : Reactive.Event Spider (Array Float))
-    (labels : Array String := #[])
-    (theme : Theme) (variant : BarChartVariant := .primary)
-    (dims : BarChart.Dimensions := BarChart.defaultDimensions)
-    : WidgetM BarChartResult := do
-  let name ← registerComponentW "bar-chart" (isInteractive := false)
-
-  let dataDyn ← Reactive.holdDyn initialData dataUpdates
-
-  emit do
-    let d ← dataDyn.sample
-    pure (barChartVisual name d labels variant theme dims)
-
-  pure { data := dataDyn }
-
 /-- MultiColorBarChart result. -/
 structure MultiColorBarChartResult where
   data : Reactive.Dynamic Spider (Array BarChart.DataPoint)

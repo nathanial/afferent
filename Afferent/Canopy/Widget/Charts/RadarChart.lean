@@ -356,24 +356,4 @@ def radarChartSingle (axisLabels : Array String) (values : Array Float)
   let data : RadarChart.Data := { axisLabels, series }
   radarChart data theme dims
 
-/-- Create a radar chart that updates based on an external event stream.
-    - `initialData`: Initial chart data
-    - `dataUpdates`: Event stream of data updates
-    - `theme`: Theme for styling
-    - `dims`: Chart dimensions
--/
-def radarChartWithEvents (initialData : RadarChart.Data)
-    (dataUpdates : Reactive.Event Spider RadarChart.Data)
-    (theme : Theme) (dims : RadarChart.Dimensions := RadarChart.defaultDimensions)
-    : WidgetM RadarChartResult := do
-  let name ← registerComponentW "radar-chart" (isInteractive := false)
-
-  let dataDyn ← Reactive.holdDyn initialData dataUpdates
-
-  emit do
-    let d ← dataDyn.sample
-    pure (radarChartVisual name d theme dims)
-
-  pure { data := dataDyn }
-
 end Afferent.Canopy
