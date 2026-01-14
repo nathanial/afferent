@@ -473,10 +473,13 @@ def dynWidget (dynValue : Dynamic Spider a) (builder : a → WidgetM b)
   let events ← getEventsW  -- Capture ReactiveEvents context
 
   -- All scope and initial build logic in one SpiderM block to access env.currentScope
-  let (initialResult, childScopeRef, rendersRef) ← (⟨fun env => do
+  let (initialResult, childScopeRef, rendersRef, generationRef) ← (⟨fun env => do
     -- Create child scope for builder subscriptions (enables cleanup on rebuild)
     let initialChildScope ← env.currentScope.child
     let scopeRef : IO.Ref Reactive.SubscriptionScope ← IO.mkRef initialChildScope
+
+    -- Cache generation counter - incremented on each rebuild to invalidate cached commands
+    let genRef : IO.Ref Nat ← IO.mkRef 0
 
     -- Initial build in child scope
     let initialValue ← dynValue.sample
@@ -488,8 +491,8 @@ def dynWidget (dynValue : Dynamic Spider a) (builder : a → WidgetM b)
     -- Refs for current state
     let renRef : IO.Ref (Array ComponentRender) ← IO.mkRef renders
 
-    pure (result, scopeRef, renRef)
-  ⟩ : SpiderM (b × IO.Ref Reactive.SubscriptionScope × IO.Ref (Array ComponentRender)))
+    pure (result, scopeRef, renRef, genRef)
+  ⟩ : SpiderM (b × IO.Ref Reactive.SubscriptionScope × IO.Ref (Array ComponentRender) × IO.Ref Nat))
 
   -- Result tracking via trigger event
   let (resultTrigger, fireResult) ← Reactive.newTriggerEvent
@@ -506,6 +509,9 @@ def dynWidget (dynValue : Dynamic Spider a) (builder : a → WidgetM b)
       let newScope ← env.currentScope.child
       childScopeRef.set newScope
 
+      -- Increment cache generation to invalidate cached render commands
+      generationRef.modify (· + 1)
+
       -- Run the builder with the new value in the new child scope
       let widgetM := runWidgetChildren (builder newValue)
       let reactiveM := widgetM.run { children := #[] }
@@ -516,16 +522,22 @@ def dynWidget (dynValue : Dynamic Spider a) (builder : a → WidgetM b)
     env.currentScope.register unsub⟩
   subscribeAction  -- Lift SpiderM to WidgetM via MonadLift
 
-  -- Emit render that uses current renders
+  -- Emit render that uses current renders with proper cache generation
   emit do
     let renders ← rendersRef.get
+    let gen ← generationRef.get
+    -- Helper to wrap a builder with the current cache generation
+    let withGen (b : Afferent.Arbor.WidgetBuilder) : Afferent.Arbor.WidgetBuilder := do
+      modify fun s => { s with cacheGeneration := gen }
+      b
     if renders.isEmpty then
       pure (Afferent.Arbor.spacer 0 0)
     else if h : renders.size = 1 then
-      renders[0]  -- Return single child directly without wrapping
+      let builder ← renders[0]
+      pure (withGen builder)
     else
-      let widgets ← renders.mapM id
-      pure (Afferent.Arbor.column (gap := 0) (style := {}) widgets)
+      let builders ← renders.mapM id
+      pure (withGen (Afferent.Arbor.column (gap := 0) (style := {}) builders))
 
   pure resultDyn
 

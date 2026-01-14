@@ -10,6 +10,7 @@ import Afferent.Canvas.State
 import Afferent.Render.Dynamic
 import Afferent.Text.Font
 import Afferent.FFI
+import Afferent.Arbor.Render.Cache
 
 namespace Afferent
 
@@ -496,18 +497,25 @@ structure Canvas where
   floatBuffer : Option FFI.FloatBuffer := none
   /-- Capacity of FloatBuffer (in floats). -/
   floatBufferCapacity : Nat := 0
+  /-- Persistent cache for CustomSpec render commands across frames.
+      Cache is keyed by widget name (from registerComponentW) + layout hash.
+      When data changes, dynWidget rebuilds and generates new widget names,
+      causing natural cache invalidation. -/
+  renderCache : IO.Ref Arbor.RenderCache
 
 namespace Canvas
 
 /-- Create a new canvas with a window. -/
 def create (width height : UInt32) (title : String) : IO Canvas := do
   let ctx ← DrawContext.create width height title
-  pure { ctx, stateStack := StateStack.new }
+  let renderCache ← IO.mkRef Arbor.RenderCache.empty
+  pure { ctx, stateStack := StateStack.new, renderCache }
 
 /-- Create a new canvas with a window and explicit screen scale factor. -/
 def createWithScale (width height : UInt32) (title : String) (screenScale : Float) : IO Canvas := do
   let ctx ← DrawContext.create width height title
-  pure { ctx, stateStack := StateStack.new, screenScale }
+  let renderCache ← IO.mkRef Arbor.RenderCache.empty
+  pure { ctx, stateStack := StateStack.new, screenScale, renderCache }
 
 /-- Get the current state. -/
 def state (c : Canvas) : CanvasState :=
@@ -553,6 +561,19 @@ def resetState (c : Canvas) : Canvas :=
 def resetStateAndScissor (c : Canvas) : IO Canvas := do
   c.ctx.resetScissor
   pure { c with stateStack := StateStack.new }
+
+/-! ## Render Cache Diagnostics -/
+
+/-- Get the number of cached render command entries.
+    Useful for verifying that caching is working. -/
+def getRenderCacheSize (c : Canvas) : IO Nat := do
+  let cache ← c.renderCache.get
+  pure cache.size
+
+/-- Clear the render cache. Call this if you need to force re-rendering
+    (e.g., after a theme change that doesn't trigger widget rebuild). -/
+def clearRenderCache (c : Canvas) : IO Unit := do
+  c.renderCache.modify fun _ => Arbor.RenderCache.empty
 
 /-! ## Style operations -/
 

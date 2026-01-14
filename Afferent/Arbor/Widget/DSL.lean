@@ -10,6 +10,9 @@ namespace Afferent.Arbor
 /-- Builder state for generating unique widget IDs. -/
 structure BuilderState where
   nextId : Nat := 0
+  /-- Cache generation counter. CustomSpec widgets built with different generations
+      will not share cache entries. Incremented by dynWidget on rebuild. -/
+  cacheGeneration : Nat := 0
 deriving Repr, Inhabited
 
 /-- Widget builder monad for automatic ID generation. -/
@@ -20,6 +23,16 @@ def freshId : StateM BuilderState WidgetId := do
   let s ← get
   set { s with nextId := s.nextId + 1 }
   pure s.nextId
+
+/-- Get the current cache generation. -/
+def getCacheGeneration : StateM BuilderState Nat := do
+  let s ← get
+  pure s.cacheGeneration
+
+/-- Increment the cache generation counter. Call this when rebuilding a dynamic widget subtree
+    to invalidate cached render commands for widgets in that subtree. -/
+def incrementCacheGeneration : StateM BuilderState Unit := do
+  modify fun s => { s with cacheGeneration := s.cacheGeneration + 1 }
 
 /-! ## Text Widgets -/
 
@@ -67,10 +80,14 @@ def namedColoredBox (name : String) (color : Color) (width height : Float) : Wid
   let wid ← freshId
   pure (.rect wid (some name) { backgroundColor := some color, minWidth := some width, minHeight := some height })
 
-/-- Create a custom widget with a rendering spec. -/
+/-- Create a custom widget with a rendering spec.
+    The widget is stamped with the current cacheGeneration from BuilderState.
+    When dynWidget rebuilds, it increments the generation so cache is invalidated. -/
 def custom (spec : CustomSpec) (style : BoxStyle := {}) : WidgetBuilder := do
+  let s ← get
   let wid ← freshId
-  pure (.custom wid none style spec)
+  let stampedSpec := { spec with generation := s.cacheGeneration }
+  pure (.custom wid none style stampedSpec)
 
 /-- Create a named custom widget with a rendering spec. -/
 def namedCustom (name : String) (spec : CustomSpec) (style : BoxStyle := {}) : WidgetBuilder := do
@@ -298,6 +315,16 @@ def build (builder : WidgetBuilder) : Widget :=
 /-- Build a widget tree starting from a specific ID. -/
 def buildFrom (startId : Nat) (builder : WidgetBuilder) : Widget :=
   (builder.run { nextId := startId }).1
+
+/-- Build a widget tree with a specific cache generation.
+    Widgets built with different generations will not share cache entries.
+    Used by dynWidget to invalidate cache on rebuild. -/
+def buildWithGeneration (generation : Nat) (builder : WidgetBuilder) : Widget :=
+  (builder.run { cacheGeneration := generation }).1
+
+/-- Build a widget tree with both a starting ID and cache generation. -/
+def buildFromWithGeneration (startId : Nat) (generation : Nat) (builder : WidgetBuilder) : Widget :=
+  (builder.run { nextId := startId, cacheGeneration := generation }).1
 
 /-- Run a builder and get both the widget and final state. -/
 def buildWithState (builder : WidgetBuilder) : Widget × BuilderState :=

@@ -211,14 +211,18 @@ partial def renderCustomWidgets (w : Afferent.Arbor.Widget) (layouts : Trellis.L
           renderCustomWidgets child layouts
       | _ => pure ()
 
-/-- Render an Arbor widget tree using CanvasM.
+/-- Render an Arbor widget tree using CanvasM with automatic render command caching.
     This is the main entry point for rendering Arbor widgets with Afferent's Metal backend.
 
     Steps:
     1. Measure the widget tree (computes text layouts)
     2. Compute layout using Trellis
-    3. Collect render commands
-    4. Execute commands using CanvasM -/
+    3. Collect render commands (with caching for CustomSpec widgets)
+    4. Execute commands using CanvasM
+
+    Caching: CustomSpec widgets with names (from registerComponentW) are automatically
+    cached. Cache is keyed by widget name + layout hash. When data changes, dynWidget
+    rebuilds and generates new widget names, causing natural cache invalidation. -/
 def renderArborWidget (reg : FontRegistry) (widget : Afferent.Arbor.Widget)
     (availWidth availHeight : Float) : CanvasM Unit := do
   -- Measure widget and get layout nodes
@@ -229,8 +233,9 @@ def renderArborWidget (reg : FontRegistry) (widget : Afferent.Arbor.Widget)
   -- Compute layout
   let layouts := Trellis.layout layoutNode availWidth availHeight
 
-  -- Collect render commands
-  let commands := Afferent.Arbor.collectCommands measuredWidget layouts
+  -- Collect render commands with caching
+  let canvas ← CanvasM.getCanvas
+  let commands ← Afferent.Arbor.collectCommandsCached canvas.renderCache measuredWidget layouts
 
   -- Execute commands
   executeCommands reg commands
@@ -242,9 +247,23 @@ def renderArborWidgetWithCustom (reg : FontRegistry) (widget : Afferent.Arbor.Wi
   let layoutNode := measureResult.node
   let measuredWidget := measureResult.widget
   let layouts := Trellis.layout layoutNode availWidth availHeight
-  let commands := Afferent.Arbor.collectCommands measuredWidget layouts
+  let canvas ← CanvasM.getCanvas
+  let commands ← Afferent.Arbor.collectCommandsCached canvas.renderCache measuredWidget layouts
   executeCommands reg commands
   renderCustomWidgets measuredWidget layouts
+
+/-- Render an Arbor widget tree and return cache statistics.
+    Returns (cacheHits, cacheMisses) for debugging/verification purposes. -/
+def renderArborWidgetWithStats (reg : FontRegistry) (widget : Afferent.Arbor.Widget)
+    (availWidth availHeight : Float) : CanvasM (Nat × Nat) := do
+  let measureResult ← runWithFonts reg (Afferent.Arbor.measureWidget widget availWidth availHeight)
+  let layoutNode := measureResult.node
+  let measuredWidget := measureResult.widget
+  let layouts := Trellis.layout layoutNode availWidth availHeight
+  let canvas ← CanvasM.getCanvas
+  let (commands, hits, misses) ← Afferent.Arbor.collectCommandsCachedWithStats canvas.renderCache measuredWidget layouts
+  executeCommands reg commands
+  pure (hits, misses)
 
 /-- Convenience function to render a widget built with Arbor's DSL.
     Takes a WidgetBuilder and executes the full render pipeline. -/
@@ -272,8 +291,9 @@ def renderArborWidgetCentered (reg : FontRegistry) (widget : Afferent.Arbor.Widg
   let offsetX := (screenWidth - intrinsicWidth) / 2
   let offsetY := (screenHeight - intrinsicHeight) / 2
 
-  -- Collect render commands
-  let commands := Afferent.Arbor.collectCommands measuredWidget layouts
+  -- Collect render commands with caching
+  let canvas ← CanvasM.getCanvas
+  let commands ← Afferent.Arbor.collectCommandsCached canvas.renderCache measuredWidget layouts
 
   -- Save state, translate, render, restore
   CanvasM.save

@@ -146,6 +146,9 @@ structure CustomSpec where
   draw : Option (Trellis.ComputedLayout → Afferent.CanvasM Unit) := none
   /-- Optional custom hit test (true if point is inside widget). -/
   hitTest : Option (Trellis.ComputedLayout → Point → Bool) := none
+  /-- Cache generation number. Widgets with different generations are not cached together.
+      This is automatically set by dynWidget to invalidate cache on rebuild. -/
+  generation : Nat := 0
 
 namespace CustomSpec
 

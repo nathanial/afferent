@@ -4,7 +4,7 @@
   This is the key abstraction that makes rendering backend-independent.
 -/
 import Afferent.Arbor.Widget.Core
-import Afferent.Arbor.Render.Command
+import Afferent.Arbor.Render.Cache
 import Trellis
 
 namespace Afferent.Arbor
@@ -356,5 +356,279 @@ def collectCommandsWithDebug (w : Widget) (layouts : Trellis.LayoutResult)
     collectWidget w layouts
     renderDeferredAbsolute
     collectDebugBorders w layouts borderColor
+
+/-! ## Cached Collection
+
+These functions provide render command caching at the widget level.
+Cache is keyed by path-based identity + layout hash. Each widget gets a unique
+path based on its position in the tree (e.g., "0.2.1" for the 2nd child of the
+3rd child of the 1st child of root). This provides automatic caching for all
+CustomSpec widgets without requiring explicit names.
+
+When data changes, dynWidget rebuilds a subtree, and the paths within that
+subtree naturally change, causing cache misses for the updated widgets. -/
+
+/-- Cached collector state with access to the render cache. -/
+structure CachedCollectState where
+  commands : Array RenderCommand := #[]
+  /-- Deferred absolute-positioned widgets with their paths for cache key generation. -/
+  deferredAbsolute : Array (Widget × Trellis.LayoutResult × String) := #[]
+  cacheHits : Nat := 0
+  cacheMisses : Nat := 0
+deriving Inhabited
+
+/-- Cached collector monad with IO for cache access. -/
+abbrev CachedCollectM := StateT CachedCollectState IO
+
+namespace CachedCollectM
+
+def emit (cmd : RenderCommand) : CachedCollectM Unit := do
+  modify fun s => { s with commands := s.commands.push cmd }
+
+def emitAll (cmds : Array RenderCommand) : CachedCollectM Unit := do
+  modify fun s => { s with commands := s.commands ++ cmds }
+
+def deferAbsolute (w : Widget) (layouts : Trellis.LayoutResult) (path : String) : CachedCollectM Unit := do
+  modify fun s => { s with deferredAbsolute := s.deferredAbsolute.push (w, layouts, path) }
+
+def recordCacheHit : CachedCollectM Unit := do
+  modify fun s => { s with cacheHits := s.cacheHits + 1 }
+
+def recordCacheMiss : CachedCollectM Unit := do
+  modify fun s => { s with cacheMisses := s.cacheMisses + 1 }
+
+end CachedCollectM
+
+/-- Build a child path by appending an index to the parent path. -/
+def childPath (parentPath : String) (index : Nat) : String :=
+  if parentPath.isEmpty then s!"{index}" else s!"{parentPath}.{index}"
+
+/-- Collect box background and border render commands (cached version). -/
+def collectBoxStyleCached (rect : Trellis.LayoutRect) (style : BoxStyle) : CachedCollectM Unit := do
+  let r : Rect := ⟨⟨rect.x, rect.y⟩, ⟨rect.width, rect.height⟩⟩
+  if let some bg := style.backgroundColor then
+    CachedCollectM.emit (.fillRect r bg style.cornerRadius)
+  if let some bc := style.borderColor then
+    if style.borderWidth > 0 then
+      CachedCollectM.emit (.strokeRect r bc style.borderWidth style.cornerRadius)
+
+/-- Collect wrapped text (cached version). -/
+def collectWrappedTextCached (contentRect : Trellis.LayoutRect) (font : FontId)
+    (color : Color) (align : TextAlign) (textLayout : TextLayout) : CachedCollectM Unit := do
+  let lineHeight := textLayout.lineHeight
+  let ascender := textLayout.ascender
+  let verticalOffset := (contentRect.height - textLayout.totalHeight) / 2
+  let mut y := contentRect.y + verticalOffset + ascender
+  for line in textLayout.lines do
+    let x := match align with
+      | .left => contentRect.x
+      | .center => contentRect.x + (contentRect.width - line.width) / 2
+      | .right => contentRect.x + contentRect.width - line.width
+    CachedCollectM.emit (.fillText line.text x y font color)
+    y := y + lineHeight
+
+/-- Collect single-line text (cached version). -/
+def collectSingleLineTextCached (contentRect : Trellis.LayoutRect) (text : String)
+    (font : FontId) (color : Color) (align : TextAlign) (textWidth : Float)
+    (lineHeight : Float) : CachedCollectM Unit := do
+  let x := match align with
+    | .left => contentRect.x
+    | .center => contentRect.x + (contentRect.width - textWidth) / 2
+    | .right => contentRect.x + contentRect.width - textWidth
+  let ascender := lineHeight * 0.8
+  let verticalOffset := (contentRect.height - lineHeight) / 2
+  CachedCollectM.emit (.fillText text x (contentRect.y + verticalOffset + ascender) font color)
+
+mutual
+/-- Collect scaled children (cached version with path tracking). -/
+partial def collectScaledChildrenCached (cache : IO.Ref RenderCache)
+    (contentRect : Trellis.LayoutRect) (m : Trellis.ScaleMetadata)
+    (children : Array Widget) (layouts : Trellis.LayoutResult)
+    (path : String) : CachedCollectM Unit := do
+  let clipRect : Rect := ⟨⟨contentRect.x, contentRect.y⟩, ⟨contentRect.width, contentRect.height⟩⟩
+  CachedCollectM.emit (.pushClip clipRect)
+  CachedCollectM.emit .save
+  let childBounds := computeChildrenBounds children layouts
+  CachedCollectM.emit (.pushTranslate (contentRect.x + m.offsetX) (contentRect.y + m.offsetY))
+  CachedCollectM.emit (.pushScale m.scaleX m.scaleY)
+  CachedCollectM.emit (.pushTranslate (-childBounds.x) (-childBounds.y))
+  let (flowChildren, absChildren) := partitionChildren children
+  -- Track child indices for path generation
+  let mut flowIdx := 0
+  for child in flowChildren do
+    collectWidgetCached cache child layouts (childPath path flowIdx)
+    flowIdx := flowIdx + 1
+  let mut absIdx := flowIdx
+  for child in absChildren do
+    CachedCollectM.deferAbsolute child layouts (childPath path absIdx)
+    absIdx := absIdx + 1
+  CachedCollectM.emit .popTransform
+  CachedCollectM.emit .popTransform
+  CachedCollectM.emit .popTransform
+  CachedCollectM.emit .restore
+  CachedCollectM.emit .popClip
+
+/-- Collect render commands for a widget tree with caching support.
+    All CustomSpec widgets are automatically cached using path-based identity.
+    The path represents the widget's position in the tree (e.g., "0.2.1"). -/
+partial def collectWidgetCached (cache : IO.Ref RenderCache)
+    (w : Widget) (layouts : Trellis.LayoutResult) (path : String) : CachedCollectM Unit := do
+  let some computed := layouts.get w.id | return
+  let borderRect := computed.borderRect
+  let contentRect := computed.contentRect
+
+  match w with
+  | .rect _ _ style =>
+    collectBoxStyleCached borderRect style
+
+  | .text _ _ content font color align _ textLayoutOpt =>
+    match textLayoutOpt with
+    | some textLayout =>
+      collectWrappedTextCached contentRect font color align textLayout
+    | none =>
+      collectSingleLineTextCached contentRect content font color align contentRect.width 16.0
+
+  | .spacer _ _ _ _ =>
+    pure ()
+
+  | .custom _ name style spec =>
+    collectBoxStyleCached borderRect style
+    let layoutHash := hashLayoutRect contentRect
+
+    -- Use widget name if provided, otherwise use path + generation.
+    -- Named widgets use stable names (for expensive widgets like charts).
+    -- Unnamed widgets include generation so cache is invalidated when dynWidget rebuilds.
+    let cacheKey := match name with
+      | some widgetName => widgetName
+      | none => s!"@{path}:{spec.generation}"
+
+    let renderCache ← cache.get
+    match renderCache.find? cacheKey with
+    | some cached =>
+      if cached.layoutHash == layoutHash then
+        -- Cache hit! Use cached commands
+        CachedCollectM.emitAll cached.commands
+        CachedCollectM.recordCacheHit
+      else
+        -- Layout changed, recompute and update cache
+        let cmds := spec.collect computed
+        cache.modify fun rc => rc.insert cacheKey ⟨cmds, layoutHash⟩
+        CachedCollectM.emitAll cmds
+        CachedCollectM.recordCacheMiss
+    | none =>
+      -- First time seeing this widget, compute and cache
+      let cmds := spec.collect computed
+      cache.modify fun rc => rc.insert cacheKey ⟨cmds, layoutHash⟩
+      CachedCollectM.emitAll cmds
+      CachedCollectM.recordCacheMiss
+
+  | .flex _ _ _ style children =>
+    collectBoxStyleCached borderRect style
+    match computed.scaleMetadata with
+    | some m =>
+      collectScaledChildrenCached cache contentRect m children layouts path
+    | none =>
+      let (flowChildren, absChildren) := partitionChildren children
+      let mut flowIdx := 0
+      for child in flowChildren do
+        collectWidgetCached cache child layouts (childPath path flowIdx)
+        flowIdx := flowIdx + 1
+      let mut absIdx := flowIdx
+      for child in absChildren do
+        CachedCollectM.deferAbsolute child layouts (childPath path absIdx)
+        absIdx := absIdx + 1
+
+  | .grid _ _ _ style children =>
+    collectBoxStyleCached borderRect style
+    match computed.scaleMetadata with
+    | some m =>
+      collectScaledChildrenCached cache contentRect m children layouts path
+    | none =>
+      let (flowChildren, absChildren) := partitionChildren children
+      let mut flowIdx := 0
+      for child in flowChildren do
+        collectWidgetCached cache child layouts (childPath path flowIdx)
+        flowIdx := flowIdx + 1
+      let mut absIdx := flowIdx
+      for child in absChildren do
+        CachedCollectM.deferAbsolute child layouts (childPath path absIdx)
+        absIdx := absIdx + 1
+
+  | .scroll _ _ style scrollState contentWidth contentHeight scrollbarConfig child =>
+    collectBoxStyleCached borderRect style
+    let clipRect : Rect := ⟨⟨contentRect.x, contentRect.y⟩, ⟨contentRect.width, contentRect.height⟩⟩
+    CachedCollectM.emit (.pushClip clipRect)
+    CachedCollectM.emit .save
+    CachedCollectM.emit (.pushTranslate (-scrollState.offsetX) (-scrollState.offsetY))
+    collectWidgetCached cache child layouts (childPath path 0)
+    CachedCollectM.emit .popTransform
+    CachedCollectM.emit .restore
+    CachedCollectM.emit .popClip
+
+    -- Render scrollbars
+    let viewportW := contentRect.width
+    let viewportH := contentRect.height
+    let thickness := scrollbarConfig.thickness
+    let minThumb := scrollbarConfig.minThumbLength
+    let radius := scrollbarConfig.cornerRadius
+
+    if scrollbarConfig.showVertical && contentHeight > viewportH then
+      let maxScrollY := contentHeight - viewportH
+      let scrollRatio := if maxScrollY > 0 then scrollState.offsetY / maxScrollY else 0
+      let thumbRatio := viewportH / contentHeight
+      let thumbHeight := max minThumb (viewportH * thumbRatio)
+      let trackHeight := viewportH
+      let thumbTravel := trackHeight - thumbHeight
+      let thumbY := thumbTravel * scrollRatio
+      let trackX := contentRect.x + viewportW - thickness
+      let trackRect : Rect := ⟨⟨trackX, contentRect.y⟩, ⟨thickness, trackHeight⟩⟩
+      CachedCollectM.emit (.fillRect trackRect scrollbarConfig.trackColor radius)
+      let thumbRect : Rect := ⟨⟨trackX, contentRect.y + thumbY⟩, ⟨thickness, thumbHeight⟩⟩
+      CachedCollectM.emit (.fillRect thumbRect scrollbarConfig.thumbColor radius)
+
+    if scrollbarConfig.showHorizontal && contentWidth > viewportW then
+      let maxScrollX := contentWidth - viewportW
+      let scrollRatio := if maxScrollX > 0 then scrollState.offsetX / maxScrollX else 0
+      let thumbRatio := viewportW / contentWidth
+      let thumbWidth := max minThumb (viewportW * thumbRatio)
+      let trackWidth := viewportW
+      let thumbTravel := trackWidth - thumbWidth
+      let thumbX := thumbTravel * scrollRatio
+      let trackY := contentRect.y + viewportH - thickness
+      let trackRect : Rect := ⟨⟨contentRect.x, trackY⟩, ⟨trackWidth, thickness⟩⟩
+      CachedCollectM.emit (.fillRect trackRect scrollbarConfig.trackColor radius)
+      let thumbRect : Rect := ⟨⟨contentRect.x + thumbX, trackY⟩, ⟨thumbWidth, thickness⟩⟩
+      CachedCollectM.emit (.fillRect thumbRect scrollbarConfig.thumbColor radius)
+
+end  -- mutual
+
+/-- Render all deferred absolute-positioned widgets (cached version). -/
+partial def renderDeferredAbsoluteCached (cache : IO.Ref RenderCache) : CachedCollectM Unit := do
+  let state ← get
+  set { state with deferredAbsolute := #[] }
+  for (widget, layouts, widgetPath) in state.deferredAbsolute do
+    collectWidgetCached cache widget layouts widgetPath
+  let newState ← get
+  if newState.deferredAbsolute.size > 0 then
+    renderDeferredAbsoluteCached cache
+
+/-- Collect render commands with caching.
+    This is the main entry point for cached render command collection.
+    All CustomSpec widgets are automatically cached using path-based identity. -/
+def collectCommandsCached (cache : IO.Ref RenderCache) (w : Widget)
+    (layouts : Trellis.LayoutResult) : IO (Array RenderCommand) := do
+  let ((), state) ← StateT.run (do
+    collectWidgetCached cache w layouts ""  -- Start with empty path at root
+    renderDeferredAbsoluteCached cache) {}
+  pure state.commands
+
+/-- Collect render commands with caching and return statistics.
+    Returns (commands, cacheHits, cacheMisses). -/
+def collectCommandsCachedWithStats (cache : IO.Ref RenderCache) (w : Widget)
+    (layouts : Trellis.LayoutResult) : IO (Array RenderCommand × Nat × Nat) := do
+  let ((), state) ← StateT.run (do
+    collectWidgetCached cache w layouts ""  -- Start with empty path at root
+    renderDeferredAbsoluteCached cache) {}
+  pure (state.commands, state.cacheHits, state.cacheMisses)
 
 end Afferent.Arbor
