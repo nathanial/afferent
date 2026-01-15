@@ -47,6 +47,20 @@ def ComponentRegistry.create : SpiderM ComponentRegistry := do
   let focusedInput ← holdDyn none focusEvent
   pure { idCounter, inputNames, interactiveNames, focusedInput, fireFocus }
 
+/-- Reset the registry for a new frame.
+    Clears the counter and name arrays to prevent unbounded growth. -/
+def ComponentRegistry.reset (reg : ComponentRegistry) : IO Unit := do
+  reg.idCounter.set 0
+  reg.inputNames.set #[]
+  reg.interactiveNames.set #[]
+
+/-- Get diagnostic stats from the registry. -/
+def ComponentRegistry.getStats (reg : ComponentRegistry) : IO (Nat × Nat × Nat) := do
+  let counter ← reg.idCounter.get
+  let inputCount ← reg.inputNames.get
+  let interactiveCount ← reg.interactiveNames.get
+  pure (counter, inputCount.size, interactiveCount.size)
+
 /-- Register a component and get an auto-generated name.
     - `namePrefix`: Component type prefix (e.g., "button", "text-input")
     - `isInput`: Whether this is a focusable input widget
@@ -81,6 +95,16 @@ structure ReactiveEvents where
   scrollEvent : Event Spider ScrollData
   /-- Component registry for auto-generating names. -/
   registry : ComponentRegistry
+
+/-- Reset the component registry for a new frame.
+    Call this at the start of each frame to prevent memory leaks from
+    unbounded growth of component names and IDs. -/
+def ReactiveEvents.resetRegistry (events : ReactiveEvents) : IO Unit :=
+  events.registry.reset
+
+/-- Get diagnostic stats: (idCounter, inputNames.size, interactiveNames.size). -/
+def ReactiveEvents.getRegistryStats (events : ReactiveEvents) : IO (Nat × Nat × Nat) :=
+  events.registry.getStats
 
 /-- Create the reactive input infrastructure.
     Returns both the event streams (for subscriptions) and triggers (for firing). -/

@@ -493,3 +493,166 @@ int afferent_text_generate_vertices(
 
     return 1;
 }
+
+// Generate vertices for multiple text strings into one buffer
+// Each string has its own position, color, and transform
+int afferent_text_generate_vertices_batch(
+    AfferentFontRef font,
+    const char** texts,           // Array of strings
+    const float* positions,       // [x0, y0, x1, y1, ...]
+    const float* colors,          // [r0, g0, b0, a0, ...]
+    const float* transforms,      // [a0, b0, c0, d0, tx0, ty0, ...] (6 per entry)
+    uint32_t count,
+    float screen_width,
+    float screen_height,
+    float** out_vertices,
+    uint32_t** out_indices,
+    uint32_t* out_vertex_count,
+    uint32_t* out_index_count
+) {
+    if (!font || !texts || count == 0 || !out_vertices || !out_indices) {
+        if (out_vertices) *out_vertices = NULL;
+        if (out_indices) *out_indices = NULL;
+        if (out_vertex_count) *out_vertex_count = 0;
+        if (out_index_count) *out_index_count = 0;
+        return count == 0 ? 1 : 0;
+    }
+
+    // First pass: count total characters to allocate buffers
+    size_t total_chars = 0;
+    for (uint32_t i = 0; i < count; i++) {
+        if (texts[i]) {
+            total_chars += strlen(texts[i]);
+        }
+    }
+
+    if (total_chars == 0) {
+        *out_vertices = NULL;
+        *out_indices = NULL;
+        *out_vertex_count = 0;
+        *out_index_count = 0;
+        return 1;
+    }
+
+    // Allocate max possible vertices (4 per character) and indices (6 per character)
+    float* vertices = malloc(total_chars * 4 * 8 * sizeof(float));
+    uint32_t* indices = malloc(total_chars * 6 * sizeof(uint32_t));
+
+    if (!vertices || !indices) {
+        free(vertices);
+        free(indices);
+        return 0;
+    }
+
+    uint32_t vertex_count = 0;
+    uint32_t index_count = 0;
+
+    // Default identity transform
+    float identity[6] = {1.0f, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f};
+
+    // Process each text string
+    for (uint32_t text_idx = 0; text_idx < count; text_idx++) {
+        const char* text = texts[text_idx];
+        if (!text || !*text) continue;
+
+        float x = positions ? positions[text_idx * 2] : 0.0f;
+        float y = positions ? positions[text_idx * 2 + 1] : 0.0f;
+        float r = colors ? colors[text_idx * 4] : 1.0f;
+        float g = colors ? colors[text_idx * 4 + 1] : 1.0f;
+        float b = colors ? colors[text_idx * 4 + 2] : 1.0f;
+        float a = colors ? colors[text_idx * 4 + 3] : 1.0f;
+        const float* transform = transforms ? &transforms[text_idx * 6] : identity;
+
+        float cursor_x = x;
+        float cursor_y = y;
+
+        const char* p = text;
+        while (*p) {
+            uint32_t codepoint = (uint8_t)*p;
+            GlyphInfo* glyph = cache_glyph(font, codepoint);
+
+            if (glyph && glyph->width > 0 && glyph->height > 0) {
+                // Calculate quad corners in pixel coordinates (pre-transform)
+                float gx = cursor_x + glyph->bearing_x;
+                float gy = cursor_y - glyph->bearing_y;
+                float gw = glyph->width;
+                float gh = glyph->height;
+
+                // The 4 corners in pixel space (before transform)
+                float px0 = gx, py0 = gy;
+                float px1 = gx + gw, py1 = gy;
+                float px2 = gx + gw, py2 = gy + gh;
+                float px3 = gx, py3 = gy + gh;
+
+                // Apply transform to get final pixel positions
+                float tx0, ty0, tx1, ty1, tx2, ty2, tx3, ty3;
+                apply_transform(px0, py0, transform, &tx0, &ty0);
+                apply_transform(px1, py1, transform, &tx1, &ty1);
+                apply_transform(px2, py2, transform, &tx2, &ty2);
+                apply_transform(px3, py3, transform, &tx3, &ty3);
+
+                // Convert transformed positions to NDC
+                float x0 = (tx0 / screen_width) * 2.0f - 1.0f;
+                float y0 = 1.0f - (ty0 / screen_height) * 2.0f;
+                float x1 = (tx1 / screen_width) * 2.0f - 1.0f;
+                float y1_ndc = 1.0f - (ty1 / screen_height) * 2.0f;
+                float x2 = (tx2 / screen_width) * 2.0f - 1.0f;
+                float y2 = 1.0f - (ty2 / screen_height) * 2.0f;
+                float x3 = (tx3 / screen_width) * 2.0f - 1.0f;
+                float y3 = 1.0f - (ty3 / screen_height) * 2.0f;
+
+                // UV coordinates in atlas
+                float u0 = (float)glyph->atlas_x / font->atlas_width;
+                float v0 = (float)glyph->atlas_y / font->atlas_height;
+                float u1 = (float)(glyph->atlas_x + glyph->width) / font->atlas_width;
+                float v1 = (float)(glyph->atlas_y + glyph->height) / font->atlas_height;
+
+                // Add 4 vertices for this glyph's quad
+                uint32_t base_vertex = vertex_count;
+                uint32_t vi = vertex_count * 8;
+
+                // Top-left
+                vertices[vi++] = x0; vertices[vi++] = y0;
+                vertices[vi++] = u0; vertices[vi++] = v0;
+                vertices[vi++] = r; vertices[vi++] = g; vertices[vi++] = b; vertices[vi++] = a;
+
+                // Top-right
+                vertices[vi++] = x1; vertices[vi++] = y1_ndc;
+                vertices[vi++] = u1; vertices[vi++] = v0;
+                vertices[vi++] = r; vertices[vi++] = g; vertices[vi++] = b; vertices[vi++] = a;
+
+                // Bottom-right
+                vertices[vi++] = x2; vertices[vi++] = y2;
+                vertices[vi++] = u1; vertices[vi++] = v1;
+                vertices[vi++] = r; vertices[vi++] = g; vertices[vi++] = b; vertices[vi++] = a;
+
+                // Bottom-left
+                vertices[vi++] = x3; vertices[vi++] = y3;
+                vertices[vi++] = u0; vertices[vi++] = v1;
+                vertices[vi++] = r; vertices[vi++] = g; vertices[vi++] = b; vertices[vi++] = a;
+
+                vertex_count += 4;
+
+                // Add 6 indices for two triangles
+                indices[index_count++] = base_vertex + 0;
+                indices[index_count++] = base_vertex + 1;
+                indices[index_count++] = base_vertex + 2;
+                indices[index_count++] = base_vertex + 0;
+                indices[index_count++] = base_vertex + 2;
+                indices[index_count++] = base_vertex + 3;
+            }
+
+            if (glyph) {
+                cursor_x += glyph->advance_x;
+            }
+            p++;
+        }
+    }
+
+    *out_vertices = vertices;
+    *out_indices = indices;
+    *out_vertex_count = vertex_count;
+    *out_index_count = index_count;
+
+    return 1;
+}

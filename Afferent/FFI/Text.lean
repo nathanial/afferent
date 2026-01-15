@@ -30,4 +30,16 @@ opaque Text.render
   (transform : @& Array Float)
   (canvasWidth canvasHeight : Float) : IO Unit
 
+/-- Render multiple text strings with the same font in a single draw call.
+    Each entry has its own position, color, and transform. -/
+@[extern "lean_afferent_text_render_batch"]
+opaque Text.renderBatch
+  (renderer : @& Renderer)
+  (font : @& Font)
+  (texts : @& Array String)
+  (positions : @& Array Float)   -- [x0, y0, x1, y1, ...]
+  (colors : @& Array Float)      -- [r0, g0, b0, a0, ...]
+  (transforms : @& Array Float)  -- [a0, b0, c0, d0, tx0, ty0, a1, ...]
+  (canvasWidth canvasHeight : Float) : IO Unit
+
 end Afferent.FFI

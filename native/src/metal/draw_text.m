@@ -175,6 +175,121 @@ AfferentResult afferent_text_render(
     }
 }
 
+// Render multiple text strings with the same font in a single draw call
+AfferentResult afferent_text_render_batch(
+    AfferentRendererRef renderer,
+    AfferentFontRef font,
+    const char** texts,
+    const float* positions,
+    const float* colors,
+    const float* transforms,
+    uint32_t count,
+    float canvas_width,
+    float canvas_height
+) {
+    @autoreleasepool {
+        if (!renderer || !renderer->currentEncoder || !font || !texts || count == 0) {
+            return AFFERENT_OK;  // Nothing to render
+        }
+
+        // Generate vertex data for all text strings
+        float* vertices = NULL;
+        uint32_t* indices = NULL;
+        uint32_t vertex_count = 0;
+        uint32_t index_count = 0;
+
+        int success = afferent_text_generate_vertices_batch(
+            font, texts, positions, colors, transforms, count,
+            canvas_width, canvas_height,
+            &vertices, &indices, &vertex_count, &index_count
+        );
+
+        if (!success || vertex_count == 0) {
+            free(vertices);
+            free(indices);
+            return AFFERENT_OK;
+        }
+
+        // Ensure font texture is created and up to date
+        id<MTLTexture> fontTexture = ensureFontTexture(renderer, font);
+        updateFontTexture(renderer, font);
+
+        // Ensure staging buffer is large enough
+        if (vertex_count > g_text_vertex_staging_capacity) {
+            free(g_text_vertex_staging);
+            g_text_vertex_staging_capacity = vertex_count + 64;
+            g_text_vertex_staging = malloc(g_text_vertex_staging_capacity * sizeof(TextVertex));
+        }
+
+        // Convert float vertex data to TextVertex format
+        TextVertex* textVertices = g_text_vertex_staging;
+        for (uint32_t i = 0; i < vertex_count; i++) {
+            size_t base = i * 8;
+            textVertices[i].position[0] = vertices[base + 0];
+            textVertices[i].position[1] = vertices[base + 1];
+            textVertices[i].texCoord[0] = vertices[base + 2];
+            textVertices[i].texCoord[1] = vertices[base + 3];
+            textVertices[i].color[0] = vertices[base + 4];
+            textVertices[i].color[1] = vertices[base + 5];
+            textVertices[i].color[2] = vertices[base + 6];
+            textVertices[i].color[3] = vertices[base + 7];
+        }
+
+        // Use pooled Metal buffers
+        size_t vertex_buffer_size = vertex_count * sizeof(TextVertex);
+        size_t index_buffer_size = index_count * sizeof(uint32_t);
+
+        id<MTLBuffer> vertexBuffer = pool_acquire_buffer(
+            renderer->device,
+            g_buffer_pool.text_vertex_pool,
+            &g_buffer_pool.text_vertex_pool_count,
+            vertex_buffer_size
+        );
+        id<MTLBuffer> indexBuffer = pool_acquire_buffer(
+            renderer->device,
+            g_buffer_pool.text_index_pool,
+            &g_buffer_pool.text_index_pool_count,
+            index_buffer_size
+        );
+
+        // Copy data into pooled buffers
+        if (vertexBuffer) {
+            memcpy(vertexBuffer.contents, textVertices, vertex_buffer_size);
+        }
+        if (indexBuffer) {
+            memcpy(indexBuffer.contents, indices, index_buffer_size);
+        }
+
+        free(vertices);
+        free(indices);
+
+        if (!vertexBuffer || !indexBuffer) {
+            return AFFERENT_ERROR_TEXT_FAILED;
+        }
+
+        // Switch to text pipeline and disable depth testing
+        [renderer->currentEncoder setRenderPipelineState:renderer->textPipelineState];
+        [renderer->currentEncoder setDepthStencilState:renderer->depthStateDisabled];
+
+        // Set texture and sampler
+        [renderer->currentEncoder setFragmentTexture:fontTexture atIndex:0];
+        [renderer->currentEncoder setFragmentSamplerState:renderer->textSampler atIndex:0];
+
+        // Draw all text quads in one call
+        [renderer->currentEncoder setVertexBuffer:vertexBuffer offset:0 atIndex:0];
+        [renderer->currentEncoder drawIndexedPrimitives:MTLPrimitiveTypeTriangle
+                                             indexCount:index_count
+                                              indexType:MTLIndexTypeUInt32
+                                            indexBuffer:indexBuffer
+                                      indexBufferOffset:0];
+
+        // Switch back to basic pipeline
+        [renderer->currentEncoder setRenderPipelineState:renderer->pipelineState];
+
+        return AFFERENT_OK;
+    }
+}
+
 // Helper to get renderer screen dimensions (for Lean FFI)
 float afferent_renderer_get_screen_width(AfferentRendererRef renderer) {
     return renderer ? renderer->screenWidth : 0;

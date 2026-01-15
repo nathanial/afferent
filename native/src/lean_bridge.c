@@ -899,6 +899,90 @@ LEAN_EXPORT lean_obj_res lean_afferent_text_render(
     return lean_io_result_mk_ok(lean_box(0));
 }
 
+// Batch text rendering - multiple strings with same font in one draw call
+LEAN_EXPORT lean_obj_res lean_afferent_text_render_batch(
+    lean_obj_arg renderer_obj,
+    lean_obj_arg font_obj,
+    lean_obj_arg texts_arr,
+    lean_obj_arg positions_arr,
+    lean_obj_arg colors_arr,
+    lean_obj_arg transforms_arr,
+    double canvas_width,
+    double canvas_height,
+    lean_obj_arg world
+) {
+    AfferentRendererRef renderer = (AfferentRendererRef)lean_get_external_data(renderer_obj);
+    AfferentFontRef font = (AfferentFontRef)lean_get_external_data(font_obj);
+
+    uint32_t count = (uint32_t)lean_array_size(texts_arr);
+    if (count == 0) {
+        return lean_io_result_mk_ok(lean_box(0));
+    }
+
+    // Extract text strings
+    const char** texts = malloc(count * sizeof(char*));
+    if (!texts) {
+        return lean_io_result_mk_error(lean_mk_io_user_error(
+            lean_mk_string("Failed to allocate text array")));
+    }
+    for (uint32_t i = 0; i < count; i++) {
+        texts[i] = lean_string_cstr(lean_array_get_core(texts_arr, i));
+    }
+
+    // Extract positions array (2 floats per entry)
+    size_t pos_size = lean_array_size(positions_arr);
+    float* positions = NULL;
+    if (pos_size >= count * 2) {
+        positions = malloc(count * 2 * sizeof(float));
+        if (positions) {
+            for (size_t i = 0; i < count * 2; i++) {
+                positions[i] = (float)lean_unbox_float(lean_array_get_core(positions_arr, i));
+            }
+        }
+    }
+
+    // Extract colors array (4 floats per entry)
+    size_t color_size = lean_array_size(colors_arr);
+    float* colors = NULL;
+    if (color_size >= count * 4) {
+        colors = malloc(count * 4 * sizeof(float));
+        if (colors) {
+            for (size_t i = 0; i < count * 4; i++) {
+                colors[i] = (float)lean_unbox_float(lean_array_get_core(colors_arr, i));
+            }
+        }
+    }
+
+    // Extract transforms array (6 floats per entry)
+    size_t transform_size = lean_array_size(transforms_arr);
+    float* transforms = NULL;
+    if (transform_size >= count * 6) {
+        transforms = malloc(count * 6 * sizeof(float));
+        if (transforms) {
+            for (size_t i = 0; i < count * 6; i++) {
+                transforms[i] = (float)lean_unbox_float(lean_array_get_core(transforms_arr, i));
+            }
+        }
+    }
+
+    AfferentResult result = afferent_text_render_batch(
+        renderer, font, texts, positions, colors, transforms, count,
+        (float)canvas_width, (float)canvas_height
+    );
+
+    free(texts);
+    free(positions);
+    free(colors);
+    free(transforms);
+
+    if (result != AFFERENT_OK) {
+        return lean_io_result_mk_error(lean_mk_io_user_error(
+            lean_mk_string("Failed to render text batch")));
+    }
+
+    return lean_io_result_mk_ok(lean_box(0));
+}
+
 // ============== FloatBuffer FFI ==============
 // High-performance mutable float buffer for instance data
 // Avoids Lean's copy-on-write array semantics

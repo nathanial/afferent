@@ -38,6 +38,12 @@ This document outlines remaining optimizations for GPU batching in Afferent's re
    - Batched via `executeFillCircleBatch` with `CircleBatchEntry` structures
    - Avoids CPU tessellation for circles (GPU-native rendering)
 
+8. **Text Batching** (`Backend.lean`, `draw_text.m`, `text_render.c`)
+   - Consecutive fillText commands with same font batch into single GPU draw call
+   - Uses `executeTextBatch` with `TextBatchEntry` structures
+   - Per-entry transforms supported (rotation/scale via affine matrix)
+   - Reuses existing glyph atlas infrastructure
+
 ---
 
 ## Remaining Optimizations
@@ -97,25 +103,17 @@ def cacheTessellation (cache : IO.Ref TessellationCache) (path : Path)
 
 ### Phase 3: Text Optimization
 
-#### 3.1 Text Batching by Font
+#### 3.1 Text Batching by Font ✓ DONE
 
-**Current**: Each fillText is separate draw call.
+~~**Current**: Each fillText is separate draw call.~~
 
-**Proposed**: Batch text commands with same font into single draw call.
+~~**Proposed**: Batch text commands with same font into single draw call.~~
 
-**Complexity**: High (requires glyph atlas, position arrays).
-
-**Implementation sketch**:
-```lean
-structure TextBatch where
-  font : FontId
-  entries : Array (String × Float × Float × Color)  -- text, x, y, color
-```
-
-**Note**: Current text rendering uses FreeType + immediate drawing. Full batching requires:
-1. Glyph atlas generation
-2. UV coordinate lookup per character
-3. Instanced quad rendering
+Implemented in `Backend.lean:executeTextBatch` with:
+- `TextBatchEntry` structure with per-entry transform
+- `FFI.Text.renderBatch` for batched rendering
+- `afferent_text_generate_vertices_batch` generates all vertices in one buffer
+- Single `drawIndexedPrimitives` call per font batch
 
 ---
 
@@ -176,8 +174,8 @@ for (int i = 0; i < batchCount; i++) {
 |--------------|--------|--------|----------|--------|
 | strokeRect batching | Medium | Low | High | Done |
 | fillCircle command | High | Low | High | Done |
+| Text batching | High | High | Medium | Done |
 | Path tessellation cache | Medium | Medium | Medium | |
-| Text batching | High | High | Medium | |
 | Indirect draw | Medium | Medium | Low | |
 | Compute preprocessing | Low | Very High | Low | |
 
@@ -185,8 +183,8 @@ for (int i = 0; i < batchCount; i++) {
 
 1. ~~**fillCircle/strokeCircle commands** - Low effort, high impact for charts~~ Done
 2. ~~**strokeRect batching** - Low effort, completes rect batching story~~ Done
-3. **Path tessellation caching** - Medium effort, helps repeated UI elements
-4. **Text batching** - High effort, but significant for text-heavy UIs
+3. ~~**Text batching** - High effort, but significant for text-heavy UIs~~ Done
+4. **Path tessellation caching** - Medium effort, helps repeated UI elements
 
 ## Metrics to Track
 

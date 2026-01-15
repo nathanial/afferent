@@ -33,6 +33,19 @@ extern int afferent_text_generate_vertices(
     uint32_t* out_vertex_count,
     uint32_t* out_index_count
 );
+extern int afferent_text_generate_vertices_batch(
+    AfferentFontRef font,
+    const char** texts,
+    const float* positions,
+    const float* colors,
+    const float* transforms,
+    uint32_t count,
+    float screen_width, float screen_height,
+    float** out_vertices,
+    uint32_t** out_indices,
+    uint32_t* out_vertex_count,
+    uint32_t* out_index_count
+);
 
 // External declarations from texture.c
 extern const uint8_t* afferent_texture_get_data(AfferentTextureRef texture);

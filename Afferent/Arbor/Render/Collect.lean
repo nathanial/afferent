@@ -508,6 +508,7 @@ partial def collectWidgetCached (cache : IO.Ref RenderCache)
     | some cached =>
       -- Cache hit only if BOTH generation and layout match
       if cached.generation == spec.generation && cached.layoutHash == layoutHash then
+        cache.modify fun rc => rc.touch cacheKey
         CachedCollectM.emitAll cached.commands
         CachedCollectM.recordCacheHit
       else

@@ -573,7 +573,7 @@ def getRenderCacheSize (c : Canvas) : IO Nat := do
 /-- Clear the render cache. Call this if you need to force re-rendering
     (e.g., after a theme change that doesn't trigger widget rebuild). -/
 def clearRenderCache (c : Canvas) : IO Unit := do
-  c.renderCache.modify fun _ => Arbor.RenderCache.empty
+  c.renderCache.modify fun rc => Arbor.RenderCache.clear rc
 
 /-! ## Style operations -/
 

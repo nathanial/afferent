@@ -296,6 +296,23 @@ AfferentResult afferent_text_render(
     float canvas_height
 );
 
+// Batch text rendering - render multiple strings with the same font in one draw call
+// texts: array of C strings
+// positions: [x0, y0, x1, y1, ...] (2 floats per entry)
+// colors: [r0, g0, b0, a0, ...] (4 floats per entry)
+// transforms: [a0, b0, c0, d0, tx0, ty0, ...] (6 floats per entry)
+AfferentResult afferent_text_render_batch(
+    AfferentRendererRef renderer,
+    AfferentFontRef font,
+    const char** texts,
+    const float* positions,
+    const float* colors,
+    const float* transforms,
+    uint32_t count,
+    float canvas_width,
+    float canvas_height
+);
+
 // FloatBuffer - mutable float array for high-performance instance data
 // Lives in C memory, avoids Lean's copy-on-write array semantics
 AfferentResult afferent_float_buffer_create(size_t capacity, AfferentFloatBufferRef* out);
