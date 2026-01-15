@@ -206,10 +206,6 @@ def progressBar (theme : Theme) (initialValue : Float := 0.0)
 
   pure { value }
 
-/-- IndeterminateProgressBar result - includes animation control. -/
-structure IndeterminateProgressBarResult where
-  animationProgress : Reactive.Dynamic Spider Float
-
 /-- Create an indeterminate progress bar component using WidgetM.
     Emits an animated progress bar that cycles continuously.
     - `theme`: Theme for styling
@@ -219,22 +215,18 @@ structure IndeterminateProgressBarResult where
 def progressBarIndeterminate (theme : Theme)
     (variant : ProgressVariant := .primary)
     (label : Option String := none)
-    : WidgetM IndeterminateProgressBarResult := do
+    : WidgetM Unit := do
   let name ← registerComponentW "progress-bar-indeterminate" (isInteractive := false)
 
-  -- Subscribe to animation frames for continuous animation
-  let animFrame ← useAnimationFrame
+  -- Use shared elapsed time (all widgets share ONE Dynamic, no per-widget foldDyn)
+  let elapsedTime ← useElapsedTime
 
-  -- Accumulate time for animation (cycle every 2 seconds)
+  -- dynWidget auto-detects that this builder creates no subscriptions
+  -- and uses the fast path (skips scope management) automatically.
   let cycleDuration : Float := 2.0
-  let animationTime ← Reactive.foldDyn (fun dt acc => floatMod (acc + dt) cycleDuration) 0.0 animFrame
-  let animationProgress ← Dynamic.mapM (· / cycleDuration) animationTime
-
-  -- Use dynWidget for efficient change-driven rebuilds
-  let _ ← dynWidget animationProgress fun progress => do
+  let _ ← dynWidget elapsedTime fun t => do
+    let progress := floatMod t cycleDuration / cycleDuration
     emit do pure (progressBarIndeterminateVisual name progress variant theme label)
-
-  pure { animationProgress }
 
 /-- Create a progress bar that updates based on an external event stream.
     Useful for showing download progress, file processing, etc.

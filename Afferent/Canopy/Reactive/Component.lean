@@ -261,10 +261,19 @@ def useClick (name : String) : ReactiveM (Event Spider Unit) := do
   let clicks ← Event.filterM (fun data => hitWidget data name) events.clickEvent
   Event.voidM clicks
 
-/-- Subscribe to animation frames. Returns an Event that fires each frame with delta time. -/
+/-- Get animation frame events (fires each frame with delta time).
+    Use for widgets that need delta time (e.g., physics, hover delay tracking).
+    For continuous animations, prefer useElapsedTime which shares a single Dynamic. -/
 def useAnimationFrame : ReactiveM (Event Spider Float) := do
   let events ← getEvents
   pure events.animationFrame
+
+/-- Get the shared elapsed time Dynamic (seconds since app start).
+    All animated widgets share this single Dynamic instead of each creating their own foldDyn.
+    This dramatically reduces FRP overhead when many widgets animate simultaneously. -/
+def useElapsedTime : ReactiveM (Dynamic Spider Float) := do
+  let events ← getEvents
+  pure events.elapsedTime
 
 /-- Subscribe to key events. Returns the raw key event stream. -/
 def useKeyboard : ReactiveM (Event Spider KeyData) := do
@@ -451,15 +460,42 @@ def when' (condition : Dynamic Spider Bool) (content : WidgetM Unit) : WidgetM U
 This is similar to Reflex's `dyn` combinator.
 -/
 
+/-- Typeclass to optimize dynWidget result tracking.
+    For Unit results (common in animation widgets), we skip creating trigger events
+    and firing results entirely, giving a significant performance boost.
+    For other types, we track results normally. -/
+class DynWidgetResult (b : Type) where
+  /-- Create result tracking infrastructure. For Unit, returns a constant Dynamic and no-op fire. -/
+  createTracking : b → WidgetM (Dynamic Spider b × (b → IO Unit))
+  /-- Fire result update. For Unit, this is a no-op. -/
+  maybeFire : (b → IO Unit) → b → IO Unit
+
+instance : DynWidgetResult Unit where
+  createTracking _ := do
+    -- No trigger event, no holdDyn - just a constant Dynamic
+    let dyn ← Dynamic.pureM ()
+    pure (dyn, fun _ => pure ())
+  maybeFire _ _ := pure ()
+
+instance (priority := low) : DynWidgetResult b where
+  createTracking initial := do
+    let (trigger, fire) ← Reactive.newTriggerEvent
+    let dyn ← Reactive.holdDyn initial trigger
+    pure (dyn, fire)
+  maybeFire fire val := fire val
+
 /-- Run a dynamic widget computation. When the input Dynamic changes, the widget
     builder is re-run with the new value, rebuilding the subtree with fresh
     reactive subscriptions.
 
     Similar to Reflex's `dyn`, but takes a builder function to avoid BEq constraints.
 
-    Each build runs in its own child scope. When the dynamic updates, the previous
-    build's scope is disposed (cleaning up all subscriptions from that build) before
-    creating a new scope for the rebuild. This prevents subscription leaks.
+    **Performance optimizations**:
+    1. For Unit-returning builders (common in animations), result tracking is skipped
+       entirely via typeclass specialization - no trigger event, no holdDyn, no fireResult.
+    2. After the initial build, dynWidget checks whether the builder created any
+       subscriptions. If not (pure/animation builders), it uses a fast path that
+       skips scope management on rebuilds.
 
     Example (dependent dropdowns):
     ```
@@ -468,12 +504,12 @@ This is similar to Reflex's `dyn` combinator.
       dropdown (itemsForCategory catIdx) theme 0
     ```
 -/
-def dynWidget (dynValue : Dynamic Spider a) (builder : a → WidgetM b)
+def dynWidget [DynWidgetResult b] (dynValue : Dynamic Spider a) (builder : a → WidgetM b)
     : WidgetM (Dynamic Spider b) := do
   let events ← getEventsW  -- Capture ReactiveEvents context
 
   -- All scope and initial build logic in one SpiderM block to access env.currentScope
-  let (initialResult, childScopeRef, rendersRef, generationRef) ← (⟨fun env => do
+  let (initialResult, childScopeRef, rendersRef, generationRef, needsScopeManagementRef) ← (⟨fun env => do
     -- Create child scope for builder subscriptions (enables cleanup on rebuild)
     let initialChildScope ← env.currentScope.child
     let scopeRef : IO.Ref Reactive.SubscriptionScope ← IO.mkRef initialChildScope
@@ -491,32 +527,51 @@ def dynWidget (dynValue : Dynamic Spider a) (builder : a → WidgetM b)
     -- Refs for current state
     let renRef : IO.Ref (Array ComponentRender) ← IO.mkRef renders
 
-    pure (result, scopeRef, renRef, genRef)
-  ⟩ : SpiderM (b × IO.Ref Reactive.SubscriptionScope × IO.Ref (Array ComponentRender) × IO.Ref Nat))
+    -- Check if builder created any subscriptions - if not, we can use fast path
+    let isPure ← initialChildScope.isEmpty
+    let needsScopeRef ← IO.mkRef (!isPure)
 
-  -- Result tracking via trigger event
-  let (resultTrigger, fireResult) ← Reactive.newTriggerEvent
-  let resultDyn ← Reactive.holdDyn initialResult resultTrigger
+    pure (result, scopeRef, renRef, genRef, needsScopeRef)
+  ⟩ : SpiderM (b × IO.Ref Reactive.SubscriptionScope × IO.Ref (Array ComponentRender) × IO.Ref Nat × IO.Ref Bool))
+
+  -- Result tracking via typeclass - Unit skips this entirely
+  let (resultDyn, fireResult) ← DynWidgetResult.createTracking initialResult
 
   -- Subscribe to rebuilds when dynValue changes
   let subscribeAction : SpiderM Unit := ⟨fun env => do
     let unsub ← Reactive.Event.subscribe dynValue.updated fun newValue => do
-      -- Clear the child scope's subscriptions (but keep the scope alive for reuse).
-      -- Using clear instead of dispose+child prevents leaking entries in the parent
-      -- scope's subscriptions array, which would grow unboundedly for animated widgets.
-      let childScope ← childScopeRef.get
-      childScope.clear
+      let needsScopeManagement ← needsScopeManagementRef.get
 
-      -- Increment cache generation to invalidate cached render commands
-      generationRef.modify (· + 1)
+      if needsScopeManagement then
+        -- Full path: clear scope before rebuild
+        let childScope ← childScopeRef.get
+        childScope.clear
 
-      -- Run the builder with the new value, reusing the same child scope
-      let widgetM := runWidgetChildren (builder newValue)
-      let reactiveM := widgetM.run { children := #[] }
-      let spiderM := reactiveM.run events
-      let ((result, renders), _) ← spiderM.run { env with currentScope := childScope }
-      rendersRef.set renders
-      fireResult result
+        generationRef.modify (· + 1)
+
+        let widgetM := runWidgetChildren (builder newValue)
+        let reactiveM := widgetM.run { children := #[] }
+        let spiderM := reactiveM.run events
+        let ((result, renders), _) ← spiderM.run { env with currentScope := childScope }
+        rendersRef.set renders
+        DynWidgetResult.maybeFire fireResult result
+      else
+        -- Fast path: no scope clearing needed
+        generationRef.modify (· + 1)
+
+        let childScope ← childScopeRef.get
+        let widgetM := runWidgetChildren (builder newValue)
+        let reactiveM := widgetM.run { children := #[] }
+        let spiderM := reactiveM.run events
+        let ((result, renders), _) ← spiderM.run { env with currentScope := childScope }
+        rendersRef.set renders
+        DynWidgetResult.maybeFire fireResult result
+
+        -- Safety check: if subscriptions were created, switch to full mode permanently
+        let stillEmpty ← childScope.isEmpty
+        if !stillEmpty then
+          needsScopeManagementRef.set true
+
     env.currentScope.register unsub⟩
   subscribeAction  -- Lift SpiderM to WidgetM via MonadLift
 

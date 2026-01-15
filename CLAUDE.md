@@ -189,7 +189,10 @@ useClick : String → ReactiveM (Event Spider Unit)
 -- Click with position data (for sliders)
 useClickData : String → ReactiveM (Event Spider ClickData)
 
--- Animation frames with delta time
+-- Shared elapsed time (use for continuous animations - all widgets share ONE Dynamic)
+useElapsedTime : ReactiveM (Dynamic Spider Float)
+
+-- Animation frames with delta time (use for physics, hover delays, NOT continuous animation)
 useAnimationFrame : ReactiveM (Event Spider Float)
 
 -- Keyboard events

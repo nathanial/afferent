@@ -557,45 +557,37 @@ open Afferent.Canopy.Reactive
 private def floatMod (x y : Float) : Float :=
   x - y * (x / y).floor
 
-/-- Spinner result - includes animation control. -/
-structure SpinnerResult where
-  animationProgress : Reactive.Dynamic Spider Float
-
 /-- Create a spinner component using WidgetM.
     Emits an animated spinner that cycles continuously.
     - `theme`: Theme for styling
     - `config`: Spinner configuration (variant, color, speed, dimensions)
 -/
-def spinner (theme : Theme) (config : Spinner.Config := {}) : WidgetM SpinnerResult := do
+def spinner (theme : Theme) (config : Spinner.Config := {}) : WidgetM Unit := do
   let name ← registerComponentW "spinner" (isInteractive := false)
 
-  -- Subscribe to animation frames for continuous animation
-  let animFrame ← useAnimationFrame
+  -- Use shared elapsed time (all widgets share ONE Dynamic, no per-widget foldDyn)
+  let elapsedTime ← useElapsedTime
 
-  -- Accumulate time for animation (cycle duration adjusted by speed)
+  -- dynWidget auto-detects that this builder creates no subscriptions
+  -- and uses the fast path (skips scope management) automatically.
   let cycleDuration : Float := 2.0 / config.speed
-  let animationTime ← Reactive.foldDyn (fun dt acc => floatMod (acc + dt) cycleDuration) 0.0 animFrame
-  let animationProgress ← Dynamic.mapM (· / cycleDuration) animationTime
-
-  -- Use dynWidget for efficient change-driven rebuilds
-  let _ ← dynWidget animationProgress fun progress => do
+  let _ ← dynWidget elapsedTime fun t => do
+    let progress := floatMod t cycleDuration / cycleDuration
     emit do pure (spinnerVisual name progress config theme)
-
-  pure { animationProgress }
 
 /-- Convenience function: Create a default ring spinner. -/
 def spinnerRing (theme : Theme) (color : Option Color := none)
-    (size : Float := 40.0) : WidgetM SpinnerResult :=
+    (size : Float := 40.0) : WidgetM Unit :=
   spinner theme { variant := .ring, color, dims := { size } }
 
 /-- Convenience function: Create a circle dots spinner. -/
 def spinnerCircleDots (theme : Theme) (color : Option Color := none)
-    (size : Float := 40.0) : WidgetM SpinnerResult :=
+    (size : Float := 40.0) : WidgetM Unit :=
   spinner theme { variant := .circleDots, color, dims := { size } }
 
 /-- Convenience function: Create a bouncing dots spinner. -/
 def spinnerBouncingDots (theme : Theme) (color : Option Color := none)
-    (size : Float := 40.0) : WidgetM SpinnerResult :=
+    (size : Float := 40.0) : WidgetM Unit :=
   spinner theme { variant := .bouncingDots, color, dims := { size } }
 
 end Afferent.Canopy

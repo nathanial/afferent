@@ -29,72 +29,22 @@ This document outlines remaining optimizations for GPU batching in Afferent's re
    - `drawCirclesBatch` for scatter plots
    - `drawRectsBatch` for heatmaps/grids
 
+6. **strokeRect Batching** (`Backend.lean`)
+   - Consecutive strokeRect commands with same lineWidth and cornerRadius batch into single GPU draw call
+   - Uses `executeStrokeRectBatch` with `StrokeRectBatchEntry` structures
+
+7. **fillCircle/strokeCircle Commands** (`Command.lean`, `Backend.lean`)
+   - Dedicated `RenderCommand.fillCircle` and `RenderCommand.strokeCircle` variants
+   - Batched via `executeFillCircleBatch` with `CircleBatchEntry` structures
+   - Avoids CPU tessellation for circles (GPU-native rendering)
+
 ---
 
 ## Remaining Optimizations
 
 ### Phase 1: Extend Command-Level Batching
 
-#### 1.1 Add strokeRect Batching
-
-**Current**: Each strokeRect is a separate draw call.
-
-**Proposed**: Batch consecutive strokeRect commands with same lineWidth and cornerRadius.
-
-**Implementation**:
-```lean
--- New in Command.lean (no change needed, strokeRect already exists)
-
--- New in draw_2d.m
-void afferent_renderer_draw_stroke_rects_batch(
-    AfferentRendererRef renderer,
-    const float* instance_data,  // [x, y, w, h, r, g, b, a] per rect
-    uint32_t instance_count,
-    float line_width,
-    float corner_radius,
-    float canvas_width,
-    float canvas_height
-);
-
--- New in Backend.lean
-def executeStrokeRectBatch (rects : Array StrokeRectEntry) (lineWidth cornerRadius : Float) : CanvasM Unit
-```
-
-**Files to modify**:
-- `native/src/metal/draw_2d.m` - Add `draw_stroke_rects_batch`
-- `native/src/metal/shaders/batched_rect.metal` - Add stroke variant
-- `Afferent/FFI/Renderer.lean` - Add FFI binding
-- `Afferent/Widget/Backend.lean` - Add batching logic in `executeCommandsBatchedWithStats`
-
-**Impact**: UI borders, chart axes, grid lines with strokes.
-
----
-
-#### 1.2 Add fillCircle/strokeCircle Commands
-
-**Current**: Circles must use fillPath with arc commands (tessellated on CPU).
-
-**Proposed**: Add dedicated circle commands that use GPU instancing.
-
-**Implementation**:
-```lean
--- New in Command.lean
-inductive RenderCommand where
-  | ...
-  | fillCircle (center : Point) (radius : Float) (color : Color)
-  | strokeCircle (center : Point) (radius : Float) (color : Color) (lineWidth : Float)
-```
-
-**Files to modify**:
-- `Afferent/Arbor/Render/Command.lean` - Add circle variants
-- `Afferent/Widget/Backend.lean` - Add `executeCircleBatch`, update coalescing bins
-- Already have `drawCirclesBatch` in Metal layer
-
-**Impact**: Scatter plots, bubble charts, node graphs, markers.
-
----
-
-#### 1.3 Add fillPolygon Batching
+#### 1.1 fillPolygon Batching
 
 **Current**: Each fillPolygon converts to path and tessellates separately.
 
@@ -222,19 +172,19 @@ for (int i = 0; i < batchCount; i++) {
 
 ## Priority Matrix
 
-| Optimization | Impact | Effort | Priority |
-|--------------|--------|--------|----------|
-| strokeRect batching | Medium | Low | High |
-| fillCircle command | High | Low | High |
-| Path tessellation cache | Medium | Medium | Medium |
-| Text batching | High | High | Medium |
-| Indirect draw | Medium | Medium | Low |
-| Compute preprocessing | Low | Very High | Low |
+| Optimization | Impact | Effort | Priority | Status |
+|--------------|--------|--------|----------|--------|
+| strokeRect batching | Medium | Low | High | Done |
+| fillCircle command | High | Low | High | Done |
+| Path tessellation cache | Medium | Medium | Medium | |
+| Text batching | High | High | Medium | |
+| Indirect draw | Medium | Medium | Low | |
+| Compute preprocessing | Low | Very High | Low | |
 
 ## Recommended Implementation Order
 
-1. **fillCircle/strokeCircle commands** - Low effort, high impact for charts
-2. **strokeRect batching** - Low effort, completes rect batching story
+1. ~~**fillCircle/strokeCircle commands** - Low effort, high impact for charts~~ Done
+2. ~~**strokeRect batching** - Low effort, completes rect batching story~~ Done
 3. **Path tessellation caching** - Medium effort, helps repeated UI elements
 4. **Text batching** - High effort, but significant for text-heavy UIs
 

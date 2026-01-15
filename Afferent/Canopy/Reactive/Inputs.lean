@@ -71,8 +71,12 @@ structure ReactiveEvents where
   hoverEvent : Event Spider HoverData
   /-- Keyboard events. -/
   keyEvent : Event Spider KeyData
-  /-- Animation frame events (fires each frame with dt). -/
+  /-- Animation frame events (fires each frame with dt).
+      Use for widgets that need delta time (e.g., physics, hover delay tracking). -/
   animationFrame : Event Spider Float
+  /-- Shared elapsed time (seconds since app start, accumulated from animation frames).
+      Use for continuous animations - all widgets share this single Dynamic. -/
+  elapsedTime : Dynamic Spider Float
   /-- Scroll events with layout context. -/
   scrollEvent : Event Spider ScrollData
   /-- Component registry for auto-generating names. -/
@@ -85,16 +89,20 @@ def createInputs : SpiderM (ReactiveEvents × ReactiveInputs) := do
   let (mouseUpEvent, fireMouseUp) ← newTriggerEvent (t := Spider) (a := MouseButtonData)
   let (hoverEvent, fireHover) ← newTriggerEvent (t := Spider) (a := HoverData)
   let (keyEvent, fireKey) ← newTriggerEvent (t := Spider) (a := KeyData)
-  let (animFrame, fireAnimFrame) ← newTriggerEvent (t := Spider) (a := Float)
+  let (animFrameEvent, fireAnimFrame) ← newTriggerEvent (t := Spider) (a := Float)
   let (scrollEvent, fireScroll) ← newTriggerEvent (t := Spider) (a := ScrollData)
   let registry ← ComponentRegistry.create
+
+  -- Create a SINGLE shared Dynamic for elapsed time that all widgets use
+  let elapsedTime ← foldDyn (fun dt acc => acc + dt) 0.0 animFrameEvent
 
   let events : ReactiveEvents := {
     clickEvent := clickEvent
     mouseUpEvent := mouseUpEvent
     hoverEvent := hoverEvent
     keyEvent := keyEvent
-    animationFrame := animFrame
+    animationFrame := animFrameEvent
+    elapsedTime := elapsedTime
     scrollEvent := scrollEvent
     registry := registry
   }
