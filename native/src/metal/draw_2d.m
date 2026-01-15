@@ -453,3 +453,76 @@ void afferent_renderer_draw_circles_batch(
         [renderer->currentEncoder setRenderPipelineState:renderer->pipelineState];
     }
 }
+
+// =============================================================================
+// BATCHED STROKED RECT DRAWING - For UI borders, chart axes, grid lines
+// Instance data: [x, y, width, height, r, g, b, a] per rect (8 floats)
+// =============================================================================
+
+typedef struct {
+    float viewport[2];
+    float lineWidth;
+    float cornerRadius;
+} BatchedStrokeRectUniforms;
+
+void afferent_renderer_draw_stroke_rects_batch(
+    AfferentRendererRef renderer,
+    const float* instance_data,
+    uint32_t instance_count,
+    float line_width,
+    float corner_radius,
+    float canvas_width,
+    float canvas_height
+) {
+    if (!renderer || !renderer->currentEncoder || !instance_data || instance_count == 0) {
+        return;
+    }
+
+    if (!renderer->batchedStrokeRectPipelineState) {
+        NSLog(@"Batched stroke rect pipeline not available");
+        return;
+    }
+
+    @autoreleasepool {
+        // 8 floats per instance: [x, y, width, height, r, g, b, a]
+        size_t data_size = instance_count * 8 * sizeof(float);
+        id<MTLBuffer> instanceBuffer = pool_acquire_buffer(
+            renderer->device,
+            g_buffer_pool.vertex_pool,
+            &g_buffer_pool.vertex_pool_count,
+            data_size,
+            true
+        );
+
+        if (!instanceBuffer) {
+            instanceBuffer = [renderer->device newBufferWithLength:data_size options:MTLResourceStorageModeShared];
+        }
+
+        if (!instanceBuffer) {
+            NSLog(@"Failed to create batched stroke rect instance buffer");
+            return;
+        }
+
+        memcpy([instanceBuffer contents], instance_data, data_size);
+
+        BatchedStrokeRectUniforms uniforms;
+        uniforms.viewport[0] = canvas_width;
+        uniforms.viewport[1] = canvas_height;
+        uniforms.lineWidth = line_width;
+        uniforms.cornerRadius = corner_radius;
+
+        [renderer->currentEncoder setRenderPipelineState:renderer->batchedStrokeRectPipelineState];
+        [renderer->currentEncoder setDepthStencilState:renderer->depthStateDisabled];
+        [renderer->currentEncoder setVertexBuffer:instanceBuffer offset:0 atIndex:0];
+        [renderer->currentEncoder setVertexBytes:&uniforms length:sizeof(BatchedStrokeRectUniforms) atIndex:1];
+
+        // Triangle strip with 4 vertices per rect instance
+        [renderer->currentEncoder drawPrimitives:MTLPrimitiveTypeTriangleStrip
+                                     vertexStart:0
+                                     vertexCount:4
+                                   instanceCount:instance_count];
+
+        // Restore default pipeline
+        [renderer->currentEncoder setRenderPipelineState:renderer->pipelineState];
+    }
+}

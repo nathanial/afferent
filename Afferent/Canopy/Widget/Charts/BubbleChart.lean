@@ -165,10 +165,9 @@ def bubbleChartSpec (points : Array DataPoint) (theme : Theme)
         let color := match p.color with
           | some c => c.withAlpha dims.bubbleOpacity
           | none => (colors[i % colors.size]!).withAlpha dims.bubbleOpacity
-        let bubblePath := Arbor.Path.circle (Arbor.Point.mk' px py) radius
-        RenderM.fillPath bubblePath color
-        -- Optionally add a stroke for visibility
-        RenderM.strokePath bubblePath (color.withAlpha 1.0) 1.5
+        -- Use GPU-batched circle rendering for better performance
+        RenderM.fillCircle' px py radius color
+        RenderM.strokeCircle' px py radius (color.withAlpha 1.0) 1.5
 
       -- Draw bubble labels if enabled
       if dims.showBubbleLabels then
@@ -278,9 +277,9 @@ def multiSeriesSpec (series : Array Series) (theme : Theme)
           let py := chartY + chartHeight - ((p.y - niceMinY) / rangeY) * chartHeight
           let radius := sizeToRadius p.size minSize maxSize dims
           let color := (p.color.getD seriesColor).withAlpha dims.bubbleOpacity
-          let bubblePath := Arbor.Path.circle (Arbor.Point.mk' px py) radius
-          RenderM.fillPath bubblePath color
-          RenderM.strokePath bubblePath (color.withAlpha 1.0) 1.5
+          -- Use GPU-batched circle rendering for better performance
+          RenderM.fillCircle' px py radius color
+          RenderM.strokeCircle' px py radius (color.withAlpha 1.0) 1.5
 
       -- Draw Y-axis labels
       if dims.showAxisLabels && dims.gridLineCount > 0 then
@@ -383,9 +382,9 @@ def bubbleChartWithLegendSpec (series : Array Series) (theme : Theme)
           let py := chartY + chartHeight - ((p.y - niceMinY) / rangeY) * chartHeight
           let radius := sizeToRadius p.size minSize maxSize dims
           let color := (p.color.getD seriesColor).withAlpha dims.bubbleOpacity
-          let bubblePath := Arbor.Path.circle (Arbor.Point.mk' px py) radius
-          RenderM.fillPath bubblePath color
-          RenderM.strokePath bubblePath (color.withAlpha 1.0) 1.5
+          -- Use GPU-batched circle rendering for better performance
+          RenderM.fillCircle' px py radius color
+          RenderM.strokeCircle' px py radius (color.withAlpha 1.0) 1.5
 
       -- Draw axes
       RenderM.fillRect' chartX chartY 1.0 chartHeight axisColor 0.0
@@ -412,9 +411,8 @@ def bubbleChartWithLegendSpec (series : Array Series) (theme : Theme)
         let color := s.color.getD (colors[si % colors.size]!)
         let itemY := legendStartY + si.toFloat * legendItemHeight
 
-        -- Color circle
-        let circlePath := Arbor.Path.circle (Arbor.Point.mk' (legendX + 8) (itemY + 8)) 6.0
-        RenderM.fillPath circlePath color
+        -- Color circle (GPU-batched)
+        RenderM.fillCircle' (legendX + 8) (itemY + 8) 6.0 color
 
         -- Label text
         let label := s.label.getD s!"Series {si + 1}"

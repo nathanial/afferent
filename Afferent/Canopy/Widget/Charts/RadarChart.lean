@@ -239,8 +239,8 @@ def radarChartSpec (data : Data) (theme : Theme)
               let distance := radius * normalizedValue
               let angle := axisAngle axisIdx numAxes
               let (x, y) := pointPosition centerX centerY angle distance
-              let markerPath := Arbor.Path.circle (Arbor.Point.mk' x y) dims.markerRadius
-              RenderM.fillPath markerPath color
+              -- GPU-batched marker
+              RenderM.fillCircle' x y dims.markerRadius color
 
       -- Draw legend using shared utility
       if dims.showLegend && data.series.size > 0 then

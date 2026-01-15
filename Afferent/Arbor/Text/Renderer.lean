@@ -138,6 +138,25 @@ def executeCommand (state : RenderState) (cmd : RenderCommand) : RenderState :=
     let canvas := state.canvas.strokeBox x y w h chars
     { state with canvas }
 
+  | .fillCircle center radius color =>
+    -- Approximate circle as filled box in text mode
+    let (cx, cy) := state.toCanvasCoords center.x center.y
+    let r := radius.toUInt32.toNat
+    let ch := colorToFillChar color
+    let x := if cx >= r then cx - r else 0
+    let y := if cy >= r then cy - r else 0
+    let canvas := state.canvas.fillRect x y (r * 2) (r * 2) ch
+    { state with canvas }
+
+  | .strokeCircle center radius _color _lineWidth =>
+    -- Approximate circle outline as stroked box in text mode
+    let (cx, cy) := state.toCanvasCoords center.x center.y
+    let r := radius.toUInt32.toNat
+    let x := if cx >= r then cx - r else 0
+    let y := if cy >= r then cy - r else 0
+    let canvas := state.canvas.strokeBox x y (r * 2) (r * 2) Canvas.BoxChars.rounded
+    { state with canvas }
+
   | .fillText text x y _font _color =>
     let (cx, cy) := state.toCanvasCoords x y
     let canvas := state.canvas.drawText cx cy text

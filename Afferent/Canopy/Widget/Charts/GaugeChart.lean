@@ -180,10 +180,9 @@ def gaugeChartSpec (data : Data) (theme : Theme)
       |>.lineTo (Arbor.Point.mk' needleTipX needleTipY)
     RenderM.strokePath needlePath colors.needle needleWidth
 
-    -- Draw center circle
+    -- GPU-batched center circle
     let centerCircleRadius := minDim * 0.035
-    let centerCirclePath := Arbor.Path.circle (Arbor.Point.mk' centerX centerY) centerCircleRadius
-    RenderM.fillPath centerCirclePath colors.needleCenter
+    RenderM.fillCircle' centerX centerY centerCircleRadius colors.needleCenter
 
     -- Draw current value
     if dims.showValue then

@@ -339,6 +339,111 @@ test "isStateChanging returns false for fillText" := do
 test "isStateChanging returns false for fillPath" := do
   ensure (!isStateChanging mkFillPath) "fillPath should not be state-changing"
 
+/-! ## Circle Coalescing Tests -/
+
+def mkFillCircle (cx cy radius : Float) : RenderCommand :=
+  .fillCircle ⟨cx, cy⟩ radius ⟨1, 0, 0, 1⟩
+
+def mkStrokeCircle (cx cy radius : Float) : RenderCommand :=
+  .strokeCircle ⟨cx, cy⟩ radius ⟨0, 1, 0, 1⟩ 1.0
+
+def isFillCircle : RenderCommand → Bool
+  | .fillCircle .. => true
+  | _ => false
+
+def isStrokeCircle : RenderCommand → Bool
+  | .strokeCircle .. => true
+  | _ => false
+
+def countFillCircles (cmds : Array RenderCommand) : Nat :=
+  cmds.foldl (fun acc cmd => if isFillCircle cmd then acc + 1 else acc) 0
+
+def countStrokeCircles (cmds : Array RenderCommand) : Nat :=
+  cmds.foldl (fun acc cmd => if isStrokeCircle cmd then acc + 1 else acc) 0
+
+def fillCirclesConsecutiveFrom (cmds : Array RenderCommand) (startIdx : Nat) (count : Nat) : Bool := Id.run do
+  for i in [startIdx : startIdx + count] do
+    match cmds[i]? with
+    | some cmd => if !isFillCircle cmd then return false
+    | none => return false
+  return true
+
+test "fillCircles coalesced when interleaved with text" := do
+  -- Input: fillCircle, fillText, fillCircle
+  -- Expected: fillCircle, fillCircle, fillText (circles grouped first)
+  let cmds := #[mkFillCircle 50 50 10, mkFillText "label", mkFillCircle 100 100 15]
+  let result := coalesceCommands cmds
+  ensure (result.size == 3) "Expected 3 commands"
+  ensure (countFillCircles result == 2) "Expected 2 fillCircles"
+  ensure (fillCirclesConsecutiveFrom result 0 2) "First 2 commands should be fillCircles"
+
+test "fillCircles grouped with fillRects" := do
+  -- Input: fillRect, fillCircle, fillRect, fillCircle
+  -- Expected: fillRect×2, fillCircle×2 (rects before circles in coalescing order)
+  let cmds := #[mkFillRect 0 0 10 10, mkFillCircle 50 50 10, mkFillRect 20 20 10 10, mkFillCircle 100 100 10]
+  let result := coalesceCommands cmds
+  ensure (result.size == 4) "Expected 4 commands"
+  ensure (countFillRects result == 2) "Expected 2 fillRects"
+  ensure (countFillCircles result == 2) "Expected 2 fillCircles"
+  -- fillRects come first
+  ensure (fillRectsConsecutiveFrom result 0 2) "First 2 commands should be fillRects"
+  -- then circles
+  ensure (fillCirclesConsecutiveFrom result 2 2) "Commands 2-3 should be fillCircles"
+
+test "strokeCircles grouped after fillCircles" := do
+  -- Input: strokeCircle, fillCircle, strokeCircle, fillCircle
+  -- Expected: fillCircle×2, strokeCircle×2
+  let cmds := #[mkStrokeCircle 0 0 10, mkFillCircle 50 50 10, mkStrokeCircle 100 100 10, mkFillCircle 150 150 10]
+  let result := coalesceCommands cmds
+  ensure (result.size == 4) "Expected 4 commands"
+  ensure (countFillCircles result == 2) "Expected 2 fillCircles"
+  ensure (countStrokeCircles result == 2) "Expected 2 strokeCircles"
+  -- fillCircles first
+  ensure (fillCirclesConsecutiveFrom result 0 2) "First 2 should be fillCircles"
+
+/-! ## StrokeRect with Different Parameters Tests -/
+
+def mkStrokeRectParams (x y w h lineWidth cornerRadius : Float) : RenderCommand :=
+  .strokeRect ⟨⟨x, y⟩, ⟨w, h⟩⟩ ⟨0, 1, 0, 1⟩ lineWidth cornerRadius
+
+def strokeRectsConsecutiveFrom (cmds : Array RenderCommand) (startIdx : Nat) (count : Nat) : Bool := Id.run do
+  for i in [startIdx : startIdx + count] do
+    match cmds[i]? with
+    | some cmd => if !isStrokeRect cmd then return false
+    | none => return false
+  return true
+
+test "strokeRects coalesced when interleaved with text" := do
+  -- Input: strokeRect, fillText, strokeRect
+  -- Expected: strokeRect×2, fillText
+  let cmds := #[mkStrokeRect 0 0 10 10, mkFillText "label", mkStrokeRect 20 20 10 10]
+  let result := coalesceCommands cmds
+  ensure (result.size == 3) "Expected 3 commands"
+  ensure (countStrokeRects result == 2) "Expected 2 strokeRects"
+  ensure (strokeRectsConsecutiveFrom result 0 2) "First 2 should be strokeRects"
+
+test "strokeRects with same params stay consecutive" := do
+  -- All have same lineWidth=2.0 and cornerRadius=4.0
+  let cmds := #[
+    mkStrokeRectParams 0 0 10 10 2.0 4.0,
+    mkFillText "break",
+    mkStrokeRectParams 20 20 10 10 2.0 4.0,
+    mkStrokeRectParams 40 40 10 10 2.0 4.0
+  ]
+  let result := coalesceCommands cmds
+  ensure (result.size == 4) "Expected 4 commands"
+  ensure (countStrokeRects result == 3) "Expected 3 strokeRects"
+  -- All 3 strokeRects should be consecutive at start
+  ensure (strokeRectsConsecutiveFrom result 0 3) "First 3 should be strokeRects"
+
+/-! ## isStateChanging for New Commands -/
+
+test "isStateChanging returns false for fillCircle" := do
+  ensure (!isStateChanging (mkFillCircle 50 50 10)) "fillCircle should not be state-changing"
+
+test "isStateChanging returns false for strokeCircle" := do
+  ensure (!isStateChanging (mkStrokeCircle 50 50 10)) "strokeCircle should not be state-changing"
+
 #generate_tests
 
 end Afferent.Tests.CoalescingTests

@@ -574,6 +574,19 @@ void afferent_renderer_draw_circles_batch(
     float canvas_height
 );
 
+// Draw multiple stroked rectangles in a single draw call.
+// Optimized for UI borders, chart axes, grid lines.
+// instance_data: Array of 8 floats per rect [x, y, width, height, r, g, b, a]
+void afferent_renderer_draw_stroke_rects_batch(
+    AfferentRendererRef renderer,
+    const float* instance_data,
+    uint32_t instance_count,
+    float line_width,
+    float corner_radius,
+    float canvas_width,
+    float canvas_height
+);
+
 // ============================================================================
 // Textured 3D Mesh rendering
 // ============================================================================

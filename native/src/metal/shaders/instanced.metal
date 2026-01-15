@@ -339,3 +339,90 @@ fragment float4 batched_circle_fragment(BatchedCircleVertexOut in [[stage_in]]) 
     if (alpha < 0.01) discard_fragment();
     return float4(in.color.rgb, in.color.a * alpha);
 }
+
+// =============================================================================
+// BATCHED STROKED RECT SHADER
+// For UI borders, chart axes, grid lines with strokes
+// Instance data: [x, y, width, height, r, g, b, a] per rect (8 floats)
+// Uniforms: viewport, lineWidth, cornerRadius
+// =============================================================================
+
+// Uniforms for batched stroked rects
+struct BatchedStrokeRectUniforms {
+    float2 viewport;          // Canvas width, height for NDC conversion
+    float lineWidth;          // Stroke width in pixels
+    float cornerRadius;       // Corner radius (0 for sharp corners)
+};
+
+struct BatchedStrokeRectVertexOut {
+    float4 position [[position]];
+    float4 color;
+    float2 uv;                // 0-1 UV within the rect
+    float2 rectSize;          // Rect size in pixels (for corner radius)
+    float lineWidth;          // Pass line width to fragment
+    float cornerRadius;       // Pass corner radius to fragment
+};
+
+vertex BatchedStrokeRectVertexOut batched_stroke_rect_vertex(
+    uint vid [[vertex_id]],
+    uint iid [[instance_id]],
+    constant BatchedRectInstance* instances [[buffer(0)]],
+    constant BatchedStrokeRectUniforms& uniforms [[buffer(1)]]
+) {
+    // Quad vertices for triangle strip: 0=TL, 1=TR, 2=BL, 3=BR
+    float2 unitQuad[4] = {
+        float2(0, 0),   // 0: top-left
+        float2(1, 0),   // 1: top-right
+        float2(0, 1),   // 2: bottom-left
+        float2(1, 1)    // 3: bottom-right
+    };
+
+    BatchedRectInstance inst = instances[iid];
+    float2 uv = unitQuad[vid];
+
+    // Compute pixel position
+    float2 pixelPos = inst.pos + uv * inst.size;
+
+    // Convert to NDC: x: 0..width -> -1..1, y: 0..height -> 1..-1 (Y flipped)
+    float2 ndc;
+    ndc.x = (pixelPos.x / uniforms.viewport.x) * 2.0 - 1.0;
+    ndc.y = 1.0 - (pixelPos.y / uniforms.viewport.y) * 2.0;
+
+    BatchedStrokeRectVertexOut out;
+    out.position = float4(ndc, 0.0, 1.0);
+    out.color = inst.color;
+    out.uv = uv;
+    out.rectSize = inst.size;
+    out.lineWidth = uniforms.lineWidth;
+    out.cornerRadius = uniforms.cornerRadius;
+    return out;
+}
+
+fragment float4 batched_stroke_rect_fragment(BatchedStrokeRectVertexOut in [[stage_in]]) {
+    // Compute distance to rounded rect edge using SDF
+    float2 halfSize = in.rectSize * 0.5;
+    float2 center = float2(0.5, 0.5);
+    float2 localPos = (in.uv - center) * in.rectSize;  // Position relative to center
+
+    // Clamp corner radius to half the smaller dimension
+    float r = min(in.cornerRadius, min(halfSize.x, halfSize.y));
+
+    // Distance to rounded rect edge
+    float2 q = abs(localPos) - (halfSize - r);
+    float dist = min(max(q.x, q.y), 0.0) + length(max(q, 0.0)) - r;
+
+    // Stroke: render pixels where |dist| < lineWidth/2
+    // dist < 0 means inside, dist > 0 means outside
+    float halfWidth = in.lineWidth * 0.5;
+    float innerEdge = -halfWidth;
+    float outerEdge = halfWidth;
+
+    // Smooth the stroke edges for anti-aliasing
+    float innerAlpha = smoothstep(innerEdge - 1.0, innerEdge, dist);
+    float outerAlpha = 1.0 - smoothstep(outerEdge - 1.0, outerEdge, dist);
+    float alpha = innerAlpha * outerAlpha;
+
+    if (alpha < 0.01) discard_fragment();
+
+    return float4(in.color.rgb, in.color.a * alpha);
+}

@@ -106,12 +106,11 @@ def scatterPlotSpec (points : Array DataPoint) (theme : Theme)
           let lineX := chartX + (ratio * chartWidth)
           RenderM.fillRect' lineX chartY 1.0 chartHeight (Color.gray 0.3) 0.0
 
-      -- Draw data points
+      -- Draw data points (GPU-batched)
       for p in points do
         let px := chartX + ((p.x - niceMinX) / rangeX) * chartWidth
         let py := chartY + chartHeight - ((p.y - niceMinY) / rangeY) * chartHeight
-        let pointPath := Arbor.Path.circle (Arbor.Point.mk' px py) dims.pointRadius
-        RenderM.fillPath pointPath pointColor
+        RenderM.fillCircle' px py dims.pointRadius pointColor
 
       -- Draw Y-axis labels
       if dims.showAxisLabels && dims.gridLineCount > 0 then
@@ -199,7 +198,7 @@ def multiSeriesSpec (series : Array Series) (theme : Theme)
           let lineX := chartX + (ratio * chartWidth)
           RenderM.fillRect' lineX chartY 1.0 chartHeight (Color.gray 0.3) 0.0
 
-      -- Draw data points for each series
+      -- Draw data points for each series (GPU-batched)
       for si in [0:series.size] do
         let s := series[si]!
         let color := s.color.getD (colors[si % colors.size]!)
@@ -208,8 +207,7 @@ def multiSeriesSpec (series : Array Series) (theme : Theme)
         for p in s.points do
           let px := chartX + ((p.x - niceMinX) / rangeX) * chartWidth
           let py := chartY + chartHeight - ((p.y - niceMinY) / rangeY) * chartHeight
-          let pointPath := Arbor.Path.circle (Arbor.Point.mk' px py) radius
-          RenderM.fillPath pointPath color
+          RenderM.fillCircle' px py radius color
 
       -- Draw Y-axis labels
       if dims.showAxisLabels && dims.gridLineCount > 0 then

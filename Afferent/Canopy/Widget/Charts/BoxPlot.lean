@@ -224,8 +224,8 @@ def boxPlotSpec (summaries : Array Summary) (theme : Theme)
         if dims.showOutliers then
           for outlier in s.outliers do
             let outlierY := yToPixel outlier
-            let outlierPath := Arbor.Path.circle (Arbor.Point.mk' boxCenterX outlierY) dims.outlierRadius
-            RenderM.strokePath outlierPath color 1.5
+            -- GPU-batched outlier marker
+            RenderM.fillCircle' boxCenterX outlierY dims.outlierRadius color
 
       -- Draw Y-axis labels
       if dims.gridLineCount > 0 then
@@ -347,8 +347,8 @@ def horizontalBoxPlotSpec (summaries : Array Summary) (theme : Theme)
         if dims.showOutliers then
           for outlier in s.outliers do
             let outlierX := xToPixel outlier
-            let outlierPath := Arbor.Path.circle (Arbor.Point.mk' outlierX boxCenterY) dims.outlierRadius
-            RenderM.strokePath outlierPath color 1.5
+            -- GPU-batched outlier marker
+            RenderM.fillCircle' outlierX boxCenterY dims.outlierRadius color
 
       -- Draw X-axis labels (values)
       if dims.gridLineCount > 0 then

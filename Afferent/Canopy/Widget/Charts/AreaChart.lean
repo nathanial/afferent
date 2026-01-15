@@ -127,7 +127,8 @@ def areaChartSpec (data : Array Float) (labels : Array String)
         for i in [0:pointCount] do
           let x := chartX + i.toFloat * stepX
           let y := chartY + chartHeight - (data[i]! / niceMaxVal) * chartHeight
-          RenderM.fillPath (Arbor.Path.circle (Arbor.Point.mk' x y) dims.markerRadius) areaColor
+          -- GPU-batched marker
+          RenderM.fillCircle' x y dims.markerRadius areaColor
 
       -- Y-axis labels
       if dims.gridLineCount > 0 then
@@ -232,7 +233,8 @@ def multiSeriesSpec (series : Array Series) (labels : Array String)
           for i in [0:s.values.size] do
             let x := chartX + i.toFloat * stepX
             let y := chartY + chartHeight - (s.values[i]! / niceMaxVal) * chartHeight
-            RenderM.fillPath (Arbor.Path.circle (Arbor.Point.mk' x y) dims.markerRadius) color
+            -- GPU-batched marker
+            RenderM.fillCircle' x y dims.markerRadius color
 
       -- Y-axis labels
       if dims.gridLineCount > 0 then

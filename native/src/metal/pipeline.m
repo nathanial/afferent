@@ -490,6 +490,42 @@ AfferentResult create_pipelines(struct AfferentRenderer* renderer) {
 
     renderer->batchedCirclePipelineState = renderer->batchedCirclePipelineStateMSAA;
 
+    // Create batched stroke rect pipeline
+    id<MTLFunction> batchedStrokeRectVertexFunc = [instancedLibrary newFunctionWithName:@"batched_stroke_rect_vertex"];
+    id<MTLFunction> batchedStrokeRectFragmentFunc = [instancedLibrary newFunctionWithName:@"batched_stroke_rect_fragment"];
+    if (!batchedStrokeRectVertexFunc || !batchedStrokeRectFragmentFunc) {
+        NSLog(@"Failed to find batched stroke rect shader functions");
+        return AFFERENT_ERROR_PIPELINE_FAILED;
+    }
+
+    MTLRenderPipelineDescriptor *batchedStrokeRectPipelineDesc = [[MTLRenderPipelineDescriptor alloc] init];
+    batchedStrokeRectPipelineDesc.vertexFunction = batchedStrokeRectVertexFunc;
+    batchedStrokeRectPipelineDesc.fragmentFunction = batchedStrokeRectFragmentFunc;
+    batchedStrokeRectPipelineDesc.colorAttachments[0].pixelFormat = MTLPixelFormatBGRA8Unorm;
+    batchedStrokeRectPipelineDesc.rasterSampleCount = 4;  // MSAA
+    batchedStrokeRectPipelineDesc.colorAttachments[0].blendingEnabled = YES;
+    batchedStrokeRectPipelineDesc.colorAttachments[0].sourceRGBBlendFactor = MTLBlendFactorSourceAlpha;
+    batchedStrokeRectPipelineDesc.colorAttachments[0].destinationRGBBlendFactor = MTLBlendFactorOneMinusSourceAlpha;
+    batchedStrokeRectPipelineDesc.colorAttachments[0].sourceAlphaBlendFactor = MTLBlendFactorOne;
+    batchedStrokeRectPipelineDesc.colorAttachments[0].destinationAlphaBlendFactor = MTLBlendFactorOneMinusSourceAlpha;
+
+    renderer->batchedStrokeRectPipelineStateMSAA = [renderer->device newRenderPipelineStateWithDescriptor:batchedStrokeRectPipelineDesc
+                                                                                                   error:&error];
+    if (!renderer->batchedStrokeRectPipelineStateMSAA) {
+        NSLog(@"Batched stroke rect pipeline creation failed (MSAA): %@", error);
+        return AFFERENT_ERROR_PIPELINE_FAILED;
+    }
+
+    batchedStrokeRectPipelineDesc.rasterSampleCount = 1;  // No MSAA
+    renderer->batchedStrokeRectPipelineStateNoMSAA = [renderer->device newRenderPipelineStateWithDescriptor:batchedStrokeRectPipelineDesc
+                                                                                                     error:&error];
+    if (!renderer->batchedStrokeRectPipelineStateNoMSAA) {
+        NSLog(@"Batched stroke rect pipeline creation failed (no MSAA): %@", error);
+        return AFFERENT_ERROR_PIPELINE_FAILED;
+    }
+
+    renderer->batchedStrokeRectPipelineState = renderer->batchedStrokeRectPipelineStateMSAA;
+
     // Create sprite pipeline (textured quads)
     id<MTLLibrary> spriteLibrary = [renderer->device newLibraryWithSource:spriteShaderSource
                                                                   options:nil

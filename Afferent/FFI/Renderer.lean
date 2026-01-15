@@ -177,12 +177,23 @@ opaque Renderer.drawRectsBatch
   (canvasWidth canvasHeight : Float) : IO Unit
 
 -- Draw multiple circles in a single draw call.
--- instanceData: Array of 6 floats per circle [centerX, centerY, radius, r, g, b, a]
+-- instanceData: Array of 8 floats per circle [centerX, centerY, radius, padding, r, g, b, a]
 @[extern "lean_afferent_renderer_draw_circles_batch"]
 opaque Renderer.drawCirclesBatch
   (renderer : @& Renderer)
   (instanceData : @& Array Float)
   (instanceCount : UInt32)
+  (canvasWidth canvasHeight : Float) : IO Unit
+
+-- Draw multiple stroked rectangles in a single draw call.
+-- instanceData: Array of 8 floats per rect [x, y, width, height, r, g, b, a]
+@[extern "lean_afferent_renderer_draw_stroke_rects_batch"]
+opaque Renderer.drawStrokeRectsBatch
+  (renderer : @& Renderer)
+  (instanceData : @& Array Float)
+  (instanceCount : UInt32)
+  (lineWidth : Float)
+  (cornerRadius : Float)
   (canvasWidth canvasHeight : Float) : IO Unit
 
 -- ============================================================================

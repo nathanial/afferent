@@ -85,6 +85,24 @@ def fillPolygon (points : Array Point) (color : Color) : RenderM Unit :=
 def strokePolygon (points : Array Point) (color : Color) (lineWidth : Float := 1.0) : RenderM Unit :=
   emit (.strokePolygon points color lineWidth)
 
+/-! ## Circles -/
+
+/-- Fill a circle with a solid color (GPU-batched). -/
+def fillCircle (center : Point) (radius : Float) (color : Color) : RenderM Unit :=
+  emit (.fillCircle center radius color)
+
+/-- Fill a circle with a solid color (convenience version with x, y coordinates). -/
+def fillCircle' (cx cy radius : Float) (color : Color) : RenderM Unit :=
+  emit (.fillCircle ⟨cx, cy⟩ radius color)
+
+/-- Stroke a circle outline. -/
+def strokeCircle (center : Point) (radius : Float) (color : Color) (lineWidth : Float := 1.0) : RenderM Unit :=
+  emit (.strokeCircle center radius color lineWidth)
+
+/-- Stroke a circle outline (convenience version with x, y coordinates). -/
+def strokeCircle' (cx cy radius : Float) (color : Color) (lineWidth : Float := 1.0) : RenderM Unit :=
+  emit (.strokeCircle ⟨cx, cy⟩ radius color lineWidth)
+
 /-! ## Clipping -/
 
 /-- Push a clipping rectangle. -/

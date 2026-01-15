@@ -101,6 +101,21 @@ def executeCommand (reg : FontRegistry) (cmd : Afferent.Arbor.RenderCommand) : C
     else
       CanvasM.strokeRect afferentRect
 
+  | .fillCircle center radius color =>
+    -- Draw a single filled circle via the batch function
+    let canvas ← CanvasM.getCanvas
+    let (canvasWidth, canvasHeight) ← canvas.ctx.getCurrentSize
+    let data := #[center.x, center.y, radius, 0.0, color.r, color.g, color.b, color.a]
+    canvas.ctx.renderer.drawCirclesBatch data 1 canvasWidth canvasHeight
+
+  | .strokeCircle center radius color lineWidth =>
+    -- Draw a stroked circle using path (no stroked circle batch yet)
+    let twoPi := 6.283185307179586  -- 2 * pi
+    let path := Afferent.Path.empty.arc ⟨center.x, center.y⟩ radius 0 twoPi false
+    CanvasM.setStrokeColor (toAfferentColor color)
+    CanvasM.setLineWidth lineWidth
+    CanvasM.strokePath path
+
   | .fillText text x y fontId color =>
     match reg.get fontId with
     | some font =>
@@ -210,10 +225,37 @@ structure BatchStats where
   totalCommands : Nat := 0
   /-- Number of rects batched. -/
   rectsBatched : Nat := 0
+  /-- Number of circles batched. -/
+  circlesBatched : Nat := 0
+  /-- Number of stroke rects batched. -/
+  strokeRectsBatched : Nat := 0
   deriving Repr, Inhabited
 
 /-- Entry for a batched rectangle. -/
 structure RectBatchEntry where
+  x : Float
+  y : Float
+  width : Float
+  height : Float
+  r : Float
+  g : Float
+  b : Float
+  a : Float
+
+/-- Entry for a batched circle.
+    Format: [centerX, centerY, radius, padding, r, g, b, a] (8 floats for GPU alignment) -/
+structure CircleBatchEntry where
+  centerX : Float
+  centerY : Float
+  radius : Float
+  r : Float
+  g : Float
+  b : Float
+  a : Float
+
+/-- Entry for a batched stroked rectangle.
+    Format: [x, y, width, height, r, g, b, a] (8 floats) -/
+structure StrokeRectBatchEntry where
   x : Float
   y : Float
   width : Float
@@ -240,6 +282,8 @@ structure CommandBins where
   fillRects : Array RenderCommand := #[]
   fillRectStyles : Array RenderCommand := #[]
   strokeRects : Array RenderCommand := #[]
+  fillCircles : Array RenderCommand := #[]
+  strokeCircles : Array RenderCommand := #[]
   fillPolygons : Array RenderCommand := #[]
   fillPaths : Array RenderCommand := #[]
   fillPathStyles : Array RenderCommand := #[]
@@ -261,6 +305,8 @@ def CommandBins.add (bins : CommandBins) (cmd : RenderCommand) : CommandBins :=
   | .fillRect .. => { bins with fillRects := bins.fillRects.push cmd }
   | .fillRectStyle .. => { bins with fillRectStyles := bins.fillRectStyles.push cmd }
   | .strokeRect .. => { bins with strokeRects := bins.strokeRects.push cmd }
+  | .fillCircle .. => { bins with fillCircles := bins.fillCircles.push cmd }
+  | .strokeCircle .. => { bins with strokeCircles := bins.strokeCircles.push cmd }
   | .fillPolygon .. => { bins with fillPolygons := bins.fillPolygons.push cmd }
   | .fillPath .. => { bins with fillPaths := bins.fillPaths.push cmd }
   | .fillPathStyle .. => { bins with fillPathStyles := bins.fillPathStyles.push cmd }
@@ -273,6 +319,7 @@ def CommandBins.add (bins : CommandBins) (cmd : RenderCommand) : CommandBins :=
     Order: fills first (backgrounds), then strokes (outlines), then text (labels on top). -/
 def CommandBins.flush (bins : CommandBins) : Array RenderCommand :=
   bins.fillRects ++ bins.fillRectStyles ++ bins.strokeRects ++
+  bins.fillCircles ++ bins.strokeCircles ++
   bins.fillPolygons ++ bins.fillPaths ++ bins.fillPathStyles ++
   bins.strokePolygons ++ bins.strokePaths ++ bins.texts
 
@@ -312,77 +359,172 @@ def executeFillRectBatch (rects : Array RectBatchEntry) (cornerRadius : Float) :
   canvas.ctx.renderer.drawRectsBatch data rects.size.toUInt32 cornerRadius
     canvasWidth canvasHeight
 
+/-- Execute a batch of fillCircle commands in a single draw call. -/
+def executeFillCircleBatch (circles : Array CircleBatchEntry) : CanvasM Unit := do
+  if circles.isEmpty then return
+  let canvas ← CanvasM.getCanvas
+  let (canvasWidth, canvasHeight) ← canvas.ctx.getCurrentSize
+  -- Pack into Float array: [centerX, centerY, radius, padding, r, g, b, a] per circle
+  let data := circles.foldl (init := #[]) fun acc entry =>
+    acc.push entry.centerX |>.push entry.centerY |>.push entry.radius |>.push 0.0  -- padding
+       |>.push entry.r |>.push entry.g |>.push entry.b |>.push entry.a
+  canvas.ctx.renderer.drawCirclesBatch data circles.size.toUInt32
+    canvasWidth canvasHeight
+
+/-- Execute a batch of strokeRect commands in a single draw call. -/
+def executeStrokeRectBatch (rects : Array StrokeRectBatchEntry) (lineWidth cornerRadius : Float) : CanvasM Unit := do
+  if rects.isEmpty then return
+  let canvas ← CanvasM.getCanvas
+  let (canvasWidth, canvasHeight) ← canvas.ctx.getCurrentSize
+  -- Pack into Float array: [x, y, w, h, r, g, b, a] per rect
+  let data := rects.foldl (init := #[]) fun acc entry =>
+    acc.push entry.x |>.push entry.y |>.push entry.width |>.push entry.height
+       |>.push entry.r |>.push entry.g |>.push entry.b |>.push entry.a
+  canvas.ctx.renderer.drawStrokeRectsBatch data rects.size.toUInt32 lineWidth cornerRadius
+    canvasWidth canvasHeight
+
 /-- Execute an array of RenderCommands using CanvasM with batching optimization.
-    Groups consecutive fillRect commands with the same corner radius into
-    batched draw calls for better GPU performance.
+    First coalesces commands within scopes to maximize batching opportunities, then
+    groups consecutive fillRect commands with the same corner radius,
+    consecutive strokeRect commands with the same lineWidth and cornerRadius,
+    and consecutive fillCircle commands into batched draw calls.
     Returns batch statistics for performance monitoring. -/
 def executeCommandsBatchedWithStats (reg : FontRegistry) (cmds : Array Afferent.Arbor.RenderCommand) : CanvasM BatchStats := do
+  let cmds := coalesceCommands cmds
   let mut i := 0
-  let mut currentBatch : Array RectBatchEntry := #[]
+  let mut rectBatch : Array RectBatchEntry := #[]
   let mut currentCornerRadius : Float := 0.0
+  let mut strokeRectBatch : Array StrokeRectBatchEntry := #[]
+  let mut currentStrokeLineWidth : Float := 0.0
+  let mut currentStrokeCornerRadius : Float := 0.0
+  let mut circleBatch : Array CircleBatchEntry := #[]
   let mut stats : BatchStats := { totalCommands := cmds.size }
+
+  -- Helper to flush rect batch
+  let flushRects := fun (batch : Array RectBatchEntry) (radius : Float) (s : BatchStats) => do
+    if !batch.isEmpty then
+      executeFillRectBatch batch radius
+      pure { s with batchedCalls := s.batchedCalls + 1, rectsBatched := s.rectsBatched + batch.size }
+    else
+      pure s
+
+  -- Helper to flush stroke rect batch
+  let flushStrokeRects := fun (batch : Array StrokeRectBatchEntry) (lw cr : Float) (s : BatchStats) => do
+    if !batch.isEmpty then
+      executeStrokeRectBatch batch lw cr
+      pure { s with batchedCalls := s.batchedCalls + 1, strokeRectsBatched := s.strokeRectsBatched + batch.size }
+    else
+      pure s
+
+  -- Helper to flush circle batch
+  let flushCircles := fun (batch : Array CircleBatchEntry) (s : BatchStats) => do
+    if !batch.isEmpty then
+      executeFillCircleBatch batch
+      pure { s with batchedCalls := s.batchedCalls + 1, circlesBatched := s.circlesBatched + batch.size }
+    else
+      pure s
+
+  -- Helper to flush all batches
+  let flushAll := fun (rB : Array RectBatchEntry) (cr : Float)
+                      (sRB : Array StrokeRectBatchEntry) (slw scr : Float)
+                      (cB : Array CircleBatchEntry) (s : BatchStats) => do
+    let s ← flushRects rB cr s
+    let s ← flushStrokeRects sRB slw scr s
+    let s ← flushCircles cB s
+    pure s
 
   while h : i < cmds.size do
     let cmd := cmds[i]
     match cmd with
     | .fillRect rect color cornerRadius =>
-      -- Check if we can add to current batch
-      if currentBatch.isEmpty || currentCornerRadius == cornerRadius then
-        -- Add to batch
+      -- Flush other batches first
+      stats ← flushStrokeRects strokeRectBatch currentStrokeLineWidth currentStrokeCornerRadius stats
+      strokeRectBatch := #[]
+      stats ← flushCircles circleBatch stats
+      circleBatch := #[]
+      -- Check if we can add to current rect batch
+      if rectBatch.isEmpty || currentCornerRadius == cornerRadius then
         let entry : RectBatchEntry := {
-          x := rect.origin.x
-          y := rect.origin.y
-          width := rect.size.width
-          height := rect.size.height
-          r := color.r
-          g := color.g
-          b := color.b
-          a := color.a
+          x := rect.origin.x, y := rect.origin.y
+          width := rect.size.width, height := rect.size.height
+          r := color.r, g := color.g, b := color.b, a := color.a
         }
-        currentBatch := currentBatch.push entry
+        rectBatch := rectBatch.push entry
         currentCornerRadius := cornerRadius
       else
-        -- Different corner radius - flush current batch and start new one
-        executeFillRectBatch currentBatch currentCornerRadius
-        stats := { stats with batchedCalls := stats.batchedCalls + 1, rectsBatched := stats.rectsBatched + currentBatch.size }
+        -- Different corner radius - flush and start new batch
+        stats ← flushRects rectBatch currentCornerRadius stats
         let entry : RectBatchEntry := {
-          x := rect.origin.x
-          y := rect.origin.y
-          width := rect.size.width
-          height := rect.size.height
-          r := color.r
-          g := color.g
-          b := color.b
-          a := color.a
+          x := rect.origin.x, y := rect.origin.y
+          width := rect.size.width, height := rect.size.height
+          r := color.r, g := color.g, b := color.b, a := color.a
         }
-        currentBatch := #[entry]
+        rectBatch := #[entry]
         currentCornerRadius := cornerRadius
 
+    | .strokeRect rect color lineWidth cornerRadius =>
+      -- Flush other batches first
+      stats ← flushRects rectBatch currentCornerRadius stats
+      rectBatch := #[]
+      stats ← flushCircles circleBatch stats
+      circleBatch := #[]
+      -- Check if we can add to current stroke rect batch
+      if strokeRectBatch.isEmpty || (currentStrokeLineWidth == lineWidth && currentStrokeCornerRadius == cornerRadius) then
+        let entry : StrokeRectBatchEntry := {
+          x := rect.origin.x, y := rect.origin.y
+          width := rect.size.width, height := rect.size.height
+          r := color.r, g := color.g, b := color.b, a := color.a
+        }
+        strokeRectBatch := strokeRectBatch.push entry
+        currentStrokeLineWidth := lineWidth
+        currentStrokeCornerRadius := cornerRadius
+      else
+        -- Different lineWidth or cornerRadius - flush and start new batch
+        stats ← flushStrokeRects strokeRectBatch currentStrokeLineWidth currentStrokeCornerRadius stats
+        let entry : StrokeRectBatchEntry := {
+          x := rect.origin.x, y := rect.origin.y
+          width := rect.size.width, height := rect.size.height
+          r := color.r, g := color.g, b := color.b, a := color.a
+        }
+        strokeRectBatch := #[entry]
+        currentStrokeLineWidth := lineWidth
+        currentStrokeCornerRadius := cornerRadius
+
+    | .fillCircle center radius color =>
+      -- Flush other batches first
+      stats ← flushRects rectBatch currentCornerRadius stats
+      rectBatch := #[]
+      stats ← flushStrokeRects strokeRectBatch currentStrokeLineWidth currentStrokeCornerRadius stats
+      strokeRectBatch := #[]
+      -- Add to circle batch (all circles batch together, no radius grouping needed)
+      let entry : CircleBatchEntry := {
+        centerX := center.x, centerY := center.y, radius := radius
+        r := color.r, g := color.g, b := color.b, a := color.a
+      }
+      circleBatch := circleBatch.push entry
+
     | _ =>
-      -- Non-batchable command - flush any pending batch first
-      if !currentBatch.isEmpty then
-        executeFillRectBatch currentBatch currentCornerRadius
-        stats := { stats with batchedCalls := stats.batchedCalls + 1, rectsBatched := stats.rectsBatched + currentBatch.size }
-        currentBatch := #[]
+      -- Non-batchable command - flush all pending batches first
+      stats ← flushAll rectBatch currentCornerRadius strokeRectBatch currentStrokeLineWidth currentStrokeCornerRadius circleBatch stats
+      rectBatch := #[]
+      strokeRectBatch := #[]
+      circleBatch := #[]
       -- Execute the command individually
       executeCommand reg cmd
       stats := { stats with individualCalls := stats.individualCalls + 1 }
 
     i := i + 1
 
-  -- Flush any remaining batch
-  if !currentBatch.isEmpty then
-    executeFillRectBatch currentBatch currentCornerRadius
-    stats := { stats with batchedCalls := stats.batchedCalls + 1, rectsBatched := stats.rectsBatched + currentBatch.size }
+  -- Flush any remaining batches
+  stats ← flushAll rectBatch currentCornerRadius strokeRectBatch currentStrokeLineWidth currentStrokeCornerRadius circleBatch stats
 
   return stats
 
 /-- Execute an array of RenderCommands using CanvasM with batching optimization.
-    First coalesces commands within scopes to maximize batching, then groups
+    Coalesces commands within scopes to maximize batching, then groups
     consecutive fillRect commands with the same corner radius into batched draw calls. -/
 def executeCommandsBatched (reg : FontRegistry) (cmds : Array Afferent.Arbor.RenderCommand) : CanvasM Unit := do
-  let coalesced := coalesceCommands cmds
-  let _ ← executeCommandsBatchedWithStats reg coalesced
+  let _ ← executeCommandsBatchedWithStats reg cmds
 
 /-- Execute an array of RenderCommands using CanvasM (unbatched, for compatibility). -/
 def executeCommands (reg : FontRegistry) (cmds : Array Afferent.Arbor.RenderCommand) : CanvasM Unit := do

@@ -120,8 +120,8 @@ def lineChartSpec (data : Array Float) (labels : Array String)
           let value := data[i]!
           let x := chartX + i.toFloat * stepX
           let y := chartY + chartHeight - (value / niceMaxVal) * chartHeight
-          let markerPath := Arbor.Path.circle (Arbor.Point.mk' x y) dims.markerRadius
-          RenderM.fillPath markerPath lineColor
+          -- GPU-batched marker
+          RenderM.fillCircle' x y dims.markerRadius lineColor
 
       -- Draw Y-axis labels
       if dims.gridLineCount > 0 then
@@ -217,8 +217,8 @@ def multiSeriesSpec (series : Array Series) (labels : Array String)
               let value := s.values[i]!
               let x := chartX + i.toFloat * stepX
               let y := chartY + chartHeight - (value / niceMaxVal) * chartHeight
-              let markerPath := Arbor.Path.circle (Arbor.Point.mk' x y) dims.markerRadius
-              RenderM.fillPath markerPath color
+              -- GPU-batched marker
+              RenderM.fillCircle' x y dims.markerRadius color
 
       -- Draw Y-axis labels
       if dims.gridLineCount > 0 then

@@ -68,9 +68,8 @@ def pieChartSpec (slices : Array Slice) (theme : Theme)
     let twoPi := 2.0 * pi
 
     RenderM.build do
-      -- Draw background circle (optional, for visual consistency)
-      let bgPath := Arbor.Path.circle center radius
-      RenderM.fillPath bgPath (theme.panel.background.withAlpha 0.3)
+      -- GPU-batched background circle
+      RenderM.fillCircle center radius (theme.panel.background.withAlpha 0.3)
 
       -- Draw each slice
       let mut startAngle := -pi / 2  -- Start at top (12 o'clock)

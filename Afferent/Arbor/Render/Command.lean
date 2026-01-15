@@ -34,6 +34,12 @@ inductive RenderCommand where
   /-- Stroke a rectangle outline. -/
   | strokeRect (rect : Rect) (color : Color) (lineWidth : Float) (cornerRadius : Float := 0)
 
+  /-- Fill a circle with a solid color. -/
+  | fillCircle (center : Point) (radius : Float) (color : Color)
+
+  /-- Stroke a circle outline. -/
+  | strokeCircle (center : Point) (radius : Float) (color : Color) (lineWidth : Float)
+
   /-- Fill text at a position. -/
   | fillText (text : String) (x y : Float) (font : FontId) (color : Color)
 
@@ -106,6 +112,14 @@ def fillPoly (points : Array Point) (color : Color) : RenderCommand :=
 /-- Create a stroked polygon command. -/
 def strokePoly (points : Array Point) (color : Color) (lineWidth : Float := 1.0) : RenderCommand :=
   .strokePolygon points color lineWidth
+
+/-- Create a filled circle command. -/
+def circle (cx cy radius : Float) (color : Color) : RenderCommand :=
+  .fillCircle ⟨cx, cy⟩ radius color
+
+/-- Create a stroked circle command. -/
+def strokeCircle' (cx cy radius : Float) (color : Color) (lineWidth : Float := 1.0) : RenderCommand :=
+  .strokeCircle ⟨cx, cy⟩ radius color lineWidth
 
 end RenderCommand
 

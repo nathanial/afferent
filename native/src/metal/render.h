@@ -76,6 +76,9 @@ struct AfferentRenderer {
     __strong id<MTLRenderPipelineState> batchedCirclePipelineState;       // Active batched circle pipeline
     __strong id<MTLRenderPipelineState> batchedCirclePipelineStateMSAA;   // Batched circles (4x MSAA)
     __strong id<MTLRenderPipelineState> batchedCirclePipelineStateNoMSAA; // Batched circles (no MSAA)
+    __strong id<MTLRenderPipelineState> batchedStrokeRectPipelineState;       // Active batched stroke rect pipeline
+    __strong id<MTLRenderPipelineState> batchedStrokeRectPipelineStateMSAA;   // Batched stroke rects (4x MSAA)
+    __strong id<MTLRenderPipelineState> batchedStrokeRectPipelineStateNoMSAA; // Batched stroke rects (no MSAA)
     __strong id<MTLSamplerState> textSampler;                   // For text texture sampling
     __strong id<MTLSamplerState> spriteSampler;                 // For sprite texture sampling
     __strong id<MTLCommandBuffer> currentCommandBuffer;
