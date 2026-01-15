@@ -223,6 +223,82 @@ structure RectBatchEntry where
   b : Float
   a : Float
 
+/-! ## Command Coalescing
+
+Coalescing reorders commands within safe boundaries to maximize batching.
+Commands are grouped into "scopes" delimited by state-changing commands
+(save/restore, clips, transforms). Within each scope, commands are sorted
+by type to ensure all fillRects are consecutive.
+
+This enables batching even when fillRect commands are interleaved with
+other command types in the original stream (common in charts where
+grid lines, data, and axis rectangles are separated by text/path commands).
+-/
+
+/-- Bins for grouping commands by type within a scope. -/
+structure CommandBins where
+  fillRects : Array RenderCommand := #[]
+  fillRectStyles : Array RenderCommand := #[]
+  strokeRects : Array RenderCommand := #[]
+  fillPolygons : Array RenderCommand := #[]
+  fillPaths : Array RenderCommand := #[]
+  fillPathStyles : Array RenderCommand := #[]
+  strokePolygons : Array RenderCommand := #[]
+  strokePaths : Array RenderCommand := #[]
+  texts : Array RenderCommand := #[]
+
+/-- Check if a command changes graphics state (scope boundary). -/
+def isStateChanging (cmd : RenderCommand) : Bool :=
+  match cmd with
+  | .save | .restore => true
+  | .pushClip _ | .popClip => true
+  | .pushTranslate _ _ | .pushRotate _ | .pushScale _ _ | .popTransform => true
+  | _ => false
+
+/-- Add a command to the appropriate bin. -/
+def CommandBins.add (bins : CommandBins) (cmd : RenderCommand) : CommandBins :=
+  match cmd with
+  | .fillRect .. => { bins with fillRects := bins.fillRects.push cmd }
+  | .fillRectStyle .. => { bins with fillRectStyles := bins.fillRectStyles.push cmd }
+  | .strokeRect .. => { bins with strokeRects := bins.strokeRects.push cmd }
+  | .fillPolygon .. => { bins with fillPolygons := bins.fillPolygons.push cmd }
+  | .fillPath .. => { bins with fillPaths := bins.fillPaths.push cmd }
+  | .fillPathStyle .. => { bins with fillPathStyles := bins.fillPathStyles.push cmd }
+  | .strokePolygon .. => { bins with strokePolygons := bins.strokePolygons.push cmd }
+  | .strokePath .. => { bins with strokePaths := bins.strokePaths.push cmd }
+  | .fillText .. | .fillTextBlock .. => { bins with texts := bins.texts.push cmd }
+  | _ => bins  -- State-changing commands handled separately
+
+/-- Flatten bins into command array in optimal batching order.
+    Order: fills first (backgrounds), then strokes (outlines), then text (labels on top). -/
+def CommandBins.flush (bins : CommandBins) : Array RenderCommand :=
+  bins.fillRects ++ bins.fillRectStyles ++ bins.strokeRects ++
+  bins.fillPolygons ++ bins.fillPaths ++ bins.fillPathStyles ++
+  bins.strokePolygons ++ bins.strokePaths ++ bins.texts
+
+/-- Reorder commands within scopes to maximize batching.
+    Scopes are delimited by state-changing commands (save/restore, clips, transforms).
+    Within each scope, commands are grouped by type in optimal batching order:
+    fillRects first (all batch together), then other fills, strokes, and text last.
+
+    This preserves visual correctness for non-overlapping elements while enabling
+    significantly better batching for charts and UI layouts. -/
+def coalesceCommands (cmds : Array RenderCommand) : Array RenderCommand := Id.run do
+  let mut result : Array RenderCommand := #[]
+  let mut bins : CommandBins := {}
+
+  for cmd in cmds do
+    if isStateChanging cmd then
+      -- Flush current scope, emit state command, start new scope
+      result := result ++ bins.flush
+      result := result.push cmd
+      bins := {}
+    else
+      bins := bins.add cmd
+
+  -- Flush final scope
+  result ++ bins.flush
+
 /-- Execute a batch of fillRect commands in a single draw call. -/
 def executeFillRectBatch (rects : Array RectBatchEntry) (cornerRadius : Float) : CanvasM Unit := do
   if rects.isEmpty then return
@@ -302,10 +378,11 @@ def executeCommandsBatchedWithStats (reg : FontRegistry) (cmds : Array Afferent.
   return stats
 
 /-- Execute an array of RenderCommands using CanvasM with batching optimization.
-    Groups consecutive fillRect commands with the same corner radius into
-    batched draw calls for better GPU performance. -/
+    First coalesces commands within scopes to maximize batching, then groups
+    consecutive fillRect commands with the same corner radius into batched draw calls. -/
 def executeCommandsBatched (reg : FontRegistry) (cmds : Array Afferent.Arbor.RenderCommand) : CanvasM Unit := do
-  let _ ← executeCommandsBatchedWithStats reg cmds
+  let coalesced := coalesceCommands cmds
+  let _ ← executeCommandsBatchedWithStats reg coalesced
 
 /-- Execute an array of RenderCommands using CanvasM (unbatched, for compatibility). -/
 def executeCommands (reg : FontRegistry) (cmds : Array Afferent.Arbor.RenderCommand) : CanvasM Unit := do
