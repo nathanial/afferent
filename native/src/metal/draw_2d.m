@@ -186,24 +186,15 @@ void afferent_renderer_draw_instanced_shapes(
         return;
     }
 
-    // Select pipeline, vertex count, and primitive type based on shape
-    id<MTLRenderPipelineState> pipeline;
     uint32_t vertexCount;
     MTLPrimitiveType primType;
-
     switch (shape_type) {
-        case 0: // rect
-            pipeline = renderer->instancedPipelineState;
-            vertexCount = 4;
-            primType = MTLPrimitiveTypeTriangleStrip;
-            break;
-        case 1: // triangle
-            pipeline = renderer->trianglePipelineState;
+        case 1:
             vertexCount = 3;
             primType = MTLPrimitiveTypeTriangle;
             break;
-        case 2: // circle
-            pipeline = renderer->circlePipelineState;
+        case 0:
+        case 2:
             vertexCount = 4;
             primType = MTLPrimitiveTypeTriangleStrip;
             break;
@@ -217,8 +208,7 @@ void afferent_renderer_draw_instanced_shapes(
             renderer->device,
             g_buffer_pool.vertex_pool,
             &g_buffer_pool.vertex_pool_count,
-            data_size,
-            true
+            data_size
         );
 
         if (!instanceBuffer) {
@@ -242,10 +232,10 @@ void afferent_renderer_draw_instanced_shapes(
         u.hueSpeed = hue_speed;
         u.sizeMode = size_mode;
         u.colorMode = color_mode;
-        u.padding0 = 0.0f;
-        u.padding1 = 0.0f;
+        u.shapeType = shape_type;
+        u.padding0 = 0;
 
-        [renderer->currentEncoder setRenderPipelineState:pipeline];
+        [renderer->currentEncoder setRenderPipelineState:renderer->instancedPipelineState];
         // Disable depth testing for 2D rendering (may have been enabled by 3D)
         [renderer->currentEncoder setDepthStencilState:renderer->depthStateDisabled];
         [renderer->currentEncoder setVertexBuffer:instanceBuffer offset:0 atIndex:0];
@@ -314,44 +304,33 @@ void afferent_renderer_reset_scissor(AfferentRendererRef renderer) {
     [renderer->currentEncoder setScissorRect:scissor];
 }
 
-// =============================================================================
-// BATCHED RECT DRAWING - Optimized for charts (heatmaps, scatter plots, etc.)
-// Instance data: [x, y, width, height, r, g, b, a] per rect (8 floats)
-// =============================================================================
-
-// Uniforms structure matching the shader
-typedef struct {
-    float viewport[2];
-    float cornerRadius;
-    float padding;
-} BatchedRectUniforms;
-
-void afferent_renderer_draw_rects_batch(
+static void afferent_draw_batched_instances(
     AfferentRendererRef renderer,
+    id<MTLRenderPipelineState> pipeline,
     const float* instance_data,
     uint32_t instance_count,
-    float corner_radius,
-    float canvas_width,
-    float canvas_height
+    size_t floats_per_instance,
+    const void* uniforms,
+    size_t uniforms_size,
+    uint32_t vertex_count,
+    const char* label
 ) {
     if (!renderer || !renderer->currentEncoder || !instance_data || instance_count == 0) {
         return;
     }
 
-    if (!renderer->batchedRectPipelineState) {
-        NSLog(@"Batched rect pipeline not available");
+    if (!pipeline) {
+        NSLog(@"%s pipeline not available", label);
         return;
     }
 
     @autoreleasepool {
-        // 8 floats per instance: [x, y, width, height, r, g, b, a]
-        size_t data_size = instance_count * 8 * sizeof(float);
+        size_t data_size = (size_t)instance_count * floats_per_instance * sizeof(float);
         id<MTLBuffer> instanceBuffer = pool_acquire_buffer(
             renderer->device,
             g_buffer_pool.vertex_pool,
             &g_buffer_pool.vertex_pool_count,
-            data_size,
-            true
+            data_size
         );
 
         if (!instanceBuffer) {
@@ -359,170 +338,69 @@ void afferent_renderer_draw_rects_batch(
         }
 
         if (!instanceBuffer) {
-            NSLog(@"Failed to create batched rect instance buffer");
+            NSLog(@"Failed to create %s instance buffer", label);
             return;
         }
 
         memcpy([instanceBuffer contents], instance_data, data_size);
 
-        BatchedRectUniforms uniforms;
-        uniforms.viewport[0] = canvas_width;
-        uniforms.viewport[1] = canvas_height;
-        uniforms.cornerRadius = corner_radius;
-        uniforms.padding = 0.0f;
-
-        [renderer->currentEncoder setRenderPipelineState:renderer->batchedRectPipelineState];
+        [renderer->currentEncoder setRenderPipelineState:pipeline];
         [renderer->currentEncoder setDepthStencilState:renderer->depthStateDisabled];
         [renderer->currentEncoder setVertexBuffer:instanceBuffer offset:0 atIndex:0];
-        [renderer->currentEncoder setVertexBytes:&uniforms length:sizeof(BatchedRectUniforms) atIndex:1];
+        [renderer->currentEncoder setVertexBytes:uniforms length:uniforms_size atIndex:1];
 
-        // Triangle strip with 4 vertices per rect instance
         [renderer->currentEncoder drawPrimitives:MTLPrimitiveTypeTriangleStrip
                                      vertexStart:0
-                                     vertexCount:4
+                                     vertexCount:vertex_count
                                    instanceCount:instance_count];
 
-        // Restore default pipeline
         [renderer->currentEncoder setRenderPipelineState:renderer->pipelineState];
     }
 }
 
 // =============================================================================
-// BATCHED CIRCLE DRAWING - Optimized for scatter plots, bubble charts
-// Instance data: [centerX, centerY, radius, padding, r, g, b, a] per circle (8 floats)
-// =============================================================================
-
-typedef struct {
-    float viewport[2];
-} BatchedCircleUniforms;
-
-void afferent_renderer_draw_circles_batch(
-    AfferentRendererRef renderer,
-    const float* instance_data,
-    uint32_t instance_count,
-    float canvas_width,
-    float canvas_height
-) {
-    if (!renderer || !renderer->currentEncoder || !instance_data || instance_count == 0) {
-        return;
-    }
-
-    if (!renderer->batchedCirclePipelineState) {
-        NSLog(@"Batched circle pipeline not available");
-        return;
-    }
-
-    @autoreleasepool {
-        // 8 floats per instance: [centerX, centerY, radius, padding, r, g, b, a]
-        size_t data_size = instance_count * 8 * sizeof(float);
-        id<MTLBuffer> instanceBuffer = pool_acquire_buffer(
-            renderer->device,
-            g_buffer_pool.vertex_pool,
-            &g_buffer_pool.vertex_pool_count,
-            data_size,
-            true
-        );
-
-        if (!instanceBuffer) {
-            instanceBuffer = [renderer->device newBufferWithLength:data_size options:MTLResourceStorageModeShared];
-        }
-
-        if (!instanceBuffer) {
-            NSLog(@"Failed to create batched circle instance buffer");
-            return;
-        }
-
-        memcpy([instanceBuffer contents], instance_data, data_size);
-
-        BatchedCircleUniforms uniforms;
-        uniforms.viewport[0] = canvas_width;
-        uniforms.viewport[1] = canvas_height;
-
-        [renderer->currentEncoder setRenderPipelineState:renderer->batchedCirclePipelineState];
-        [renderer->currentEncoder setDepthStencilState:renderer->depthStateDisabled];
-        [renderer->currentEncoder setVertexBuffer:instanceBuffer offset:0 atIndex:0];
-        [renderer->currentEncoder setVertexBytes:&uniforms length:sizeof(BatchedCircleUniforms) atIndex:1];
-
-        // Triangle strip with 4 vertices per circle instance (quad covering bounding box)
-        [renderer->currentEncoder drawPrimitives:MTLPrimitiveTypeTriangleStrip
-                                     vertexStart:0
-                                     vertexCount:4
-                                   instanceCount:instance_count];
-
-        // Restore default pipeline
-        [renderer->currentEncoder setRenderPipelineState:renderer->pipelineState];
-    }
-}
-
-// =============================================================================
-// BATCHED STROKED RECT DRAWING - For UI borders, chart axes, grid lines
-// Instance data: [x, y, width, height, r, g, b, a] per rect (8 floats)
+// BATCHED SHAPE DRAWING
+// Instance data: [x, y, width, height, r, g, b, a] per instance (8 floats)
 // =============================================================================
 
 typedef struct {
     float viewport[2];
     float lineWidth;
     float cornerRadius;
-} BatchedStrokeRectUniforms;
+    uint32_t shapeType;
+    uint32_t padding;
+} BatchedUniforms;
 
-void afferent_renderer_draw_stroke_rects_batch(
+// kind: 0=rect, 1=circle, 2=stroke rect
+void afferent_renderer_draw_batch(
     AfferentRendererRef renderer,
+    uint32_t kind,
     const float* instance_data,
     uint32_t instance_count,
-    float line_width,
-    float corner_radius,
+    float param0,
+    float param1,
     float canvas_width,
     float canvas_height
 ) {
-    if (!renderer || !renderer->currentEncoder || !instance_data || instance_count == 0) {
-        return;
-    }
+    if (kind > 2) return;
 
-    if (!renderer->batchedStrokeRectPipelineState) {
-        NSLog(@"Batched stroke rect pipeline not available");
-        return;
-    }
+    BatchedUniforms uniforms;
+    uniforms.viewport[0] = canvas_width;
+    uniforms.viewport[1] = canvas_height;
+    uniforms.lineWidth = (kind == 2) ? param0 : 0.0f;
+    uniforms.cornerRadius = (kind == 0) ? param0 : (kind == 2 ? param1 : 0.0f);
+    uniforms.shapeType = kind;
+    uniforms.padding = 0;
 
-    @autoreleasepool {
-        // 8 floats per instance: [x, y, width, height, r, g, b, a]
-        size_t data_size = instance_count * 8 * sizeof(float);
-        id<MTLBuffer> instanceBuffer = pool_acquire_buffer(
-            renderer->device,
-            g_buffer_pool.vertex_pool,
-            &g_buffer_pool.vertex_pool_count,
-            data_size,
-            true
-        );
-
-        if (!instanceBuffer) {
-            instanceBuffer = [renderer->device newBufferWithLength:data_size options:MTLResourceStorageModeShared];
-        }
-
-        if (!instanceBuffer) {
-            NSLog(@"Failed to create batched stroke rect instance buffer");
-            return;
-        }
-
-        memcpy([instanceBuffer contents], instance_data, data_size);
-
-        BatchedStrokeRectUniforms uniforms;
-        uniforms.viewport[0] = canvas_width;
-        uniforms.viewport[1] = canvas_height;
-        uniforms.lineWidth = line_width;
-        uniforms.cornerRadius = corner_radius;
-
-        [renderer->currentEncoder setRenderPipelineState:renderer->batchedStrokeRectPipelineState];
-        [renderer->currentEncoder setDepthStencilState:renderer->depthStateDisabled];
-        [renderer->currentEncoder setVertexBuffer:instanceBuffer offset:0 atIndex:0];
-        [renderer->currentEncoder setVertexBytes:&uniforms length:sizeof(BatchedStrokeRectUniforms) atIndex:1];
-
-        // Triangle strip with 4 vertices per rect instance
-        [renderer->currentEncoder drawPrimitives:MTLPrimitiveTypeTriangleStrip
-                                     vertexStart:0
-                                     vertexCount:4
-                                   instanceCount:instance_count];
-
-        // Restore default pipeline
-        [renderer->currentEncoder setRenderPipelineState:renderer->pipelineState];
-    }
+    afferent_draw_batched_instances(
+        renderer,
+        renderer->batchedPipelineState,
+        instance_data,
+        instance_count,
+        8,
+        &uniforms,
+        sizeof(uniforms),
+        4,
+        "Batched"
+    );
 }

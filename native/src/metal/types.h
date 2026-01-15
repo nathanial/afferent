@@ -23,6 +23,7 @@ typedef struct __attribute__((packed)) {
 // transform0 = [a, b, c, d], transform1 = [tx, ty, 0, 0]
 // sizeMode: 0 = world, 1 = screen (pixel size)
 // colorMode: 0 = RGBA, 1 = HSV (time-based)
+// shapeType: 0 = rect, 1 = triangle, 2 = circle
 typedef struct {
     float transform0[4];
     float transform1[4];
@@ -31,8 +32,8 @@ typedef struct {
     float hueSpeed;
     uint32_t sizeMode;
     uint32_t colorMode;
-    float padding0;
-    float padding1;
+    uint32_t shapeType;
+    uint32_t padding0;
 } InstancedUniforms;  // Total: 64 bytes
 
 // Stroke uniforms structure (matches stroke shader)
@@ -96,15 +97,8 @@ typedef struct {
 } SpriteInstanceData;  // Total: 20 bytes
 
 // Sprite uniforms structure (matches shader)
-// layout: 0 = sprite (5 floats), 1 = textured (10 floats)
-// uvRect is used when layout == 0
 typedef struct {
     float viewport[2];
-    uint32_t layout;
-    uint32_t useMatrix;
-    float uvRect[4];
-    float transform0[4];
-    float transform1[4];
 } SpriteUniforms;
 
 // 3D scene uniforms structure (matches shader)

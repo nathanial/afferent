@@ -62,10 +62,12 @@ AfferentResult afferent_renderer_create(
         renderer->oceanGridSize = 0;
 
         // Initialize depth texture pointers
+        renderer->msaaColorTexture = nil;
         renderer->depthTexture = nil;
-        renderer->msaaDepthTexture = nil;
         renderer->depthWidth = 0;
         renderer->depthHeight = 0;
+        renderer->msaaWidth = 0;
+        renderer->msaaHeight = 0;
 
         *out_renderer = renderer;
         return AFFERENT_OK;
@@ -79,40 +81,19 @@ void afferent_renderer_destroy(AfferentRendererRef renderer) {
             renderer->currentCommandBuffer = nil;
             renderer->currentDrawable = nil;
 
-            renderer->msaaTexture = nil;
+            renderer->msaaColorTexture = nil;
             renderer->depthTexture = nil;
-            renderer->msaaDepthTexture = nil;
             renderer->depthState = nil;
             renderer->depthStateDisabled = nil;
-            renderer->depthStateOcean = nil;
 
             renderer->pipelineState = nil;
             renderer->strokePipelineState = nil;
             renderer->textPipelineState = nil;
             renderer->spritePipelineState = nil;
-            renderer->texturedSpritePipelineState = nil;
-            renderer->pipelineStateMSAA = nil;
-            renderer->pipelineStateNoMSAA = nil;
-            renderer->strokePipelineStateMSAA = nil;
-            renderer->strokePipelineStateNoMSAA = nil;
-            renderer->textPipelineStateMSAA = nil;
-            renderer->textPipelineStateNoMSAA = nil;
-            renderer->spritePipelineStateMSAA = nil;
-            renderer->spritePipelineStateNoMSAA = nil;
-            renderer->texturedSpritePipelineStateMSAA = nil;
-            renderer->texturedSpritePipelineStateNoMSAA = nil;
             renderer->instancedPipelineState = nil;
-            renderer->trianglePipelineState = nil;
-            renderer->circlePipelineState = nil;
             renderer->pipeline3D = nil;
-            renderer->pipeline3DMSAA = nil;
-            renderer->pipeline3DNoMSAA = nil;
             renderer->pipeline3DOcean = nil;
-            renderer->pipeline3DOceanMSAA = nil;
-            renderer->pipeline3DOceanNoMSAA = nil;
             renderer->pipeline3DTextured = nil;
-            renderer->pipeline3DTexturedMSAA = nil;
-            renderer->pipeline3DTexturedNoMSAA = nil;
 
             renderer->textSampler = nil;
             renderer->spriteSampler = nil;
@@ -129,26 +110,8 @@ void afferent_renderer_destroy(AfferentRendererRef renderer) {
 }
 
 // ============================================================================
-// MSAA and Drawable Scale Control
+// Drawable Scale Control
 // ============================================================================
-
-// Toggle MSAA for subsequent frames. This only switches the active pipelines and
-// beginFrame render pass configuration; it doesn't rebuild resources.
-void afferent_renderer_set_msaa_enabled(AfferentRendererRef renderer, bool enabled) {
-    if (!renderer) return;
-    renderer->msaaEnabled = enabled;
-    renderer->pipelineState = enabled ? renderer->pipelineStateMSAA : renderer->pipelineStateNoMSAA;
-    renderer->strokePipelineState = enabled ? renderer->strokePipelineStateMSAA : renderer->strokePipelineStateNoMSAA;
-    renderer->strokePathPipelineState = enabled ? renderer->strokePathPipelineStateMSAA : renderer->strokePathPipelineStateNoMSAA;
-    renderer->textPipelineState = enabled ? renderer->textPipelineStateMSAA : renderer->textPipelineStateNoMSAA;
-    renderer->spritePipelineState = enabled ? renderer->spritePipelineStateMSAA : renderer->spritePipelineStateNoMSAA;
-    renderer->texturedSpritePipelineState = enabled ? renderer->texturedSpritePipelineStateMSAA : renderer->texturedSpritePipelineStateNoMSAA;
-    renderer->batchedRectPipelineState = enabled ? renderer->batchedRectPipelineStateMSAA : renderer->batchedRectPipelineStateNoMSAA;
-    renderer->batchedCirclePipelineState = enabled ? renderer->batchedCirclePipelineStateMSAA : renderer->batchedCirclePipelineStateNoMSAA;
-    renderer->batchedStrokeRectPipelineState = enabled ? renderer->batchedStrokeRectPipelineStateMSAA : renderer->batchedStrokeRectPipelineStateNoMSAA;
-    renderer->pipeline3D = enabled ? renderer->pipeline3DMSAA : renderer->pipeline3DNoMSAA;
-    renderer->pipeline3DOcean = enabled ? renderer->pipeline3DOceanMSAA : renderer->pipeline3DOceanNoMSAA;
-}
 
 // Enable a drawable scale override (typically 1.0 to disable Retina).
 // Pass scale <= 0 to restore native backing scale.
@@ -208,33 +171,18 @@ AfferentResult afferent_renderer_begin_frame(AfferentRendererRef renderer, float
         passDesc.colorAttachments[0].loadAction = MTLLoadActionClear;
         passDesc.colorAttachments[0].clearColor = MTLClearColorMake(r, g, b, a);
 
-        if (renderer->msaaEnabled) {
-            // Ensure MSAA texture matches drawable size
-            ensureMSAATexture(renderer, drawableTexture.width, drawableTexture.height);
-            // Ensure MSAA depth texture
-            ensureDepthTexture(renderer, drawableTexture.width, drawableTexture.height, true);
-            // Render to MSAA texture and resolve to drawable
-            passDesc.colorAttachments[0].texture = renderer->msaaTexture;
-            passDesc.colorAttachments[0].resolveTexture = drawableTexture;
-            passDesc.colorAttachments[0].storeAction = MTLStoreActionMultisampleResolve;
-            // Attach depth buffer for 3D rendering
-            passDesc.depthAttachment.texture = renderer->msaaDepthTexture;
-            passDesc.depthAttachment.loadAction = MTLLoadActionClear;
-            passDesc.depthAttachment.storeAction = MTLStoreActionDontCare;
-            passDesc.depthAttachment.clearDepth = 1.0;
-        } else {
-            // Ensure non-MSAA depth texture
-            ensureDepthTexture(renderer, drawableTexture.width, drawableTexture.height, false);
-            // Render directly to drawable without MSAA
-            passDesc.colorAttachments[0].texture = drawableTexture;
-            passDesc.colorAttachments[0].resolveTexture = nil;
-            passDesc.colorAttachments[0].storeAction = MTLStoreActionStore;
-            // Attach depth buffer for 3D rendering
-            passDesc.depthAttachment.texture = renderer->depthTexture;
-            passDesc.depthAttachment.loadAction = MTLLoadActionClear;
-            passDesc.depthAttachment.storeAction = MTLStoreActionDontCare;
-            passDesc.depthAttachment.clearDepth = 1.0;
+        ensureMSAATexture(renderer, drawableTexture.width, drawableTexture.height);
+        ensureDepthTexture(renderer, drawableTexture.width, drawableTexture.height);
+        if (!renderer->msaaColorTexture || !renderer->depthTexture) {
+            return AFFERENT_ERROR_INIT_FAILED;
         }
+        passDesc.colorAttachments[0].texture = renderer->msaaColorTexture;
+        passDesc.colorAttachments[0].resolveTexture = drawableTexture;
+        passDesc.colorAttachments[0].storeAction = MTLStoreActionMultisampleResolve;
+        passDesc.depthAttachment.texture = renderer->depthTexture;
+        passDesc.depthAttachment.loadAction = MTLLoadActionClear;
+        passDesc.depthAttachment.storeAction = MTLStoreActionDontCare;
+        passDesc.depthAttachment.clearDepth = 1.0;
 
         renderer->currentEncoder = [renderer->currentCommandBuffer renderCommandEncoderWithDescriptor:passDesc];
         if (!renderer->currentEncoder) {
@@ -270,39 +218,55 @@ AfferentResult afferent_renderer_end_frame(AfferentRendererRef renderer) {
 // Buffer Creation
 // ============================================================================
 
-AfferentResult afferent_buffer_create_vertex(
+static AfferentResult afferent_buffer_create_pooled(
     AfferentRendererRef renderer,
-    const AfferentVertex* vertices,
-    uint32_t vertex_count,
+    PooledBuffer* pool,
+    int* pool_count,
+    const void* data,
+    uint32_t element_count,
+    size_t element_size,
     AfferentBufferRef* out_buffer
 ) {
     @autoreleasepool {
-        size_t required_size = vertex_count * sizeof(AfferentVertex);
+        size_t required_size = (size_t)element_count * element_size;
 
-        // Get a buffer from the pool (or create a new one)
         id<MTLBuffer> mtlBuffer = pool_acquire_buffer(
             renderer->device,
-            g_buffer_pool.vertex_pool,
-            &g_buffer_pool.vertex_pool_count,
-            required_size,
-            true
+            pool,
+            pool_count,
+            required_size
         );
 
         if (!mtlBuffer) {
             return AFFERENT_ERROR_BUFFER_FAILED;
         }
 
-        // Copy vertex data into the pooled buffer
-        memcpy(mtlBuffer.contents, vertices, required_size);
+        memcpy(mtlBuffer.contents, data, required_size);
 
-        // Get wrapper struct from pool (avoids malloc per draw call)
         struct AfferentBuffer *buffer = pool_acquire_wrapper();
-        buffer->count = vertex_count;
+        buffer->count = element_count;
         buffer->mtlBuffer = mtlBuffer;
         buffer->persistent = false;
         *out_buffer = buffer;
         return AFFERENT_OK;
     }
+}
+
+AfferentResult afferent_buffer_create_vertex(
+    AfferentRendererRef renderer,
+    const AfferentVertex* vertices,
+    uint32_t vertex_count,
+    AfferentBufferRef* out_buffer
+) {
+    return afferent_buffer_create_pooled(
+        renderer,
+        g_buffer_pool.vertex_pool,
+        &g_buffer_pool.vertex_pool_count,
+        vertices,
+        vertex_count,
+        sizeof(AfferentVertex),
+        out_buffer
+    );
 }
 
 AfferentResult afferent_buffer_create_stroke_vertex(
@@ -311,30 +275,15 @@ AfferentResult afferent_buffer_create_stroke_vertex(
     uint32_t vertex_count,
     AfferentBufferRef* out_buffer
 ) {
-    @autoreleasepool {
-        size_t required_size = vertex_count * sizeof(AfferentStrokeVertex);
-
-        id<MTLBuffer> mtlBuffer = pool_acquire_buffer(
-            renderer->device,
-            g_buffer_pool.vertex_pool,
-            &g_buffer_pool.vertex_pool_count,
-            required_size,
-            true
-        );
-
-        if (!mtlBuffer) {
-            return AFFERENT_ERROR_BUFFER_FAILED;
-        }
-
-        memcpy(mtlBuffer.contents, vertices, required_size);
-
-        struct AfferentBuffer *buffer = pool_acquire_wrapper();
-        buffer->count = vertex_count;
-        buffer->mtlBuffer = mtlBuffer;
-        buffer->persistent = false;
-        *out_buffer = buffer;
-        return AFFERENT_OK;
-    }
+    return afferent_buffer_create_pooled(
+        renderer,
+        g_buffer_pool.vertex_pool,
+        &g_buffer_pool.vertex_pool_count,
+        vertices,
+        vertex_count,
+        sizeof(AfferentStrokeVertex),
+        out_buffer
+    );
 }
 
 AfferentResult afferent_buffer_create_stroke_segment(
@@ -343,30 +292,15 @@ AfferentResult afferent_buffer_create_stroke_segment(
     uint32_t segment_count,
     AfferentBufferRef* out_buffer
 ) {
-    @autoreleasepool {
-        size_t required_size = segment_count * sizeof(AfferentStrokeSegment);
-
-        id<MTLBuffer> mtlBuffer = pool_acquire_buffer(
-            renderer->device,
-            g_buffer_pool.vertex_pool,
-            &g_buffer_pool.vertex_pool_count,
-            required_size,
-            true
-        );
-
-        if (!mtlBuffer) {
-            return AFFERENT_ERROR_BUFFER_FAILED;
-        }
-
-        memcpy(mtlBuffer.contents, segments, required_size);
-
-        struct AfferentBuffer *buffer = pool_acquire_wrapper();
-        buffer->count = segment_count;
-        buffer->mtlBuffer = mtlBuffer;
-        buffer->persistent = false;
-        *out_buffer = buffer;
-        return AFFERENT_OK;
-    }
+    return afferent_buffer_create_pooled(
+        renderer,
+        g_buffer_pool.vertex_pool,
+        &g_buffer_pool.vertex_pool_count,
+        segments,
+        segment_count,
+        sizeof(AfferentStrokeSegment),
+        out_buffer
+    );
 }
 
 AfferentResult afferent_buffer_create_stroke_segment_persistent(
@@ -407,31 +341,13 @@ AfferentResult afferent_buffer_create_index(
     uint32_t index_count,
     AfferentBufferRef* out_buffer
 ) {
-    @autoreleasepool {
-        size_t required_size = index_count * sizeof(uint32_t);
-
-        // Get a buffer from the pool (or create a new one)
-        id<MTLBuffer> mtlBuffer = pool_acquire_buffer(
-            renderer->device,
-            g_buffer_pool.index_pool,
-            &g_buffer_pool.index_pool_count,
-            required_size,
-            false
-        );
-
-        if (!mtlBuffer) {
-            return AFFERENT_ERROR_BUFFER_FAILED;
-        }
-
-        // Copy index data into the pooled buffer
-        memcpy(mtlBuffer.contents, indices, required_size);
-
-        // Get wrapper struct from pool (avoids malloc per draw call)
-        struct AfferentBuffer *buffer = pool_acquire_wrapper();
-        buffer->count = index_count;
-        buffer->mtlBuffer = mtlBuffer;
-        buffer->persistent = false;
-        *out_buffer = buffer;
-        return AFFERENT_OK;
-    }
+    return afferent_buffer_create_pooled(
+        renderer,
+        g_buffer_pool.index_pool,
+        &g_buffer_pool.index_pool_count,
+        indices,
+        index_count,
+        sizeof(uint32_t),
+        out_buffer
+    );
 }

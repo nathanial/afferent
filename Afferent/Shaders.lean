@@ -17,7 +17,7 @@ def text : String := include_str% "../native/src/metal/shaders/text.metal"
 /-- Instanced shapes shader (rects, triangles, circles) -/
 def instanced : String := include_str% "../native/src/metal/shaders/instanced.metal"
 
-/-- Sprite/texture shader (layout0 + layout1 entry points). -/
+/-- Sprite/texture shader. -/
 def sprite : String := include_str% "../native/src/metal/shaders/sprite.metal"
 
 /-- Screen-space stroke shader -/

@@ -49,11 +49,9 @@ test "shader registry includes expected names and non-empty sources" := do
 test "core shader entry points exist" := do
   let instanced := (shaderSource? "instanced").getD ""
   shouldContainSubstr instanced "instanced_vertex_main"
-  shouldContainSubstr instanced "instanced_triangle_vertex"
-  shouldContainSubstr instanced "instanced_circle_vertex"
+  shouldContainSubstr instanced "instanced_fragment_main"
   let sprite := (shaderSource? "sprite").getD ""
   shouldContainSubstr sprite "sprite_vertex_layout0"
-  shouldContainSubstr sprite "sprite_vertex_layout1"
   shouldContainSubstr sprite "sprite_fragment"
   let mesh3d := (shaderSource? "mesh3d").getD ""
   shouldContainSubstr mesh3d "vertex_main_3d"

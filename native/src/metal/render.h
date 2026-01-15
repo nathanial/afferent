@@ -45,71 +45,37 @@ struct AfferentRenderer {
     AfferentWindowRef window;
     __strong id<MTLDevice> device;
     __strong id<MTLCommandQueue> commandQueue;
-    bool msaaEnabled;                                  // Per-frame MSAA toggle
     float drawableScaleOverride;                       // 0 = native scale, >0 overrides
-    // Active pipeline pointers (match current render pass sample count)
+    // Active pipeline pointers
     __strong id<MTLRenderPipelineState> pipelineState;
     __strong id<MTLRenderPipelineState> strokePipelineState;    // Screen-space stroke pipeline
     __strong id<MTLRenderPipelineState> strokePathPipelineState; // GPU stroke path pipeline
     __strong id<MTLRenderPipelineState> textPipelineState;      // For text rendering
     __strong id<MTLRenderPipelineState> spritePipelineState;    // Sprite layout (5-float instances)
-    __strong id<MTLRenderPipelineState> texturedSpritePipelineState; // Textured layout (10-float instances)
-    // MSAA / non-MSAA variants for pipelines used in sprite benchmark
-    __strong id<MTLRenderPipelineState> pipelineStateMSAA;
-    __strong id<MTLRenderPipelineState> pipelineStateNoMSAA;
-    __strong id<MTLRenderPipelineState> strokePipelineStateMSAA;
-    __strong id<MTLRenderPipelineState> strokePipelineStateNoMSAA;
-    __strong id<MTLRenderPipelineState> strokePathPipelineStateMSAA;
-    __strong id<MTLRenderPipelineState> strokePathPipelineStateNoMSAA;
-    __strong id<MTLRenderPipelineState> textPipelineStateMSAA;
-    __strong id<MTLRenderPipelineState> textPipelineStateNoMSAA;
-    __strong id<MTLRenderPipelineState> spritePipelineStateMSAA;
-    __strong id<MTLRenderPipelineState> spritePipelineStateNoMSAA;
-    __strong id<MTLRenderPipelineState> texturedSpritePipelineStateMSAA;
-    __strong id<MTLRenderPipelineState> texturedSpritePipelineStateNoMSAA;
-    __strong id<MTLRenderPipelineState> instancedPipelineState; // For instanced rect rendering
-    __strong id<MTLRenderPipelineState> trianglePipelineState;  // For instanced triangle rendering
-    __strong id<MTLRenderPipelineState> circlePipelineState;    // For instanced circle rendering
-    __strong id<MTLRenderPipelineState> batchedRectPipelineState;       // Active batched rect pipeline
-    __strong id<MTLRenderPipelineState> batchedRectPipelineStateMSAA;   // Batched rects (4x MSAA)
-    __strong id<MTLRenderPipelineState> batchedRectPipelineStateNoMSAA; // Batched rects (no MSAA)
-    __strong id<MTLRenderPipelineState> batchedCirclePipelineState;       // Active batched circle pipeline
-    __strong id<MTLRenderPipelineState> batchedCirclePipelineStateMSAA;   // Batched circles (4x MSAA)
-    __strong id<MTLRenderPipelineState> batchedCirclePipelineStateNoMSAA; // Batched circles (no MSAA)
-    __strong id<MTLRenderPipelineState> batchedStrokeRectPipelineState;       // Active batched stroke rect pipeline
-    __strong id<MTLRenderPipelineState> batchedStrokeRectPipelineStateMSAA;   // Batched stroke rects (4x MSAA)
-    __strong id<MTLRenderPipelineState> batchedStrokeRectPipelineStateNoMSAA; // Batched stroke rects (no MSAA)
+    __strong id<MTLRenderPipelineState> instancedPipelineState; // For instanced shape rendering
+    __strong id<MTLRenderPipelineState> batchedPipelineState;     // Batched rect/circle/stroke pipeline
     __strong id<MTLSamplerState> textSampler;                   // For text texture sampling
     __strong id<MTLSamplerState> spriteSampler;                 // For sprite texture sampling
     __strong id<MTLCommandBuffer> currentCommandBuffer;
     __strong id<MTLRenderCommandEncoder> currentEncoder;
     __strong id<CAMetalDrawable> currentDrawable;
-    __strong id<MTLTexture> msaaTexture;  // 4x MSAA render target
-    NSUInteger msaaWidth;        // Track size for recreation
-    NSUInteger msaaHeight;
+    __strong id<MTLTexture> msaaColorTexture;         // MSAA color buffer
     // 3D rendering support
-    __strong id<MTLTexture> depthTexture;           // Depth buffer (non-MSAA)
-    __strong id<MTLTexture> msaaDepthTexture;       // Depth buffer (MSAA)
+    __strong id<MTLTexture> depthTexture;           // Depth buffer
     __strong id<MTLDepthStencilState> depthState;   // Depth test state (enabled)
     __strong id<MTLDepthStencilState> depthStateDisabled; // Depth test disabled for 2D after 3D
-    __strong id<MTLDepthStencilState> depthStateOcean;    // Ocean depth state (test on, no writes)
     __strong id<MTLRenderPipelineState> pipeline3D;       // Active 3D rendering pipeline
-    __strong id<MTLRenderPipelineState> pipeline3DMSAA;   // 3D pipeline (4x MSAA)
-    __strong id<MTLRenderPipelineState> pipeline3DNoMSAA; // 3D pipeline (no MSAA)
     __strong id<MTLRenderPipelineState> pipeline3DOcean;       // Active ocean projected-grid pipeline
-    __strong id<MTLRenderPipelineState> pipeline3DOceanMSAA;   // Ocean pipeline (4x MSAA)
-    __strong id<MTLRenderPipelineState> pipeline3DOceanNoMSAA; // Ocean pipeline (no MSAA)
     // Textured 3D rendering (for loaded assets with diffuse textures)
     __strong id<MTLRenderPipelineState> pipeline3DTextured;       // Active textured 3D pipeline
-    __strong id<MTLRenderPipelineState> pipeline3DTexturedMSAA;   // Textured 3D pipeline (4x MSAA)
-    __strong id<MTLRenderPipelineState> pipeline3DTexturedNoMSAA; // Textured 3D pipeline (no MSAA)
     __strong id<MTLSamplerState> texturedMeshSampler;             // Sampler for textured meshes
     __strong id<MTLBuffer> oceanIndexBuffer;
     uint32_t oceanIndexCount;
     uint32_t oceanGridSize;
     NSUInteger depthWidth;                 // Track depth texture size
     NSUInteger depthHeight;
-    MTLClearColor clearColor;
+    NSUInteger msaaWidth;
+    NSUInteger msaaHeight;
     float screenWidth;   // Current screen dimensions for text rendering
     float screenHeight;
 };
@@ -161,7 +127,7 @@ extern size_t g_text_vertex_staging_capacity;
 
 // Buffer pool functions (buffer_pool.m)
 struct AfferentBuffer* pool_acquire_wrapper(void);
-id<MTLBuffer> pool_acquire_buffer(id<MTLDevice> device, PooledBuffer* pool, int* count, size_t required_size, bool is_vertex);
+id<MTLBuffer> pool_acquire_buffer(id<MTLDevice> device, PooledBuffer* pool, int* count, size_t required_size);
 void pool_reset_frame(void);
 
 // Persistent buffer creation (not pooled)
@@ -174,8 +140,8 @@ AfferentResult afferent_buffer_create_stroke_segment_persistent(
 
 // Pipeline creation (pipeline.m)
 AfferentResult create_pipelines(struct AfferentRenderer* renderer);
+void ensureDepthTexture(AfferentRendererRef renderer, NSUInteger width, NSUInteger height);
 void ensureMSAATexture(AfferentRendererRef renderer, NSUInteger width, NSUInteger height);
-void ensureDepthTexture(AfferentRendererRef renderer, NSUInteger width, NSUInteger height, bool msaa);
 
 // Text rendering helpers (draw_text.m)
 id<MTLTexture> ensureFontTexture(AfferentRendererRef renderer, AfferentFontRef font);

@@ -368,20 +368,21 @@ C-allocated mutable arrays that avoid Lean's copy-on-write:
 ```lean
 let buf ← FloatBuffer.create 10000
 buf.setVec5 index x y size rotation alpha
-renderer.drawSpritesFromBuffer texture buf count
+Render.Dynamic.drawSpritesFromBuffer renderer texture buf count size screenWidth screenHeight
 ```
 
 ### Instanced Streaming
 Stream large instanced batches without Array allocation:
 ```lean
 let buf ← FloatBuffer.create (count * 8)
-Render.Dynamic.drawRectsAnimated renderer particles buf halfSize t spinSpeed
+Render.Dynamic.drawInstancedAnimated renderer 0 particles buf halfSize t spinSpeed
 ```
 
 ### Instanced Rendering
-Draw millions of shapes via GPU instancing:
+Draw millions of shapes via GPU instancing (shapeType: 0=rect, 1=triangle, 2=circle):
 ```lean
-renderer.drawInstancedCircles instanceBuffer count screenWidth screenHeight
+FFI.Renderer.drawInstancedShapesBuffer renderer 2 instanceBuffer count a b c d tx ty
+  screenWidth screenHeight sizeMode t hueSpeed colorMode
 ```
 
 ## Testing

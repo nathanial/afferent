@@ -106,7 +106,7 @@ def executeCommand (reg : FontRegistry) (cmd : Afferent.Arbor.RenderCommand) : C
     let canvas ← CanvasM.getCanvas
     let (canvasWidth, canvasHeight) ← canvas.ctx.getCurrentSize
     let data := #[center.x, center.y, radius, 0.0, color.r, color.g, color.b, color.a]
-    canvas.ctx.renderer.drawCirclesBatch data 1 canvasWidth canvasHeight
+    canvas.ctx.renderer.drawBatch 1 data 1 0.0 0.0 canvasWidth canvasHeight
 
   | .strokeCircle center radius color lineWidth =>
     -- Draw a stroked circle using path (no stroked circle batch yet)
@@ -356,7 +356,7 @@ def executeFillRectBatch (rects : Array RectBatchEntry) (cornerRadius : Float) :
   let data := rects.foldl (init := #[]) fun acc entry =>
     acc.push entry.x |>.push entry.y |>.push entry.width |>.push entry.height
        |>.push entry.r |>.push entry.g |>.push entry.b |>.push entry.a
-  canvas.ctx.renderer.drawRectsBatch data rects.size.toUInt32 cornerRadius
+  canvas.ctx.renderer.drawBatch 0 data rects.size.toUInt32 cornerRadius 0.0
     canvasWidth canvasHeight
 
 /-- Execute a batch of fillCircle commands in a single draw call. -/
@@ -364,11 +364,14 @@ def executeFillCircleBatch (circles : Array CircleBatchEntry) : CanvasM Unit := 
   if circles.isEmpty then return
   let canvas ← CanvasM.getCanvas
   let (canvasWidth, canvasHeight) ← canvas.ctx.getCurrentSize
-  -- Pack into Float array: [centerX, centerY, radius, padding, r, g, b, a] per circle
+  -- Pack into Float array: [x, y, w, h, r, g, b, a] per circle (bounding box)
   let data := circles.foldl (init := #[]) fun acc entry =>
-    acc.push entry.centerX |>.push entry.centerY |>.push entry.radius |>.push 0.0  -- padding
+    let size := entry.radius * 2.0
+    let x := entry.centerX - entry.radius
+    let y := entry.centerY - entry.radius
+    acc.push x |>.push y |>.push size |>.push size
        |>.push entry.r |>.push entry.g |>.push entry.b |>.push entry.a
-  canvas.ctx.renderer.drawCirclesBatch data circles.size.toUInt32
+  canvas.ctx.renderer.drawBatch 1 data circles.size.toUInt32 0.0 0.0
     canvasWidth canvasHeight
 
 /-- Execute a batch of strokeRect commands in a single draw call. -/
@@ -380,7 +383,7 @@ def executeStrokeRectBatch (rects : Array StrokeRectBatchEntry) (lineWidth corne
   let data := rects.foldl (init := #[]) fun acc entry =>
     acc.push entry.x |>.push entry.y |>.push entry.width |>.push entry.height
        |>.push entry.r |>.push entry.g |>.push entry.b |>.push entry.a
-  canvas.ctx.renderer.drawStrokeRectsBatch data rects.size.toUInt32 lineWidth cornerRadius
+  canvas.ctx.renderer.drawBatch 2 data rects.size.toUInt32 lineWidth cornerRadius
     canvasWidth canvasHeight
 
 /-- Execute an array of RenderCommands using CanvasM with batching optimization.

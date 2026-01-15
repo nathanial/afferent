@@ -109,25 +109,13 @@ static id<MTLTexture> afferent_get_sprite_texture(AfferentRendererRef renderer, 
     return metalTex;
 }
 
-static void afferent_draw_textured_instances(
+static void afferent_draw_sprites_internal(
     AfferentRendererRef renderer,
     AfferentTextureRef texture,
     const float* data,
     uint32_t count,
-    uint32_t layout,
     float canvasWidth,
-    float canvasHeight,
-    float u0,
-    float v0,
-    float u1,
-    float v1,
-    uint32_t useMatrix,
-    float transformA,
-    float transformB,
-    float transformC,
-    float transformD,
-    float transformTx,
-    float transformTy
+    float canvasHeight
 ) {
     if (!renderer || !renderer->currentEncoder || !texture || !data || count == 0) {
         return;
@@ -139,14 +127,12 @@ static void afferent_draw_textured_instances(
             return;
         }
 
-        size_t stride = (layout == 0) ? 5 : 10;
-        size_t dataSize = (size_t)count * stride * sizeof(float);
+        size_t dataSize = (size_t)count * 5 * sizeof(float);
         id<MTLBuffer> spriteBuffer = pool_acquire_buffer(
             renderer->device,
             g_buffer_pool.vertex_pool,
             &g_buffer_pool.vertex_pool_count,
-            dataSize,
-            true
+            dataSize
         );
 
         if (!spriteBuffer) {
@@ -157,22 +143,10 @@ static void afferent_draw_textured_instances(
         memcpy(spriteBuffer.contents, data, dataSize);
 
         SpriteUniforms uniforms = {
-            .viewport = { canvasWidth, canvasHeight },
-            .layout = layout,
-            .useMatrix = useMatrix,
-            .uvRect = { u0, v0, u1, v1 },
-            .transform0 = { transformA, transformB, transformC, transformD },
-            .transform1 = { transformTx, transformTy, 0.0f, 0.0f }
+            .viewport = { canvasWidth, canvasHeight }
         };
 
-        id<MTLRenderPipelineState> pipeline = (layout == 0)
-            ? renderer->spritePipelineState
-            : renderer->texturedSpritePipelineState;
-        if (!pipeline) {
-            return;
-        }
-
-        [renderer->currentEncoder setRenderPipelineState:pipeline];
+        [renderer->currentEncoder setRenderPipelineState:renderer->spritePipelineState];
         // Disable depth testing for 2D rendering (may have been enabled by 3D)
         [renderer->currentEncoder setDepthStencilState:renderer->depthStateDisabled];
         [renderer->currentEncoder setVertexBuffer:spriteBuffer offset:0 atIndex:0];
@@ -197,117 +171,7 @@ void afferent_renderer_draw_sprites(
     float canvasWidth,
     float canvasHeight
 ) {
-    afferent_draw_textured_instances(
-        renderer,
-        texture,
-        data,
-        count,
-        0,
-        canvasWidth,
-        canvasHeight,
-        0.0f,
-        0.0f,
-        1.0f,
-        1.0f,
-        0,
-        1.0f, 0.0f, 0.0f, 1.0f,
-        0.0f, 0.0f
-    );
-}
-
-// Draw sprites with a transform matrix (world-space or custom projection)
-// data: [pixelX, pixelY, rotation, halfSizePixels, alpha] × count (5 floats per sprite)
-void afferent_renderer_draw_sprites_matrix(
-    AfferentRendererRef renderer,
-    AfferentTextureRef texture,
-    const float* data,
-    uint32_t count,
-    float canvasWidth,
-    float canvasHeight,
-    float transformA,
-    float transformB,
-    float transformC,
-    float transformD,
-    float transformTx,
-    float transformTy
-) {
-    afferent_draw_textured_instances(
-        renderer,
-        texture,
-        data,
-        count,
-        0,
-        canvasWidth,
-        canvasHeight,
-        0.0f,
-        0.0f,
-        1.0f,
-        1.0f,
-        1,
-        transformA, transformB, transformC, transformD,
-        transformTx, transformTy
-    );
-}
-
-// Draw sprites from FloatBuffer that already contains sprite layout (5 floats)
-void afferent_renderer_draw_sprites_instance_buffer(
-    AfferentRendererRef renderer,
-    AfferentTextureRef texture,
-    const float* data,
-    uint32_t count,
-    float canvasWidth,
-    float canvasHeight
-) {
-    // Same layout as afferent_renderer_draw_sprites, so forward directly
-    afferent_draw_textured_instances(
-        renderer,
-        texture,
-        data,
-        count,
-        0,
-        canvasWidth,
-        canvasHeight,
-        0.0f,
-        0.0f,
-        1.0f,
-        1.0f,
-        0,
-        1.0f, 0.0f, 0.0f, 1.0f,
-        0.0f, 0.0f
-    );
-}
-
-// Draw sprites from FloatBuffer with a transform matrix (world-space or custom projection)
-void afferent_renderer_draw_sprites_instance_buffer_matrix(
-    AfferentRendererRef renderer,
-    AfferentTextureRef texture,
-    const float* data,
-    uint32_t count,
-    float canvasWidth,
-    float canvasHeight,
-    float transformA,
-    float transformB,
-    float transformC,
-    float transformD,
-    float transformTx,
-    float transformTy
-) {
-    afferent_draw_textured_instances(
-        renderer,
-        texture,
-        data,
-        count,
-        0,
-        canvasWidth,
-        canvasHeight,
-        0.0f,
-        0.0f,
-        1.0f,
-        1.0f,
-        1,
-        transformA, transformB, transformC, transformD,
-        transformTx, transformTy
-    );
+    afferent_draw_sprites_internal(renderer, texture, data, count, canvasWidth, canvasHeight);
 }
 
 // Release Metal texture associated with an AfferentTexture (called when texture is destroyed)
@@ -321,228 +185,4 @@ void afferent_release_sprite_metal_texture(AfferentTextureRef texture) {
         metalTex = nil;  // ARC will release
         afferent_texture_set_metal_texture(texture, NULL);
     }
-}
-
-// Draw a textured rectangle with source and destination rectangles
-// Used for map tile rendering with cropping and scaling
-void afferent_renderer_draw_textured_rect(
-    AfferentRendererRef renderer,
-    AfferentTextureRef texture,
-    float srcX, float srcY, float srcW, float srcH,
-    float dstX, float dstY, float dstW, float dstH,
-    float canvasWidth, float canvasHeight,
-    float alpha
-) {
-    if (!renderer || !renderer->currentEncoder || !texture) {
-        return;
-    }
-
-    // Get texture dimensions for UV conversion
-    uint32_t texWidth, texHeight;
-    afferent_texture_get_size(texture, &texWidth, &texHeight);
-    if (texWidth == 0 || texHeight == 0) {
-        return;
-    }
-
-    float u0 = srcX / (float)texWidth;
-    float v0 = srcY / (float)texHeight;
-    float u1 = (srcX + srcW) / (float)texWidth;
-    float v1 = (srcY + srcH) / (float)texHeight;
-
-    float centerX = dstX + dstW * 0.5f;
-    float centerY = dstY + dstH * 0.5f;
-    float halfW = dstW * 0.5f;
-    float halfH = dstH * 0.5f;
-
-    float instance[10] = {
-        centerX,
-        centerY,
-        0.0f,
-        halfW,
-        halfH,
-        u0, v0, u1, v1,
-        alpha
-    };
-
-    afferent_draw_textured_instances(
-        renderer,
-        texture,
-        instance,
-        1,
-        1,
-        canvasWidth,
-        canvasHeight,
-        0.0f,
-        0.0f,
-        1.0f,
-        1.0f,
-        0,
-        1.0f, 0.0f, 0.0f, 1.0f,
-        0.0f, 0.0f
-    );
-}
-
-// Draw sprites from FloatBuffer using physics layout.
-// Buffer layout: [x, y, vx, vy, rotation] per sprite (5 floats).
-// Converted on CPU into sprite layout with uniform halfSize and alpha=1.0.
-void afferent_renderer_draw_sprites_buffer(
-    AfferentRendererRef renderer,
-    AfferentTextureRef texture,
-    const float* data,
-    uint32_t count,
-    float halfSize,
-    float canvasWidth,
-    float canvasHeight
-) {
-    if (!renderer || !renderer->currentEncoder || !texture || !data || count == 0) {
-        return;
-    }
-
-    @autoreleasepool {
-        id<MTLTexture> metalTex = afferent_get_sprite_texture(renderer, texture);
-        if (!metalTex) {
-            return;
-        }
-
-        // Convert physics layout [x, y, vx, vy, rotation] -> sprite layout (5 floats)
-        size_t instanceSize = (size_t)count * 5 * sizeof(float);
-        id<MTLBuffer> spriteBuffer = pool_acquire_buffer(
-            renderer->device,
-            g_buffer_pool.vertex_pool,
-            &g_buffer_pool.vertex_pool_count,
-            instanceSize,
-            true
-        );
-
-        if (!spriteBuffer) {
-            NSLog(@"Failed to acquire sprite buffer");
-            return;
-        }
-
-        float* instances = (float*)spriteBuffer.contents;
-        for (uint32_t i = 0; i < count; i++) {
-            const float* src = data + i * 5;
-            size_t base = (size_t)i * 5;
-            instances[base + 0] = src[0];
-            instances[base + 1] = src[1];
-            instances[base + 2] = src[4];
-            instances[base + 3] = halfSize;
-            instances[base + 4] = 1.0f;
-        }
-
-        SpriteUniforms uniforms = {
-            .viewport = { canvasWidth, canvasHeight },
-            .layout = 0,
-            .useMatrix = 0,
-            .uvRect = { 0.0f, 0.0f, 1.0f, 1.0f },
-            .transform0 = { 1.0f, 0.0f, 0.0f, 1.0f },
-            .transform1 = { 0.0f, 0.0f, 0.0f, 0.0f }
-        };
-
-        [renderer->currentEncoder setRenderPipelineState:renderer->spritePipelineState];
-        // Disable depth testing for 2D rendering (may have been enabled by 3D)
-        [renderer->currentEncoder setDepthStencilState:renderer->depthStateDisabled];
-        [renderer->currentEncoder setVertexBuffer:spriteBuffer offset:0 atIndex:0];
-        [renderer->currentEncoder setVertexBytes:&uniforms length:sizeof(uniforms) atIndex:1];
-        [renderer->currentEncoder setFragmentTexture:metalTex atIndex:0];
-        [renderer->currentEncoder setFragmentSamplerState:renderer->spriteSampler atIndex:0];
-        [renderer->currentEncoder drawPrimitives:MTLPrimitiveTypeTriangleStrip
-                                     vertexStart:0
-                                     vertexCount:4
-                                   instanceCount:count];
-        [renderer->currentEncoder setRenderPipelineState:renderer->pipelineState];
-    }
-}
-
-// Draw textured instances with per-instance UV rects and size (10 floats per instance).
-void afferent_renderer_draw_textured_instances(
-    AfferentRendererRef renderer,
-    AfferentTextureRef texture,
-    const float* data,
-    uint32_t count,
-    float canvasWidth,
-    float canvasHeight
-) {
-    afferent_draw_textured_instances(
-        renderer,
-        texture,
-        data,
-        count,
-        1,
-        canvasWidth,
-        canvasHeight,
-        0.0f,
-        0.0f,
-        1.0f,
-        1.0f,
-        0,
-        1.0f, 0.0f, 0.0f, 1.0f,
-        0.0f, 0.0f
-    );
-}
-
-// Draw textured instances with a transform matrix (world-space or custom projection).
-void afferent_renderer_draw_textured_instances_matrix(
-    AfferentRendererRef renderer,
-    AfferentTextureRef texture,
-    const float* data,
-    uint32_t count,
-    float canvasWidth,
-    float canvasHeight,
-    float transformA,
-    float transformB,
-    float transformC,
-    float transformD,
-    float transformTx,
-    float transformTy
-) {
-    afferent_draw_textured_instances(
-        renderer,
-        texture,
-        data,
-        count,
-        1,
-        canvasWidth,
-        canvasHeight,
-        0.0f,
-        0.0f,
-        1.0f,
-        1.0f,
-        1,
-        transformA, transformB, transformC, transformD,
-        transformTx, transformTy
-    );
-}
-
-// Draw textured instances from FloatBuffer with a transform matrix.
-void afferent_renderer_draw_textured_instances_buffer_matrix(
-    AfferentRendererRef renderer,
-    AfferentTextureRef texture,
-    const float* data,
-    uint32_t count,
-    float canvasWidth,
-    float canvasHeight,
-    float transformA,
-    float transformB,
-    float transformC,
-    float transformD,
-    float transformTx,
-    float transformTy
-) {
-    afferent_draw_textured_instances(
-        renderer,
-        texture,
-        data,
-        count,
-        1,
-        canvasWidth,
-        canvasHeight,
-        0.0f,
-        0.0f,
-        1.0f,
-        1.0f,
-        1,
-        transformA, transformB, transformC, transformD,
-        transformTx, transformTy
-    );
 }

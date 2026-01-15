@@ -1,36 +1,35 @@
-// pipeline.m - Pipeline creation and MSAA/depth texture setup
+// pipeline.m - Pipeline creation and depth texture setup
 #import "render.h"
 #import "shaders.h"
 
-// Helper function to create or recreate MSAA texture if needed
-void ensureMSAATexture(AfferentRendererRef renderer, NSUInteger width, NSUInteger height) {
-    if (renderer->msaaTexture &&
-        renderer->msaaWidth == width &&
-        renderer->msaaHeight == height) {
-        return;  // Already have correct size
+static void apply_alpha_blend(MTLRenderPipelineColorAttachmentDescriptor *color) {
+    color.blendingEnabled = YES;
+    color.sourceRGBBlendFactor = MTLBlendFactorSourceAlpha;
+    color.destinationRGBBlendFactor = MTLBlendFactorOneMinusSourceAlpha;
+    color.sourceAlphaBlendFactor = MTLBlendFactorOne;
+    color.destinationAlphaBlendFactor = MTLBlendFactorOneMinusSourceAlpha;
+}
+
+static const NSUInteger kMSAASampleCount = 4;
+
+static id<MTLRenderPipelineState> build_pipeline(
+    id<MTLDevice> device,
+    MTLRenderPipelineDescriptor *desc,
+    const char *label,
+    NSError **error
+) {
+    desc.rasterSampleCount = kMSAASampleCount;
+    id<MTLRenderPipelineState> pipeline = [device newRenderPipelineStateWithDescriptor:desc error:error];
+    if (!pipeline) {
+        NSLog(@"%s pipeline creation failed: %@", label, *error);
     }
-
-    // Create new MSAA texture
-    MTLTextureDescriptor *msaaDesc = [MTLTextureDescriptor texture2DDescriptorWithPixelFormat:MTLPixelFormatBGRA8Unorm
-                                                                                        width:width
-                                                                                       height:height
-                                                                                    mipmapped:NO];
-    msaaDesc.textureType = MTLTextureType2DMultisample;
-    msaaDesc.sampleCount = 4;
-    msaaDesc.usage = MTLTextureUsageRenderTarget;
-    msaaDesc.storageMode = MTLStorageModePrivate;  // GPU-only, no CPU access needed
-
-    renderer->msaaTexture = [renderer->device newTextureWithDescriptor:msaaDesc];
-    renderer->msaaWidth = width;
-    renderer->msaaHeight = height;
+    return pipeline;
 }
 
 // Helper function to create or recreate depth textures if needed
-void ensureDepthTexture(AfferentRendererRef renderer, NSUInteger width, NSUInteger height, bool msaa) {
+void ensureDepthTexture(AfferentRendererRef renderer, NSUInteger width, NSUInteger height) {
     if (renderer->depthWidth == width && renderer->depthHeight == height) {
-        // Check if we have the right textures already
-        if (msaa && renderer->msaaDepthTexture) return;
-        if (!msaa && renderer->depthTexture) return;
+        if (renderer->depthTexture) return;
     }
 
     // Create depth texture descriptor
@@ -40,19 +39,32 @@ void ensureDepthTexture(AfferentRendererRef renderer, NSUInteger width, NSUInteg
                                                                                       mipmapped:NO];
     depthDesc.usage = MTLTextureUsageRenderTarget;
     depthDesc.storageMode = MTLStorageModePrivate;
-
-    if (msaa) {
-        depthDesc.textureType = MTLTextureType2DMultisample;
-        depthDesc.sampleCount = 4;
-        renderer->msaaDepthTexture = [renderer->device newTextureWithDescriptor:depthDesc];
-    } else {
-        depthDesc.textureType = MTLTextureType2D;
-        depthDesc.sampleCount = 1;
-        renderer->depthTexture = [renderer->device newTextureWithDescriptor:depthDesc];
-    }
+    depthDesc.textureType = MTLTextureType2DMultisample;
+    depthDesc.sampleCount = kMSAASampleCount;
+    renderer->depthTexture = [renderer->device newTextureWithDescriptor:depthDesc];
 
     renderer->depthWidth = width;
     renderer->depthHeight = height;
+}
+
+// Helper function to create or recreate MSAA color textures if needed
+void ensureMSAATexture(AfferentRendererRef renderer, NSUInteger width, NSUInteger height) {
+    if (renderer->msaaWidth == width && renderer->msaaHeight == height) {
+        if (renderer->msaaColorTexture) return;
+    }
+
+    MTLTextureDescriptor *colorDesc = [MTLTextureDescriptor texture2DDescriptorWithPixelFormat:MTLPixelFormatBGRA8Unorm
+                                                                                         width:width
+                                                                                        height:height
+                                                                                     mipmapped:NO];
+    colorDesc.usage = MTLTextureUsageRenderTarget;
+    colorDesc.storageMode = MTLStorageModePrivate;
+    colorDesc.textureType = MTLTextureType2DMultisample;
+    colorDesc.sampleCount = kMSAASampleCount;
+    renderer->msaaColorTexture = [renderer->device newTextureWithDescriptor:colorDesc];
+
+    renderer->msaaWidth = width;
+    renderer->msaaHeight = height;
 }
 
 // Create all pipelines for the renderer
@@ -93,38 +105,21 @@ AfferentResult create_pipelines(struct AfferentRenderer* renderer) {
     vertexDescriptor.layouts[0].stride = sizeof(AfferentVertex);
     vertexDescriptor.layouts[0].stepFunction = MTLVertexStepFunctionPerVertex;
 
-    // Create pipeline states (MSAA + non-MSAA)
+    // Create pipeline state
     MTLRenderPipelineDescriptor *pipelineDesc = [[MTLRenderPipelineDescriptor alloc] init];
     pipelineDesc.vertexFunction = vertexFunction;
     pipelineDesc.fragmentFunction = fragmentFunction;
     pipelineDesc.vertexDescriptor = vertexDescriptor;
     pipelineDesc.colorAttachments[0].pixelFormat = MTLPixelFormatBGRA8Unorm;
-    pipelineDesc.rasterSampleCount = 4;  // Enable 4x MSAA by default
+    apply_alpha_blend(pipelineDesc.colorAttachments[0]);
 
-    // Enable blending for transparency
-    pipelineDesc.colorAttachments[0].blendingEnabled = YES;
-    pipelineDesc.colorAttachments[0].sourceRGBBlendFactor = MTLBlendFactorSourceAlpha;
-    pipelineDesc.colorAttachments[0].destinationRGBBlendFactor = MTLBlendFactorOneMinusSourceAlpha;
-    pipelineDesc.colorAttachments[0].sourceAlphaBlendFactor = MTLBlendFactorOne;
-    pipelineDesc.colorAttachments[0].destinationAlphaBlendFactor = MTLBlendFactorOneMinusSourceAlpha;
-
-    renderer->pipelineStateMSAA = [renderer->device newRenderPipelineStateWithDescriptor:pipelineDesc
-                                                                                   error:&error];
-    if (!renderer->pipelineStateMSAA) {
-        NSLog(@"Pipeline creation failed (MSAA): %@", error);
-        return AFFERENT_ERROR_PIPELINE_FAILED;
-    }
-
-    pipelineDesc.rasterSampleCount = 1;
-    renderer->pipelineStateNoMSAA = [renderer->device newRenderPipelineStateWithDescriptor:pipelineDesc
-                                                                                     error:&error];
-    if (!renderer->pipelineStateNoMSAA) {
-        NSLog(@"Pipeline creation failed (no MSAA): %@", error);
-        return AFFERENT_ERROR_PIPELINE_FAILED;
-    }
-
-    renderer->pipelineState = renderer->pipelineStateMSAA;
-    renderer->msaaEnabled = true;
+    renderer->pipelineState = build_pipeline(
+        renderer->device,
+        pipelineDesc,
+        "Basic",
+        &error
+    );
+    if (!renderer->pipelineState) return AFFERENT_ERROR_PIPELINE_FAILED;
 
     // Create stroke rendering pipeline (screen-space extrusion)
     id<MTLLibrary> strokeLibrary = [renderer->device newLibraryWithSource:strokeShaderSource
@@ -168,31 +163,15 @@ AfferentResult create_pipelines(struct AfferentRenderer* renderer) {
     strokePipelineDesc.fragmentFunction = strokeFragmentFunction;
     strokePipelineDesc.vertexDescriptor = strokeVertexDescriptor;
     strokePipelineDesc.colorAttachments[0].pixelFormat = MTLPixelFormatBGRA8Unorm;
-    strokePipelineDesc.rasterSampleCount = 4;
+    apply_alpha_blend(strokePipelineDesc.colorAttachments[0]);
 
-    // Enable blending for transparency
-    strokePipelineDesc.colorAttachments[0].blendingEnabled = YES;
-    strokePipelineDesc.colorAttachments[0].sourceRGBBlendFactor = MTLBlendFactorSourceAlpha;
-    strokePipelineDesc.colorAttachments[0].destinationRGBBlendFactor = MTLBlendFactorOneMinusSourceAlpha;
-    strokePipelineDesc.colorAttachments[0].sourceAlphaBlendFactor = MTLBlendFactorOne;
-    strokePipelineDesc.colorAttachments[0].destinationAlphaBlendFactor = MTLBlendFactorOneMinusSourceAlpha;
-
-    renderer->strokePipelineStateMSAA = [renderer->device newRenderPipelineStateWithDescriptor:strokePipelineDesc
-                                                                                          error:&error];
-    if (!renderer->strokePipelineStateMSAA) {
-        NSLog(@"Stroke pipeline creation failed (MSAA): %@", error);
-        return AFFERENT_ERROR_PIPELINE_FAILED;
-    }
-
-    strokePipelineDesc.rasterSampleCount = 1;
-    renderer->strokePipelineStateNoMSAA = [renderer->device newRenderPipelineStateWithDescriptor:strokePipelineDesc
-                                                                                            error:&error];
-    if (!renderer->strokePipelineStateNoMSAA) {
-        NSLog(@"Stroke pipeline creation failed (no MSAA): %@", error);
-        return AFFERENT_ERROR_PIPELINE_FAILED;
-    }
-
-    renderer->strokePipelineState = renderer->strokePipelineStateMSAA;
+    renderer->strokePipelineState = build_pipeline(
+        renderer->device,
+        strokePipelineDesc,
+        "Stroke",
+        &error
+    );
+    if (!renderer->strokePipelineState) return AFFERENT_ERROR_PIPELINE_FAILED;
 
     // Create stroke path rendering pipeline (segment-based GPU extrusion)
     id<MTLLibrary> strokePathLibrary = [renderer->device newLibraryWithSource:strokePathShaderSource
@@ -215,31 +194,15 @@ AfferentResult create_pipelines(struct AfferentRenderer* renderer) {
     strokePathPipelineDesc.vertexFunction = strokePathVertexFunction;
     strokePathPipelineDesc.fragmentFunction = strokePathFragmentFunction;
     strokePathPipelineDesc.colorAttachments[0].pixelFormat = MTLPixelFormatBGRA8Unorm;
-    strokePathPipelineDesc.rasterSampleCount = 4;
+    apply_alpha_blend(strokePathPipelineDesc.colorAttachments[0]);
 
-    // Enable blending for transparency
-    strokePathPipelineDesc.colorAttachments[0].blendingEnabled = YES;
-    strokePathPipelineDesc.colorAttachments[0].sourceRGBBlendFactor = MTLBlendFactorSourceAlpha;
-    strokePathPipelineDesc.colorAttachments[0].destinationRGBBlendFactor = MTLBlendFactorOneMinusSourceAlpha;
-    strokePathPipelineDesc.colorAttachments[0].sourceAlphaBlendFactor = MTLBlendFactorOne;
-    strokePathPipelineDesc.colorAttachments[0].destinationAlphaBlendFactor = MTLBlendFactorOneMinusSourceAlpha;
-
-    renderer->strokePathPipelineStateMSAA = [renderer->device newRenderPipelineStateWithDescriptor:strokePathPipelineDesc
-                                                                                            error:&error];
-    if (!renderer->strokePathPipelineStateMSAA) {
-        NSLog(@"Stroke path pipeline creation failed (MSAA): %@", error);
-        return AFFERENT_ERROR_PIPELINE_FAILED;
-    }
-
-    strokePathPipelineDesc.rasterSampleCount = 1;
-    renderer->strokePathPipelineStateNoMSAA = [renderer->device newRenderPipelineStateWithDescriptor:strokePathPipelineDesc
-                                                                                              error:&error];
-    if (!renderer->strokePathPipelineStateNoMSAA) {
-        NSLog(@"Stroke path pipeline creation failed (no MSAA): %@", error);
-        return AFFERENT_ERROR_PIPELINE_FAILED;
-    }
-
-    renderer->strokePathPipelineState = renderer->strokePathPipelineStateMSAA;
+    renderer->strokePathPipelineState = build_pipeline(
+        renderer->device,
+        strokePathPipelineDesc,
+        "Stroke path",
+        &error
+    );
+    if (!renderer->strokePathPipelineState) return AFFERENT_ERROR_PIPELINE_FAILED;
 
     // Create text rendering pipeline
     id<MTLLibrary> textLibrary = [renderer->device newLibraryWithSource:textShaderSource
@@ -280,37 +243,21 @@ AfferentResult create_pipelines(struct AfferentRenderer* renderer) {
     textVertexDescriptor.layouts[0].stride = sizeof(TextVertex);
     textVertexDescriptor.layouts[0].stepFunction = MTLVertexStepFunctionPerVertex;
 
-    // Create text pipeline states (MSAA + non-MSAA)
+    // Create text pipeline state
     MTLRenderPipelineDescriptor *textPipelineDesc = [[MTLRenderPipelineDescriptor alloc] init];
     textPipelineDesc.vertexFunction = textVertexFunction;
     textPipelineDesc.fragmentFunction = textFragmentFunction;
     textPipelineDesc.vertexDescriptor = textVertexDescriptor;
     textPipelineDesc.colorAttachments[0].pixelFormat = MTLPixelFormatBGRA8Unorm;
-    textPipelineDesc.rasterSampleCount = 4;  // Match MSAA by default
+    apply_alpha_blend(textPipelineDesc.colorAttachments[0]);
 
-    // Enable blending for text
-    textPipelineDesc.colorAttachments[0].blendingEnabled = YES;
-    textPipelineDesc.colorAttachments[0].sourceRGBBlendFactor = MTLBlendFactorSourceAlpha;
-    textPipelineDesc.colorAttachments[0].destinationRGBBlendFactor = MTLBlendFactorOneMinusSourceAlpha;
-    textPipelineDesc.colorAttachments[0].sourceAlphaBlendFactor = MTLBlendFactorOne;
-    textPipelineDesc.colorAttachments[0].destinationAlphaBlendFactor = MTLBlendFactorOneMinusSourceAlpha;
-
-    renderer->textPipelineStateMSAA = [renderer->device newRenderPipelineStateWithDescriptor:textPipelineDesc
-                                                                                       error:&error];
-    if (!renderer->textPipelineStateMSAA) {
-        NSLog(@"Text pipeline creation failed (MSAA): %@", error);
-        return AFFERENT_ERROR_PIPELINE_FAILED;
-    }
-
-    textPipelineDesc.rasterSampleCount = 1;
-    renderer->textPipelineStateNoMSAA = [renderer->device newRenderPipelineStateWithDescriptor:textPipelineDesc
-                                                                                         error:&error];
-    if (!renderer->textPipelineStateNoMSAA) {
-        NSLog(@"Text pipeline creation failed (no MSAA): %@", error);
-        return AFFERENT_ERROR_PIPELINE_FAILED;
-    }
-
-    renderer->textPipelineState = renderer->textPipelineStateMSAA;
+    renderer->textPipelineState = build_pipeline(
+        renderer->device,
+        textPipelineDesc,
+        "Text",
+        &error
+    );
+    if (!renderer->textPipelineState) return AFFERENT_ERROR_PIPELINE_FAILED;
 
     // Create text sampler
     MTLSamplerDescriptor *samplerDesc = [[MTLSamplerDescriptor alloc] init];
@@ -329,7 +276,7 @@ AfferentResult create_pipelines(struct AfferentRenderer* renderer) {
     spriteSamplerDesc.tAddressMode = MTLSamplerAddressModeClampToEdge;
     renderer->spriteSampler = [renderer->device newSamplerStateWithDescriptor:spriteSamplerDesc];
 
-    // Create instanced rendering pipeline (for GPU-accelerated rectangle batches)
+    // Create instanced rendering pipeline (for GPU-accelerated shapes)
     id<MTLLibrary> instancedLibrary = [renderer->device newLibraryWithSource:instancedShaderSource
                                                                      options:nil
                                                                        error:&error];
@@ -351,180 +298,39 @@ AfferentResult create_pipelines(struct AfferentRenderer* renderer) {
     instancedPipelineDesc.vertexFunction = instancedVertexFunction;
     instancedPipelineDesc.fragmentFunction = instancedFragmentFunction;
     instancedPipelineDesc.colorAttachments[0].pixelFormat = MTLPixelFormatBGRA8Unorm;
-    instancedPipelineDesc.rasterSampleCount = 4;  // Match MSAA
+    apply_alpha_blend(instancedPipelineDesc.colorAttachments[0]);
 
-    // Enable blending
-    instancedPipelineDesc.colorAttachments[0].blendingEnabled = YES;
-    instancedPipelineDesc.colorAttachments[0].sourceRGBBlendFactor = MTLBlendFactorSourceAlpha;
-    instancedPipelineDesc.colorAttachments[0].destinationRGBBlendFactor = MTLBlendFactorOneMinusSourceAlpha;
-    instancedPipelineDesc.colorAttachments[0].sourceAlphaBlendFactor = MTLBlendFactorOne;
-    instancedPipelineDesc.colorAttachments[0].destinationAlphaBlendFactor = MTLBlendFactorOneMinusSourceAlpha;
-
-    renderer->instancedPipelineState = [renderer->device newRenderPipelineStateWithDescriptor:instancedPipelineDesc
-                                                                                        error:&error];
+    renderer->instancedPipelineState = build_pipeline(
+        renderer->device,
+        instancedPipelineDesc,
+        "Instanced",
+        &error
+    );
     if (!renderer->instancedPipelineState) {
-        NSLog(@"Instanced pipeline creation failed: %@", error);
         return AFFERENT_ERROR_PIPELINE_FAILED;
     }
 
-    // Create triangle pipeline (same library, different vertex function)
-    id<MTLFunction> triangleVertexFunction = [instancedLibrary newFunctionWithName:@"instanced_triangle_vertex"];
-    if (!triangleVertexFunction) {
-        NSLog(@"Failed to find triangle vertex function");
+    // Create batched shapes pipeline (rects, circles, stroke rects)
+    id<MTLFunction> batchedVertexFunc = [instancedLibrary newFunctionWithName:@"batched_vertex"];
+    id<MTLFunction> batchedFragmentFunc = [instancedLibrary newFunctionWithName:@"batched_fragment"];
+    if (!batchedVertexFunc || !batchedFragmentFunc) {
+        NSLog(@"Failed to find batched shader functions");
         return AFFERENT_ERROR_PIPELINE_FAILED;
     }
 
-    MTLRenderPipelineDescriptor *trianglePipelineDesc = [[MTLRenderPipelineDescriptor alloc] init];
-    trianglePipelineDesc.vertexFunction = triangleVertexFunction;
-    trianglePipelineDesc.fragmentFunction = instancedFragmentFunction;  // Same fragment shader
-    trianglePipelineDesc.colorAttachments[0].pixelFormat = MTLPixelFormatBGRA8Unorm;
-    trianglePipelineDesc.rasterSampleCount = 4;
-    trianglePipelineDesc.colorAttachments[0].blendingEnabled = YES;
-    trianglePipelineDesc.colorAttachments[0].sourceRGBBlendFactor = MTLBlendFactorSourceAlpha;
-    trianglePipelineDesc.colorAttachments[0].destinationRGBBlendFactor = MTLBlendFactorOneMinusSourceAlpha;
-    trianglePipelineDesc.colorAttachments[0].sourceAlphaBlendFactor = MTLBlendFactorOne;
-    trianglePipelineDesc.colorAttachments[0].destinationAlphaBlendFactor = MTLBlendFactorOneMinusSourceAlpha;
+    MTLRenderPipelineDescriptor *batchedPipelineDesc = [[MTLRenderPipelineDescriptor alloc] init];
+    batchedPipelineDesc.vertexFunction = batchedVertexFunc;
+    batchedPipelineDesc.fragmentFunction = batchedFragmentFunc;
+    batchedPipelineDesc.colorAttachments[0].pixelFormat = MTLPixelFormatBGRA8Unorm;
+    apply_alpha_blend(batchedPipelineDesc.colorAttachments[0]);
 
-    renderer->trianglePipelineState = [renderer->device newRenderPipelineStateWithDescriptor:trianglePipelineDesc
-                                                                                       error:&error];
-    if (!renderer->trianglePipelineState) {
-        NSLog(@"Triangle pipeline creation failed: %@", error);
-        return AFFERENT_ERROR_PIPELINE_FAILED;
-    }
-
-    // Create circle pipeline (different vertex and fragment functions)
-    id<MTLFunction> circleVertexFunction = [instancedLibrary newFunctionWithName:@"instanced_circle_vertex"];
-    id<MTLFunction> circleFragmentFunction = [instancedLibrary newFunctionWithName:@"instanced_circle_fragment"];
-    if (!circleVertexFunction || !circleFragmentFunction) {
-        NSLog(@"Failed to find circle shader functions");
-        return AFFERENT_ERROR_PIPELINE_FAILED;
-    }
-
-    MTLRenderPipelineDescriptor *circlePipelineDesc = [[MTLRenderPipelineDescriptor alloc] init];
-    circlePipelineDesc.vertexFunction = circleVertexFunction;
-    circlePipelineDesc.fragmentFunction = circleFragmentFunction;
-    circlePipelineDesc.colorAttachments[0].pixelFormat = MTLPixelFormatBGRA8Unorm;
-    circlePipelineDesc.rasterSampleCount = 4;
-    circlePipelineDesc.colorAttachments[0].blendingEnabled = YES;
-    circlePipelineDesc.colorAttachments[0].sourceRGBBlendFactor = MTLBlendFactorSourceAlpha;
-    circlePipelineDesc.colorAttachments[0].destinationRGBBlendFactor = MTLBlendFactorOneMinusSourceAlpha;
-    circlePipelineDesc.colorAttachments[0].sourceAlphaBlendFactor = MTLBlendFactorOne;
-    circlePipelineDesc.colorAttachments[0].destinationAlphaBlendFactor = MTLBlendFactorOneMinusSourceAlpha;
-
-    renderer->circlePipelineState = [renderer->device newRenderPipelineStateWithDescriptor:circlePipelineDesc
-                                                                                     error:&error];
-    if (!renderer->circlePipelineState) {
-        NSLog(@"Circle pipeline creation failed: %@", error);
-        return AFFERENT_ERROR_PIPELINE_FAILED;
-    }
-
-    // Create batched rect pipeline (for charts - axis-aligned rects with variable dimensions)
-    id<MTLFunction> batchedRectVertexFunc = [instancedLibrary newFunctionWithName:@"batched_rect_vertex"];
-    id<MTLFunction> batchedRectFragmentFunc = [instancedLibrary newFunctionWithName:@"batched_rect_fragment"];
-    if (!batchedRectVertexFunc || !batchedRectFragmentFunc) {
-        NSLog(@"Failed to find batched rect shader functions");
-        return AFFERENT_ERROR_PIPELINE_FAILED;
-    }
-
-    MTLRenderPipelineDescriptor *batchedRectPipelineDesc = [[MTLRenderPipelineDescriptor alloc] init];
-    batchedRectPipelineDesc.vertexFunction = batchedRectVertexFunc;
-    batchedRectPipelineDesc.fragmentFunction = batchedRectFragmentFunc;
-    batchedRectPipelineDesc.colorAttachments[0].pixelFormat = MTLPixelFormatBGRA8Unorm;
-    batchedRectPipelineDesc.colorAttachments[0].blendingEnabled = YES;
-    batchedRectPipelineDesc.colorAttachments[0].sourceRGBBlendFactor = MTLBlendFactorSourceAlpha;
-    batchedRectPipelineDesc.colorAttachments[0].destinationRGBBlendFactor = MTLBlendFactorOneMinusSourceAlpha;
-    batchedRectPipelineDesc.colorAttachments[0].sourceAlphaBlendFactor = MTLBlendFactorOne;
-    batchedRectPipelineDesc.colorAttachments[0].destinationAlphaBlendFactor = MTLBlendFactorOneMinusSourceAlpha;
-
-    batchedRectPipelineDesc.rasterSampleCount = 4;  // MSAA
-    renderer->batchedRectPipelineStateMSAA = [renderer->device newRenderPipelineStateWithDescriptor:batchedRectPipelineDesc
-                                                                                              error:&error];
-    if (!renderer->batchedRectPipelineStateMSAA) {
-        NSLog(@"Batched rect pipeline creation failed (MSAA): %@", error);
-        return AFFERENT_ERROR_PIPELINE_FAILED;
-    }
-
-    batchedRectPipelineDesc.rasterSampleCount = 1;  // No MSAA
-    renderer->batchedRectPipelineStateNoMSAA = [renderer->device newRenderPipelineStateWithDescriptor:batchedRectPipelineDesc
-                                                                                                error:&error];
-    if (!renderer->batchedRectPipelineStateNoMSAA) {
-        NSLog(@"Batched rect pipeline creation failed (no MSAA): %@", error);
-        return AFFERENT_ERROR_PIPELINE_FAILED;
-    }
-
-    renderer->batchedRectPipelineState = renderer->batchedRectPipelineStateMSAA;
-
-    // Create batched circle pipeline (for scatter plots, bubble charts)
-    id<MTLFunction> batchedCircleVertexFunc = [instancedLibrary newFunctionWithName:@"batched_circle_vertex"];
-    id<MTLFunction> batchedCircleFragmentFunc = [instancedLibrary newFunctionWithName:@"batched_circle_fragment"];
-    if (!batchedCircleVertexFunc || !batchedCircleFragmentFunc) {
-        NSLog(@"Failed to find batched circle shader functions");
-        return AFFERENT_ERROR_PIPELINE_FAILED;
-    }
-
-    MTLRenderPipelineDescriptor *batchedCirclePipelineDesc = [[MTLRenderPipelineDescriptor alloc] init];
-    batchedCirclePipelineDesc.vertexFunction = batchedCircleVertexFunc;
-    batchedCirclePipelineDesc.fragmentFunction = batchedCircleFragmentFunc;
-    batchedCirclePipelineDesc.colorAttachments[0].pixelFormat = MTLPixelFormatBGRA8Unorm;
-    batchedCirclePipelineDesc.colorAttachments[0].blendingEnabled = YES;
-    batchedCirclePipelineDesc.colorAttachments[0].sourceRGBBlendFactor = MTLBlendFactorSourceAlpha;
-    batchedCirclePipelineDesc.colorAttachments[0].destinationRGBBlendFactor = MTLBlendFactorOneMinusSourceAlpha;
-    batchedCirclePipelineDesc.colorAttachments[0].sourceAlphaBlendFactor = MTLBlendFactorOne;
-    batchedCirclePipelineDesc.colorAttachments[0].destinationAlphaBlendFactor = MTLBlendFactorOneMinusSourceAlpha;
-
-    batchedCirclePipelineDesc.rasterSampleCount = 4;  // MSAA
-    renderer->batchedCirclePipelineStateMSAA = [renderer->device newRenderPipelineStateWithDescriptor:batchedCirclePipelineDesc
-                                                                                                error:&error];
-    if (!renderer->batchedCirclePipelineStateMSAA) {
-        NSLog(@"Batched circle pipeline creation failed (MSAA): %@", error);
-        return AFFERENT_ERROR_PIPELINE_FAILED;
-    }
-
-    batchedCirclePipelineDesc.rasterSampleCount = 1;  // No MSAA
-    renderer->batchedCirclePipelineStateNoMSAA = [renderer->device newRenderPipelineStateWithDescriptor:batchedCirclePipelineDesc
-                                                                                                  error:&error];
-    if (!renderer->batchedCirclePipelineStateNoMSAA) {
-        NSLog(@"Batched circle pipeline creation failed (no MSAA): %@", error);
-        return AFFERENT_ERROR_PIPELINE_FAILED;
-    }
-
-    renderer->batchedCirclePipelineState = renderer->batchedCirclePipelineStateMSAA;
-
-    // Create batched stroke rect pipeline
-    id<MTLFunction> batchedStrokeRectVertexFunc = [instancedLibrary newFunctionWithName:@"batched_stroke_rect_vertex"];
-    id<MTLFunction> batchedStrokeRectFragmentFunc = [instancedLibrary newFunctionWithName:@"batched_stroke_rect_fragment"];
-    if (!batchedStrokeRectVertexFunc || !batchedStrokeRectFragmentFunc) {
-        NSLog(@"Failed to find batched stroke rect shader functions");
-        return AFFERENT_ERROR_PIPELINE_FAILED;
-    }
-
-    MTLRenderPipelineDescriptor *batchedStrokeRectPipelineDesc = [[MTLRenderPipelineDescriptor alloc] init];
-    batchedStrokeRectPipelineDesc.vertexFunction = batchedStrokeRectVertexFunc;
-    batchedStrokeRectPipelineDesc.fragmentFunction = batchedStrokeRectFragmentFunc;
-    batchedStrokeRectPipelineDesc.colorAttachments[0].pixelFormat = MTLPixelFormatBGRA8Unorm;
-    batchedStrokeRectPipelineDesc.rasterSampleCount = 4;  // MSAA
-    batchedStrokeRectPipelineDesc.colorAttachments[0].blendingEnabled = YES;
-    batchedStrokeRectPipelineDesc.colorAttachments[0].sourceRGBBlendFactor = MTLBlendFactorSourceAlpha;
-    batchedStrokeRectPipelineDesc.colorAttachments[0].destinationRGBBlendFactor = MTLBlendFactorOneMinusSourceAlpha;
-    batchedStrokeRectPipelineDesc.colorAttachments[0].sourceAlphaBlendFactor = MTLBlendFactorOne;
-    batchedStrokeRectPipelineDesc.colorAttachments[0].destinationAlphaBlendFactor = MTLBlendFactorOneMinusSourceAlpha;
-
-    renderer->batchedStrokeRectPipelineStateMSAA = [renderer->device newRenderPipelineStateWithDescriptor:batchedStrokeRectPipelineDesc
-                                                                                                   error:&error];
-    if (!renderer->batchedStrokeRectPipelineStateMSAA) {
-        NSLog(@"Batched stroke rect pipeline creation failed (MSAA): %@", error);
-        return AFFERENT_ERROR_PIPELINE_FAILED;
-    }
-
-    batchedStrokeRectPipelineDesc.rasterSampleCount = 1;  // No MSAA
-    renderer->batchedStrokeRectPipelineStateNoMSAA = [renderer->device newRenderPipelineStateWithDescriptor:batchedStrokeRectPipelineDesc
-                                                                                                     error:&error];
-    if (!renderer->batchedStrokeRectPipelineStateNoMSAA) {
-        NSLog(@"Batched stroke rect pipeline creation failed (no MSAA): %@", error);
-        return AFFERENT_ERROR_PIPELINE_FAILED;
-    }
-
-    renderer->batchedStrokeRectPipelineState = renderer->batchedStrokeRectPipelineStateMSAA;
+    renderer->batchedPipelineState = build_pipeline(
+        renderer->device,
+        batchedPipelineDesc,
+        "Batched",
+        &error
+    );
+    if (!renderer->batchedPipelineState) return AFFERENT_ERROR_PIPELINE_FAILED;
 
     // Create sprite pipeline (textured quads)
     id<MTLLibrary> spriteLibrary = [renderer->device newLibraryWithSource:spriteShaderSource
@@ -536,9 +342,8 @@ AfferentResult create_pipelines(struct AfferentRenderer* renderer) {
     }
 
     id<MTLFunction> spriteVertexFunc = [spriteLibrary newFunctionWithName:@"sprite_vertex_layout0"];
-    id<MTLFunction> texturedSpriteVertexFunc = [spriteLibrary newFunctionWithName:@"sprite_vertex_layout1"];
     id<MTLFunction> spriteFragmentFunc = [spriteLibrary newFunctionWithName:@"sprite_fragment"];
-    if (!spriteVertexFunc || !texturedSpriteVertexFunc || !spriteFragmentFunc) {
+    if (!spriteVertexFunc || !spriteFragmentFunc) {
         NSLog(@"Failed to find sprite shader functions");
         return AFFERENT_ERROR_PIPELINE_FAILED;
     }
@@ -547,57 +352,15 @@ AfferentResult create_pipelines(struct AfferentRenderer* renderer) {
     spritePipelineDesc.vertexFunction = spriteVertexFunc;
     spritePipelineDesc.fragmentFunction = spriteFragmentFunc;
     spritePipelineDesc.colorAttachments[0].pixelFormat = MTLPixelFormatBGRA8Unorm;
-    spritePipelineDesc.rasterSampleCount = 4;
-    spritePipelineDesc.colorAttachments[0].blendingEnabled = YES;
-    spritePipelineDesc.colorAttachments[0].sourceRGBBlendFactor = MTLBlendFactorSourceAlpha;
-    spritePipelineDesc.colorAttachments[0].destinationRGBBlendFactor = MTLBlendFactorOneMinusSourceAlpha;
-    spritePipelineDesc.colorAttachments[0].sourceAlphaBlendFactor = MTLBlendFactorOne;
-    spritePipelineDesc.colorAttachments[0].destinationAlphaBlendFactor = MTLBlendFactorOneMinusSourceAlpha;
+    apply_alpha_blend(spritePipelineDesc.colorAttachments[0]);
 
-    renderer->spritePipelineStateMSAA = [renderer->device newRenderPipelineStateWithDescriptor:spritePipelineDesc
-                                                                                         error:&error];
-    if (!renderer->spritePipelineStateMSAA) {
-        NSLog(@"Sprite pipeline creation failed (MSAA): %@", error);
-        return AFFERENT_ERROR_PIPELINE_FAILED;
-    }
-
-    spritePipelineDesc.rasterSampleCount = 1;
-    renderer->spritePipelineStateNoMSAA = [renderer->device newRenderPipelineStateWithDescriptor:spritePipelineDesc
-                                                                                           error:&error];
-    if (!renderer->spritePipelineStateNoMSAA) {
-        NSLog(@"Sprite pipeline creation failed (no MSAA): %@", error);
-        return AFFERENT_ERROR_PIPELINE_FAILED;
-    }
-
-    renderer->spritePipelineState = renderer->spritePipelineStateMSAA;
-
-    MTLRenderPipelineDescriptor *texturedSpritePipelineDesc = [[MTLRenderPipelineDescriptor alloc] init];
-    texturedSpritePipelineDesc.vertexFunction = texturedSpriteVertexFunc;
-    texturedSpritePipelineDesc.fragmentFunction = spriteFragmentFunc;
-    texturedSpritePipelineDesc.colorAttachments[0].pixelFormat = MTLPixelFormatBGRA8Unorm;
-    texturedSpritePipelineDesc.rasterSampleCount = 4;
-    texturedSpritePipelineDesc.colorAttachments[0].blendingEnabled = YES;
-    texturedSpritePipelineDesc.colorAttachments[0].sourceRGBBlendFactor = MTLBlendFactorSourceAlpha;
-    texturedSpritePipelineDesc.colorAttachments[0].destinationRGBBlendFactor = MTLBlendFactorOneMinusSourceAlpha;
-    texturedSpritePipelineDesc.colorAttachments[0].sourceAlphaBlendFactor = MTLBlendFactorOne;
-    texturedSpritePipelineDesc.colorAttachments[0].destinationAlphaBlendFactor = MTLBlendFactorOneMinusSourceAlpha;
-
-    renderer->texturedSpritePipelineStateMSAA = [renderer->device newRenderPipelineStateWithDescriptor:texturedSpritePipelineDesc
-                                                                                                 error:&error];
-    if (!renderer->texturedSpritePipelineStateMSAA) {
-        NSLog(@"Textured sprite pipeline creation failed (MSAA): %@", error);
-        return AFFERENT_ERROR_PIPELINE_FAILED;
-    }
-
-    texturedSpritePipelineDesc.rasterSampleCount = 1;
-    renderer->texturedSpritePipelineStateNoMSAA = [renderer->device newRenderPipelineStateWithDescriptor:texturedSpritePipelineDesc
-                                                                                                   error:&error];
-    if (!renderer->texturedSpritePipelineStateNoMSAA) {
-        NSLog(@"Textured sprite pipeline creation failed (no MSAA): %@", error);
-        return AFFERENT_ERROR_PIPELINE_FAILED;
-    }
-
-    renderer->texturedSpritePipelineState = renderer->texturedSpritePipelineStateMSAA;
+    renderer->spritePipelineState = build_pipeline(
+        renderer->device,
+        spritePipelineDesc,
+        "Sprite",
+        &error
+    );
+    if (!renderer->spritePipelineState) return AFFERENT_ERROR_PIPELINE_FAILED;
 
     // ====================================================================
     // Create depth stencil state for 3D rendering
@@ -612,8 +375,6 @@ AfferentResult create_pipelines(struct AfferentRenderer* renderer) {
     depthDisabledDesc.depthCompareFunction = MTLCompareFunctionAlways;
     depthDisabledDesc.depthWriteEnabled = NO;
     renderer->depthStateDisabled = [renderer->device newDepthStencilStateWithDescriptor:depthDisabledDesc];
-
-    renderer->depthStateOcean = nil;
 
     // ====================================================================
     // Create 3D rendering pipeline
@@ -665,30 +426,15 @@ AfferentResult create_pipelines(struct AfferentRenderer* renderer) {
     pipeline3DDesc.colorAttachments[0].pixelFormat = MTLPixelFormatBGRA8Unorm;
     pipeline3DDesc.depthAttachmentPixelFormat = MTLPixelFormatDepth32Float;
 
-    // Enable blending for transparency
-    pipeline3DDesc.colorAttachments[0].blendingEnabled = YES;
-    pipeline3DDesc.colorAttachments[0].sourceRGBBlendFactor = MTLBlendFactorSourceAlpha;
-    pipeline3DDesc.colorAttachments[0].destinationRGBBlendFactor = MTLBlendFactorOneMinusSourceAlpha;
-    pipeline3DDesc.colorAttachments[0].sourceAlphaBlendFactor = MTLBlendFactorOne;
-    pipeline3DDesc.colorAttachments[0].destinationAlphaBlendFactor = MTLBlendFactorOneMinusSourceAlpha;
+    apply_alpha_blend(pipeline3DDesc.colorAttachments[0]);
 
-    pipeline3DDesc.rasterSampleCount = 4;  // MSAA
-    renderer->pipeline3DMSAA = [renderer->device newRenderPipelineStateWithDescriptor:pipeline3DDesc
-                                                                                error:&error];
-    if (!renderer->pipeline3DMSAA) {
-        NSLog(@"3D pipeline creation failed (MSAA): %@", error);
-        return AFFERENT_ERROR_PIPELINE_FAILED;
-    }
-
-    pipeline3DDesc.rasterSampleCount = 1;  // No MSAA
-    renderer->pipeline3DNoMSAA = [renderer->device newRenderPipelineStateWithDescriptor:pipeline3DDesc
-                                                                                  error:&error];
-    if (!renderer->pipeline3DNoMSAA) {
-        NSLog(@"3D pipeline creation failed (no MSAA): %@", error);
-        return AFFERENT_ERROR_PIPELINE_FAILED;
-    }
-
-    renderer->pipeline3D = renderer->pipeline3DMSAA;
+    renderer->pipeline3D = build_pipeline(
+        renderer->device,
+        pipeline3DDesc,
+        "3D",
+        &error
+    );
+    if (!renderer->pipeline3D) return AFFERENT_ERROR_PIPELINE_FAILED;
 
     // ====================================================================
     // Create projected-grid ocean pipeline (procedural vertices via vertex_id)
@@ -700,29 +446,15 @@ AfferentResult create_pipelines(struct AfferentRenderer* renderer) {
     pipelineOceanDesc.colorAttachments[0].pixelFormat = MTLPixelFormatBGRA8Unorm;
     pipelineOceanDesc.depthAttachmentPixelFormat = MTLPixelFormatDepth32Float;
 
-    pipelineOceanDesc.colorAttachments[0].blendingEnabled = YES;
-    pipelineOceanDesc.colorAttachments[0].sourceRGBBlendFactor = MTLBlendFactorSourceAlpha;
-    pipelineOceanDesc.colorAttachments[0].destinationRGBBlendFactor = MTLBlendFactorOneMinusSourceAlpha;
-    pipelineOceanDesc.colorAttachments[0].sourceAlphaBlendFactor = MTLBlendFactorOne;
-    pipelineOceanDesc.colorAttachments[0].destinationAlphaBlendFactor = MTLBlendFactorOneMinusSourceAlpha;
+    apply_alpha_blend(pipelineOceanDesc.colorAttachments[0]);
 
-    pipelineOceanDesc.rasterSampleCount = 4;  // MSAA
-    renderer->pipeline3DOceanMSAA = [renderer->device newRenderPipelineStateWithDescriptor:pipelineOceanDesc
-                                                                                     error:&error];
-    if (!renderer->pipeline3DOceanMSAA) {
-        NSLog(@"Ocean pipeline creation failed (MSAA): %@", error);
-        return AFFERENT_ERROR_PIPELINE_FAILED;
-    }
-
-    pipelineOceanDesc.rasterSampleCount = 1;  // No MSAA
-    renderer->pipeline3DOceanNoMSAA = [renderer->device newRenderPipelineStateWithDescriptor:pipelineOceanDesc
-                                                                                       error:&error];
-    if (!renderer->pipeline3DOceanNoMSAA) {
-        NSLog(@"Ocean pipeline creation failed (no MSAA): %@", error);
-        return AFFERENT_ERROR_PIPELINE_FAILED;
-    }
-
-    renderer->pipeline3DOcean = renderer->pipeline3DOceanMSAA;
+    renderer->pipeline3DOcean = build_pipeline(
+        renderer->device,
+        pipelineOceanDesc,
+        "Ocean",
+        &error
+    );
+    if (!renderer->pipeline3DOcean) return AFFERENT_ERROR_PIPELINE_FAILED;
 
     // ====================================================================
     // Create textured 3D rendering pipeline (for loaded assets)
@@ -762,30 +494,15 @@ AfferentResult create_pipelines(struct AfferentRenderer* renderer) {
     pipeline3DTexturedDesc.colorAttachments[0].pixelFormat = MTLPixelFormatBGRA8Unorm;
     pipeline3DTexturedDesc.depthAttachmentPixelFormat = MTLPixelFormatDepth32Float;
 
-    // Enable blending for transparency
-    pipeline3DTexturedDesc.colorAttachments[0].blendingEnabled = YES;
-    pipeline3DTexturedDesc.colorAttachments[0].sourceRGBBlendFactor = MTLBlendFactorSourceAlpha;
-    pipeline3DTexturedDesc.colorAttachments[0].destinationRGBBlendFactor = MTLBlendFactorOneMinusSourceAlpha;
-    pipeline3DTexturedDesc.colorAttachments[0].sourceAlphaBlendFactor = MTLBlendFactorOne;
-    pipeline3DTexturedDesc.colorAttachments[0].destinationAlphaBlendFactor = MTLBlendFactorOneMinusSourceAlpha;
+    apply_alpha_blend(pipeline3DTexturedDesc.colorAttachments[0]);
 
-    pipeline3DTexturedDesc.rasterSampleCount = 4;  // MSAA
-    renderer->pipeline3DTexturedMSAA = [renderer->device newRenderPipelineStateWithDescriptor:pipeline3DTexturedDesc
-                                                                                         error:&error];
-    if (!renderer->pipeline3DTexturedMSAA) {
-        NSLog(@"Textured 3D pipeline creation failed (MSAA): %@", error);
-        return AFFERENT_ERROR_PIPELINE_FAILED;
-    }
-
-    pipeline3DTexturedDesc.rasterSampleCount = 1;  // No MSAA
-    renderer->pipeline3DTexturedNoMSAA = [renderer->device newRenderPipelineStateWithDescriptor:pipeline3DTexturedDesc
-                                                                                           error:&error];
-    if (!renderer->pipeline3DTexturedNoMSAA) {
-        NSLog(@"Textured 3D pipeline creation failed (no MSAA): %@", error);
-        return AFFERENT_ERROR_PIPELINE_FAILED;
-    }
-
-    renderer->pipeline3DTextured = renderer->pipeline3DTexturedMSAA;
+    renderer->pipeline3DTextured = build_pipeline(
+        renderer->device,
+        pipeline3DTexturedDesc,
+        "Textured 3D",
+        &error
+    );
+    if (!renderer->pipeline3DTextured) return AFFERENT_ERROR_PIPELINE_FAILED;
 
     // Create textured mesh sampler
     MTLSamplerDescriptor *texturedMeshSamplerDesc = [[MTLSamplerDescriptor alloc] init];

@@ -123,9 +123,6 @@ void afferent_renderer_destroy(AfferentRendererRef renderer);
 AfferentResult afferent_renderer_begin_frame(AfferentRendererRef renderer, float r, float g, float b, float a);
 AfferentResult afferent_renderer_end_frame(AfferentRendererRef renderer);
 
-// Enable/disable MSAA for subsequent frames.
-void afferent_renderer_set_msaa_enabled(AfferentRendererRef renderer, bool enabled);
-
 // Override drawable pixel scale (1.0 disables Retina). Pass <= 0 to restore native scale.
 void afferent_renderer_set_drawable_scale(AfferentRendererRef renderer, float scale);
 
@@ -361,122 +358,6 @@ void afferent_renderer_draw_sprites(
     float canvasHeight
 );
 
-// Draw textured sprites with a transform matrix (world-space or custom projection)
-// data: [pixelX, pixelY, rotation, halfSizePixels, alpha] × count (5 floats per sprite)
-void afferent_renderer_draw_sprites_matrix(
-    AfferentRendererRef renderer,
-    AfferentTextureRef texture,
-    const float* data,
-    uint32_t count,
-    float canvasWidth,
-    float canvasHeight,
-    float transformA,
-    float transformB,
-    float transformC,
-    float transformD,
-    float transformTx,
-    float transformTy
-);
-
-// Draw sprites from FloatBuffer containing SpriteInstanceData layout
-// Buffer layout: [pixelX, pixelY, rotation, halfSizePixels, alpha] per sprite (5 floats)
-void afferent_renderer_draw_sprites_instance_buffer(
-    AfferentRendererRef renderer,
-    AfferentTextureRef texture,
-    const float* data,
-    uint32_t count,
-    float canvasWidth,
-    float canvasHeight
-);
-
-// Draw sprites from FloatBuffer with a transform matrix
-// Buffer layout: [pixelX, pixelY, rotation, halfSizePixels, alpha] per sprite (5 floats)
-void afferent_renderer_draw_sprites_instance_buffer_matrix(
-    AfferentRendererRef renderer,
-    AfferentTextureRef texture,
-    const float* data,
-    uint32_t count,
-    float canvasWidth,
-    float canvasHeight,
-    float transformA,
-    float transformB,
-    float transformC,
-    float transformD,
-    float transformTx,
-    float transformTy
-);
-
-// Draw sprites from FloatBuffer (zero-copy path for 1M+ sprites)
-// Buffer layout: [x, y, vx, vy, rotation] per sprite (physics layout)
-void afferent_renderer_draw_sprites_buffer(
-    AfferentRendererRef renderer,
-    AfferentTextureRef texture,
-    const float* data,
-    uint32_t count,
-    float halfSize,
-    float canvasWidth,
-    float canvasHeight
-);
-
-// Draw textured instances with per-instance UV rects
-// data layout: [pixelX, pixelY, rotation, halfSizeX, halfSizeY, u0, v0, u1, v1, alpha] × count (10 floats)
-void afferent_renderer_draw_textured_instances(
-    AfferentRendererRef renderer,
-    AfferentTextureRef texture,
-    const float* data,
-    uint32_t count,
-    float canvasWidth,
-    float canvasHeight
-);
-
-// Draw textured instances with a transform matrix
-// data layout: [pixelX, pixelY, rotation, halfSizeX, halfSizeY, u0, v0, u1, v1, alpha] × count (10 floats)
-void afferent_renderer_draw_textured_instances_matrix(
-    AfferentRendererRef renderer,
-    AfferentTextureRef texture,
-    const float* data,
-    uint32_t count,
-    float canvasWidth,
-    float canvasHeight,
-    float transformA,
-    float transformB,
-    float transformC,
-    float transformD,
-    float transformTx,
-    float transformTy
-);
-
-// Draw textured instances from FloatBuffer with a transform matrix
-// data layout: [pixelX, pixelY, rotation, halfSizeX, halfSizeY, u0, v0, u1, v1, alpha] × count (10 floats)
-void afferent_renderer_draw_textured_instances_buffer_matrix(
-    AfferentRendererRef renderer,
-    AfferentTextureRef texture,
-    const float* data,
-    uint32_t count,
-    float canvasWidth,
-    float canvasHeight,
-    float transformA,
-    float transformB,
-    float transformC,
-    float transformD,
-    float transformTx,
-    float transformTy
-);
-
-// Draw a textured rectangle with source and destination rectangles
-// Used for map tile rendering with cropping and scaling
-// srcX/Y/W/H: source rectangle in texture pixels
-// dstX/Y/W/H: destination rectangle in screen pixels
-// alpha: transparency (0.0-1.0)
-void afferent_renderer_draw_textured_rect(
-    AfferentRendererRef renderer,
-    AfferentTextureRef texture,
-    float srcX, float srcY, float srcW, float srcH,
-    float dstX, float dstY, float dstW, float dstH,
-    float canvasWidth, float canvasHeight,
-    float alpha
-);
-
 // 3D Mesh rendering with perspective projection and lighting
 // vertices: array of AfferentVertex3D (10 floats each: pos[3], normal[3], color[4])
 // indices: triangle indices
@@ -485,24 +366,6 @@ void afferent_renderer_draw_textured_rect(
 // light_dir: normalized light direction (3 floats)
 // ambient: ambient light factor (0.0-1.0)
 void afferent_renderer_draw_mesh_3d(
-    AfferentRendererRef renderer,
-    const AfferentVertex3D* vertices,
-    uint32_t vertex_count,
-    const uint32_t* indices,
-    uint32_t index_count,
-    const float* mvp_matrix,
-    const float* model_matrix,
-    const float* light_dir,
-    float ambient
-);
-
-// 3D Mesh rendering with fog
-// Same as above, plus:
-// camera_pos: camera position for fog distance calculation (3 floats)
-// fog_color: fog color RGB (3 floats)
-// fog_start: distance where fog begins
-// fog_end: distance where fog is fully opaque
-void afferent_renderer_draw_mesh_3d_with_fog(
     AfferentRendererRef renderer,
     const AfferentVertex3D* vertices,
     uint32_t vertex_count,
@@ -547,42 +410,20 @@ void afferent_renderer_draw_ocean_projected_grid_with_fog(
 );
 
 // ============================================================================
-// Batched Rectangle/Circle rendering (for charts)
+// Batched shape rendering (for charts)
 // ============================================================================
 
-// Draw multiple axis-aligned rectangles in a single draw call.
-// Optimized for charts (heatmaps, bar charts, scatter plots, etc.)
-// instance_data: Array of 8 floats per rect [x, y, width, height, r, g, b, a]
-// corner_radius: Uniform corner radius for all rects in the batch (0 for sharp corners)
-void afferent_renderer_draw_rects_batch(
+// kind: 0=rect, 1=circle, 2=stroke rect
+// instance_data: Array of 8 floats per instance
+// param0: cornerRadius for rects, ignored for circles, lineWidth for stroke rects
+// param1: cornerRadius for stroke rects, ignored otherwise
+void afferent_renderer_draw_batch(
     AfferentRendererRef renderer,
+    uint32_t kind,
     const float* instance_data,
     uint32_t instance_count,
-    float corner_radius,
-    float canvas_width,
-    float canvas_height
-);
-
-// Draw multiple circles in a single draw call.
-// Optimized for scatter plots and bubble charts.
-// instance_data: Array of 8 floats per circle [centerX, centerY, radius, padding, r, g, b, a]
-void afferent_renderer_draw_circles_batch(
-    AfferentRendererRef renderer,
-    const float* instance_data,
-    uint32_t instance_count,
-    float canvas_width,
-    float canvas_height
-);
-
-// Draw multiple stroked rectangles in a single draw call.
-// Optimized for UI borders, chart axes, grid lines.
-// instance_data: Array of 8 floats per rect [x, y, width, height, r, g, b, a]
-void afferent_renderer_draw_stroke_rects_batch(
-    AfferentRendererRef renderer,
-    const float* instance_data,
-    uint32_t instance_count,
-    float line_width,
-    float corner_radius,
+    float param0,
+    float param1,
     float canvas_width,
     float canvas_height
 );

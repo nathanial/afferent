@@ -111,25 +111,6 @@ def ParticleState.createInstanceBuffer (p : ParticleState) : IO FFI.FloatBuffer 
 def ParticleState.createSpriteBuffer (p : ParticleState) : IO FFI.FloatBuffer := do
   FFI.FloatBuffer.create (p.count.toUSize * 5)
 
-/-! ## Fused Update + Packing (High Performance)
-
-These functions update the particle simulation and write the render instance
-buffers in a single pass to reduce memory bandwidth at 1M+ particles. -/
-
-/-- Update bouncing physics and write sprite instance buffer in one pass. -/
-def ParticleState.updateBouncingAndWriteSprites (p : ParticleState)
-    (dt halfSize : Float) (spriteBuffer : FFI.FloatBuffer) : IO ParticleState := do
-  let data ← FFI.Particles.updateBouncingAndWriteSprites
-    p.data p.count.toUInt32 dt halfSize p.screenWidth p.screenHeight spriteBuffer
-  pure { p with data }
-
-/-- Update bouncing physics and write instanced circle buffer in one pass. -/
-def ParticleState.updateBouncingAndWriteCircles (p : ParticleState)
-    (dt radius : Float) (circleBuffer : FFI.FloatBuffer) : IO ParticleState := do
-  let data ← FFI.Particles.updateBouncingAndWriteCircles
-    p.data p.count.toUInt32 dt radius p.screenWidth p.screenHeight circleBuffer
-  pure { p with data }
-
 /-- Write instanced shape data with uniform rotation into a FloatBuffer. -/
 def writeInstancedUniformToBuffer (particles : ParticleState) (buffer : FFI.FloatBuffer)
     (halfSize rotation : Float) : IO Unit := do
@@ -156,20 +137,6 @@ def writeInstancedAnimatedToBuffer (particles : ParticleState) (buffer : FFI.Flo
     spinSpeed
     rotationModeAnimated
 
-/-- Draw dynamic circles from a FloatBuffer containing instanced circle data. -/
-def drawCirclesFromBuffer (renderer : FFI.Renderer) (circleBuffer : FFI.FloatBuffer)
-    (count : UInt32) (t : Float) (screenWidth screenHeight : Float) : IO Unit := do
-  let (a, b, c, d, tx, ty) := pixelToClipParams screenWidth screenHeight
-  FFI.Renderer.drawInstancedCirclesBuffer
-    renderer
-    circleBuffer
-    count
-    a b c d tx ty
-    screenWidth screenHeight
-    sizeModeScreen
-    t dynamicHueSpeed
-    colorModeHSV
-
 /-- Create particles in a grid layout with zero velocity. -/
 def ParticleState.createGrid (cols rows : Nat) (startX startY spacing : Float)
     (screenWidth screenHeight : Float) : ParticleState :=
@@ -189,291 +156,38 @@ def ParticleState.createGrid (cols rows : Nat) (startX startY spacing : Float)
     arr
   { data, count, screenWidth, screenHeight }
 
-/-! ## Data Builders (Array-Based Slow Path)
+/-! ## Instanced Draw Helpers -/
 
-These build boxed Array Float payloads and are convenient for small counts.
-For high-performance streaming, prefer the FloatBuffer-based writers. -/
-
-/-- Build instanced circle data from particle state.
-    Format: [pixelX, pixelY, angle=0, radiusPixels, hueBase, 0, 0, 1] × count. -/
-def buildCircleData (particles : ParticleState) (radius : Float) : Array Float := Id.run do
-  let mut data := Array.mkEmpty (particles.count * 8)
-  for i in [:particles.count] do
-    let base := i * 5
-    let x := particles.data.get! base
-    let y := particles.data.get! (base + 1)
-    let hue := particles.data.get! (base + 4)
-    data := data.push x
-    data := data.push y
-    data := data.push 0.0
-    data := data.push radius
-    data := data.push hue
-    data := data.push 0.0
-    data := data.push 0.0
-    data := data.push 1.0
-  data
-
-/-- Build instanced rect data from particle state.
-    Format: [pixelX, pixelY, rotation, halfSizePixels, hueBase, 0, 0, 1] × count. -/
-def buildRectData (particles : ParticleState) (halfSize : Float) (getRotation : Nat → Float) : Array Float := Id.run do
-  let mut data := Array.mkEmpty (particles.count * 8)
-  for i in [:particles.count] do
-    let base := i * 5
-    let x := particles.data.get! base
-    let y := particles.data.get! (base + 1)
-    let hue := particles.data.get! (base + 4)
-    data := data.push x
-    data := data.push y
-    data := data.push (getRotation i)
-    data := data.push halfSize
-    data := data.push hue
-    data := data.push 0.0
-    data := data.push 0.0
-    data := data.push 1.0
-  data
-
-/-- Build dynamic rect data with uniform rotation for all particles. -/
-def buildRectDataUniform (particles : ParticleState) (halfSize rotation : Float) : Array Float :=
-  buildRectData particles halfSize (fun _ => rotation)
-
-/-- Build dynamic rect data with time-based per-particle rotation. -/
-def buildRectDataAnimated (particles : ParticleState) (halfSize t spinSpeed : Float) : Array Float :=
-  buildRectData particles halfSize (fun i =>
-    let hue := particles.data.get! (i * 5 + 4)
-    t * spinSpeed + hue * 6.28)
-
-/-- Build instanced triangle data from particle state.
-    Format: [pixelX, pixelY, rotation, halfSizePixels, hueBase, 0, 0, 1] × count. -/
-def buildTriangleData (particles : ParticleState) (halfSize : Float) (getRotation : Nat → Float) : Array Float := Id.run do
-  let mut data := Array.mkEmpty (particles.count * 8)
-  for i in [:particles.count] do
-    let base := i * 5
-    let x := particles.data.get! base
-    let y := particles.data.get! (base + 1)
-    let hue := particles.data.get! (base + 4)
-    data := data.push x
-    data := data.push y
-    data := data.push (getRotation i)
-    data := data.push halfSize
-    data := data.push hue
-    data := data.push 0.0
-    data := data.push 0.0
-    data := data.push 1.0
-  data
-
-/-- Build dynamic triangle data with uniform rotation. -/
-def buildTriangleDataUniform (particles : ParticleState) (halfSize rotation : Float) : Array Float :=
-  buildTriangleData particles halfSize (fun _ => rotation)
-
-/-- Build dynamic triangle data with time-based per-particle rotation. -/
-def buildTriangleDataAnimated (particles : ParticleState) (halfSize t spinSpeed : Float) : Array Float :=
-  buildTriangleData particles halfSize (fun i =>
-    let hue := particles.data.get! (i * 5 + 4)
-    t * spinSpeed + hue * 6.28)
-
-/-! ## Draw Functions (Buffer-First)
-
-These are the preferred paths for high-volume instanced rendering.
-They stream instance data into a FloatBuffer each frame (no boxed Arrays). -/
-
-/-- Draw dynamic circles using a FloatBuffer. -/
-def drawCircles (renderer : FFI.Renderer) (particles : ParticleState)
-    (buffer : FFI.FloatBuffer) (radius t : Float) : IO Unit := do
-  writeInstancedUniformToBuffer particles buffer radius 0.0
-  drawCirclesFromBuffer renderer buffer particles.count.toUInt32 t
-    particles.screenWidth particles.screenHeight
-
-/-- Draw dynamic rects with time-based rotation using a FloatBuffer. -/
-def drawRectsAnimated (renderer : FFI.Renderer) (particles : ParticleState)
-    (buffer : FFI.FloatBuffer) (halfSize t spinSpeed : Float) : IO Unit := do
-  writeInstancedAnimatedToBuffer particles buffer halfSize t spinSpeed
-  let (a, b, c, d, tx, ty) := pixelToClipParams particles.screenWidth particles.screenHeight
-  FFI.Renderer.drawInstancedRectsBuffer
+private def drawInstancedFromBuffer (renderer : FFI.Renderer) (shapeType : UInt32)
+    (buffer : FFI.FloatBuffer) (count : UInt32) (t : Float)
+    (screenWidth screenHeight : Float) : IO Unit := do
+  let (a, b, c, d, tx, ty) := pixelToClipParams screenWidth screenHeight
+  FFI.Renderer.drawInstancedShapesBuffer
     renderer
+    shapeType
     buffer
-    particles.count.toUInt32
+    count
     a b c d tx ty
-    particles.screenWidth particles.screenHeight
+    screenWidth screenHeight
     sizeModeScreen
     t dynamicHueSpeed
     colorModeHSV
 
-/-- Draw dynamic rects with uniform rotation using a FloatBuffer. -/
-def drawRectsUniform (renderer : FFI.Renderer) (particles : ParticleState)
+def drawInstancedUniform (renderer : FFI.Renderer) (shapeType : UInt32) (particles : ParticleState)
     (buffer : FFI.FloatBuffer) (halfSize rotation t : Float) : IO Unit := do
   writeInstancedUniformToBuffer particles buffer halfSize rotation
-  let (a, b, c, d, tx, ty) := pixelToClipParams particles.screenWidth particles.screenHeight
-  FFI.Renderer.drawInstancedRectsBuffer
-    renderer
-    buffer
-    particles.count.toUInt32
-    a b c d tx ty
+  drawInstancedFromBuffer renderer shapeType buffer particles.count.toUInt32 t
     particles.screenWidth particles.screenHeight
-    sizeModeScreen
-    t dynamicHueSpeed
-    colorModeHSV
 
-/-- Draw dynamic triangles with time-based rotation using a FloatBuffer. -/
-def drawTrianglesAnimated (renderer : FFI.Renderer) (particles : ParticleState)
+def drawInstancedAnimated (renderer : FFI.Renderer) (shapeType : UInt32) (particles : ParticleState)
     (buffer : FFI.FloatBuffer) (halfSize t spinSpeed : Float) : IO Unit := do
   writeInstancedAnimatedToBuffer particles buffer halfSize t spinSpeed
-  let (a, b, c, d, tx, ty) := pixelToClipParams particles.screenWidth particles.screenHeight
-  FFI.Renderer.drawInstancedTrianglesBuffer
-    renderer
-    buffer
-    particles.count.toUInt32
-    a b c d tx ty
+  drawInstancedFromBuffer renderer shapeType buffer particles.count.toUInt32 t
     particles.screenWidth particles.screenHeight
-    sizeModeScreen
-    t dynamicHueSpeed
-    colorModeHSV
-
-/-- Draw dynamic triangles with uniform rotation using a FloatBuffer. -/
-def drawTrianglesUniform (renderer : FFI.Renderer) (particles : ParticleState)
-    (buffer : FFI.FloatBuffer) (halfSize rotation t : Float) : IO Unit := do
-  writeInstancedUniformToBuffer particles buffer halfSize rotation
-  let (a, b, c, d, tx, ty) := pixelToClipParams particles.screenWidth particles.screenHeight
-  FFI.Renderer.drawInstancedTrianglesBuffer
-    renderer
-    buffer
-    particles.count.toUInt32
-    a b c d tx ty
-    particles.screenWidth particles.screenHeight
-    sizeModeScreen
-    t dynamicHueSpeed
-    colorModeHSV
-
-/-! ## Draw Functions (Array-Based Slow Path)
-
-These allocate boxed Arrays and should be used only for small counts. -/
-
-/-- Draw dynamic circles using a boxed Array Float (slow path). -/
-def drawCirclesArray (renderer : FFI.Renderer) (particles : ParticleState) (radius t : Float) : IO Unit := do
-  let data := buildCircleData particles radius
-  let (a, b, c, d, tx, ty) := pixelToClipParams particles.screenWidth particles.screenHeight
-  FFI.Renderer.drawInstancedCircles
-    renderer
-    data
-    particles.count.toUInt32
-    a b c d tx ty
-    particles.screenWidth particles.screenHeight
-    sizeModeScreen
-    t dynamicHueSpeed
-    colorModeHSV
-
-/-- Draw dynamic rects with time-based rotation using a boxed Array Float (slow path). -/
-def drawRectsAnimatedArray (renderer : FFI.Renderer) (particles : ParticleState)
-    (halfSize t spinSpeed : Float) : IO Unit := do
-  let data := buildRectDataAnimated particles halfSize t spinSpeed
-  let (a, b, c, d, tx, ty) := pixelToClipParams particles.screenWidth particles.screenHeight
-  FFI.Renderer.drawInstancedRects
-    renderer
-    data
-    particles.count.toUInt32
-    a b c d tx ty
-    particles.screenWidth particles.screenHeight
-    sizeModeScreen
-    t dynamicHueSpeed
-    colorModeHSV
-
-/-- Draw dynamic rects with uniform rotation using a boxed Array Float (slow path). -/
-def drawRectsUniformArray (renderer : FFI.Renderer) (particles : ParticleState)
-    (halfSize rotation t : Float) : IO Unit := do
-  let data := buildRectDataUniform particles halfSize rotation
-  let (a, b, c, d, tx, ty) := pixelToClipParams particles.screenWidth particles.screenHeight
-  FFI.Renderer.drawInstancedRects
-    renderer
-    data
-    particles.count.toUInt32
-    a b c d tx ty
-    particles.screenWidth particles.screenHeight
-    sizeModeScreen
-    t dynamicHueSpeed
-    colorModeHSV
-
-/-- Draw dynamic triangles with time-based rotation using a boxed Array Float (slow path). -/
-def drawTrianglesAnimatedArray (renderer : FFI.Renderer) (particles : ParticleState)
-    (halfSize t spinSpeed : Float) : IO Unit := do
-  let data := buildTriangleDataAnimated particles halfSize t spinSpeed
-  let (a, b, c, d, tx, ty) := pixelToClipParams particles.screenWidth particles.screenHeight
-  FFI.Renderer.drawInstancedTriangles
-    renderer
-    data
-    particles.count.toUInt32
-    a b c d tx ty
-    particles.screenWidth particles.screenHeight
-    sizeModeScreen
-    t dynamicHueSpeed
-    colorModeHSV
-
-/-- Draw dynamic triangles with uniform rotation using a boxed Array Float (slow path). -/
-def drawTrianglesUniformArray (renderer : FFI.Renderer) (particles : ParticleState)
-    (halfSize rotation t : Float) : IO Unit := do
-  let data := buildTriangleDataUniform particles halfSize rotation
-  let (a, b, c, d, tx, ty) := pixelToClipParams particles.screenWidth particles.screenHeight
-  FFI.Renderer.drawInstancedTriangles
-    renderer
-    data
-    particles.count.toUInt32
-    a b c d tx ty
-    particles.screenWidth particles.screenHeight
-    sizeModeScreen
-    t dynamicHueSpeed
-    colorModeHSV
-
-/-! ## Sprite Data Builders
-
-Build packed float arrays for sprite rendering (textured quads).
-Format: [pixelX, pixelY, rotation, halfSize, alpha] × count (5 floats per sprite) -/
-
-/-- Build sprite data from particle state.
-    Format: [pixelX, pixelY, rotation, halfSize, alpha] × count (5 floats per sprite) -/
-def buildSpriteData (particles : ParticleState) (halfSize : Float)
-    (getRotation : Nat → Float) (getAlpha : Nat → Float) : Array Float := Id.run do
-  let mut data := Array.mkEmpty (particles.count * 5)
-  for i in [:particles.count] do
-    let base := i * 5
-    let x := particles.data.get! base
-    let y := particles.data.get! (base + 1)
-    data := data.push x
-    data := data.push y
-    data := data.push (getRotation i)
-    data := data.push halfSize
-    data := data.push (getAlpha i)
-  data
-
-/-- Build sprite data with uniform rotation and full opacity. -/
-def buildSpriteDataUniform (particles : ParticleState) (halfSize rotation : Float) : Array Float :=
-  buildSpriteData particles halfSize (fun _ => rotation) (fun _ => 1.0)
-
-/-- Build sprite data with time-based per-particle rotation. -/
-def buildSpriteDataAnimated (particles : ParticleState) (halfSize t spinSpeed : Float) : Array Float :=
-  buildSpriteData particles halfSize
-    (fun i =>
-      let hue := particles.data.get! (i * 5 + 4)
-      t * spinSpeed + hue * 6.28)
-    (fun _ => 1.0)
-
-/-- Draw sprites with texture. Position from particle state, GPU handles NDC conversion. -/
-def drawSprites (renderer : FFI.Renderer) (texture : FFI.Texture) (particles : ParticleState)
-    (halfSize : Float) (rotation : Float := 0.0) : IO Unit := do
-  let data := buildSpriteDataUniform particles halfSize rotation
-  FFI.Renderer.drawSprites renderer texture data particles.count.toUInt32 particles.screenWidth particles.screenHeight
-
-/-- Draw sprites with time-based rotation animation. -/
-def drawSpritesAnimated (renderer : FFI.Renderer) (texture : FFI.Texture) (particles : ParticleState)
-    (halfSize t spinSpeed : Float) : IO Unit := do
-  let data := buildSpriteDataAnimated particles halfSize t spinSpeed
-  FFI.Renderer.drawSprites renderer texture data particles.count.toUInt32 particles.screenWidth particles.screenHeight
 
 /-! ## FloatBuffer-based Sprite Rendering
 
-For maximum performance with 1M+ sprites, write directly to a FloatBuffer
-instead of building a Lean Array. This eliminates:
-- Lean array allocation (copy-on-write overhead)
-- FFI array-to-C conversion (5M unboxing operations)
-
-The FloatBuffer approach: 1 FFI call per sprite (setVec5) vs 5M unbox calls. -/
+For maximum performance with 1M+ sprites, write directly to a FloatBuffer. -/
 
 /-- Write sprite data for all particles directly into a FloatBuffer.
     This is the high-performance path for 1M+ sprites.
@@ -589,15 +303,7 @@ def writeOrbitalToBuffer (orbital : OrbitalState) (buffer : FFI.FloatBuffer)
 def drawOrbitalRects (renderer : FFI.Renderer) (orbital : OrbitalState)
     (buffer : FFI.FloatBuffer) (t : Float) : IO Unit := do
   writeOrbitalToBuffer orbital buffer t
-  let (a, b, c, d, tx, ty) := pixelToClipParams orbital.screenWidth orbital.screenHeight
-  FFI.Renderer.drawInstancedRectsBuffer
-    renderer
-    buffer
-    orbital.count.toUInt32
-    a b c d tx ty
+  drawInstancedFromBuffer renderer 0 buffer orbital.count.toUInt32 t
     orbital.screenWidth orbital.screenHeight
-    sizeModeScreen
-    t dynamicHueSpeed
-    colorModeHSV
 
 end Afferent.Render.Dynamic

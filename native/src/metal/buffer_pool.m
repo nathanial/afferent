@@ -28,8 +28,7 @@ struct AfferentBuffer* pool_acquire_wrapper(void) {
 }
 
 // Find or create a buffer of at least the required size
-id<MTLBuffer> pool_acquire_buffer(id<MTLDevice> device, PooledBuffer* pool, int* count, size_t required_size, bool is_vertex) {
-    (void)is_vertex;  // Unused parameter
+id<MTLBuffer> pool_acquire_buffer(id<MTLDevice> device, PooledBuffer* pool, int* count, size_t required_size) {
 
     // First, try to find an existing buffer that's large enough and not in use
     for (int i = 0; i < *count; i++) {

@@ -133,8 +133,8 @@ let view := camera.viewMatrix
 let mvp := projection * view * modelMatrix
 
 -- Render 3D mesh with fog
-renderer.drawMesh3DWithFog meshBuffer indexBuffer indexCount mvp
-  modelMatrix cameraPos fogStart fogEnd fogColor ambientFactor
+renderer.drawMesh3D vertices indices mvp modelMatrix lightDir ambientFactor
+  cameraPos fogColor fogStart fogEnd
 ```
 
 ### Layout System

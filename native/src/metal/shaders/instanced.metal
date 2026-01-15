@@ -26,19 +26,24 @@ struct InstancedUniforms {
     float hueSpeed;
     uint sizeMode;
     uint colorMode;
-    float padding0;
-    float padding1;
+    uint shapeType;
+    uint padding0;
 };
 
 struct InstancedVertexOut {
     float4 position [[position]];
     float4 color;
+    float2 uv;
+    float shapeType;
 };
 
 constant uint SIZE_MODE_WORLD = 0;
 constant uint SIZE_MODE_SCREEN = 1;
 constant uint COLOR_MODE_RGBA = 0;
 constant uint COLOR_MODE_HSV = 1;
+constant uint SHAPE_RECT = 0;
+constant uint SHAPE_TRIANGLE = 1;
+constant uint SHAPE_CIRCLE = 2;
 
 static inline float2 apply_affine(float2 p, constant InstancedUniforms& u) {
     return float2(
@@ -98,331 +103,132 @@ vertex InstancedVertexOut instanced_vertex_main(
     constant InstanceData* instances [[buffer(0)]],
     constant InstancedUniforms& uniforms [[buffer(1)]]
 ) {
-    // Unit quad vertices for triangle strip: forms a quad with vertices 0,1,2,3
-    // Order: bottom-left, bottom-right, top-left, top-right (Z pattern for strip)
-    float2 unitQuad[4] = {
-        float2(-1, -1),  // 0: bottom-left
-        float2( 1, -1),  // 1: bottom-right
-        float2(-1,  1),  // 2: top-left
-        float2( 1,  1)   // 3: top-right
-    };
-
     InstanceData inst = instances[iid];
-    float2 v = unitQuad[vid];
+    float2 v;
+    if (uniforms.shapeType == SHAPE_TRIANGLE) {
+        float2 unitTriangle[3] = {
+            float2( 0.0,  1.15),   // top
+            float2(-1.0, -0.58),   // bottom-left
+            float2( 1.0, -0.58)    // bottom-right
+        };
+        v = unitTriangle[vid];
+    } else {
+        float2 unitQuad[4] = {
+            float2(-1, -1),
+            float2( 1, -1),
+            float2(-1,  1),
+            float2( 1,  1)
+        };
+        v = unitQuad[vid];
+    }
     float2 finalPos = compute_instanced_pos(v, inst, uniforms);
 
     InstancedVertexOut out;
     out.position = float4(finalPos, 0.0, 1.0);
     out.color = compute_instanced_color(inst, uniforms);
+    out.uv = v;
+    out.shapeType = (float)uniforms.shapeType;
     return out;
 }
 
 fragment float4 instanced_fragment_main(InstancedVertexOut in [[stage_in]]) {
+    if (in.shapeType > 1.5) {
+        float dist = length(in.uv);
+        float alpha = 1.0 - smoothstep(0.9, 1.0, dist);
+        if (alpha < 0.01) discard_fragment();
+        return float4(in.color.rgb, in.color.a * alpha);
+    }
     return in.color;
 }
-
-// === TRIANGLE SHADER ===
-// Draws spinning triangles using 3 vertices per instance
-
-vertex InstancedVertexOut instanced_triangle_vertex(
-    uint vid [[vertex_id]],
-    uint iid [[instance_id]],
-    constant InstanceData* instances [[buffer(0)]],
-    constant InstancedUniforms& uniforms [[buffer(1)]]
-) {
-    // Equilateral triangle vertices (pointing up)
-    float2 unitTriangle[3] = {
-        float2( 0.0,  1.15),   // top
-        float2(-1.0, -0.58),   // bottom-left
-        float2( 1.0, -0.58)    // bottom-right
-    };
-
-    InstanceData inst = instances[iid];
-    float2 v = unitTriangle[vid];
-    float2 finalPos = compute_instanced_pos(v, inst, uniforms);
-
-    InstancedVertexOut out;
-    out.position = float4(finalPos, 0.0, 1.0);
-    out.color = compute_instanced_color(inst, uniforms);
-    return out;
-}
-
-// === CIRCLE SHADER ===
-// Draws filled circles using fragment shader distance check
-
-struct CircleVertexOut {
-    float4 position [[position]];
-    float4 color;
-    float2 uv;  // -1 to 1, for distance calculation
-};
-
-vertex CircleVertexOut instanced_circle_vertex(
-    uint vid [[vertex_id]],
-    uint iid [[instance_id]],
-    constant InstanceData* instances [[buffer(0)]],
-    constant InstancedUniforms& uniforms [[buffer(1)]]
-) {
-    // Quad vertices (no rotation needed for circles)
-    float2 unitQuad[4] = {
-        float2(-1, -1),
-        float2( 1, -1),
-        float2(-1,  1),
-        float2( 1,  1)
-    };
-
-    InstanceData inst = instances[iid];
-    float2 v = unitQuad[vid];
-    float2 finalPos = compute_instanced_pos(v, inst, uniforms);
-
-    CircleVertexOut out;
-    out.position = float4(finalPos, 0.0, 1.0);
-    out.color = compute_instanced_color(inst, uniforms);
-    out.uv = v;  // Pass UV for fragment shader
-    return out;
-}
-
-fragment float4 instanced_circle_fragment(CircleVertexOut in [[stage_in]]) {
-    // Distance from center (0,0) in UV space
-    float dist = length(in.uv);
-    // Smooth edge with anti-aliasing
-    float alpha = 1.0 - smoothstep(0.9, 1.0, dist);
-    if (alpha < 0.01) discard_fragment();
-    return float4(in.color.rgb, in.color.a * alpha);
-}
-
 // =============================================================================
-// BATCHED AXIS-ALIGNED RECT SHADER
-// Optimized for charts (heatmaps, scatter plots, bar charts) where each rect
-// has variable dimensions: [x, y, width, height, r, g, b, a] per instance
+// BATCHED SHAPES (rect, circle, stroke rect)
+// Instance data: [x, y, width, height, r, g, b, a] per instance
 // =============================================================================
 
-// Instance data for batched rects: 8 floats per rect
-struct BatchedRectInstance {
-    packed_float2 pos;        // Top-left corner (x, y) in pixels
-    packed_float2 size;       // Width, height in pixels
-    packed_float4 color;      // RGBA
-};  // 32 bytes total
-
-// Uniforms for batched rects
-struct BatchedRectUniforms {
-    float2 viewport;          // Canvas width, height for NDC conversion
-    float cornerRadius;       // Uniform corner radius (0 for sharp corners)
-    float padding;
+struct BatchedInstance {
+    packed_float2 pos;
+    packed_float2 size;
+    packed_float4 color;
 };
 
-struct BatchedRectVertexOut {
+struct BatchedUniforms {
+    float2 viewport;
+    float lineWidth;
+    float cornerRadius;
+    uint shapeType;
+    uint padding;
+};
+
+struct BatchedVertexOut {
     float4 position [[position]];
     float4 color;
-    float2 uv;                // 0-1 UV within the rect
-    float2 rectSize;          // Rect size in pixels (for corner radius)
-    float cornerRadius;       // Pass corner radius to fragment
+    float2 uv;
+    float2 size;
+    float4 params;  // lineWidth, cornerRadius, shapeType, unused
 };
 
-vertex BatchedRectVertexOut batched_rect_vertex(
+vertex BatchedVertexOut batched_vertex(
     uint vid [[vertex_id]],
     uint iid [[instance_id]],
-    constant BatchedRectInstance* instances [[buffer(0)]],
-    constant BatchedRectUniforms& uniforms [[buffer(1)]]
+    constant BatchedInstance* instances [[buffer(0)]],
+    constant BatchedUniforms& uniforms [[buffer(1)]]
 ) {
-    // Quad vertices for triangle strip: 0=TL, 1=TR, 2=BL, 3=BR
     float2 unitQuad[4] = {
-        float2(0, 0),   // 0: top-left
-        float2(1, 0),   // 1: top-right
-        float2(0, 1),   // 2: bottom-left
-        float2(1, 1)    // 3: bottom-right
+        float2(0, 0),
+        float2(1, 0),
+        float2(0, 1),
+        float2(1, 1)
     };
 
-    BatchedRectInstance inst = instances[iid];
+    BatchedInstance inst = instances[iid];
     float2 uv = unitQuad[vid];
-
-    // Compute pixel position
     float2 pixelPos = inst.pos + uv * inst.size;
 
-    // Convert to NDC: x: 0..width -> -1..1, y: 0..height -> 1..-1 (Y flipped)
     float2 ndc;
     ndc.x = (pixelPos.x / uniforms.viewport.x) * 2.0 - 1.0;
     ndc.y = 1.0 - (pixelPos.y / uniforms.viewport.y) * 2.0;
 
-    BatchedRectVertexOut out;
+    BatchedVertexOut out;
     out.position = float4(ndc, 0.0, 1.0);
     out.color = inst.color;
     out.uv = uv;
-    out.rectSize = inst.size;
-    out.cornerRadius = uniforms.cornerRadius;
+    out.size = inst.size;
+    out.params = float4(uniforms.lineWidth, uniforms.cornerRadius, (float)uniforms.shapeType, 0.0);
     return out;
 }
 
-fragment float4 batched_rect_fragment(BatchedRectVertexOut in [[stage_in]]) {
-    if (in.cornerRadius <= 0.0) {
-        // No corner radius - simple solid rect
+fragment float4 batched_fragment(BatchedVertexOut in [[stage_in]]) {
+    float shapeType = in.params.z;
+    if (shapeType > 0.5 && shapeType < 1.5) {
+        float2 local = in.uv * 2.0 - 1.0;
+        float dist = length(local);
+        float alpha = 1.0 - smoothstep(0.95, 1.0, dist);
+        if (alpha < 0.01) discard_fragment();
+        return float4(in.color.rgb, in.color.a * alpha);
+    }
+
+    float lineWidth = in.params.x;
+    float cornerRadius = in.params.y;
+    if (cornerRadius <= 0.0 && lineWidth <= 0.0) {
         return in.color;
     }
 
-    // Rounded corners using SDF
-    float2 halfSize = in.rectSize * 0.5;
-    float2 center = float2(0.5, 0.5);
-    float2 localPos = (in.uv - center) * in.rectSize;  // Position relative to center
-
-    // Clamp corner radius to half the smaller dimension
-    float r = min(in.cornerRadius, min(halfSize.x, halfSize.y));
-
-    // Distance to rounded rect edge
+    float2 halfSize = in.size * 0.5;
+    float2 localPos = (in.uv - 0.5) * in.size;
+    float r = min(cornerRadius, min(halfSize.x, halfSize.y));
     float2 q = abs(localPos) - (halfSize - r);
     float dist = min(max(q.x, q.y), 0.0) + length(max(q, 0.0)) - r;
 
-    // Anti-aliased edge (1 pixel transition)
-    float alpha = 1.0 - smoothstep(-1.0, 0.0, dist);
-    if (alpha < 0.01) discard_fragment();
-
-    return float4(in.color.rgb, in.color.a * alpha);
-}
-
-// =============================================================================
-// BATCHED CIRCLE SHADER (for scatter plots, bubble charts)
-// Instance data: [centerX, centerY, radius, r, g, b, a] = 7 floats per circle
-// Padded to 8 floats for alignment: [centerX, centerY, radius, padding, r, g, b, a]
-// =============================================================================
-
-struct BatchedCircleInstance {
-    packed_float2 center;     // Center position in pixels
-    float radius;             // Radius in pixels
-    float padding;            // Alignment padding
-    packed_float4 color;      // RGBA
-};  // 32 bytes total
-
-struct BatchedCircleUniforms {
-    float2 viewport;          // Canvas width, height for NDC conversion
-};
-
-struct BatchedCircleVertexOut {
-    float4 position [[position]];
-    float4 color;
-    float2 uv;                // -1 to 1, for distance calculation
-};
-
-vertex BatchedCircleVertexOut batched_circle_vertex(
-    uint vid [[vertex_id]],
-    uint iid [[instance_id]],
-    constant BatchedCircleInstance* instances [[buffer(0)]],
-    constant BatchedCircleUniforms& uniforms [[buffer(1)]]
-) {
-    // Quad vertices covering the circle bounding box
-    float2 unitQuad[4] = {
-        float2(-1, -1),  // 0: bottom-left
-        float2( 1, -1),  // 1: bottom-right
-        float2(-1,  1),  // 2: top-left
-        float2( 1,  1)   // 3: top-right
-    };
-
-    BatchedCircleInstance inst = instances[iid];
-    float2 uv = unitQuad[vid];
-
-    // Compute pixel position (quad covers bounding box of circle)
-    float2 pixelPos = inst.center + uv * inst.radius;
-
-    // Convert to NDC
-    float2 ndc;
-    ndc.x = (pixelPos.x / uniforms.viewport.x) * 2.0 - 1.0;
-    ndc.y = 1.0 - (pixelPos.y / uniforms.viewport.y) * 2.0;
-
-    BatchedCircleVertexOut out;
-    out.position = float4(ndc, 0.0, 1.0);
-    out.color = inst.color;
-    out.uv = uv;
-    return out;
-}
-
-fragment float4 batched_circle_fragment(BatchedCircleVertexOut in [[stage_in]]) {
-    float dist = length(in.uv);
-    // Smooth edge with anti-aliasing
-    float alpha = 1.0 - smoothstep(0.95, 1.0, dist);
-    if (alpha < 0.01) discard_fragment();
-    return float4(in.color.rgb, in.color.a * alpha);
-}
-
-// =============================================================================
-// BATCHED STROKED RECT SHADER
-// For UI borders, chart axes, grid lines with strokes
-// Instance data: [x, y, width, height, r, g, b, a] per rect (8 floats)
-// Uniforms: viewport, lineWidth, cornerRadius
-// =============================================================================
-
-// Uniforms for batched stroked rects
-struct BatchedStrokeRectUniforms {
-    float2 viewport;          // Canvas width, height for NDC conversion
-    float lineWidth;          // Stroke width in pixels
-    float cornerRadius;       // Corner radius (0 for sharp corners)
-};
-
-struct BatchedStrokeRectVertexOut {
-    float4 position [[position]];
-    float4 color;
-    float2 uv;                // 0-1 UV within the rect
-    float2 rectSize;          // Rect size in pixels (for corner radius)
-    float lineWidth;          // Pass line width to fragment
-    float cornerRadius;       // Pass corner radius to fragment
-};
-
-vertex BatchedStrokeRectVertexOut batched_stroke_rect_vertex(
-    uint vid [[vertex_id]],
-    uint iid [[instance_id]],
-    constant BatchedRectInstance* instances [[buffer(0)]],
-    constant BatchedStrokeRectUniforms& uniforms [[buffer(1)]]
-) {
-    // Quad vertices for triangle strip: 0=TL, 1=TR, 2=BL, 3=BR
-    float2 unitQuad[4] = {
-        float2(0, 0),   // 0: top-left
-        float2(1, 0),   // 1: top-right
-        float2(0, 1),   // 2: bottom-left
-        float2(1, 1)    // 3: bottom-right
-    };
-
-    BatchedRectInstance inst = instances[iid];
-    float2 uv = unitQuad[vid];
-
-    // Compute pixel position
-    float2 pixelPos = inst.pos + uv * inst.size;
-
-    // Convert to NDC: x: 0..width -> -1..1, y: 0..height -> 1..-1 (Y flipped)
-    float2 ndc;
-    ndc.x = (pixelPos.x / uniforms.viewport.x) * 2.0 - 1.0;
-    ndc.y = 1.0 - (pixelPos.y / uniforms.viewport.y) * 2.0;
-
-    BatchedStrokeRectVertexOut out;
-    out.position = float4(ndc, 0.0, 1.0);
-    out.color = inst.color;
-    out.uv = uv;
-    out.rectSize = inst.size;
-    out.lineWidth = uniforms.lineWidth;
-    out.cornerRadius = uniforms.cornerRadius;
-    return out;
-}
-
-fragment float4 batched_stroke_rect_fragment(BatchedStrokeRectVertexOut in [[stage_in]]) {
-    // Compute distance to rounded rect edge using SDF
-    float2 halfSize = in.rectSize * 0.5;
-    float2 center = float2(0.5, 0.5);
-    float2 localPos = (in.uv - center) * in.rectSize;  // Position relative to center
-
-    // Clamp corner radius to half the smaller dimension
-    float r = min(in.cornerRadius, min(halfSize.x, halfSize.y));
-
-    // Distance to rounded rect edge
-    float2 q = abs(localPos) - (halfSize - r);
-    float dist = min(max(q.x, q.y), 0.0) + length(max(q, 0.0)) - r;
-
-    // Stroke: render pixels where |dist| < lineWidth/2
-    // dist < 0 means inside, dist > 0 means outside
-    float halfWidth = in.lineWidth * 0.5;
-    float innerEdge = -halfWidth;
-    float outerEdge = halfWidth;
-
-    // Smooth the stroke edges for anti-aliasing
-    float innerAlpha = smoothstep(innerEdge - 1.0, innerEdge, dist);
-    float outerAlpha = 1.0 - smoothstep(outerEdge - 1.0, outerEdge, dist);
-    float alpha = innerAlpha * outerAlpha;
+    float alpha;
+    if (shapeType > 1.5) {
+        float halfWidth = lineWidth * 0.5;
+        float innerAlpha = smoothstep(-halfWidth - 1.0, -halfWidth, dist);
+        float outerAlpha = 1.0 - smoothstep(halfWidth - 1.0, halfWidth, dist);
+        alpha = innerAlpha * outerAlpha;
+    } else {
+        alpha = 1.0 - smoothstep(-1.0, 0.0, dist);
+    }
 
     if (alpha < 0.01) discard_fragment();
-
     return float4(in.color.rgb, in.color.a * alpha);
 }

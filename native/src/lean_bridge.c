@@ -356,17 +356,6 @@ LEAN_EXPORT lean_obj_res lean_afferent_renderer_begin_frame(
     return lean_io_result_mk_ok(lean_box(1)); // true
 }
 
-// Enable/disable MSAA for subsequent frames
-LEAN_EXPORT lean_obj_res lean_afferent_renderer_set_msaa_enabled(
-    lean_obj_arg renderer_obj,
-    uint8_t enabled,
-    lean_obj_arg world
-) {
-    AfferentRendererRef renderer = (AfferentRendererRef)lean_get_external_data(renderer_obj);
-    afferent_renderer_set_msaa_enabled(renderer, enabled != 0);
-    return lean_io_result_mk_ok(lean_box(0));
-}
-
 // Override drawable scale (1.0 disables Retina). Pass 0 to restore native scale.
 LEAN_EXPORT lean_obj_res lean_afferent_renderer_set_drawable_scale(
     lean_obj_arg renderer_obj,
@@ -771,78 +760,6 @@ LEAN_EXPORT lean_obj_res lean_afferent_renderer_draw_stroke_path(
     return lean_io_result_mk_ok(lean_box(0));
 }
 
-// Reusable buffer for instanced rendering (avoids per-frame malloc)
-static float* g_instance_buffer = NULL;
-static size_t g_instance_buffer_capacity = 0;
-
-// Draw instanced shapes - GPU-accelerated transforms
-// shape_type: 0=rect, 1=triangle, 2=circle
-// instance_data_arr: Array Float with 8 floats per instance
-//   (pos.x, pos.y, angle, halfSize, r, g, b, a)
-LEAN_EXPORT lean_obj_res lean_afferent_renderer_draw_instanced_shapes(
-    lean_obj_arg renderer_obj,
-    uint32_t shape_type,
-    lean_obj_arg instance_data_arr,
-    uint32_t instance_count,
-    double transform_a,
-    double transform_b,
-    double transform_c,
-    double transform_d,
-    double transform_tx,
-    double transform_ty,
-    double viewport_width,
-    double viewport_height,
-    uint32_t size_mode,
-    double time,
-    double hue_speed,
-    uint32_t color_mode,
-    lean_obj_arg world
-) {
-    AfferentRendererRef renderer = (AfferentRendererRef)lean_get_external_data(renderer_obj);
-
-    size_t arr_size = lean_array_size(instance_data_arr);
-    size_t expected_size = (size_t)instance_count * 8;
-
-    if (arr_size < expected_size || instance_count == 0) {
-        return lean_io_result_mk_ok(lean_box(0));
-    }
-
-    if (arr_size > g_instance_buffer_capacity) {
-        free(g_instance_buffer);
-        g_instance_buffer = malloc(arr_size * sizeof(float));
-        g_instance_buffer_capacity = g_instance_buffer ? arr_size : 0;
-    }
-
-    if (!g_instance_buffer) {
-        return lean_io_result_mk_ok(lean_box(0));
-    }
-
-    for (size_t i = 0; i < arr_size; i++) {
-        g_instance_buffer[i] = (float)lean_unbox_float(lean_array_get_core(instance_data_arr, i));
-    }
-
-    afferent_renderer_draw_instanced_shapes(
-        renderer,
-        shape_type,
-        g_instance_buffer,
-        instance_count,
-        (float)transform_a,
-        (float)transform_b,
-        (float)transform_c,
-        (float)transform_d,
-        (float)transform_tx,
-        (float)transform_ty,
-        (float)viewport_width,
-        (float)viewport_height,
-        size_mode,
-        (float)time,
-        (float)hue_speed,
-        color_mode
-    );
-
-    return lean_io_result_mk_ok(lean_box(0));
-}
-
 // Set scissor rect for clipping
 LEAN_EXPORT lean_obj_res lean_afferent_renderer_set_scissor(
     lean_obj_arg renderer_obj,
@@ -1154,162 +1071,6 @@ LEAN_EXPORT lean_obj_res lean_afferent_float_buffer_write_instanced_from_particl
     return lean_io_result_mk_ok(lean_box(0));
 }
 
-// ============================================================================
-// FUSED PHYSICS + PACKING (FloatArray particle state -> FloatBuffer instances)
-// ============================================================================
-
-// Update bouncing physics in-place and write sprite instance data to FloatBuffer.
-// particle_data_arr: FloatArray [x, y, vx, vy, hue] per particle (5 doubles).
-// sprite_buffer: FloatBuffer [x, y, rotation(=0), halfSize, alpha(=1)] per particle (5 floats).
-LEAN_EXPORT lean_obj_res lean_afferent_particles_update_bouncing_and_write_sprites(
-    lean_obj_arg particle_data_arr,
-    uint32_t count,
-    double dt,
-    double halfSize,
-    double screenWidth,
-    double screenHeight,
-    lean_obj_arg sprite_buffer_obj,
-    lean_obj_arg world
-) {
-    if (count == 0) {
-        return lean_io_result_mk_ok(particle_data_arr);
-    }
-
-    // Ensure exclusive so in-place mutation is safe.
-    if (!lean_is_exclusive(particle_data_arr)) {
-        lean_object* copy = lean_copy_float_array(particle_data_arr);
-        lean_dec(particle_data_arr);
-        particle_data_arr = copy;
-    }
-
-    size_t arr_size = (size_t)lean_unbox(lean_float_array_size(particle_data_arr));
-    size_t expected_size = (size_t)count * 5;
-    if (arr_size < expected_size) {
-        return lean_io_result_mk_ok(particle_data_arr);
-    }
-
-    AfferentFloatBufferRef sprite_buffer = (AfferentFloatBufferRef)lean_get_external_data(sprite_buffer_obj);
-    if (!sprite_buffer || afferent_float_buffer_capacity(sprite_buffer) < expected_size) {
-        return lean_io_result_mk_ok(particle_data_arr);
-    }
-
-    double* p = lean_float_array_cptr(particle_data_arr);
-    float* out = (float*)afferent_float_buffer_data(sprite_buffer);
-    float h = (float)halfSize;
-    float a = 1.0f;
-    float rot = 0.0f;
-
-    double w = screenWidth;
-    double ht = screenHeight;
-    double r = halfSize;
-
-    for (uint32_t i = 0; i < count; i++) {
-        size_t base = (size_t)i * 5;
-        double x = p[base + 0];
-        double y = p[base + 1];
-        double vx = p[base + 2];
-        double vy = p[base + 3];
-
-        x += vx * dt;
-        y += vy * dt;
-
-        if (x < r) { x = r; vx = -vx; }
-        else if (x > w - r) { x = w - r; vx = -vx; }
-        if (y < r) { y = r; vy = -vy; }
-        else if (y > ht - r) { y = ht - r; vy = -vy; }
-
-        p[base + 0] = x;
-        p[base + 1] = y;
-        p[base + 2] = vx;
-        p[base + 3] = vy;
-
-        out[base + 0] = (float)x;
-        out[base + 1] = (float)y;
-        out[base + 2] = rot;
-        out[base + 3] = h;
-        out[base + 4] = a;
-    }
-
-    return lean_io_result_mk_ok(particle_data_arr);
-}
-
-// Update bouncing physics in-place and write instanced circle data to FloatBuffer.
-// circle_buffer: FloatBuffer [x, y, angle=0, radius, hueBase, 0, 0, 1] per particle (8 floats).
-LEAN_EXPORT lean_obj_res lean_afferent_particles_update_bouncing_and_write_circles(
-    lean_obj_arg particle_data_arr,
-    uint32_t count,
-    double dt,
-    double radius,
-    double screenWidth,
-    double screenHeight,
-    lean_obj_arg circle_buffer_obj,
-    lean_obj_arg world
-) {
-    if (count == 0) {
-        return lean_io_result_mk_ok(particle_data_arr);
-    }
-
-    if (!lean_is_exclusive(particle_data_arr)) {
-        lean_object* copy = lean_copy_float_array(particle_data_arr);
-        lean_dec(particle_data_arr);
-        particle_data_arr = copy;
-    }
-
-    size_t arr_size = (size_t)lean_unbox(lean_float_array_size(particle_data_arr));
-    size_t expected_size = (size_t)count * 5;
-    if (arr_size < expected_size) {
-        return lean_io_result_mk_ok(particle_data_arr);
-    }
-
-    AfferentFloatBufferRef circle_buffer = (AfferentFloatBufferRef)lean_get_external_data(circle_buffer_obj);
-    size_t out_needed = (size_t)count * 8;
-    if (!circle_buffer || afferent_float_buffer_capacity(circle_buffer) < out_needed) {
-        return lean_io_result_mk_ok(particle_data_arr);
-    }
-
-    double* p = lean_float_array_cptr(particle_data_arr);
-    float* out = (float*)afferent_float_buffer_data(circle_buffer);
-    float rad = (float)radius;
-
-    double w = screenWidth;
-    double ht = screenHeight;
-    double r = radius;
-
-    for (uint32_t i = 0; i < count; i++) {
-        size_t base = (size_t)i * 5;
-        double x = p[base + 0];
-        double y = p[base + 1];
-        double vx = p[base + 2];
-        double vy = p[base + 3];
-        double hue = p[base + 4];
-
-        x += vx * dt;
-        y += vy * dt;
-
-        if (x < r) { x = r; vx = -vx; }
-        else if (x > w - r) { x = w - r; vx = -vx; }
-        if (y < r) { y = r; vy = -vy; }
-        else if (y > ht - r) { y = ht - r; vy = -vy; }
-
-        p[base + 0] = x;
-        p[base + 1] = y;
-        p[base + 2] = vx;
-        p[base + 3] = vy;
-
-        size_t o = (size_t)i * 8;
-        out[o + 0] = (float)x;
-        out[o + 1] = (float)y;
-        out[o + 2] = 0.0f;
-        out[o + 3] = rad;
-        out[o + 4] = (float)hue;
-        out[o + 5] = 0.0f;
-        out[o + 6] = 0.0f;
-        out[o + 7] = 1.0f;
-    }
-
-    return lean_io_result_mk_ok(particle_data_arr);
-}
-
 // Draw instanced shapes directly from FloatBuffer (zero-copy path)
 // shape_type: 0=rect, 1=triangle, 2=circle
 LEAN_EXPORT lean_obj_res lean_afferent_renderer_draw_instanced_shapes_buffer(
@@ -1427,127 +1188,6 @@ LEAN_EXPORT lean_obj_res lean_afferent_texture_get_size(
     return lean_io_result_mk_ok(pair);
 }
 
-// Draw sprites with texture
-// data: [pixelX, pixelY, rotation, halfSizePixels, alpha] × count (5 floats per sprite)
-LEAN_EXPORT lean_obj_res lean_afferent_renderer_draw_sprites(
-    lean_obj_arg renderer_obj,
-    lean_obj_arg texture_obj,
-    lean_obj_arg data_arr,
-    uint32_t count,
-    double canvasWidth,
-    double canvasHeight,
-    lean_obj_arg world
-) {
-    AfferentRendererRef renderer = (AfferentRendererRef)lean_get_external_data(renderer_obj);
-    AfferentTextureRef texture = (AfferentTextureRef)lean_get_external_data(texture_obj);
-
-    // Extract float array data - 5 floats per sprite
-    size_t arr_size = lean_array_size(data_arr);
-    float* data = malloc(arr_size * sizeof(float));
-    for (size_t i = 0; i < arr_size; i++) {
-        lean_object* elem = lean_array_get_core(data_arr, i);
-        data[i] = (float)lean_unbox_float(elem);
-    }
-
-    afferent_renderer_draw_sprites(renderer, texture, data, count, (float)canvasWidth, (float)canvasHeight);
-
-    free(data);
-    return lean_io_result_mk_ok(lean_box(0));
-}
-
-// Draw sprites with texture using a transform matrix
-LEAN_EXPORT lean_obj_res lean_afferent_renderer_draw_sprites_matrix(
-    lean_obj_arg renderer_obj,
-    lean_obj_arg texture_obj,
-    lean_obj_arg data_arr,
-    uint32_t count,
-    double canvasWidth,
-    double canvasHeight,
-    double transformA,
-    double transformB,
-    double transformC,
-    double transformD,
-    double transformTx,
-    double transformTy,
-    lean_obj_arg world
-) {
-    AfferentRendererRef renderer = (AfferentRendererRef)lean_get_external_data(renderer_obj);
-    AfferentTextureRef texture = (AfferentTextureRef)lean_get_external_data(texture_obj);
-
-    size_t arr_size = lean_array_size(data_arr);
-    float* data = malloc(arr_size * sizeof(float));
-    for (size_t i = 0; i < arr_size; i++) {
-        lean_object* elem = lean_array_get_core(data_arr, i);
-        data[i] = (float)lean_unbox_float(elem);
-    }
-
-    afferent_renderer_draw_sprites_matrix(
-        renderer, texture, data, count,
-        (float)canvasWidth, (float)canvasHeight,
-        (float)transformA, (float)transformB, (float)transformC, (float)transformD,
-        (float)transformTx, (float)transformTy
-    );
-
-    free(data);
-    return lean_io_result_mk_ok(lean_box(0));
-}
-
-// ============================================================================
-// High-performance sprite system (FloatBuffer-based, C-side physics)
-// ============================================================================
-
-// Initialize sprites in FloatBuffer with random positions/velocities
-LEAN_EXPORT lean_obj_res lean_afferent_float_buffer_init_sprites(
-    lean_obj_arg buffer_obj,
-    uint32_t count,
-    double screenWidth,
-    double screenHeight,
-    uint32_t seed,
-    lean_obj_arg world
-) {
-    AfferentFloatBufferRef buffer = (AfferentFloatBufferRef)lean_get_external_data(buffer_obj);
-    afferent_float_buffer_init_sprites(buffer, count, (float)screenWidth, (float)screenHeight, seed);
-    return lean_io_result_mk_ok(lean_box(0));
-}
-
-// Update sprite physics (bouncing) - runs entirely in C
-LEAN_EXPORT lean_obj_res lean_afferent_float_buffer_update_sprites(
-    lean_obj_arg buffer_obj,
-    uint32_t count,
-    double dt,
-    double halfSize,
-    double screenWidth,
-    double screenHeight,
-    lean_obj_arg world
-) {
-    AfferentFloatBufferRef buffer = (AfferentFloatBufferRef)lean_get_external_data(buffer_obj);
-    afferent_float_buffer_update_sprites(buffer, count, (float)dt, (float)halfSize, (float)screenWidth, (float)screenHeight);
-    return lean_io_result_mk_ok(lean_box(0));
-}
-
-// Draw sprites from FloatBuffer (zero-copy path)
-LEAN_EXPORT lean_obj_res lean_afferent_renderer_draw_sprites_buffer(
-    lean_obj_arg renderer_obj,
-    lean_obj_arg texture_obj,
-    lean_obj_arg buffer_obj,
-    uint32_t count,
-    double halfSize,
-    double canvasWidth,
-    double canvasHeight,
-    lean_obj_arg world
-) {
-    AfferentRendererRef renderer = (AfferentRendererRef)lean_get_external_data(renderer_obj);
-    AfferentTextureRef texture = (AfferentTextureRef)lean_get_external_data(texture_obj);
-    AfferentFloatBufferRef buffer = (AfferentFloatBufferRef)lean_get_external_data(buffer_obj);
-
-    afferent_renderer_draw_sprites_buffer(
-        renderer, texture,
-        afferent_float_buffer_data(buffer),
-        count, (float)halfSize, (float)canvasWidth, (float)canvasHeight
-    );
-    return lean_io_result_mk_ok(lean_box(0));
-}
-
 // Draw sprites from FloatBuffer already in SpriteInstanceData layout
 LEAN_EXPORT lean_obj_res lean_afferent_renderer_draw_sprites_instance_buffer(
     lean_obj_arg renderer_obj,
@@ -1562,7 +1202,7 @@ LEAN_EXPORT lean_obj_res lean_afferent_renderer_draw_sprites_instance_buffer(
     AfferentTextureRef texture = (AfferentTextureRef)lean_get_external_data(texture_obj);
     AfferentFloatBufferRef buffer = (AfferentFloatBufferRef)lean_get_external_data(buffer_obj);
 
-    afferent_renderer_draw_sprites_instance_buffer(
+    afferent_renderer_draw_sprites(
         renderer, texture,
         afferent_float_buffer_data(buffer),
         count, (float)canvasWidth, (float)canvasHeight
@@ -1570,287 +1210,19 @@ LEAN_EXPORT lean_obj_res lean_afferent_renderer_draw_sprites_instance_buffer(
     return lean_io_result_mk_ok(lean_box(0));
 }
 
-// Draw sprites from FloatBuffer with a transform matrix
-LEAN_EXPORT lean_obj_res lean_afferent_renderer_draw_sprites_instance_buffer_matrix(
-    lean_obj_arg renderer_obj,
-    lean_obj_arg texture_obj,
-    lean_obj_arg buffer_obj,
-    uint32_t count,
-    double canvasWidth,
-    double canvasHeight,
-    double transformA,
-    double transformB,
-    double transformC,
-    double transformD,
-    double transformTx,
-    double transformTy,
-    lean_obj_arg world
-) {
-    AfferentRendererRef renderer = (AfferentRendererRef)lean_get_external_data(renderer_obj);
-    AfferentTextureRef texture = (AfferentTextureRef)lean_get_external_data(texture_obj);
-    AfferentFloatBufferRef buffer = (AfferentFloatBufferRef)lean_get_external_data(buffer_obj);
-
-    afferent_renderer_draw_sprites_instance_buffer_matrix(
-        renderer, texture,
-        afferent_float_buffer_data(buffer),
-        count, (float)canvasWidth, (float)canvasHeight,
-        (float)transformA, (float)transformB, (float)transformC, (float)transformD,
-        (float)transformTx, (float)transformTy
-    );
-    return lean_io_result_mk_ok(lean_box(0));
-}
-
-// Draw textured instances with per-instance UV rects
-// data layout: [pixelX, pixelY, rotation, halfSizeX, halfSizeY, u0, v0, u1, v1, alpha] × count
-LEAN_EXPORT lean_obj_res lean_afferent_renderer_draw_textured_instances(
-    lean_obj_arg renderer_obj,
-    lean_obj_arg texture_obj,
-    lean_obj_arg data_arr,
-    uint32_t count,
-    double canvasWidth,
-    double canvasHeight,
-    lean_obj_arg world
-) {
-    AfferentRendererRef renderer = (AfferentRendererRef)lean_get_external_data(renderer_obj);
-    AfferentTextureRef texture = (AfferentTextureRef)lean_get_external_data(texture_obj);
-
-    size_t arr_size = lean_array_size(data_arr);
-    float* data = malloc(arr_size * sizeof(float));
-    for (size_t i = 0; i < arr_size; i++) {
-        lean_object* elem = lean_array_get_core(data_arr, i);
-        data[i] = (float)lean_unbox_float(elem);
-    }
-
-    afferent_renderer_draw_textured_instances(renderer, texture, data, count, (float)canvasWidth, (float)canvasHeight);
-
-    free(data);
-    return lean_io_result_mk_ok(lean_box(0));
-}
-
-// Draw textured instances with per-instance UV rects using a transform matrix
-LEAN_EXPORT lean_obj_res lean_afferent_renderer_draw_textured_instances_matrix(
-    lean_obj_arg renderer_obj,
-    lean_obj_arg texture_obj,
-    lean_obj_arg data_arr,
-    uint32_t count,
-    double canvasWidth,
-    double canvasHeight,
-    double transformA,
-    double transformB,
-    double transformC,
-    double transformD,
-    double transformTx,
-    double transformTy,
-    lean_obj_arg world
-) {
-    AfferentRendererRef renderer = (AfferentRendererRef)lean_get_external_data(renderer_obj);
-    AfferentTextureRef texture = (AfferentTextureRef)lean_get_external_data(texture_obj);
-
-    size_t arr_size = lean_array_size(data_arr);
-    float* data = malloc(arr_size * sizeof(float));
-    for (size_t i = 0; i < arr_size; i++) {
-        lean_object* elem = lean_array_get_core(data_arr, i);
-        data[i] = (float)lean_unbox_float(elem);
-    }
-
-    afferent_renderer_draw_textured_instances_matrix(
-        renderer, texture, data, count,
-        (float)canvasWidth, (float)canvasHeight,
-        (float)transformA, (float)transformB, (float)transformC, (float)transformD,
-        (float)transformTx, (float)transformTy
-    );
-
-    free(data);
-    return lean_io_result_mk_ok(lean_box(0));
-}
-
-// Draw textured instances from FloatBuffer (layout with per-instance UV rects)
-LEAN_EXPORT lean_obj_res lean_afferent_renderer_draw_textured_instances_buffer(
-    lean_obj_arg renderer_obj,
-    lean_obj_arg texture_obj,
-    lean_obj_arg buffer_obj,
-    uint32_t count,
-    double canvasWidth,
-    double canvasHeight,
-    lean_obj_arg world
-) {
-    AfferentRendererRef renderer = (AfferentRendererRef)lean_get_external_data(renderer_obj);
-    AfferentTextureRef texture = (AfferentTextureRef)lean_get_external_data(texture_obj);
-    AfferentFloatBufferRef buffer = (AfferentFloatBufferRef)lean_get_external_data(buffer_obj);
-
-    afferent_renderer_draw_textured_instances(
-        renderer,
-        texture,
-        afferent_float_buffer_data(buffer),
-        count,
-        (float)canvasWidth,
-        (float)canvasHeight
-    );
-    return lean_io_result_mk_ok(lean_box(0));
-}
-
-// Draw textured instances from FloatBuffer using a transform matrix
-LEAN_EXPORT lean_obj_res lean_afferent_renderer_draw_textured_instances_buffer_matrix(
-    lean_obj_arg renderer_obj,
-    lean_obj_arg texture_obj,
-    lean_obj_arg buffer_obj,
-    uint32_t count,
-    double canvasWidth,
-    double canvasHeight,
-    double transformA,
-    double transformB,
-    double transformC,
-    double transformD,
-    double transformTx,
-    double transformTy,
-    lean_obj_arg world
-) {
-    AfferentRendererRef renderer = (AfferentRendererRef)lean_get_external_data(renderer_obj);
-    AfferentTextureRef texture = (AfferentTextureRef)lean_get_external_data(texture_obj);
-    AfferentFloatBufferRef buffer = (AfferentFloatBufferRef)lean_get_external_data(buffer_obj);
-
-    afferent_renderer_draw_textured_instances_buffer_matrix(
-        renderer,
-        texture,
-        afferent_float_buffer_data(buffer),
-        count,
-        (float)canvasWidth,
-        (float)canvasHeight,
-        (float)transformA, (float)transformB, (float)transformC, (float)transformD,
-        (float)transformTx, (float)transformTy
-    );
-    return lean_io_result_mk_ok(lean_box(0));
-}
-
-// Draw a textured rectangle with source and destination rectangles
-// Used for map tile rendering with cropping and scaling
-LEAN_EXPORT lean_obj_res lean_afferent_renderer_draw_textured_rect(
-    lean_obj_arg renderer_obj,
-    lean_obj_arg texture_obj,
-    double srcX, double srcY, double srcW, double srcH,
-    double dstX, double dstY, double dstW, double dstH,
-    double canvasWidth, double canvasHeight,
-    double alpha,
-    lean_obj_arg world
-) {
-    afferent_ensure_initialized();
-    AfferentRendererRef renderer = (AfferentRendererRef)lean_get_external_data(renderer_obj);
-    AfferentTextureRef texture = (AfferentTextureRef)lean_get_external_data(texture_obj);
-
-    afferent_renderer_draw_textured_rect(
-        renderer, texture,
-        (float)srcX, (float)srcY, (float)srcW, (float)srcH,
-        (float)dstX, (float)dstY, (float)dstW, (float)dstH,
-        (float)canvasWidth, (float)canvasHeight,
-        (float)alpha
-    );
-    return lean_io_result_mk_ok(lean_box(0));
-}
-
 // =============================================================================
 // 3D Mesh Rendering
 // =============================================================================
-// Draw 3D mesh with perspective projection and lighting
+// Draw 3D mesh with perspective projection, lighting, and fog parameters
 // vertices_arr: Array Float (10 floats per vertex: pos[3], normal[3], color[4])
 // indices_arr: Array UInt32 (triangle indices)
 // mvp_matrix: Array Float (16 floats, column-major)
 // model_matrix: Array Float (16 floats, column-major)
 // light_dir: Array Float (3 floats, normalized direction)
-// ambient: Float (ambient light factor 0-1)
-LEAN_EXPORT lean_obj_res lean_afferent_renderer_draw_mesh_3d(
-    lean_obj_arg renderer_obj,
-    lean_obj_arg vertices_arr,
-    lean_obj_arg indices_arr,
-    lean_obj_arg mvp_matrix,
-    lean_obj_arg model_matrix,
-    lean_obj_arg light_dir,
-    double ambient,
-    lean_obj_arg world
-) {
-    AfferentRendererRef renderer = (AfferentRendererRef)lean_get_external_data(renderer_obj);
-
-    // Convert vertex array (10 floats per vertex)
-    size_t vert_floats = lean_array_size(vertices_arr);
-    size_t vertex_count = vert_floats / 10;
-
-    if (vertex_count == 0) {
-        return lean_io_result_mk_ok(lean_box(0));
-    }
-
-    AfferentVertex3D* vertices = malloc(vertex_count * sizeof(AfferentVertex3D));
-    if (!vertices) {
-        return lean_io_result_mk_error(lean_mk_io_user_error(
-            lean_mk_string("Failed to allocate vertex buffer")));
-    }
-
-    for (size_t i = 0; i < vertex_count; i++) {
-        size_t base = i * 10;
-        // Position
-        vertices[i].position[0] = (float)lean_unbox_float(lean_array_get_core(vertices_arr, base + 0));
-        vertices[i].position[1] = (float)lean_unbox_float(lean_array_get_core(vertices_arr, base + 1));
-        vertices[i].position[2] = (float)lean_unbox_float(lean_array_get_core(vertices_arr, base + 2));
-        // Normal
-        vertices[i].normal[0] = (float)lean_unbox_float(lean_array_get_core(vertices_arr, base + 3));
-        vertices[i].normal[1] = (float)lean_unbox_float(lean_array_get_core(vertices_arr, base + 4));
-        vertices[i].normal[2] = (float)lean_unbox_float(lean_array_get_core(vertices_arr, base + 5));
-        // Color
-        vertices[i].color[0] = (float)lean_unbox_float(lean_array_get_core(vertices_arr, base + 6));
-        vertices[i].color[1] = (float)lean_unbox_float(lean_array_get_core(vertices_arr, base + 7));
-        vertices[i].color[2] = (float)lean_unbox_float(lean_array_get_core(vertices_arr, base + 8));
-        vertices[i].color[3] = (float)lean_unbox_float(lean_array_get_core(vertices_arr, base + 9));
-    }
-
-    // Convert index array
-    size_t index_count = lean_array_size(indices_arr);
-    uint32_t* indices = malloc(index_count * sizeof(uint32_t));
-    if (!indices) {
-        free(vertices);
-        return lean_io_result_mk_error(lean_mk_io_user_error(
-            lean_mk_string("Failed to allocate index buffer")));
-    }
-
-    for (size_t i = 0; i < index_count; i++) {
-        indices[i] = lean_unbox_uint32(lean_array_get_core(indices_arr, i));
-    }
-
-    // Convert MVP matrix (16 floats)
-    float mvp[16];
-    for (size_t i = 0; i < 16; i++) {
-        mvp[i] = (float)lean_unbox_float(lean_array_get_core(mvp_matrix, i));
-    }
-
-    // Convert model matrix (16 floats)
-    float model[16];
-    for (size_t i = 0; i < 16; i++) {
-        model[i] = (float)lean_unbox_float(lean_array_get_core(model_matrix, i));
-    }
-
-    // Convert light direction (3 floats)
-    float light[3];
-    for (size_t i = 0; i < 3; i++) {
-        light[i] = (float)lean_unbox_float(lean_array_get_core(light_dir, i));
-    }
-
-    // Draw the mesh
-    afferent_renderer_draw_mesh_3d(
-        renderer, vertices, (uint32_t)vertex_count,
-        indices, (uint32_t)index_count,
-        mvp, model, light, (float)ambient
-    );
-
-    free(vertices);
-    free(indices);
-
-    return lean_io_result_mk_ok(lean_box(0));
-}
-
-// Draw 3D mesh with fog
-// Same as above, plus:
 // camera_pos: Array Float (3 floats)
 // fog_color: Array Float (3 floats)
-// fog_start: Float
-// fog_end: Float
-LEAN_EXPORT lean_obj_res lean_afferent_renderer_draw_mesh_3d_with_fog(
+// fog_start/fog_end: fog distances (0 disables fog)
+LEAN_EXPORT lean_obj_res lean_afferent_renderer_draw_mesh_3d(
     lean_obj_arg renderer_obj,
     lean_obj_arg vertices_arr,
     lean_obj_arg indices_arr,
@@ -1941,7 +1313,7 @@ LEAN_EXPORT lean_obj_res lean_afferent_renderer_draw_mesh_3d_with_fog(
     }
 
     // Draw the mesh with fog
-    afferent_renderer_draw_mesh_3d_with_fog(
+    afferent_renderer_draw_mesh_3d(
         renderer, vertices, (uint32_t)vertex_count,
         indices, (uint32_t)index_count,
         mvp, model, light, (float)ambient,
@@ -2187,16 +1559,15 @@ LEAN_EXPORT lean_obj_res lean_afferent_renderer_draw_mesh_3d_textured(
 }
 
 // =============================================================================
-// BATCHED RECT/CIRCLE DRAWING - Optimized for charts
+// Batched shape drawing
 // =============================================================================
-
-// Draw batched axis-aligned rects (heatmaps, bar charts, etc.)
-// instance_data: [x, y, width, height, r, g, b, a] per rect (8 floats)
-LEAN_EXPORT lean_obj_res lean_afferent_renderer_draw_rects_batch(
+LEAN_EXPORT lean_obj_res lean_afferent_renderer_draw_batch(
     lean_obj_arg renderer_obj,
+    uint32_t kind,
     lean_obj_arg instance_data_arr,
     uint32_t instance_count,
-    double corner_radius,
+    double param0,
+    double param1,
     double canvas_width,
     double canvas_height,
     lean_obj_arg world
@@ -2210,7 +1581,6 @@ LEAN_EXPORT lean_obj_res lean_afferent_renderer_draw_rects_batch(
         return lean_io_result_mk_ok(lean_box(0));
     }
 
-    // Allocate temporary buffer for float conversion
     float* data = malloc(arr_size * sizeof(float));
     if (!data) {
         return lean_io_result_mk_ok(lean_box(0));
@@ -2220,97 +1590,13 @@ LEAN_EXPORT lean_obj_res lean_afferent_renderer_draw_rects_batch(
         data[i] = (float)lean_unbox_float(lean_array_get_core(instance_data_arr, i));
     }
 
-    afferent_renderer_draw_rects_batch(
+    afferent_renderer_draw_batch(
         renderer,
+        kind,
         data,
         instance_count,
-        (float)corner_radius,
-        (float)canvas_width,
-        (float)canvas_height
-    );
-
-    free(data);
-    return lean_io_result_mk_ok(lean_box(0));
-}
-
-// Draw batched circles (scatter plots, bubble charts)
-// instance_data: [centerX, centerY, radius, padding, r, g, b, a] per circle (8 floats)
-LEAN_EXPORT lean_obj_res lean_afferent_renderer_draw_circles_batch(
-    lean_obj_arg renderer_obj,
-    lean_obj_arg instance_data_arr,
-    uint32_t instance_count,
-    double canvas_width,
-    double canvas_height,
-    lean_obj_arg world
-) {
-    AfferentRendererRef renderer = (AfferentRendererRef)lean_get_external_data(renderer_obj);
-
-    size_t arr_size = lean_array_size(instance_data_arr);
-    size_t expected_size = (size_t)instance_count * 8;
-
-    if (arr_size < expected_size || instance_count == 0) {
-        return lean_io_result_mk_ok(lean_box(0));
-    }
-
-    // Allocate temporary buffer for float conversion
-    float* data = malloc(arr_size * sizeof(float));
-    if (!data) {
-        return lean_io_result_mk_ok(lean_box(0));
-    }
-
-    for (size_t i = 0; i < arr_size; i++) {
-        data[i] = (float)lean_unbox_float(lean_array_get_core(instance_data_arr, i));
-    }
-
-    afferent_renderer_draw_circles_batch(
-        renderer,
-        data,
-        instance_count,
-        (float)canvas_width,
-        (float)canvas_height
-    );
-
-    free(data);
-    return lean_io_result_mk_ok(lean_box(0));
-}
-
-// Draw batched stroked rectangles (UI borders, chart axes, grid lines)
-// instance_data: [x, y, width, height, r, g, b, a] per rect (8 floats)
-LEAN_EXPORT lean_obj_res lean_afferent_renderer_draw_stroke_rects_batch(
-    lean_obj_arg renderer_obj,
-    lean_obj_arg instance_data_arr,
-    uint32_t instance_count,
-    double line_width,
-    double corner_radius,
-    double canvas_width,
-    double canvas_height,
-    lean_obj_arg world
-) {
-    AfferentRendererRef renderer = (AfferentRendererRef)lean_get_external_data(renderer_obj);
-
-    size_t arr_size = lean_array_size(instance_data_arr);
-    size_t expected_size = (size_t)instance_count * 8;
-
-    if (arr_size < expected_size || instance_count == 0) {
-        return lean_io_result_mk_ok(lean_box(0));
-    }
-
-    // Allocate temporary buffer for float conversion
-    float* data = malloc(arr_size * sizeof(float));
-    if (!data) {
-        return lean_io_result_mk_ok(lean_box(0));
-    }
-
-    for (size_t i = 0; i < arr_size; i++) {
-        data[i] = (float)lean_unbox_float(lean_array_get_core(instance_data_arr, i));
-    }
-
-    afferent_renderer_draw_stroke_rects_batch(
-        renderer,
-        data,
-        instance_count,
-        (float)line_width,
-        (float)corner_radius,
+        (float)param0,
+        (float)param1,
         (float)canvas_width,
         (float)canvas_height
     );

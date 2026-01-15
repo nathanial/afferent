@@ -126,15 +126,13 @@ AfferentResult afferent_text_render(
             renderer->device,
             g_buffer_pool.text_vertex_pool,
             &g_buffer_pool.text_vertex_pool_count,
-            vertex_buffer_size,
-            true
+            vertex_buffer_size
         );
         id<MTLBuffer> indexBuffer = pool_acquire_buffer(
             renderer->device,
             g_buffer_pool.text_index_pool,
             &g_buffer_pool.text_index_pool_count,
-            index_buffer_size,
-            false
+            index_buffer_size
         );
 
         // Copy data into pooled buffers
