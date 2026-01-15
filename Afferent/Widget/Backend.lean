@@ -10,7 +10,6 @@ import Afferent.Text.Font
 import Afferent.Text.Measurer
 import Afferent.Arbor
 import Afferent.Arbor.Core.Path
-import Std.Data.HashMap
 
 namespace Afferent.Widget
 
@@ -513,92 +512,26 @@ def computeBoundedCommands (cmds : Array RenderCommand) : Array BoundedCommand :
 
   result
 
-/-- Check if command B is blocked by command A.
-    B is blocked if A comes before B, they have different types, and their bounds overlap.
-    State-changing commands are handled specially to maintain correctness. -/
-def isBlocked (a b : BoundedCommand) : Bool :=
-  a.originalIndex < b.originalIndex &&
-  match a.bounds, b.bounds with
-  | some ab, some bb =>
-      -- Both are drawing commands: blocked only if different types AND overlap
-      a.cmd.category != b.cmd.category && ab.overlaps bb
-  | none, some _ =>
-      -- A is state command, B is drawing: conservative for text/paths
-      -- After flattening, rects/circles don't depend on transforms anymore
-      -- But text and paths still do (text captures transform separately during batching)
-      b.cmd.category == .other  -- Only block "other" (paths, polygons)
-  | some _, none =>
-      -- A is drawing, B is state command: state commands maintain relative order
-      true
-  | none, none =>
-      -- Both are state commands: preserve order
-      true
+/-- Coalesce commands by grouping same-category commands together.
+    Uses a stable sort so relative order within each category is preserved.
 
-/-- Coalesce commands using overlap analysis.
-    Non-overlapping commands of the same type can be grouped together
-    even if originally separated by other command types.
+    After transform flattening, simple geometry (rects, circles) is in
+    absolute coordinates and doesn't depend on transform state.
+    Text captures its transform during batching (TextBatchEntry.transform).
 
-    This enables significantly better batching for UI layouts where
-    widgets don't overlap (flex, grid) but their commands are interleaved. -/
-def coalesceWithOverlap (bounded : Array BoundedCommand) : Array RenderCommand := Id.run do
+    This is O(N log N) and avoids the O(N²) memory of full overlap analysis. -/
+def coalesceByCategory (bounded : Array BoundedCommand) : Array RenderCommand := Id.run do
   if bounded.isEmpty then return #[]
 
-  let n := bounded.size
+  -- Stable sort by category priority, preserving original order within category
+  -- We use (priority, originalIndex) as sort key for stability
+  let sorted := bounded.qsort fun a b =>
+    let pa := a.cmd.category.sortPriority
+    let pb := b.cmd.category.sortPriority
+    if pa != pb then decide (pa < pb)
+    else decide (a.originalIndex < b.originalIndex)
 
-  -- Build blocking relationships: blockedBy[j] = indices that must come before j
-  let mut blockedBy : Array (Array Nat) := .replicate n #[]
-  for i in [:n] do
-    for j in [i+1:n] do
-      if isBlocked bounded[i]! bounded[j]! then
-        blockedBy := blockedBy.modify j (·.push i)
-
-  -- Track which commands have been emitted
-  let mut emitted : Array Bool := .replicate n false
-  let mut result : Array RenderCommand := #[]
-  let mut emittedCount := 0
-
-  while emittedCount < n do
-    -- Find all commands that can be emitted (all blockers already emitted)
-    let mut ready : Array Nat := #[]
-    for i in [:n] do
-      if !emitted[i]! then
-        let allBlockersEmitted := blockedBy[i]!.all (emitted[·]!)
-        if allBlockersEmitted then
-          ready := ready.push i
-
-    if ready.isEmpty then
-      -- Shouldn't happen with valid blocking graph, but emit remaining in order
-      for i in [:n] do
-        if !emitted[i]! then
-          result := result.push bounded[i]!.cmd
-          emitted := emitted.set! i true
-          emittedCount := emittedCount + 1
-      break
-
-    -- Group ready commands by category, pick the largest group to maximize batching
-    let mut categoryGroups : Std.HashMap CommandCategory (Array Nat) := {}
-    for i in ready do
-      let cat := bounded[i]!.cmd.category
-      categoryGroups := categoryGroups.insert cat
-        ((categoryGroups.getD cat #[]).push i)
-
-    -- Find category with most ready commands
-    let mut bestCategory := CommandCategory.other
-    let mut bestCount := 0
-    for (cat, indices) in categoryGroups.toList do
-      if indices.size > bestCount then
-        bestCategory := cat
-        bestCount := indices.size
-
-    -- Emit all commands of best category (sorted by original index for stability)
-    let toEmit := categoryGroups.getD bestCategory #[]
-    let toEmit := toEmit.qsort (· < ·)
-    for i in toEmit do
-      result := result.push bounded[i]!.cmd
-      emitted := emitted.set! i true
-      emittedCount := emittedCount + 1
-
-  result
+  sorted.map (·.cmd)
 
 /-- Execute a batch of fillRect commands in a single draw call. -/
 def executeFillRectBatch (rects : Array RectBatchEntry) (cornerRadius : Float) : CanvasM Unit := do
@@ -662,7 +595,7 @@ def executeTextBatch (font : Font) (entries : Array TextBatchEntry) : CanvasM Un
     Returns batch statistics for performance monitoring. -/
 def executeCommandsBatchedWithStats (reg : FontRegistry) (cmds : Array Afferent.Arbor.RenderCommand) : CanvasM BatchStats := do
   -- Use overlap-aware coalescing for better batching across transform scopes
-  let cmds := coalesceWithOverlap (computeBoundedCommands cmds)
+  let cmds := coalesceByCategory (computeBoundedCommands cmds)
   let mut i := 0
   let mut rectBatch : Array RectBatchEntry := #[]
   let mut currentCornerRadius : Float := 0.0

@@ -161,6 +161,21 @@ inductive CommandCategory
   | other
 deriving Repr, BEq, Hashable
 
+namespace CommandCategory
+
+/-- Priority for sorting commands by category during coalescing.
+    Lower values come first in output. Drawing commands are grouped together,
+    state commands ("other") come last to stay near their original position. -/
+def sortPriority : CommandCategory → Nat
+  | .fillRect => 0
+  | .fillCircle => 1
+  | .strokeRect => 2
+  | .strokeCircle => 3
+  | .fillText => 4
+  | .other => 5
+
+end CommandCategory
+
 namespace RenderCommand
 
 /-- Get the batching category for a render command. -/
