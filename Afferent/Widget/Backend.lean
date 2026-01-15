@@ -241,6 +241,14 @@ structure BatchStats where
   linesBatched : Nat := 0
   /-- Number of texts batched. -/
   textsBatched : Nat := 0
+  /-- Time spent computing bounded commands (transform flattening) in ms. -/
+  timeFlattenMs : Float := 0.0
+  /-- Time spent coalescing/sorting commands in ms. -/
+  timeCoalesceMs : Float := 0.0
+  /-- Time spent in main batching loop (building batch arrays) in ms. -/
+  timeBatchLoopMs : Float := 0.0
+  /-- Time spent executing draw calls (FFI to native) in ms. -/
+  timeDrawCallsMs : Float := 0.0
   deriving Repr, Inhabited
 
 /-- Entry for a batched rectangle. -/
@@ -673,8 +681,18 @@ def executeTextBatch (font : Font) (entries : Array TextBatchEntry) : CanvasM Un
     and consecutive fillCircle commands into batched draw calls.
     Returns batch statistics for performance monitoring. -/
 def executeCommandsBatchedWithStats (reg : FontRegistry) (cmds : Array Afferent.Arbor.RenderCommand) : CanvasM BatchStats := do
-  -- Use overlap-aware coalescing for better batching across transform scopes
-  let cmds := coalesceByCategory (computeBoundedCommands cmds)
+  -- Time: Flatten commands (transform tracking, simple geometry to absolute coords)
+  let tFlatten0 ← IO.monoNanosNow
+  let bounded := computeBoundedCommands cmds
+  let tFlatten1 ← IO.monoNanosNow
+
+  -- Time: Coalesce/sort commands by category
+  let tCoalesce0 ← IO.monoNanosNow
+  let cmds := coalesceByCategory bounded
+  let tCoalesce1 ← IO.monoNanosNow
+
+  -- Time: Main batch loop (batch building + draw calls)
+  let tLoop0 ← IO.monoNanosNow
   let mut i := 0
   let mut rectBatch : Array RectBatchEntry := #[]
   let mut currentCornerRadius : Float := 0.0
@@ -913,7 +931,18 @@ def executeCommandsBatchedWithStats (reg : FontRegistry) (cmds : Array Afferent.
   -- Flush any remaining batches
   stats ← flushAll rectBatch currentCornerRadius strokeRectBatch currentStrokeLineWidth currentStrokeCornerRadius circleBatch lineBatch currentLineWidth textBatch currentTextFontId stats
 
-  return stats
+  let tLoop1 ← IO.monoNanosNow
+
+  -- Calculate timing in milliseconds
+  let timeFlattenMs := (tFlatten1 - tFlatten0).toFloat / 1000000.0
+  let timeCoalesceMs := (tCoalesce1 - tCoalesce0).toFloat / 1000000.0
+  let timeBatchLoopMs := (tLoop1 - tLoop0).toFloat / 1000000.0
+
+  return { stats with
+    timeFlattenMs := timeFlattenMs
+    timeCoalesceMs := timeCoalesceMs
+    timeBatchLoopMs := timeBatchLoopMs
+  }
 
 /-- Execute an array of RenderCommands using CanvasM with batching optimization.
     Coalesces commands within scopes to maximize batching, then groups
