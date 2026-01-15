@@ -458,10 +458,12 @@ where
     let padding := style.padding
     pure (max maxW 0 + padding.horizontal, max maxH 0 + padding.vertical)
 
-  /-- Update a specific layout in the result by node ID. -/
+  /-- Update a specific layout in the result by node ID.
+      Updates both the array and the HashMap for consistency. -/
   updateLayoutResult (r : Trellis.LayoutResult) (nodeId : Nat)
       (newLayout : Trellis.ComputedLayout) : Trellis.LayoutResult :=
     { layouts := r.layouts.map fun cl =>
-        if cl.nodeId == nodeId then newLayout else cl }
+        if cl.nodeId == nodeId then newLayout else cl
+      layoutMap := r.layoutMap.insert nodeId newLayout }
 
 end Afferent.Arbor
