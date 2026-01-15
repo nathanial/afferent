@@ -123,6 +123,71 @@ def strokeCircle' (cx cy radius : Float) (color : Color) (lineWidth : Float := 1
 
 end RenderCommand
 
+/-! ## Command Bounds for Overlap Analysis -/
+
+/-- Screen-space bounding box for a render command.
+    Used for overlap detection during command coalescing. -/
+structure CommandBounds where
+  minX : Float
+  minY : Float
+  maxX : Float
+  maxY : Float
+deriving Repr, BEq
+
+namespace CommandBounds
+
+/-- Check if two bounding boxes overlap. -/
+def overlaps (a b : CommandBounds) : Bool :=
+  a.minX < b.maxX && a.maxX > b.minX &&
+  a.minY < b.maxY && a.maxY > b.minY
+
+/-- Create bounds from rectangle (x, y, width, height). -/
+def fromRect (x y w h : Float) : CommandBounds :=
+  { minX := x, minY := y, maxX := x + w, maxY := y + h }
+
+/-- Create bounds from circle (centerX, centerY, radius). -/
+def fromCircle (cx cy r : Float) : CommandBounds :=
+  { minX := cx - r, minY := cy - r, maxX := cx + r, maxY := cy + r }
+
+end CommandBounds
+
+/-- Command category for batching (which commands can batch together). -/
+inductive CommandCategory
+  | fillRect
+  | strokeRect
+  | fillCircle
+  | strokeCircle
+  | fillText
+  | other
+deriving Repr, BEq, Hashable
+
+namespace RenderCommand
+
+/-- Get the batching category for a render command. -/
+def category : RenderCommand → CommandCategory
+  | .fillRect .. | .fillRectStyle .. => .fillRect
+  | .strokeRect .. => .strokeRect
+  | .fillCircle .. => .fillCircle
+  | .strokeCircle .. => .strokeCircle
+  | .fillText .. | .fillTextBlock .. => .fillText
+  | _ => .other
+
+end RenderCommand
+
+/-- Render command with computed screen-space bounds for overlap analysis.
+    Used during overlap-aware coalescing to determine which commands can be reordered. -/
+structure BoundedCommand where
+  /-- The underlying render command. -/
+  cmd : RenderCommand
+  /-- Screen-space bounding box. None for state-changing commands. -/
+  bounds : Option CommandBounds
+  /-- Original index in the command stream for stable sorting. -/
+  originalIndex : Nat
+deriving Repr
+
+instance : Inhabited BoundedCommand where
+  default := { cmd := .save, bounds := none, originalIndex := 0 }
+
 /-- A batch of render commands. -/
 abbrev RenderCommands := Array RenderCommand
 

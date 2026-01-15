@@ -5,10 +5,12 @@
 -/
 import Afferent.Canvas.Context
 import Afferent.Core.Path
+import Afferent.Core.Transform
 import Afferent.Text.Font
 import Afferent.Text.Measurer
 import Afferent.Arbor
 import Afferent.Arbor.Core.Path
+import Std.Data.HashMap
 
 namespace Afferent.Widget
 
@@ -361,6 +363,243 @@ def coalesceCommands (cmds : Array RenderCommand) : Array RenderCommand := Id.ru
   -- Flush final scope
   result ++ bins.flush
 
+/-! ## Overlap-Aware Command Coalescing
+
+Advanced coalescing that analyzes command bounds to determine which commands
+can be safely reordered across scope boundaries. Non-overlapping commands
+can be batched together even if they were originally in different scopes.
+
+The key insight is that for non-overlapping UI elements (common in flex layouts),
+z-order doesn't affect visual output, so we can freely reorder by type.
+-/
+
+/-- Convert Arbor.Point to Afferent.Point for transform application. -/
+private def arborToAfferentPt (p : Afferent.Arbor.Point) : Afferent.Point :=
+  ⟨p.x, p.y⟩
+
+/-- Convert Afferent.Point to Arbor.Point after transform. -/
+private def afferentToArborPt (p : Afferent.Point) : Afferent.Arbor.Point :=
+  ⟨p.x, p.y⟩
+
+/-- Compute screen-space bounds for a render command.
+    Returns None for state-changing commands that don't have spatial extent. -/
+def computeBounds (cmd : RenderCommand) (transform : Transform) : Option CommandBounds :=
+  match cmd with
+  | .fillRect rect _ _ =>
+      let p := transform.apply (arborToAfferentPt rect.origin)
+      some (CommandBounds.fromRect p.x p.y rect.size.width rect.size.height)
+  | .fillRectStyle rect _ _ =>
+      let p := transform.apply (arborToAfferentPt rect.origin)
+      some (CommandBounds.fromRect p.x p.y rect.size.width rect.size.height)
+  | .strokeRect rect _ _ _ =>
+      let p := transform.apply (arborToAfferentPt rect.origin)
+      some (CommandBounds.fromRect p.x p.y rect.size.width rect.size.height)
+  | .fillCircle center radius _ =>
+      let p := transform.apply (arborToAfferentPt center)
+      some (CommandBounds.fromCircle p.x p.y radius)
+  | .strokeCircle center radius _ _ =>
+      let p := transform.apply (arborToAfferentPt center)
+      some (CommandBounds.fromCircle p.x p.y radius)
+  | .fillText _ x y _ _ =>
+      let p := transform.apply ⟨x, y⟩
+      -- Approximate text bounds (conservative estimate)
+      some { minX := p.x, minY := p.y - 20, maxX := p.x + 200, maxY := p.y + 5 }
+  | .fillTextBlock _ rect _ _ _ _ =>
+      let p := transform.apply (arborToAfferentPt rect.origin)
+      some (CommandBounds.fromRect p.x p.y rect.size.width rect.size.height)
+  | .fillPolygon points _ =>
+      if points.isEmpty then none
+      else
+        let transformed := points.map (fun pt => transform.apply (arborToAfferentPt pt))
+        let minX := transformed.foldl (fun acc p => min acc p.x) transformed[0]!.x
+        let maxX := transformed.foldl (fun acc p => max acc p.x) transformed[0]!.x
+        let minY := transformed.foldl (fun acc p => min acc p.y) transformed[0]!.y
+        let maxY := transformed.foldl (fun acc p => max acc p.y) transformed[0]!.y
+        some { minX, minY, maxX, maxY }
+  | .strokePolygon points _ _ =>
+      if points.isEmpty then none
+      else
+        let transformed := points.map (fun pt => transform.apply (arborToAfferentPt pt))
+        let minX := transformed.foldl (fun acc p => min acc p.x) transformed[0]!.x
+        let maxX := transformed.foldl (fun acc p => max acc p.x) transformed[0]!.x
+        let minY := transformed.foldl (fun acc p => min acc p.y) transformed[0]!.y
+        let maxY := transformed.foldl (fun acc p => max acc p.y) transformed[0]!.y
+        some { minX, minY, maxX, maxY }
+  | _ => none  -- State-changing commands have no bounds
+
+/-- Flatten a command to absolute screen coordinates if possible.
+    For simple geometry (rects, circles), applies the transform to get absolute positions.
+    Returns the (possibly modified) command and its screen-space bounds. -/
+def flattenCommand (cmd : RenderCommand) (transform : Transform)
+    : RenderCommand × Option CommandBounds :=
+  if transform == Transform.identity then
+    -- No transform needed, just compute bounds
+    (cmd, computeBounds cmd transform)
+  else
+    match cmd with
+    | .fillRect rect color cr =>
+        let topLeft := transform.apply (arborToAfferentPt rect.origin)
+        let arborTopLeft := afferentToArborPt topLeft
+        let size := rect.size
+        -- For non-rotated transforms, we can flatten to absolute coords
+        let absRect : Afferent.Arbor.Rect := ⟨arborTopLeft, size⟩
+        let bounds := CommandBounds.fromRect topLeft.x topLeft.y size.width size.height
+        (.fillRect absRect color cr, some bounds)
+    | .fillRectStyle rect style cr =>
+        let topLeft := transform.apply (arborToAfferentPt rect.origin)
+        let arborTopLeft := afferentToArborPt topLeft
+        let size := rect.size
+        let absRect : Afferent.Arbor.Rect := ⟨arborTopLeft, size⟩
+        let bounds := CommandBounds.fromRect topLeft.x topLeft.y size.width size.height
+        (.fillRectStyle absRect style cr, some bounds)
+    | .strokeRect rect color lw cr =>
+        let topLeft := transform.apply (arborToAfferentPt rect.origin)
+        let arborTopLeft := afferentToArborPt topLeft
+        let size := rect.size
+        let absRect : Afferent.Arbor.Rect := ⟨arborTopLeft, size⟩
+        let bounds := CommandBounds.fromRect topLeft.x topLeft.y size.width size.height
+        (.strokeRect absRect color lw cr, some bounds)
+    | .fillCircle center radius color =>
+        let absCenter := transform.apply (arborToAfferentPt center)
+        let arborCenter := afferentToArborPt absCenter
+        let bounds := CommandBounds.fromCircle absCenter.x absCenter.y radius
+        (.fillCircle arborCenter radius color, some bounds)
+    | .strokeCircle center radius color lw =>
+        let absCenter := transform.apply (arborToAfferentPt center)
+        let arborCenter := afferentToArborPt absCenter
+        let bounds := CommandBounds.fromCircle absCenter.x absCenter.y radius
+        (.strokeCircle arborCenter radius color lw, some bounds)
+    | _ =>
+        -- For other commands (text, paths), keep as-is with computed bounds
+        -- Text captures its transform during batch creation, so it works correctly
+        (cmd, computeBounds cmd transform)
+
+/-- Compute bounded commands by replaying transform state through command stream.
+    Also flattens simple geometry (rects, circles) to absolute coordinates. -/
+def computeBoundedCommands (cmds : Array RenderCommand) : Array BoundedCommand := Id.run do
+  let mut result : Array BoundedCommand := #[]
+  let mut transformStack : Array Transform := #[Transform.identity]
+  let mut idx := 0
+
+  for cmd in cmds do
+    let transform := transformStack.back?.getD Transform.identity
+
+    -- Update transform state for state-changing commands
+    match cmd with
+    | .pushTranslate dx dy =>
+        let current := transformStack.back?.getD Transform.identity
+        transformStack := transformStack.push (current.translated dx dy)
+    | .pushScale sx sy =>
+        let current := transformStack.back?.getD Transform.identity
+        transformStack := transformStack.push (current.scaled sx sy)
+    | .pushRotate angle =>
+        let current := transformStack.back?.getD Transform.identity
+        transformStack := transformStack.push (current.rotated angle)
+    | .popTransform =>
+        if transformStack.size > 1 then
+          transformStack := transformStack.pop
+    | .save =>
+        -- save duplicates current transform (so restore pops back to it)
+        transformStack := transformStack.push (transformStack.back?.getD Transform.identity)
+    | .restore =>
+        if transformStack.size > 1 then
+          transformStack := transformStack.pop
+    | _ => pure ()
+
+    -- Flatten simple geometry to absolute coordinates
+    let (flatCmd, bounds) := flattenCommand cmd transform
+    result := result.push { cmd := flatCmd, bounds := bounds, originalIndex := idx }
+    idx := idx + 1
+
+  result
+
+/-- Check if command B is blocked by command A.
+    B is blocked if A comes before B, they have different types, and their bounds overlap.
+    State-changing commands are handled specially to maintain correctness. -/
+def isBlocked (a b : BoundedCommand) : Bool :=
+  a.originalIndex < b.originalIndex &&
+  match a.bounds, b.bounds with
+  | some ab, some bb =>
+      -- Both are drawing commands: blocked only if different types AND overlap
+      a.cmd.category != b.cmd.category && ab.overlaps bb
+  | none, some _ =>
+      -- A is state command, B is drawing: conservative for text/paths
+      -- After flattening, rects/circles don't depend on transforms anymore
+      -- But text and paths still do (text captures transform separately during batching)
+      b.cmd.category == .other  -- Only block "other" (paths, polygons)
+  | some _, none =>
+      -- A is drawing, B is state command: state commands maintain relative order
+      true
+  | none, none =>
+      -- Both are state commands: preserve order
+      true
+
+/-- Coalesce commands using overlap analysis.
+    Non-overlapping commands of the same type can be grouped together
+    even if originally separated by other command types.
+
+    This enables significantly better batching for UI layouts where
+    widgets don't overlap (flex, grid) but their commands are interleaved. -/
+def coalesceWithOverlap (bounded : Array BoundedCommand) : Array RenderCommand := Id.run do
+  if bounded.isEmpty then return #[]
+
+  let n := bounded.size
+
+  -- Build blocking relationships: blockedBy[j] = indices that must come before j
+  let mut blockedBy : Array (Array Nat) := .replicate n #[]
+  for i in [:n] do
+    for j in [i+1:n] do
+      if isBlocked bounded[i]! bounded[j]! then
+        blockedBy := blockedBy.modify j (·.push i)
+
+  -- Track which commands have been emitted
+  let mut emitted : Array Bool := .replicate n false
+  let mut result : Array RenderCommand := #[]
+  let mut emittedCount := 0
+
+  while emittedCount < n do
+    -- Find all commands that can be emitted (all blockers already emitted)
+    let mut ready : Array Nat := #[]
+    for i in [:n] do
+      if !emitted[i]! then
+        let allBlockersEmitted := blockedBy[i]!.all (emitted[·]!)
+        if allBlockersEmitted then
+          ready := ready.push i
+
+    if ready.isEmpty then
+      -- Shouldn't happen with valid blocking graph, but emit remaining in order
+      for i in [:n] do
+        if !emitted[i]! then
+          result := result.push bounded[i]!.cmd
+          emitted := emitted.set! i true
+          emittedCount := emittedCount + 1
+      break
+
+    -- Group ready commands by category, pick the largest group to maximize batching
+    let mut categoryGroups : Std.HashMap CommandCategory (Array Nat) := {}
+    for i in ready do
+      let cat := bounded[i]!.cmd.category
+      categoryGroups := categoryGroups.insert cat
+        ((categoryGroups.getD cat #[]).push i)
+
+    -- Find category with most ready commands
+    let mut bestCategory := CommandCategory.other
+    let mut bestCount := 0
+    for (cat, indices) in categoryGroups.toList do
+      if indices.size > bestCount then
+        bestCategory := cat
+        bestCount := indices.size
+
+    -- Emit all commands of best category (sorted by original index for stability)
+    let toEmit := categoryGroups.getD bestCategory #[]
+    let toEmit := toEmit.qsort (· < ·)
+    for i in toEmit do
+      result := result.push bounded[i]!.cmd
+      emitted := emitted.set! i true
+      emittedCount := emittedCount + 1
+
+  result
+
 /-- Execute a batch of fillRect commands in a single draw call. -/
 def executeFillRectBatch (rects : Array RectBatchEntry) (cornerRadius : Float) : CanvasM Unit := do
   if rects.isEmpty then return
@@ -422,7 +661,8 @@ def executeTextBatch (font : Font) (entries : Array TextBatchEntry) : CanvasM Un
     and consecutive fillCircle commands into batched draw calls.
     Returns batch statistics for performance monitoring. -/
 def executeCommandsBatchedWithStats (reg : FontRegistry) (cmds : Array Afferent.Arbor.RenderCommand) : CanvasM BatchStats := do
-  let cmds := coalesceCommands cmds
+  -- Use overlap-aware coalescing for better batching across transform scopes
+  let cmds := coalesceWithOverlap (computeBoundedCommands cmds)
   let mut i := 0
   let mut rectBatch : Array RectBatchEntry := #[]
   let mut currentCornerRadius : Float := 0.0
