@@ -40,6 +40,9 @@ inductive RenderCommand where
   /-- Stroke a circle outline. -/
   | strokeCircle (center : Point) (radius : Float) (color : Color) (lineWidth : Float)
 
+  /-- Stroke a line segment. -/
+  | strokeLine (p1 p2 : Point) (color : Color) (lineWidth : Float)
+
   /-- Fill text at a position. -/
   | fillText (text : String) (x y : Float) (font : FontId) (color : Color)
 
@@ -157,6 +160,7 @@ inductive CommandCategory
   | strokeRect
   | fillCircle
   | strokeCircle
+  | strokeLine
   | fillText
   | other
 deriving Repr, BEq, Hashable
@@ -171,8 +175,9 @@ def sortPriority : CommandCategory → Nat
   | .fillCircle => 1
   | .strokeRect => 2
   | .strokeCircle => 3
-  | .fillText => 4
-  | .other => 5
+  | .strokeLine => 4
+  | .fillText => 5
+  | .other => 6
 
 end CommandCategory
 
@@ -184,6 +189,7 @@ def category : RenderCommand → CommandCategory
   | .strokeRect .. => .strokeRect
   | .fillCircle .. => .fillCircle
   | .strokeCircle .. => .strokeCircle
+  | .strokeLine .. => .strokeLine
   | .fillText .. | .fillTextBlock .. => .fillText
   | _ => .other
 

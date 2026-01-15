@@ -132,4 +132,15 @@ opaque Renderer.drawBatch
   (param1 : Float)
   (canvasWidth canvasHeight : Float) : IO Unit
 
+-- Draw multiple line segments in a single draw call.
+-- instanceData: Array of 8 floats per line [x1, y1, x2, y2, r, g, b, a]
+-- lineWidth: Width of all lines in the batch
+@[extern "lean_afferent_renderer_draw_line_batch"]
+opaque Renderer.drawLineBatch
+  (renderer : @& Renderer)
+  (instanceData : @& Array Float)
+  (instanceCount : UInt32)
+  (lineWidth : Float)
+  (canvasWidth canvasHeight : Float) : IO Unit
+
 end Afferent.FFI

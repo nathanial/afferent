@@ -404,3 +404,34 @@ void afferent_renderer_draw_batch(
         "Batched"
     );
 }
+
+// Line batch: instance_data is [x1, y1, x2, y2, r, g, b, a] per line
+// Uses shapeType=3 which reinterprets size as second endpoint
+void afferent_renderer_draw_line_batch(
+    AfferentRendererRef renderer,
+    const float* instance_data,
+    uint32_t instance_count,
+    float line_width,
+    float canvas_width,
+    float canvas_height
+) {
+    BatchedUniforms uniforms;
+    uniforms.viewport[0] = canvas_width;
+    uniforms.viewport[1] = canvas_height;
+    uniforms.lineWidth = line_width;
+    uniforms.cornerRadius = 0.0f;
+    uniforms.shapeType = 3;  // Line mode
+    uniforms.padding = 0;
+
+    afferent_draw_batched_instances(
+        renderer,
+        renderer->batchedPipelineState,
+        instance_data,
+        instance_count,
+        8,
+        &uniforms,
+        sizeof(uniforms),
+        4,
+        "LineBatch"
+    );
+}

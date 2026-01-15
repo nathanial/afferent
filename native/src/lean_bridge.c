@@ -1688,3 +1688,46 @@ LEAN_EXPORT lean_obj_res lean_afferent_renderer_draw_batch(
     free(data);
     return lean_io_result_mk_ok(lean_box(0));
 }
+
+// =============================================================================
+// Batched line drawing
+// =============================================================================
+LEAN_EXPORT lean_obj_res lean_afferent_renderer_draw_line_batch(
+    lean_obj_arg renderer_obj,
+    lean_obj_arg instance_data_arr,
+    uint32_t instance_count,
+    double line_width,
+    double canvas_width,
+    double canvas_height,
+    lean_obj_arg world
+) {
+    AfferentRendererRef renderer = (AfferentRendererRef)lean_get_external_data(renderer_obj);
+
+    size_t arr_size = lean_array_size(instance_data_arr);
+    size_t expected_size = (size_t)instance_count * 8;  // 8 floats per line: x1, y1, x2, y2, r, g, b, a
+
+    if (arr_size < expected_size || instance_count == 0) {
+        return lean_io_result_mk_ok(lean_box(0));
+    }
+
+    float* data = malloc(arr_size * sizeof(float));
+    if (!data) {
+        return lean_io_result_mk_ok(lean_box(0));
+    }
+
+    for (size_t i = 0; i < arr_size; i++) {
+        data[i] = (float)lean_unbox_float(lean_array_get_core(instance_data_arr, i));
+    }
+
+    afferent_renderer_draw_line_batch(
+        renderer,
+        data,
+        instance_count,
+        (float)line_width,
+        (float)canvas_width,
+        (float)canvas_height
+    );
+
+    free(data);
+    return lean_io_result_mk_ok(lean_box(0));
+}

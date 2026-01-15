@@ -445,6 +445,17 @@ void afferent_renderer_draw_batch(
     float canvas_height
 );
 
+// Draw multiple line segments in a single draw call.
+// instance_data: array of 8 floats per line [x1, y1, x2, y2, r, g, b, a]
+void afferent_renderer_draw_line_batch(
+    AfferentRendererRef renderer,
+    const float* instance_data,
+    uint32_t instance_count,
+    float line_width,
+    float canvas_width,
+    float canvas_height
+);
+
 // ============================================================================
 // Textured 3D Mesh rendering
 // ============================================================================

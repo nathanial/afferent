@@ -117,6 +117,13 @@ def executeCommand (reg : FontRegistry) (cmd : Afferent.Arbor.RenderCommand) : C
     CanvasM.setLineWidth lineWidth
     CanvasM.strokePath path
 
+  | .strokeLine p1 p2 color lineWidth =>
+    -- Draw a single line via the batch function (batch size = 1)
+    let canvas ← CanvasM.getCanvas
+    let (canvasWidth, canvasHeight) ← canvas.ctx.getCurrentSize
+    let data := #[p1.x, p1.y, p2.x, p2.y, color.r, color.g, color.b, color.a]
+    canvas.ctx.renderer.drawLineBatch data 1 lineWidth canvasWidth canvasHeight
+
   | .fillText text x y fontId color =>
     match reg.get fontId with
     | some font =>
@@ -230,6 +237,8 @@ structure BatchStats where
   circlesBatched : Nat := 0
   /-- Number of stroke rects batched. -/
   strokeRectsBatched : Nat := 0
+  /-- Number of lines batched. -/
+  linesBatched : Nat := 0
   /-- Number of texts batched. -/
   textsBatched : Nat := 0
   deriving Repr, Inhabited
@@ -263,6 +272,18 @@ structure StrokeRectBatchEntry where
   y : Float
   width : Float
   height : Float
+  r : Float
+  g : Float
+  b : Float
+  a : Float
+
+/-- Entry for a batched line segment.
+    Format: [x1, y1, x2, y2, r, g, b, a] (8 floats) -/
+structure LineBatchEntry where
+  x1 : Float
+  y1 : Float
+  x2 : Float
+  y2 : Float
   r : Float
   g : Float
   b : Float
@@ -424,13 +445,59 @@ def computeBounds (cmd : RenderCommand) (transform : Transform) : Option Command
         let minY := transformed.foldl (fun acc p => min acc p.y) transformed[0]!.y
         let maxY := transformed.foldl (fun acc p => max acc p.y) transformed[0]!.y
         some { minX, minY, maxX, maxY }
+  | .strokeLine p1 p2 _ _ =>
+      let tp1 := transform.apply (arborToAfferentPt p1)
+      let tp2 := transform.apply (arborToAfferentPt p2)
+      let minX := min tp1.x tp2.x
+      let maxX := max tp1.x tp2.x
+      let minY := min tp1.y tp2.y
+      let maxY := max tp1.y tp2.y
+      some { minX, minY, maxX, maxY }
   | _ => none  -- State-changing commands have no bounds
+
+/-- Check if a path is a simple line (moveTo + lineTo only).
+    Returns the two endpoints if so. -/
+def isSimpleLine (path : Afferent.Arbor.Path) : Option (Afferent.Arbor.Point × Afferent.Arbor.Point) :=
+  if path.commands.size == 2 then
+    match path.commands[0]?, path.commands[1]? with
+    | some (Afferent.Arbor.PathCommand.moveTo p1), some (Afferent.Arbor.PathCommand.lineTo p2) => some (p1, p2)
+    | _, _ => none
+  else
+    none
 
 /-- Flatten a command to absolute screen coordinates if possible.
     For simple geometry (rects, circles), applies the transform to get absolute positions.
+    Simple line paths (moveTo + lineTo) are converted to strokeLine commands.
     Returns the (possibly modified) command and its screen-space bounds. -/
 def flattenCommand (cmd : RenderCommand) (transform : Transform)
     : RenderCommand × Option CommandBounds :=
+  -- Handle simple line paths specially (even with identity transform)
+  -- so they can be batched
+  match cmd with
+  | .strokePath path color lw =>
+      match isSimpleLine path with
+      | some (p1, p2) =>
+          if transform == Transform.identity then
+            let minX := min p1.x p2.x
+            let minY := min p1.y p2.y
+            let maxX := max p1.x p2.x
+            let maxY := max p1.y p2.y
+            let bounds := some { minX, minY, maxX, maxY : CommandBounds }
+            (.strokeLine p1 p2 color lw, bounds)
+          else
+            let absP1 := transform.apply (arborToAfferentPt p1)
+            let absP2 := transform.apply (arborToAfferentPt p2)
+            let arborP1 := afferentToArborPt absP1
+            let arborP2 := afferentToArborPt absP2
+            let minX := min absP1.x absP2.x
+            let minY := min absP1.y absP2.y
+            let maxX := max absP1.x absP2.x
+            let maxY := max absP1.y absP2.y
+            let bounds := some { minX, minY, maxX, maxY : CommandBounds }
+            (.strokeLine arborP1 arborP2 color lw, bounds)
+      | none =>
+          (cmd, computeBounds cmd transform)
+  | _ =>
   if transform == Transform.identity then
     -- No transform needed, just compute bounds
     (cmd, computeBounds cmd transform)
@@ -573,6 +640,18 @@ def executeStrokeRectBatch (rects : Array StrokeRectBatchEntry) (lineWidth corne
   canvas.ctx.renderer.drawBatch 2 data rects.size.toUInt32 lineWidth cornerRadius
     canvasWidth canvasHeight
 
+/-- Execute a batch of strokeLine commands in a single draw call. -/
+def executeLineBatch (lines : Array LineBatchEntry) (lineWidth : Float) : CanvasM Unit := do
+  if lines.isEmpty then return
+  let canvas ← CanvasM.getCanvas
+  let (canvasWidth, canvasHeight) ← canvas.ctx.getCurrentSize
+  -- Pack into Float array: [x1, y1, x2, y2, r, g, b, a] per line
+  let data := lines.foldl (init := #[]) fun acc entry =>
+    acc.push entry.x1 |>.push entry.y1 |>.push entry.x2 |>.push entry.y2
+       |>.push entry.r |>.push entry.g |>.push entry.b |>.push entry.a
+  canvas.ctx.renderer.drawLineBatch data lines.size.toUInt32 lineWidth
+    canvasWidth canvasHeight
+
 /-- Execute a batch of fillText commands with the same font in a single draw call. -/
 def executeTextBatch (font : Font) (entries : Array TextBatchEntry) : CanvasM Unit := do
   if entries.isEmpty then return
@@ -603,6 +682,8 @@ def executeCommandsBatchedWithStats (reg : FontRegistry) (cmds : Array Afferent.
   let mut currentStrokeLineWidth : Float := 0.0
   let mut currentStrokeCornerRadius : Float := 0.0
   let mut circleBatch : Array CircleBatchEntry := #[]
+  let mut lineBatch : Array LineBatchEntry := #[]
+  let mut currentLineWidth : Float := 0.0
   let mut textBatch : Array TextBatchEntry := #[]
   let mut currentTextFontId : Option FontId := none
   let mut stats : BatchStats := { totalCommands := cmds.size }
@@ -631,6 +712,14 @@ def executeCommandsBatchedWithStats (reg : FontRegistry) (cmds : Array Afferent.
     else
       pure s
 
+  -- Helper to flush line batch
+  let flushLines := fun (batch : Array LineBatchEntry) (lw : Float) (s : BatchStats) => do
+    if !batch.isEmpty then
+      executeLineBatch batch lw
+      pure { s with batchedCalls := s.batchedCalls + 1, linesBatched := s.linesBatched + batch.size }
+    else
+      pure s
+
   -- Helper to flush text batch
   let flushTexts := fun (batch : Array TextBatchEntry) (fontIdOpt : Option FontId) (s : BatchStats) => do
     if !batch.isEmpty then
@@ -649,11 +738,13 @@ def executeCommandsBatchedWithStats (reg : FontRegistry) (cmds : Array Afferent.
   let flushAll := fun (rB : Array RectBatchEntry) (cr : Float)
                       (sRB : Array StrokeRectBatchEntry) (slw scr : Float)
                       (cB : Array CircleBatchEntry)
+                      (lB : Array LineBatchEntry) (llw : Float)
                       (tB : Array TextBatchEntry) (tFontId : Option FontId)
                       (s : BatchStats) => do
     let s ← flushRects rB cr s
     let s ← flushStrokeRects sRB slw scr s
     let s ← flushCircles cB s
+    let s ← flushLines lB llw s
     let s ← flushTexts tB tFontId s
     pure s
 
@@ -666,6 +757,8 @@ def executeCommandsBatchedWithStats (reg : FontRegistry) (cmds : Array Afferent.
       strokeRectBatch := #[]
       stats ← flushCircles circleBatch stats
       circleBatch := #[]
+      stats ← flushLines lineBatch currentLineWidth stats
+      lineBatch := #[]
       stats ← flushTexts textBatch currentTextFontId stats
       textBatch := #[]
       currentTextFontId := none
@@ -695,6 +788,8 @@ def executeCommandsBatchedWithStats (reg : FontRegistry) (cmds : Array Afferent.
       rectBatch := #[]
       stats ← flushCircles circleBatch stats
       circleBatch := #[]
+      stats ← flushLines lineBatch currentLineWidth stats
+      lineBatch := #[]
       stats ← flushTexts textBatch currentTextFontId stats
       textBatch := #[]
       currentTextFontId := none
@@ -726,6 +821,8 @@ def executeCommandsBatchedWithStats (reg : FontRegistry) (cmds : Array Afferent.
       rectBatch := #[]
       stats ← flushStrokeRects strokeRectBatch currentStrokeLineWidth currentStrokeCornerRadius stats
       strokeRectBatch := #[]
+      stats ← flushLines lineBatch currentLineWidth stats
+      lineBatch := #[]
       stats ← flushTexts textBatch currentTextFontId stats
       textBatch := #[]
       currentTextFontId := none
@@ -744,6 +841,8 @@ def executeCommandsBatchedWithStats (reg : FontRegistry) (cmds : Array Afferent.
       strokeRectBatch := #[]
       stats ← flushCircles circleBatch stats
       circleBatch := #[]
+      stats ← flushLines lineBatch currentLineWidth stats
+      lineBatch := #[]
       -- Get current canvas transform for this text entry
       let canvas ← CanvasM.getCanvas
       let transform := canvas.state.transform.toArray
@@ -767,12 +866,42 @@ def executeCommandsBatchedWithStats (reg : FontRegistry) (cmds : Array Afferent.
         textBatch := #[entry]
         currentTextFontId := some fontId
 
+    | .strokeLine p1 p2 color lineWidth =>
+      -- Flush other batches first
+      stats ← flushRects rectBatch currentCornerRadius stats
+      rectBatch := #[]
+      stats ← flushStrokeRects strokeRectBatch currentStrokeLineWidth currentStrokeCornerRadius stats
+      strokeRectBatch := #[]
+      stats ← flushCircles circleBatch stats
+      circleBatch := #[]
+      stats ← flushTexts textBatch currentTextFontId stats
+      textBatch := #[]
+      currentTextFontId := none
+      -- Check if we can add to current line batch (same lineWidth)
+      if lineBatch.isEmpty || currentLineWidth == lineWidth then
+        let entry : LineBatchEntry := {
+          x1 := p1.x, y1 := p1.y, x2 := p2.x, y2 := p2.y
+          r := color.r, g := color.g, b := color.b, a := color.a
+        }
+        lineBatch := lineBatch.push entry
+        currentLineWidth := lineWidth
+      else
+        -- Different lineWidth - flush and start new batch
+        stats ← flushLines lineBatch currentLineWidth stats
+        let entry : LineBatchEntry := {
+          x1 := p1.x, y1 := p1.y, x2 := p2.x, y2 := p2.y
+          r := color.r, g := color.g, b := color.b, a := color.a
+        }
+        lineBatch := #[entry]
+        currentLineWidth := lineWidth
+
     | _ =>
       -- Non-batchable command - flush all pending batches first
-      stats ← flushAll rectBatch currentCornerRadius strokeRectBatch currentStrokeLineWidth currentStrokeCornerRadius circleBatch textBatch currentTextFontId stats
+      stats ← flushAll rectBatch currentCornerRadius strokeRectBatch currentStrokeLineWidth currentStrokeCornerRadius circleBatch lineBatch currentLineWidth textBatch currentTextFontId stats
       rectBatch := #[]
       strokeRectBatch := #[]
       circleBatch := #[]
+      lineBatch := #[]
       textBatch := #[]
       currentTextFontId := none
       -- Execute the command individually
@@ -782,7 +911,7 @@ def executeCommandsBatchedWithStats (reg : FontRegistry) (cmds : Array Afferent.
     i := i + 1
 
   -- Flush any remaining batches
-  stats ← flushAll rectBatch currentCornerRadius strokeRectBatch currentStrokeLineWidth currentStrokeCornerRadius circleBatch textBatch currentTextFontId stats
+  stats ← flushAll rectBatch currentCornerRadius strokeRectBatch currentStrokeLineWidth currentStrokeCornerRadius circleBatch lineBatch currentLineWidth textBatch currentTextFontId stats
 
   return stats
 

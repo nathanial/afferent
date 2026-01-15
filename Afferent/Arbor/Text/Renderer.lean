@@ -157,6 +157,26 @@ def executeCommand (state : RenderState) (cmd : RenderCommand) : RenderState :=
     let canvas := state.canvas.strokeBox x y (r * 2) (r * 2) Canvas.BoxChars.rounded
     { state with canvas }
 
+  | .strokeLine p1 p2 _color _lineWidth =>
+    -- Draw a line using '-' or '|' characters
+    let (x1, y1) := state.toCanvasCoords p1.x p1.y
+    let (x2, y2) := state.toCanvasCoords p2.x p2.y
+    let canvas :=
+      if y1 == y2 then
+        -- Horizontal line
+        let minX := min x1 x2
+        let maxX := max x1 x2
+        state.canvas.fillRect minX y1 (maxX - minX + 1) 1 '-'
+      else if x1 == x2 then
+        -- Vertical line
+        let minY := min y1 y2
+        let maxY := max y1 y2
+        state.canvas.fillRect x1 minY 1 (maxY - minY + 1) '|'
+      else
+        -- Diagonal line - just draw endpoints
+        state.canvas.setChar x1 y1 '*' |>.setChar x2 y2 '*'
+    { state with canvas }
+
   | .fillText text x y _font _color =>
     let (cx, cy) := state.toCanvasCoords x y
     let canvas := state.canvas.drawText cx cy text

@@ -182,7 +182,30 @@ vertex BatchedVertexOut batched_vertex(
 
     BatchedInstance inst = instances[iid];
     float2 uv = unitQuad[vid];
-    float2 pixelPos = inst.pos + uv * inst.size;
+    float2 pixelPos;
+
+    // shapeType 3 = line: pos = p1, size = p2 (endpoints)
+    if (uniforms.shapeType == 3) {
+        float2 p1 = inst.pos;
+        float2 p2 = inst.size;  // Reinterpret size as second endpoint
+        float2 dir = p2 - p1;
+        float len = length(dir);
+        if (len < 0.001) {
+            dir = float2(1.0, 0.0);
+        } else {
+            dir = dir / len;
+        }
+        float2 perp = float2(-dir.y, dir.x);
+        float halfWidth = uniforms.lineWidth * 0.5;
+
+        // Generate quad vertices: vid 0,1 at p1, vid 2,3 at p2
+        // uv.x selects endpoint (0=p1, 1=p2), uv.y selects side (-1 or +1)
+        float2 basePoint = (vid < 2) ? p1 : p2;
+        float side = ((vid == 0) || (vid == 2)) ? -1.0 : 1.0;
+        pixelPos = basePoint + perp * halfWidth * side;
+    } else {
+        pixelPos = inst.pos + uv * inst.size;
+    }
 
     float2 ndc;
     ndc.x = (pixelPos.x / uniforms.viewport.x) * 2.0 - 1.0;
@@ -199,6 +222,12 @@ vertex BatchedVertexOut batched_vertex(
 
 fragment float4 batched_fragment(BatchedVertexOut in [[stage_in]]) {
     float shapeType = in.params.z;
+
+    // shapeType 3 = line: solid color, geometry already expanded by vertex shader
+    if (shapeType > 2.5 && shapeType < 3.5) {
+        return in.color;
+    }
+
     if (shapeType > 0.5 && shapeType < 1.5) {
         float2 local = in.uv * 2.0 - 1.0;
         float dist = length(local);
