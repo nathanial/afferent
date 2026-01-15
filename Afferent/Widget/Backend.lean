@@ -682,13 +682,14 @@ def executeTextBatch (font : Font) (entries : Array TextBatchEntry) : CanvasM Un
     Returns batch statistics for performance monitoring. -/
 def executeCommandsBatchedWithStats (reg : FontRegistry) (cmds : Array Afferent.Arbor.RenderCommand) : CanvasM BatchStats := do
   -- Time: Flatten commands (transform tracking, simple geometry to absolute coords)
+  -- Use `pure` to force evaluation at this point in the monadic sequence
   let tFlatten0 ← IO.monoNanosNow
-  let bounded := computeBoundedCommands cmds
+  let bounded ← pure (computeBoundedCommands cmds)
   let tFlatten1 ← IO.monoNanosNow
 
   -- Time: Coalesce/sort commands by category
   let tCoalesce0 ← IO.monoNanosNow
-  let cmds := coalesceByCategory bounded
+  let cmds ← pure (coalesceByCategory bounded)
   let tCoalesce1 ← IO.monoNanosNow
 
   -- Time: Main batch loop (batch building + draw calls)
