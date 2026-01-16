@@ -43,6 +43,10 @@ inductive RenderCommand where
   /-- Stroke a line segment. -/
   | strokeLine (p1 p2 : Point) (color : Color) (lineWidth : Float)
 
+  /-- Stroke multiple line segments in a single command.
+      data layout: [x1, y1, x2, y2, r, g, b, a] per line. -/
+  | strokeLineBatch (data : Array Float) (count : Nat) (lineWidth : Float)
+
   /-- Fill text at a position. -/
   | fillText (text : String) (x y : Float) (font : FontId) (color : Color)
 
@@ -189,7 +193,7 @@ def category : RenderCommand → CommandCategory
   | .strokeRect .. => .strokeRect
   | .fillCircle .. => .fillCircle
   | .strokeCircle .. => .strokeCircle
-  | .strokeLine .. => .strokeLine
+  | .strokeLine .. | .strokeLineBatch .. => .strokeLine
   | .fillText .. | .fillTextBlock .. => .fillText
   | _ => .other
 

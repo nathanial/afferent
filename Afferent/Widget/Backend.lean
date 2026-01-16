@@ -124,6 +124,14 @@ def executeCommand (reg : FontRegistry) (cmd : Afferent.Arbor.RenderCommand) : C
     let data := #[p1.x, p1.y, p2.x, p2.y, color.r, color.g, color.b, color.a]
     canvas.ctx.renderer.drawLineBatch data 1 lineWidth canvasWidth canvasHeight
 
+  | .strokeLineBatch data count lineWidth =>
+    if count == 0 then
+      pure ()
+    else
+      let canvas ← CanvasM.getCanvas
+      let (canvasWidth, canvasHeight) ← canvas.ctx.getCurrentSize
+      canvas.ctx.renderer.drawLineBatch data count.toUInt32 lineWidth canvasWidth canvasHeight
+
   | .fillText text x y fontId color =>
     match reg.get fontId with
     | some font =>
@@ -482,6 +490,68 @@ def flattenCommand (cmd : RenderCommand) (transform : Transform)
   -- Handle simple line paths specially (even with identity transform)
   -- so they can be batched
   match cmd with
+  | .strokeLineBatch data count lineWidth =>
+      Id.run do
+        if count == 0 then
+          return (.strokeLineBatch data count lineWidth, none)
+        if transform == Transform.identity then
+          let x1 := data[0]!
+          let y1 := data[1]!
+          let x2 := data[2]!
+          let y2 := data[3]!
+          let mut minX := min x1 x2
+          let mut minY := min y1 y2
+          let mut maxX := max x1 x2
+          let mut maxY := max y1 y2
+          for i in [1:count] do
+            let base := i * 8
+            let lx1 := data[base]!
+            let ly1 := data[base + 1]!
+            let lx2 := data[base + 2]!
+            let ly2 := data[base + 3]!
+            minX := min minX (min lx1 lx2)
+            minY := min minY (min ly1 ly2)
+            maxX := max maxX (max lx1 lx2)
+            maxY := max maxY (max ly1 ly2)
+          let bounds := some { minX, minY, maxX, maxY : CommandBounds }
+          return (.strokeLineBatch data count lineWidth, bounds)
+        let x1 := data[0]!
+        let y1 := data[1]!
+        let x2 := data[2]!
+        let y2 := data[3]!
+        let tp1 := transform.apply ⟨x1, y1⟩
+        let tp2 := transform.apply ⟨x2, y2⟩
+        let mut minX := min tp1.x tp2.x
+        let mut minY := min tp1.y tp2.y
+        let mut maxX := max tp1.x tp2.x
+        let mut maxY := max tp1.y tp2.y
+        let mut out : Array Float := Array.mkEmpty data.size
+        let r0 := data[4]!
+        let g0 := data[5]!
+        let b0 := data[6]!
+        let a0 := data[7]!
+        out := out.push tp1.x |>.push tp1.y |>.push tp2.x |>.push tp2.y
+                 |>.push r0 |>.push g0 |>.push b0 |>.push a0
+        for i in [1:count] do
+          let base := i * 8
+          let lx1 := data[base]!
+          let ly1 := data[base + 1]!
+          let lx2 := data[base + 2]!
+          let ly2 := data[base + 3]!
+          let tp1 := transform.apply ⟨lx1, ly1⟩
+          let tp2 := transform.apply ⟨lx2, ly2⟩
+          minX := min minX (min tp1.x tp2.x)
+          minY := min minY (min tp1.y tp2.y)
+          maxX := max maxX (max tp1.x tp2.x)
+          maxY := max maxY (max tp1.y tp2.y)
+          let r := data[base + 4]!
+          let g := data[base + 5]!
+          let b := data[base + 6]!
+          let a := data[base + 7]!
+          out := out.push tp1.x |>.push tp1.y |>.push tp2.x |>.push tp2.y
+                   |>.push r |>.push g |>.push b |>.push a
+        let bounds := some { minX, minY, maxX, maxY : CommandBounds }
+        return (.strokeLineBatch out count lineWidth, bounds)
   | .strokePath path color lw =>
       match isSimpleLine path with
       | some (p1, p2) =>
@@ -660,6 +730,13 @@ def executeLineBatch (lines : Array LineBatchEntry) (lineWidth : Float) : Canvas
   canvas.ctx.renderer.drawLineBatch data lines.size.toUInt32 lineWidth
     canvasWidth canvasHeight
 
+/-- Execute line batch from FloatBuffer (high-performance path). -/
+def executeLineBatchFromBuffer (buf : FFI.FloatBuffer) (count : Nat) (lineWidth : Float) : CanvasM Unit := do
+  if count == 0 then return
+  let canvas ← CanvasM.getCanvas
+  let (canvasWidth, canvasHeight) ← canvas.ctx.getCurrentSize
+  canvas.ctx.renderer.drawLineBatchBuffer buf count.toUInt32 lineWidth canvasWidth canvasHeight
+
 /-- Execute strokeLine commands directly from RenderCommand array, avoiding intermediate structures. -/
 def executeLineCommandsDirect (cmds : Array RenderCommand) (startIdx endIdx : Nat) : CanvasM Nat := do
   if startIdx >= endIdx then return 0
@@ -722,13 +799,59 @@ def executeCommandsBatchedWithStats (reg : FontRegistry) (cmds : Array Afferent.
   let bounded ← pure (computeBoundedCommands cmds)
   let tFlatten1 ← IO.monoNanosNow
 
-  -- Time: Coalesce/sort commands by category
+  -- Time: Coalesce/sort commands by category (skip lines to reduce work)
   let tCoalesce0 ← IO.monoNanosNow
-  let cmds ← pure (coalesceByCategory bounded)
+  let mut lineCmds : Array RenderCommand := #[]
+  let mut nonLine : Array BoundedCommand := #[]
+  for bc in bounded do
+    if bc.cmd.category == .strokeLine then
+      lineCmds := lineCmds.push bc.cmd
+    else
+      nonLine := nonLine.push bc
+  let cmds ← pure (coalesceByCategory nonLine)
   let tCoalesce1 ← IO.monoNanosNow
 
   -- Time: Main batch loop (batch building + draw calls)
   let tLoop0 ← IO.monoNanosNow
+
+  -- Get canvas info for line drawing later
+  let canvas ← CanvasM.getCanvas
+  let (canvasWidth, canvasHeight) ← canvas.ctx.getCurrentSize
+
+  -- Line metadata for buffer pre-allocation (lines already separated)
+  let mut lineCount : Nat := 0
+  let mut uniformLineWidth : Float := 1.0
+  for cmd in lineCmds do
+    match cmd with
+    | .strokeLine _ _ _ lw =>
+      if lineCount == 0 then uniformLineWidth := lw
+      lineCount := lineCount + 1
+    | .strokeLineBatch _ count lw =>
+      if lineCount == 0 then uniformLineWidth := lw
+      lineCount := lineCount + count
+    | _ => pure ()
+
+  -- Pre-allocate/reuse line buffer if needed (actual drawing happens AFTER main loop)
+  let lineBuffer ← if lineCount > 0 then
+    let requiredFloats := lineCount * 8
+    let canvas ← CanvasM.getCanvas
+    let canvas ←
+      match canvas.floatBuffer with
+      | some buf =>
+        if canvas.floatBufferCapacity >= requiredFloats then
+          pure canvas
+        else
+          FFI.FloatBuffer.destroy buf
+          let newBuf ← FFI.FloatBuffer.create requiredFloats.toUSize
+          pure { canvas with floatBuffer := some newBuf, floatBufferCapacity := requiredFloats }
+      | none =>
+        let newBuf ← FFI.FloatBuffer.create requiredFloats.toUSize
+        pure { canvas with floatBuffer := some newBuf, floatBufferCapacity := requiredFloats }
+    CanvasM.setCanvas canvas
+    pure canvas.floatBuffer
+  else
+    pure none
+
   let mut i := 0
   let mut rectBatch : Array RectBatchEntry := #[]
   let mut currentCornerRadius : Float := 0.0
@@ -736,11 +859,9 @@ def executeCommandsBatchedWithStats (reg : FontRegistry) (cmds : Array Afferent.
   let mut currentStrokeLineWidth : Float := 0.0
   let mut currentStrokeCornerRadius : Float := 0.0
   let mut circleBatch : Array CircleBatchEntry := #[]
-  let mut lineBatch : Array LineBatchEntry := #[]
-  let mut currentLineWidth : Float := 0.0
   let mut textBatch : Array TextBatchEntry := #[]
   let mut currentTextFontId : Option FontId := none
-  let mut stats : BatchStats := { totalCommands := cmds.size }
+  let mut stats : BatchStats := { totalCommands := cmds.size + lineCmds.size }
   let mut drawCallTimeNs : Nat := 0
 
   -- Helper to flush rect batch (returns updated stats and draw call time delta)
@@ -773,15 +894,7 @@ def executeCommandsBatchedWithStats (reg : FontRegistry) (cmds : Array Afferent.
     else
       pure (s, 0)
 
-  -- Helper to flush line batch
-  let flushLines := fun (batch : Array LineBatchEntry) (lw : Float) (s : BatchStats) => do
-    if !batch.isEmpty then
-      let t0 ← IO.monoNanosNow
-      executeLineBatch batch lw
-      let t1 ← IO.monoNanosNow
-      pure ({ s with batchedCalls := s.batchedCalls + 1, linesBatched := s.linesBatched + batch.size }, t1 - t0)
-    else
-      pure (s, 0)
+  -- Lines are processed in a separate tight loop above, no flush helper needed
 
   -- Helper to flush text batch
   let flushTexts := fun (batch : Array TextBatchEntry) (fontIdOpt : Option FontId) (s : BatchStats) => do
@@ -799,25 +912,24 @@ def executeCommandsBatchedWithStats (reg : FontRegistry) (cmds : Array Afferent.
     else
       pure (s, 0)
 
-  -- Helper to flush all batches
+  -- Helper to flush all batches (lines handled separately above)
   let flushAll := fun (rB : Array RectBatchEntry) (cr : Float)
                       (sRB : Array StrokeRectBatchEntry) (slw scr : Float)
                       (cB : Array CircleBatchEntry)
-                      (lB : Array LineBatchEntry) (llw : Float)
                       (tB : Array TextBatchEntry) (tFontId : Option FontId)
                       (s : BatchStats) (accTime : Nat) => do
     let (s, dt1) ← flushRects rB cr s
     let (s, dt2) ← flushStrokeRects sRB slw scr s
     let (s, dt3) ← flushCircles cB s
-    let (s, dt4) ← flushLines lB llw s
-    let (s, dt5) ← flushTexts tB tFontId s
-    pure (s, accTime + dt1 + dt2 + dt3 + dt4 + dt5)
+    let (s, dt4) ← flushTexts tB tFontId s
+    pure (s, accTime + dt1 + dt2 + dt3 + dt4)
 
   while h : i < cmds.size do
     let cmd := cmds[i]
     match cmd with
     | .fillRect rect color cornerRadius =>
       -- Only flush other batches if non-empty (commands sorted by category)
+      -- Lines handled separately in tight loop above
       if !strokeRectBatch.isEmpty then
         let (s, dt) ← flushStrokeRects strokeRectBatch currentStrokeLineWidth currentStrokeCornerRadius stats
         stats := s; drawCallTimeNs := drawCallTimeNs + dt
@@ -826,10 +938,6 @@ def executeCommandsBatchedWithStats (reg : FontRegistry) (cmds : Array Afferent.
         let (s, dt) ← flushCircles circleBatch stats
         stats := s; drawCallTimeNs := drawCallTimeNs + dt
         circleBatch := #[]
-      if !lineBatch.isEmpty then
-        let (s, dt) ← flushLines lineBatch currentLineWidth stats
-        stats := s; drawCallTimeNs := drawCallTimeNs + dt
-        lineBatch := #[]
       if !textBatch.isEmpty then
         let (s, dt) ← flushTexts textBatch currentTextFontId stats
         stats := s; drawCallTimeNs := drawCallTimeNs + dt
@@ -857,7 +965,7 @@ def executeCommandsBatchedWithStats (reg : FontRegistry) (cmds : Array Afferent.
         currentCornerRadius := cornerRadius
 
     | .strokeRect rect color lineWidth cornerRadius =>
-      -- Only flush other batches if non-empty
+      -- Only flush other batches if non-empty (lines handled separately)
       if !rectBatch.isEmpty then
         let (s, dt) ← flushRects rectBatch currentCornerRadius stats
         stats := s; drawCallTimeNs := drawCallTimeNs + dt
@@ -866,10 +974,6 @@ def executeCommandsBatchedWithStats (reg : FontRegistry) (cmds : Array Afferent.
         let (s, dt) ← flushCircles circleBatch stats
         stats := s; drawCallTimeNs := drawCallTimeNs + dt
         circleBatch := #[]
-      if !lineBatch.isEmpty then
-        let (s, dt) ← flushLines lineBatch currentLineWidth stats
-        stats := s; drawCallTimeNs := drawCallTimeNs + dt
-        lineBatch := #[]
       if !textBatch.isEmpty then
         let (s, dt) ← flushTexts textBatch currentTextFontId stats
         stats := s; drawCallTimeNs := drawCallTimeNs + dt
@@ -899,7 +1003,7 @@ def executeCommandsBatchedWithStats (reg : FontRegistry) (cmds : Array Afferent.
         currentStrokeCornerRadius := cornerRadius
 
     | .fillCircle center radius color =>
-      -- Only flush other batches if non-empty
+      -- Only flush other batches if non-empty (lines handled separately)
       if !rectBatch.isEmpty then
         let (s, dt) ← flushRects rectBatch currentCornerRadius stats
         stats := s; drawCallTimeNs := drawCallTimeNs + dt
@@ -908,10 +1012,6 @@ def executeCommandsBatchedWithStats (reg : FontRegistry) (cmds : Array Afferent.
         let (s, dt) ← flushStrokeRects strokeRectBatch currentStrokeLineWidth currentStrokeCornerRadius stats
         stats := s; drawCallTimeNs := drawCallTimeNs + dt
         strokeRectBatch := #[]
-      if !lineBatch.isEmpty then
-        let (s, dt) ← flushLines lineBatch currentLineWidth stats
-        stats := s; drawCallTimeNs := drawCallTimeNs + dt
-        lineBatch := #[]
       if !textBatch.isEmpty then
         let (s, dt) ← flushTexts textBatch currentTextFontId stats
         stats := s; drawCallTimeNs := drawCallTimeNs + dt
@@ -925,7 +1025,7 @@ def executeCommandsBatchedWithStats (reg : FontRegistry) (cmds : Array Afferent.
       circleBatch := circleBatch.push entry
 
     | .fillText text x y fontId color =>
-      -- Only flush other batches if non-empty
+      -- Only flush other batches if non-empty (lines handled separately)
       if !rectBatch.isEmpty then
         let (s, dt) ← flushRects rectBatch currentCornerRadius stats
         stats := s; drawCallTimeNs := drawCallTimeNs + dt
@@ -938,10 +1038,6 @@ def executeCommandsBatchedWithStats (reg : FontRegistry) (cmds : Array Afferent.
         let (s, dt) ← flushCircles circleBatch stats
         stats := s; drawCallTimeNs := drawCallTimeNs + dt
         circleBatch := #[]
-      if !lineBatch.isEmpty then
-        let (s, dt) ← flushLines lineBatch currentLineWidth stats
-        stats := s; drawCallTimeNs := drawCallTimeNs + dt
-        lineBatch := #[]
       -- Get current canvas transform for this text entry
       let canvas ← CanvasM.getCanvas
       let transform := canvas.state.transform.toArray
@@ -966,52 +1062,17 @@ def executeCommandsBatchedWithStats (reg : FontRegistry) (cmds : Array Afferent.
         textBatch := #[entry]
         currentTextFontId := some fontId
 
-    | .strokeLine p1 p2 color lineWidth =>
-      -- Only flush other batches if they're non-empty (commands are sorted by category)
-      if !rectBatch.isEmpty then
-        let (s, dt) ← flushRects rectBatch currentCornerRadius stats
-        stats := s; drawCallTimeNs := drawCallTimeNs + dt
-        rectBatch := #[]
-      if !strokeRectBatch.isEmpty then
-        let (s, dt) ← flushStrokeRects strokeRectBatch currentStrokeLineWidth currentStrokeCornerRadius stats
-        stats := s; drawCallTimeNs := drawCallTimeNs + dt
-        strokeRectBatch := #[]
-      if !circleBatch.isEmpty then
-        let (s, dt) ← flushCircles circleBatch stats
-        stats := s; drawCallTimeNs := drawCallTimeNs + dt
-        circleBatch := #[]
-      if !textBatch.isEmpty then
-        let (s, dt) ← flushTexts textBatch currentTextFontId stats
-        stats := s; drawCallTimeNs := drawCallTimeNs + dt
-        textBatch := #[]
-        currentTextFontId := none
-      -- Check if we can add to current line batch (same lineWidth)
-      if lineBatch.isEmpty || currentLineWidth == lineWidth then
-        let entry : LineBatchEntry := {
-          x1 := p1.x, y1 := p1.y, x2 := p2.x, y2 := p2.y
-          r := color.r, g := color.g, b := color.b, a := color.a
-        }
-        lineBatch := lineBatch.push entry
-        currentLineWidth := lineWidth
-      else
-        -- Different lineWidth - flush and start new batch
-        let (s, dt) ← flushLines lineBatch currentLineWidth stats
-        stats := s; drawCallTimeNs := drawCallTimeNs + dt
-        let entry : LineBatchEntry := {
-          x1 := p1.x, y1 := p1.y, x2 := p2.x, y2 := p2.y
-          r := color.r, g := color.g, b := color.b, a := color.a
-        }
-        lineBatch := #[entry]
-        currentLineWidth := lineWidth
+    | .strokeLine _ _ _ _ =>
+      -- Lines already processed in tight loop above - skip
+      pure ()
 
     | _ =>
-      -- Non-batchable command - flush all pending batches first
-      let (s, dt) ← flushAll rectBatch currentCornerRadius strokeRectBatch currentStrokeLineWidth currentStrokeCornerRadius circleBatch lineBatch currentLineWidth textBatch currentTextFontId stats drawCallTimeNs
+      -- Non-batchable command - flush all pending batches first (lines handled separately)
+      let (s, dt) ← flushAll rectBatch currentCornerRadius strokeRectBatch currentStrokeLineWidth currentStrokeCornerRadius circleBatch textBatch currentTextFontId stats drawCallTimeNs
       stats := s; drawCallTimeNs := dt
       rectBatch := #[]
       strokeRectBatch := #[]
       circleBatch := #[]
-      lineBatch := #[]
       textBatch := #[]
       currentTextFontId := none
       -- Execute the command individually
@@ -1020,9 +1081,44 @@ def executeCommandsBatchedWithStats (reg : FontRegistry) (cmds : Array Afferent.
 
     i := i + 1
 
-  -- Flush any remaining batches
-  let (s, dt) ← flushAll rectBatch currentCornerRadius strokeRectBatch currentStrokeLineWidth currentStrokeCornerRadius circleBatch lineBatch currentLineWidth textBatch currentTextFontId stats drawCallTimeNs
+  -- Flush any remaining batches (lines handled separately below)
+  let (s, dt) ← flushAll rectBatch currentCornerRadius strokeRectBatch currentStrokeLineWidth currentStrokeCornerRadius circleBatch textBatch currentTextFontId stats drawCallTimeNs
   stats := s; drawCallTimeNs := dt
+
+  -- Process all lines in a tight loop AFTER other batches (lines sorted last)
+  -- This avoids per-command overhead from the main batching loop
+  if lineCount > 0 then
+    match lineBuffer with
+    | some buf =>
+      let mut bufIdx : USize := 0
+      -- Tight loop - minimal per-iteration overhead (like OrbitalInstanced)
+      for cmd in lineCmds do
+        match cmd with
+        | .strokeLine p1 p2 color _ =>
+          buf.setVec8 bufIdx p1.x p1.y p2.x p2.y color.r color.g color.b color.a
+          bufIdx := bufIdx + 8
+        | .strokeLineBatch data count _ =>
+          if count > 0 then
+            for j in [:count] do
+              let base := j * 8
+              let x1 := data[base]!
+              let y1 := data[base + 1]!
+              let x2 := data[base + 2]!
+              let y2 := data[base + 3]!
+              let r := data[base + 4]!
+              let g := data[base + 5]!
+              let b := data[base + 6]!
+              let a := data[base + 7]!
+              buf.setVec8 bufIdx x1 y1 x2 y2 r g b a
+              bufIdx := bufIdx + 8
+        | _ => pure ()
+      -- Single draw call for all lines
+      let t0 ← IO.monoNanosNow
+      canvas.ctx.renderer.drawLineBatchBuffer buf lineCount.toUInt32 uniformLineWidth canvasWidth canvasHeight
+      let t1 ← IO.monoNanosNow
+      drawCallTimeNs := drawCallTimeNs + (t1 - t0)
+      stats := { stats with linesBatched := lineCount, batchedCalls := stats.batchedCalls + 1 }
+    | none => pure ()
 
   let tLoop1 ← IO.monoNanosNow
 

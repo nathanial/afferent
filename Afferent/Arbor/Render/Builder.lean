@@ -75,6 +75,12 @@ def fillPathStyle (path : Path) (style : Afferent.FillStyle) : RenderM Unit :=
 def strokePath (path : Path) (color : Color) (lineWidth : Float) : RenderM Unit :=
   emit (.strokePath path color lineWidth)
 
+/-! ## Line Commands -/
+
+/-- Stroke multiple line segments in a single command. -/
+def strokeLineBatch (data : Array Float) (count : Nat) (lineWidth : Float) : RenderM Unit :=
+  emit (.strokeLineBatch data count lineWidth)
+
 /-! ## Polygon Commands -/
 
 /-- Fill a convex polygon with a solid color. -/

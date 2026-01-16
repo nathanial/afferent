@@ -177,6 +177,30 @@ def executeCommand (state : RenderState) (cmd : RenderCommand) : RenderState :=
         state.canvas.setChar x1 y1 '*' |>.setChar x2 y2 '*'
     { state with canvas }
 
+  | .strokeLineBatch data count _lineWidth =>
+    Id.run do
+      let mut canvas := state.canvas
+      for i in [:count] do
+        let base := i * 8
+        let x1 := data[base]!
+        let y1 := data[base + 1]!
+        let x2 := data[base + 2]!
+        let y2 := data[base + 3]!
+        let (cx1, cy1) := state.toCanvasCoords x1 y1
+        let (cx2, cy2) := state.toCanvasCoords x2 y2
+        canvas :=
+          if cy1 == cy2 then
+            let minX := min cx1 cx2
+            let maxX := max cx1 cx2
+            canvas.fillRect minX cy1 (maxX - minX + 1) 1 '-'
+          else if cx1 == cx2 then
+            let minY := min cy1 cy2
+            let maxY := max cy1 cy2
+            canvas.fillRect cx1 minY 1 (maxY - minY + 1) '|'
+          else
+            canvas.setChar cx1 cy1 '*' |>.setChar cx2 cy2 '*'
+      return { state with canvas }
+
   | .fillText text x y _font _color =>
     let (cx, cy) := state.toCanvasCoords x y
     let canvas := state.canvas.drawText cx cy text

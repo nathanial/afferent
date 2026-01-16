@@ -1731,3 +1731,35 @@ LEAN_EXPORT lean_obj_res lean_afferent_renderer_draw_line_batch(
     free(data);
     return lean_io_result_mk_ok(lean_box(0));
 }
+
+// High-performance line batch drawing from FloatBuffer (avoids copy)
+LEAN_EXPORT lean_obj_res lean_afferent_renderer_draw_line_batch_buffer(
+    lean_obj_arg renderer_obj,
+    lean_obj_arg buffer_obj,
+    uint32_t instance_count,
+    double line_width,
+    double canvas_width,
+    double canvas_height,
+    lean_obj_arg world
+) {
+    AfferentRendererRef renderer = (AfferentRendererRef)lean_get_external_data(renderer_obj);
+    AfferentFloatBufferRef buffer = (AfferentFloatBufferRef)lean_get_external_data(buffer_obj);
+
+    if (instance_count == 0) {
+        return lean_io_result_mk_ok(lean_box(0));
+    }
+
+    // Direct access to buffer data - no copy needed
+    const float* data = afferent_float_buffer_data(buffer);
+
+    afferent_renderer_draw_line_batch(
+        renderer,
+        data,
+        instance_count,
+        (float)line_width,
+        (float)canvas_width,
+        (float)canvas_height
+    );
+
+    return lean_io_result_mk_ok(lean_box(0));
+}

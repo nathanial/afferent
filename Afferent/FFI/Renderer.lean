@@ -143,4 +143,15 @@ opaque Renderer.drawLineBatch
   (lineWidth : Float)
   (canvasWidth canvasHeight : Float) : IO Unit
 
+-- Draw multiple line segments from a FloatBuffer (high-performance path).
+-- buffer: FloatBuffer with 8 floats per line [x1, y1, x2, y2, r, g, b, a]
+-- lineWidth: Width of all lines in the batch
+@[extern "lean_afferent_renderer_draw_line_batch_buffer"]
+opaque Renderer.drawLineBatchBuffer
+  (renderer : @& Renderer)
+  (buffer : @& FloatBuffer)
+  (instanceCount : UInt32)
+  (lineWidth : Float)
+  (canvasWidth canvasHeight : Float) : IO Unit
+
 end Afferent.FFI
