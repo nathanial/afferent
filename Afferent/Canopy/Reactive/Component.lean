@@ -2,6 +2,7 @@
   Canopy Reactive - Component Infrastructure
   React-like component helpers for self-contained widget definitions.
 -/
+import Std.Data.HashMap
 import Reactive
 import Afferent.Arbor
 import Afferent.Canopy.Core
@@ -68,6 +69,125 @@ def registerComponent (namePrefix : String) (isInput : Bool := false)
     (isInteractive : Bool := true) : ReactiveM String := do
   let events ← getEvents
   SpiderM.liftIO <| events.registry.register namePrefix isInput isInteractive
+
+/-! ## Optional Hover/DynWidget Metrics (bench-only instrumentation) -/
+
+private def isSwitchName (name : String) : Bool :=
+  name.startsWith "switch-"
+
+structure HoverMetrics where
+  mapNanos : IO.Ref Nat
+  mapCount : IO.Ref Nat
+  mapSwitchNanos : IO.Ref Nat
+  mapSwitchCount : IO.Ref Nat
+  holdNanos : IO.Ref Nat
+  holdCount : IO.Ref Nat
+  holdSwitchNanos : IO.Ref Nat
+  holdSwitchCount : IO.Ref Nat
+
+structure HoverMetricsSnapshot where
+  mapNanos : Nat
+  mapCount : Nat
+  mapSwitchNanos : Nat
+  mapSwitchCount : Nat
+  holdNanos : Nat
+  holdCount : Nat
+  holdSwitchNanos : Nat
+  holdSwitchCount : Nat
+deriving Repr, Inhabited
+
+def HoverMetrics.new : IO HoverMetrics := do
+  pure {
+    mapNanos := (← IO.mkRef 0)
+    mapCount := (← IO.mkRef 0)
+    mapSwitchNanos := (← IO.mkRef 0)
+    mapSwitchCount := (← IO.mkRef 0)
+    holdNanos := (← IO.mkRef 0)
+    holdCount := (← IO.mkRef 0)
+    holdSwitchNanos := (← IO.mkRef 0)
+    holdSwitchCount := (← IO.mkRef 0)
+  }
+
+def HoverMetrics.reset (m : HoverMetrics) : IO Unit := do
+  m.mapNanos.set 0
+  m.mapCount.set 0
+  m.mapSwitchNanos.set 0
+  m.mapSwitchCount.set 0
+  m.holdNanos.set 0
+  m.holdCount.set 0
+  m.holdSwitchNanos.set 0
+  m.holdSwitchCount.set 0
+
+def HoverMetrics.snapshot (m : HoverMetrics) : IO HoverMetricsSnapshot := do
+  pure {
+    mapNanos := (← m.mapNanos.get)
+    mapCount := (← m.mapCount.get)
+    mapSwitchNanos := (← m.mapSwitchNanos.get)
+    mapSwitchCount := (← m.mapSwitchCount.get)
+    holdNanos := (← m.holdNanos.get)
+    holdCount := (← m.holdCount.get)
+    holdSwitchNanos := (← m.holdSwitchNanos.get)
+    holdSwitchCount := (← m.holdSwitchCount.get)
+  }
+
+initialize hoverMetricsRef : IO.Ref (Option HoverMetrics) ← IO.mkRef none
+
+def enableHoverMetrics : IO HoverMetrics := do
+  let metrics ← HoverMetrics.new
+  hoverMetricsRef.set (some metrics)
+  pure metrics
+
+def disableHoverMetrics : IO Unit :=
+  hoverMetricsRef.set none
+
+private def recordHoverMap (metrics : HoverMetrics) (name : String) (nanos : Nat) : IO Unit := do
+  metrics.mapNanos.modify (· + nanos)
+  metrics.mapCount.modify (· + 1)
+  if isSwitchName name then
+    metrics.mapSwitchNanos.modify (· + nanos)
+    metrics.mapSwitchCount.modify (· + 1)
+
+private def recordHoverHold (metrics : HoverMetrics) (name : String) (nanos : Nat) : IO Unit := do
+  metrics.holdNanos.modify (· + nanos)
+  metrics.holdCount.modify (· + 1)
+  if isSwitchName name then
+    metrics.holdSwitchNanos.modify (· + nanos)
+    metrics.holdSwitchCount.modify (· + 1)
+
+structure DynWidgetMetrics where
+  rebuildNanos : IO.Ref Nat
+  rebuildCount : IO.Ref Nat
+
+structure DynWidgetMetricsSnapshot where
+  rebuildNanos : Nat
+  rebuildCount : Nat
+deriving Repr, Inhabited
+
+def DynWidgetMetrics.new : IO DynWidgetMetrics := do
+  pure {
+    rebuildNanos := (← IO.mkRef 0)
+    rebuildCount := (← IO.mkRef 0)
+  }
+
+def DynWidgetMetrics.reset (m : DynWidgetMetrics) : IO Unit := do
+  m.rebuildNanos.set 0
+  m.rebuildCount.set 0
+
+def DynWidgetMetrics.snapshot (m : DynWidgetMetrics) : IO DynWidgetMetricsSnapshot := do
+  pure {
+    rebuildNanos := (← m.rebuildNanos.get)
+    rebuildCount := (← m.rebuildCount.get)
+  }
+
+initialize dynWidgetMetricsRef : IO.Ref (Option DynWidgetMetrics) ← IO.mkRef none
+
+def enableDynWidgetMetrics : IO DynWidgetMetrics := do
+  let metrics ← DynWidgetMetrics.new
+  dynWidgetMetricsRef.set (some metrics)
+  pure metrics
+
+def disableDynWidgetMetrics : IO Unit :=
+  dynWidgetMetricsRef.set none
 
 /-- Lift SpiderM into ReactiveM. Prefer using automatic lifting instead. -/
 @[deprecated "Use automatic monad lifting instead of explicit liftSpider"]
@@ -205,24 +325,39 @@ where
         | none => loop (idx + 1)
     loop 0
 
+/-- Build a name->id map for the widget tree (used to speed up hit checks). -/
+partial def buildNameMap (widget : Afferent.Arbor.Widget) : Std.HashMap String Afferent.Arbor.WidgetId :=
+  go widget {}
+where
+  go (w : Afferent.Arbor.Widget) (acc : Std.HashMap String Afferent.Arbor.WidgetId) :
+      Std.HashMap String Afferent.Arbor.WidgetId :=
+    let acc := match Afferent.Arbor.Widget.name? w with
+      | some name => acc.insert name (Afferent.Arbor.Widget.id w)
+      | none => acc
+    w.children.foldl (fun m child => go child m) acc
+
 /-- Check if a named widget is in the hit path. -/
 def hitPathHasNamedWidget (widget : Afferent.Arbor.Widget)
-    (hitPath : Array Afferent.Arbor.WidgetId) (name : String) : Bool :=
-  match findWidgetIdByName widget name with
+    (hitPath : Array Afferent.Arbor.WidgetId) (name : String)
+    (nameMap : Std.HashMap String Afferent.Arbor.WidgetId) : Bool :=
+  match nameMap[name]? with
   | some wid => hitPath.any (· == wid)
-  | none => false
+  | none =>
+      match findWidgetIdByName widget name with
+      | some wid => hitPath.any (· == wid)
+      | none => false
 
 /-- Check if a widget name is in the hit path (for ClickData). -/
 def hitWidget (data : ClickData) (name : String) : Bool :=
-  hitPathHasNamedWidget data.widget data.hitPath name
+  hitPathHasNamedWidget data.widget data.hitPath name data.nameMap
 
 /-- Check if a widget name is in the hit path (for HoverData). -/
 def hitWidgetHover (data : HoverData) (name : String) : Bool :=
-  hitPathHasNamedWidget data.widget data.hitPath name
+  hitPathHasNamedWidget data.widget data.hitPath name data.nameMap
 
 /-- Check if a widget name is in the hit path (for ScrollData). -/
 def hitWidgetScroll (data : ScrollData) (name : String) : Bool :=
-  hitPathHasNamedWidget data.widget data.hitPath name
+  hitPathHasNamedWidget data.widget data.hitPath name data.nameMap
 
 /-- Calculate slider value from click position given the slider's layout.
     `trackWidth` is the width of the slider track in pixels. -/
@@ -250,9 +385,45 @@ and set up subscriptions automatically.
     Returns a Dynamic that is true when the mouse is over the widget. -/
 def useHover (name : String) : ReactiveM (Dynamic Spider Bool) := do
   let events ← getEvents
-  -- Pure FRP: map hover events to bool, hold latest value
-  let hoverChanges ← Event.mapM (fun data => hitWidgetHover data name) events.hoverEvent
-  holdDyn false hoverChanges
+  let metricsOpt ← SpiderM.liftIO hoverMetricsRef.get
+  let hoverChanges ← match metricsOpt with
+    | none =>
+        -- Pure FRP: map hover events to bool, hold latest value
+        Event.mapM (fun data => hitWidgetHover data name) events.hoverEvent
+    | some metrics =>
+        let nodeId ← SpiderM.freshNodeId
+        let derived ← SpiderM.liftIO <|
+          Reactive.Event.newNodeWithId (t := Spider) nodeId (events.hoverEvent.height.inc)
+        let _ ← Reactive.Host.Event.subscribeM events.hoverEvent fun data => do
+          let t0 ← IO.monoNanosNow
+          let hit := hitWidgetHover data name
+          let t1 ← IO.monoNanosNow
+          recordHoverMap metrics name (t1 - t0)
+          Reactive.Event.fire derived hit
+        pure derived
+
+  match metricsOpt with
+  | none =>
+      let nodeId ← SpiderM.freshNodeId
+      let (dyn, update) ← SpiderM.liftIO <|
+        Reactive.Dynamic.newWithId (t := Spider) false nodeId
+      let _ ← Reactive.Host.Event.subscribeM hoverChanges fun value => do
+        let old ← dyn.sample
+        if value != old then
+          update value
+      pure dyn
+  | some metrics =>
+      let nodeId ← SpiderM.freshNodeId
+      let (dyn, update) ← SpiderM.liftIO <|
+        Reactive.Dynamic.newWithId (t := Spider) false nodeId
+      let _ ← Reactive.Host.Event.subscribeM hoverChanges fun value => do
+        let old ← dyn.sample
+        if value != old then
+          let t0 ← IO.monoNanosNow
+          update value
+          let t1 ← IO.monoNanosNow
+          recordHoverHold metrics name (t1 - t0)
+      pure dyn
 
 /-- Create a click event for a widget that fires Unit (like React's onClick handler).
     Returns an Event that fires when the widget is clicked. -/
@@ -540,37 +711,47 @@ def dynWidget [DynWidgetResult b] (dynValue : Dynamic Spider a) (builder : a →
   -- Subscribe to rebuilds when dynValue changes
   let subscribeAction : SpiderM Unit := ⟨fun env => do
     let unsub ← Reactive.Event.subscribe dynValue.updated fun newValue => do
-      let needsScopeManagement ← needsScopeManagementRef.get
+      let rebuild := do
+        let needsScopeManagement ← needsScopeManagementRef.get
 
-      if needsScopeManagement then
-        -- Full path: clear scope before rebuild
-        let childScope ← childScopeRef.get
-        childScope.clear
+        if needsScopeManagement then
+          -- Full path: clear scope before rebuild
+          let childScope ← childScopeRef.get
+          childScope.clear
 
-        generationRef.modify (· + 1)
+          generationRef.modify (· + 1)
 
-        let widgetM := runWidgetChildren (builder newValue)
-        let reactiveM := widgetM.run { children := #[] }
-        let spiderM := reactiveM.run events
-        let ((result, renders), _) ← spiderM.run { env with currentScope := childScope }
-        rendersRef.set renders
-        DynWidgetResult.maybeFire fireResult result
-      else
-        -- Fast path: no scope clearing needed
-        generationRef.modify (· + 1)
+          let widgetM := runWidgetChildren (builder newValue)
+          let reactiveM := widgetM.run { children := #[] }
+          let spiderM := reactiveM.run events
+          let ((result, renders), _) ← spiderM.run { env with currentScope := childScope }
+          rendersRef.set renders
+          DynWidgetResult.maybeFire fireResult result
+        else
+          -- Fast path: no scope clearing needed
+          generationRef.modify (· + 1)
 
-        let childScope ← childScopeRef.get
-        let widgetM := runWidgetChildren (builder newValue)
-        let reactiveM := widgetM.run { children := #[] }
-        let spiderM := reactiveM.run events
-        let ((result, renders), _) ← spiderM.run { env with currentScope := childScope }
-        rendersRef.set renders
-        DynWidgetResult.maybeFire fireResult result
+          let childScope ← childScopeRef.get
+          let widgetM := runWidgetChildren (builder newValue)
+          let reactiveM := widgetM.run { children := #[] }
+          let spiderM := reactiveM.run events
+          let ((result, renders), _) ← spiderM.run { env with currentScope := childScope }
+          rendersRef.set renders
+          DynWidgetResult.maybeFire fireResult result
 
-        -- Safety check: if subscriptions were created, switch to full mode permanently
-        let stillEmpty ← childScope.isEmpty
-        if !stillEmpty then
-          needsScopeManagementRef.set true
+          -- Safety check: if subscriptions were created, switch to full mode permanently
+          let stillEmpty ← childScope.isEmpty
+          if !stillEmpty then
+            needsScopeManagementRef.set true
+
+      match ← dynWidgetMetricsRef.get with
+      | none => rebuild
+      | some metrics => do
+          let t0 ← IO.monoNanosNow
+          rebuild
+          let t1 ← IO.monoNanosNow
+          metrics.rebuildNanos.modify (· + (t1 - t0))
+          metrics.rebuildCount.modify (· + 1)
 
     env.currentScope.register unsub⟩
   subscribeAction  -- Lift SpiderM to WidgetM via MonadLift

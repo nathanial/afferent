@@ -2,6 +2,7 @@
   Canopy Reactive - Event Data Types
   Structures for passing FFI events into the reactive network with layout context.
 -/
+import Std.Data.HashMap
 import Afferent.FFI
 import Afferent.Arbor
 import Trellis
@@ -18,6 +19,8 @@ structure ClickData where
   widget : Afferent.Arbor.Widget
   /-- Computed layouts for all widgets (for position-based calculations). -/
   layouts : Trellis.LayoutResult
+  /-- Optional name->id map for fast lookups (defaults to empty). -/
+  nameMap : Std.HashMap String Afferent.Arbor.WidgetId := {}
 
 /-- Hover event with position and layout context. -/
 structure HoverData where
@@ -31,6 +34,8 @@ structure HoverData where
   widget : Afferent.Arbor.Widget
   /-- Computed layouts. -/
   layouts : Trellis.LayoutResult
+  /-- Optional name->id map for fast lookups (defaults to empty). -/
+  nameMap : Std.HashMap String Afferent.Arbor.WidgetId := {}
 
 /-- Key event wrapper with focus context. -/
 structure KeyData where
@@ -49,6 +54,8 @@ structure ScrollData where
   widget : Afferent.Arbor.Widget
   /-- Computed layouts. -/
   layouts : Trellis.LayoutResult
+  /-- Optional name->id map for fast lookups (defaults to empty). -/
+  nameMap : Std.HashMap String Afferent.Arbor.WidgetId := {}
 
 /-- Mouse button event with layout context. -/
 structure MouseButtonData where
@@ -64,5 +71,7 @@ structure MouseButtonData where
   widget : Afferent.Arbor.Widget
   /-- Computed layouts. -/
   layouts : Trellis.LayoutResult
+  /-- Optional name->id map for fast lookups (defaults to empty). -/
+  nameMap : Std.HashMap String Afferent.Arbor.WidgetId := {}
 
 end Afferent.Canopy.Reactive
