@@ -373,6 +373,85 @@ for all CustomSpec widgets without requiring explicit names.
 When data changes, dynWidget rebuilds a subtree, and the paths within that
 subtree naturally change, causing cache misses for the updated widgets. -/
 
+/-- Optional collect instrumentation for cache and emit costs. -/
+structure CollectMetrics where
+  lookupNanos : IO.Ref Nat
+  lookupCount : IO.Ref Nat
+  touchNanos : IO.Ref Nat
+  touchCount : IO.Ref Nat
+  collectNanos : IO.Ref Nat
+  collectCount : IO.Ref Nat
+  insertNanos : IO.Ref Nat
+  insertCount : IO.Ref Nat
+  emitAllNanos : IO.Ref Nat
+  emitAllCount : IO.Ref Nat
+
+structure CollectMetricsSnapshot where
+  lookupNanos : Nat
+  lookupCount : Nat
+  touchNanos : Nat
+  touchCount : Nat
+  collectNanos : Nat
+  collectCount : Nat
+  insertNanos : Nat
+  insertCount : Nat
+  emitAllNanos : Nat
+  emitAllCount : Nat
+deriving Repr, Inhabited
+
+def CollectMetrics.new : IO CollectMetrics := do
+  pure {
+    lookupNanos := (← IO.mkRef 0)
+    lookupCount := (← IO.mkRef 0)
+    touchNanos := (← IO.mkRef 0)
+    touchCount := (← IO.mkRef 0)
+    collectNanos := (← IO.mkRef 0)
+    collectCount := (← IO.mkRef 0)
+    insertNanos := (← IO.mkRef 0)
+    insertCount := (← IO.mkRef 0)
+    emitAllNanos := (← IO.mkRef 0)
+    emitAllCount := (← IO.mkRef 0)
+  }
+
+def CollectMetrics.reset (m : CollectMetrics) : IO Unit := do
+  m.lookupNanos.set 0
+  m.lookupCount.set 0
+  m.touchNanos.set 0
+  m.touchCount.set 0
+  m.collectNanos.set 0
+  m.collectCount.set 0
+  m.insertNanos.set 0
+  m.insertCount.set 0
+  m.emitAllNanos.set 0
+  m.emitAllCount.set 0
+
+def CollectMetrics.snapshot (m : CollectMetrics) : IO CollectMetricsSnapshot := do
+  pure {
+    lookupNanos := (← m.lookupNanos.get)
+    lookupCount := (← m.lookupCount.get)
+    touchNanos := (← m.touchNanos.get)
+    touchCount := (← m.touchCount.get)
+    collectNanos := (← m.collectNanos.get)
+    collectCount := (← m.collectCount.get)
+    insertNanos := (← m.insertNanos.get)
+    insertCount := (← m.insertCount.get)
+    emitAllNanos := (← m.emitAllNanos.get)
+    emitAllCount := (← m.emitAllCount.get)
+  }
+
+initialize collectMetricsRef : IO.Ref (Option CollectMetrics) ← IO.mkRef none
+
+def enableCollectMetrics : IO CollectMetrics := do
+  let metrics ← CollectMetrics.new
+  collectMetricsRef.set (some metrics)
+  pure metrics
+
+def disableCollectMetrics : IO Unit :=
+  collectMetricsRef.set none
+
+def getCollectMetrics : IO (Option CollectMetrics) :=
+  collectMetricsRef.get
+
 /-- Cached collector state with access to the render cache. -/
 structure CachedCollectState where
   commands : Array RenderCommand := #[]
@@ -380,6 +459,9 @@ structure CachedCollectState where
   deferredAbsolute : Array (Widget × Trellis.LayoutResult × CacheKey) := #[]
   cacheHits : Nat := 0
   cacheMisses : Nat := 0
+  metrics : Option CollectMetrics := none
+  /-- Enable LRU touch updates only after a miss occurs in this collection pass. -/
+  touchEnabled : Bool := false
 deriving Inhabited
 
 /-- Cached collector monad with IO for cache access. -/
@@ -391,13 +473,24 @@ def emit (cmd : RenderCommand) : CachedCollectM Unit := do
   modify fun s => { s with commands := s.commands.push cmd }
 
 def emitAll (cmds : Array RenderCommand) : CachedCollectM Unit := do
-  modify fun s =>
-    let commands := Id.run do
-      let mut acc := s.commands
-      for cmd in cmds do
-        acc := acc.push cmd
-      acc
-    { s with commands := commands }
+  let metricsOpt := (← get).metrics
+  let append : CachedCollectM Unit :=
+    modify fun s =>
+      let commands := Id.run do
+        let mut acc := s.commands
+        for cmd in cmds do
+          acc := acc.push cmd
+        acc
+      { s with commands := commands }
+  match metricsOpt with
+  | none =>
+      append
+  | some metrics =>
+      let t0 ← IO.monoNanosNow
+      append
+      let t1 ← IO.monoNanosNow
+      metrics.emitAllNanos.modify (· + (t1 - t0))
+      metrics.emitAllCount.modify (· + 1)
 
 def deferAbsolute (w : Widget) (layouts : Trellis.LayoutResult) (pathKey : CacheKey) : CachedCollectM Unit := do
   modify fun s => { s with deferredAbsolute := s.deferredAbsolute.push (w, layouts, pathKey) }
@@ -511,23 +604,81 @@ partial def collectWidgetCached (cache : IO.Ref RenderCache)
       | none => pathKey
 
     let renderCache ← cache.get
-    match renderCache.find? cacheKey with
+    let state ← get
+    let metricsOpt := state.metrics
+    let touchEnabled := state.touchEnabled
+    let found ← match metricsOpt with
+    | none =>
+        pure (renderCache.find? cacheKey)
+    | some metrics => do
+        let t0 ← IO.monoNanosNow
+        let result := renderCache.find? cacheKey
+        let t1 ← IO.monoNanosNow
+        metrics.lookupNanos.modify (· + (t1 - t0))
+        metrics.lookupCount.modify (· + 1)
+        pure result
+    match found with
     | some cached =>
       -- Cache hit only if BOTH generation and layout match
       if cached.generation == spec.generation && cached.layoutHash == layoutHash then
-        cache.modify fun rc => rc.touch cacheKey
+        if touchEnabled then
+          match metricsOpt with
+          | none =>
+              cache.modify fun rc => rc.touch cacheKey
+          | some metrics => do
+              let t0 ← IO.monoNanosNow
+              cache.modify fun rc => rc.touch cacheKey
+              let t1 ← IO.monoNanosNow
+              metrics.touchNanos.modify (· + (t1 - t0))
+              metrics.touchCount.modify (· + 1)
         CachedCollectM.emitAll cached.commands
         CachedCollectM.recordCacheHit
       else
         -- Generation or layout changed, recompute and update in place
-        let cmds := spec.collect computed
-        cache.modify fun rc => rc.insert cacheKey ⟨cmds, layoutHash, spec.generation⟩
+        modify fun s => { s with touchEnabled := true }
+        let cmds ← match metricsOpt with
+        | none =>
+            pure (spec.collect computed)
+        | some metrics => do
+            let t0 ← IO.monoNanosNow
+            let cmds := spec.collect computed
+            let t1 ← IO.monoNanosNow
+            metrics.collectNanos.modify (· + (t1 - t0))
+            metrics.collectCount.modify (· + 1)
+            pure cmds
+        match metricsOpt with
+        | none =>
+            cache.modify fun rc => rc.insert cacheKey ⟨cmds, layoutHash, spec.generation⟩
+        | some metrics => do
+            let t0 ← IO.monoNanosNow
+            cache.modify fun rc => rc.insert cacheKey ⟨cmds, layoutHash, spec.generation⟩
+            let t1 ← IO.monoNanosNow
+            metrics.insertNanos.modify (· + (t1 - t0))
+            metrics.insertCount.modify (· + 1)
         CachedCollectM.emitAll cmds
         CachedCollectM.recordCacheMiss
     | none =>
       -- First time seeing this widget, compute and cache
-      let cmds := spec.collect computed
-      cache.modify fun rc => rc.insert cacheKey ⟨cmds, layoutHash, spec.generation⟩
+      modify fun s => { s with touchEnabled := true }
+      let cmds ← match metricsOpt with
+      | none =>
+          pure (spec.collect computed)
+      | some metrics => do
+          let t0 ← IO.monoNanosNow
+          let cmds := spec.collect computed
+          let t1 ← IO.monoNanosNow
+          metrics.collectNanos.modify (· + (t1 - t0))
+          metrics.collectCount.modify (· + 1)
+          pure cmds
+      match metricsOpt with
+      | none =>
+          cache.modify fun rc => rc.insert cacheKey ⟨cmds, layoutHash, spec.generation⟩
+      | some metrics => do
+          let t0 ← IO.monoNanosNow
+          cache.modify fun rc => rc.insert cacheKey ⟨cmds, layoutHash, spec.generation⟩
+          let t1 ← IO.monoNanosNow
+          metrics.insertNanos.modify (· + (t1 - t0))
+          metrics.insertCount.modify (· + 1)
       CachedCollectM.emitAll cmds
       CachedCollectM.recordCacheMiss
 
@@ -626,7 +777,9 @@ partial def renderDeferredAbsoluteCached (cache : IO.Ref RenderCache) : CachedCo
     All CustomSpec widgets are automatically cached using path keys. -/
 def collectCommandsCached (cache : IO.Ref RenderCache) (w : Widget)
     (layouts : Trellis.LayoutResult) : IO (Array RenderCommand) := do
+  let metricsOpt ← collectMetricsRef.get
   let ((), state) ← StateT.run (do
+    modify fun s => { s with metrics := metricsOpt }
     collectWidgetCached cache w layouts rootPathKey  -- Start with root path key
     renderDeferredAbsoluteCached cache) {}
   pure state.commands
@@ -635,7 +788,9 @@ def collectCommandsCached (cache : IO.Ref RenderCache) (w : Widget)
     Returns (commands, cacheHits, cacheMisses). -/
 def collectCommandsCachedWithStats (cache : IO.Ref RenderCache) (w : Widget)
     (layouts : Trellis.LayoutResult) : IO (Array RenderCommand × Nat × Nat) := do
+  let metricsOpt ← collectMetricsRef.get
   let ((), state) ← StateT.run (do
+    modify fun s => { s with metrics := metricsOpt }
     collectWidgetCached cache w layouts rootPathKey  -- Start with root path key
     renderDeferredAbsoluteCached cache) {}
   pure (state.commands, state.cacheHits, state.cacheMisses)
