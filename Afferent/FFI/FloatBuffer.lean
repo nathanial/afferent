@@ -26,6 +26,11 @@ opaque FloatBuffer.get (buf : @& FloatBuffer) (index : USize) : IO Float
 opaque FloatBuffer.setVec8 (buf : @& FloatBuffer) (index : USize)
   (v0 v1 v2 v3 v4 v5 v6 v7 : Float) : IO Unit
 
+-- Set 9 consecutive floats at once (for 9-float instance data)
+@[extern "lean_afferent_float_buffer_set_vec9"]
+opaque FloatBuffer.setVec9 (buf : @& FloatBuffer) (index : USize)
+  (v0 v1 v2 v3 v4 v5 v6 v7 v8 : Float) : IO Unit
+
 -- Set 5 consecutive floats at once (for sprite data: x, y, rotation, halfSize, alpha)
 @[extern "lean_afferent_float_buffer_set_vec5"]
 opaque FloatBuffer.setVec5 (buf : @& FloatBuffer) (index : USize)

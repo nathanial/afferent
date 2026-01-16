@@ -360,7 +360,7 @@ static void afferent_draw_batched_instances(
 
 // =============================================================================
 // BATCHED SHAPE DRAWING
-// Instance data: [x, y, width, height, r, g, b, a] per instance (8 floats)
+// Instance data: [x, y, width, height, r, g, b, a, cornerRadius] per instance (9 floats)
 // =============================================================================
 
 typedef struct {
@@ -397,7 +397,7 @@ void afferent_renderer_draw_batch(
         renderer->batchedPipelineState,
         instance_data,
         instance_count,
-        8,
+        9,
         &uniforms,
         sizeof(uniforms),
         4,
@@ -405,7 +405,7 @@ void afferent_renderer_draw_batch(
     );
 }
 
-// Line batch: instance_data is [x1, y1, x2, y2, r, g, b, a] per line
+// Line batch: instance_data is [x1, y1, x2, y2, r, g, b, a, padding] per line
 // Uses shapeType=3 which reinterprets size as second endpoint
 void afferent_renderer_draw_line_batch(
     AfferentRendererRef renderer,
@@ -428,7 +428,7 @@ void afferent_renderer_draw_line_batch(
         renderer->batchedPipelineState,
         instance_data,
         instance_count,
-        8,
+        9,
         &uniforms,
         sizeof(uniforms),
         4,

@@ -326,6 +326,10 @@ const float* afferent_float_buffer_data(AfferentFloatBufferRef buf);
 void afferent_float_buffer_set_vec8(AfferentFloatBufferRef buf, size_t index,
     float v0, float v1, float v2, float v3, float v4, float v5, float v6, float v7);
 
+// Set 9 consecutive floats at once (reduces FFI overhead for 9-float instance data)
+void afferent_float_buffer_set_vec9(AfferentFloatBufferRef buf, size_t index,
+    float v0, float v1, float v2, float v3, float v4, float v5, float v6, float v7, float v8);
+
 // Set 5 consecutive floats at once (for sprite data: x, y, rotation, halfSize, alpha)
 void afferent_float_buffer_set_vec5(AfferentFloatBufferRef buf, size_t index,
     float v0, float v1, float v2, float v3, float v4);
@@ -431,9 +435,9 @@ void afferent_renderer_draw_ocean_projected_grid_with_fog(
 // ============================================================================
 
 // kind: 0=rect, 1=circle, 2=stroke rect
-// instance_data: Array of 8 floats per instance
-// param0: cornerRadius for rects, ignored for circles, lineWidth for stroke rects
-// param1: cornerRadius for stroke rects, ignored otherwise
+// instance_data: Array of 9 floats per instance
+// param0: unused for rects (per-instance cornerRadius), ignored for circles, lineWidth for stroke rects
+// param1: unused for stroke rects (per-instance cornerRadius), ignored otherwise
 void afferent_renderer_draw_batch(
     AfferentRendererRef renderer,
     uint32_t kind,
@@ -446,7 +450,7 @@ void afferent_renderer_draw_batch(
 );
 
 // Draw multiple line segments in a single draw call.
-// instance_data: array of 8 floats per line [x1, y1, x2, y2, r, g, b, a]
+// instance_data: array of 9 floats per line [x1, y1, x2, y2, r, g, b, a, padding]
 void afferent_renderer_draw_line_batch(
     AfferentRendererRef renderer,
     const float* instance_data,

@@ -142,13 +142,14 @@ fragment float4 instanced_fragment_main(InstancedVertexOut in [[stage_in]]) {
 }
 // =============================================================================
 // BATCHED SHAPES (rect, circle, stroke rect)
-// Instance data: [x, y, width, height, r, g, b, a] per instance
+// Instance data: [x, y, width, height, r, g, b, a, cornerRadius] per instance
 // =============================================================================
 
 struct BatchedInstance {
     packed_float2 pos;
     packed_float2 size;
     packed_float4 color;
+    float cornerRadius;
 };
 
 struct BatchedUniforms {
@@ -216,7 +217,7 @@ vertex BatchedVertexOut batched_vertex(
     out.color = inst.color;
     out.uv = uv;
     out.size = inst.size;
-    out.params = float4(uniforms.lineWidth, uniforms.cornerRadius, (float)uniforms.shapeType, 0.0);
+    out.params = float4(uniforms.lineWidth, inst.cornerRadius, (float)uniforms.shapeType, 0.0);
     return out;
 }
 

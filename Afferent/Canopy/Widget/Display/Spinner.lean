@@ -307,7 +307,7 @@ def spiralSpec (t : Float) (color : Color) (dims : Dimensions) : CustomSpec := {
       let numSegments := min spiralPointCount targetSegments
       let lineCount := if numSegments > 1 then numSegments - 1 else 0
       if lineCount > 0 then
-        let mut data : Array Float := Array.mkEmpty (lineCount * 8)
+        let mut data : Array Float := Array.mkEmpty (lineCount * 9)
         for i in [1:numSegments] do
           let prev := spiralUnitPoints[i - 1]!
           let next := spiralUnitPoints[i]!
@@ -319,6 +319,7 @@ def spiralSpec (t : Float) (color : Color) (dims : Dimensions) : CustomSpec := {
           let y2 := cy + maxRadius * next.y
           data := data.push x1 |>.push y1 |>.push x2 |>.push y2
                    |>.push c.r |>.push c.g |>.push c.b |>.push c.a
+                   |>.push 0.0
         RenderM.strokeLineBatch data lineCount dims.strokeWidth
   draw := none
 }

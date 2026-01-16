@@ -1043,6 +1043,20 @@ LEAN_EXPORT lean_obj_res lean_afferent_float_buffer_set_vec8(
     return lean_io_result_mk_ok(lean_box(0));
 }
 
+LEAN_EXPORT lean_obj_res lean_afferent_float_buffer_set_vec9(
+    lean_obj_arg buffer_obj,
+    size_t index,
+    double v0, double v1, double v2, double v3,
+    double v4, double v5, double v6, double v7, double v8,
+    lean_obj_arg world
+) {
+    AfferentFloatBufferRef buffer = (AfferentFloatBufferRef)lean_get_external_data(buffer_obj);
+    afferent_float_buffer_set_vec9(buffer, index,
+        (float)v0, (float)v1, (float)v2, (float)v3,
+        (float)v4, (float)v5, (float)v6, (float)v7, (float)v8);
+    return lean_io_result_mk_ok(lean_box(0));
+}
+
 LEAN_EXPORT lean_obj_res lean_afferent_float_buffer_set_vec5(
     lean_obj_arg buffer_obj,
     size_t index,
@@ -1659,7 +1673,7 @@ LEAN_EXPORT lean_obj_res lean_afferent_renderer_draw_batch(
     AfferentRendererRef renderer = (AfferentRendererRef)lean_get_external_data(renderer_obj);
 
     size_t arr_size = lean_array_size(instance_data_arr);
-    size_t expected_size = (size_t)instance_count * 8;
+    size_t expected_size = (size_t)instance_count * 9;
 
     if (arr_size < expected_size || instance_count == 0) {
         return lean_io_result_mk_ok(lean_box(0));
@@ -1704,7 +1718,7 @@ LEAN_EXPORT lean_obj_res lean_afferent_renderer_draw_line_batch(
     AfferentRendererRef renderer = (AfferentRendererRef)lean_get_external_data(renderer_obj);
 
     size_t arr_size = lean_array_size(instance_data_arr);
-    size_t expected_size = (size_t)instance_count * 8;  // 8 floats per line: x1, y1, x2, y2, r, g, b, a
+    size_t expected_size = (size_t)instance_count * 9;  // 9 floats per line: x1, y1, x2, y2, r, g, b, a, padding
 
     if (arr_size < expected_size || instance_count == 0) {
         return lean_io_result_mk_ok(lean_box(0));

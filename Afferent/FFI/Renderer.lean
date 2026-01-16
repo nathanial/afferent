@@ -119,9 +119,9 @@ opaque Renderer.drawInstancedShapesBuffer
 
 -- Draw multiple shapes in a single draw call.
 -- kind: 0=rect, 1=circle, 2=strokeRect
--- instanceData: Array of 8 floats per instance
--- param0: cornerRadius for rects, ignored for circles, lineWidth for strokeRect
--- param1: cornerRadius for strokeRect, ignored otherwise
+-- instanceData: Array of 9 floats per instance
+-- param0: unused for rects (per-instance cornerRadius), ignored for circles, lineWidth for strokeRect
+-- param1: unused for strokeRect (per-instance cornerRadius), ignored otherwise
 @[extern "lean_afferent_renderer_draw_batch"]
 opaque Renderer.drawBatch
   (renderer : @& Renderer)
@@ -133,7 +133,7 @@ opaque Renderer.drawBatch
   (canvasWidth canvasHeight : Float) : IO Unit
 
 -- Draw multiple line segments in a single draw call.
--- instanceData: Array of 8 floats per line [x1, y1, x2, y2, r, g, b, a]
+-- instanceData: Array of 9 floats per line [x1, y1, x2, y2, r, g, b, a, padding]
 -- lineWidth: Width of all lines in the batch
 @[extern "lean_afferent_renderer_draw_line_batch"]
 opaque Renderer.drawLineBatch
@@ -144,7 +144,7 @@ opaque Renderer.drawLineBatch
   (canvasWidth canvasHeight : Float) : IO Unit
 
 -- Draw multiple line segments from a FloatBuffer (high-performance path).
--- buffer: FloatBuffer with 8 floats per line [x1, y1, x2, y2, r, g, b, a]
+-- buffer: FloatBuffer with 9 floats per line [x1, y1, x2, y2, r, g, b, a, padding]
 -- lineWidth: Width of all lines in the batch
 @[extern "lean_afferent_renderer_draw_line_batch_buffer"]
 opaque Renderer.drawLineBatchBuffer

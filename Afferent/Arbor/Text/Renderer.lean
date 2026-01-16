@@ -181,7 +181,7 @@ def executeCommand (state : RenderState) (cmd : RenderCommand) : RenderState :=
     Id.run do
       let mut canvas := state.canvas
       for i in [:count] do
-        let base := i * 8
+        let base := i * 9
         let x1 := data[base]!
         let y1 := data[base + 1]!
         let x2 := data[base + 2]!

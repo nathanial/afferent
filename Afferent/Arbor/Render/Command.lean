@@ -44,7 +44,7 @@ inductive RenderCommand where
   | strokeLine (p1 p2 : Point) (color : Color) (lineWidth : Float)
 
   /-- Stroke multiple line segments in a single command.
-      data layout: [x1, y1, x2, y2, r, g, b, a] per line. -/
+      data layout: [x1, y1, x2, y2, r, g, b, a, padding] per line. -/
   | strokeLineBatch (data : Array Float) (count : Nat) (lineWidth : Float)
 
   /-- Fill text at a position. -/
