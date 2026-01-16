@@ -27,7 +27,13 @@ def emit (cmd : RenderCommand) : CollectM Unit := do
 
 /-- Emit multiple render commands. -/
 def emitAll (cmds : Array RenderCommand) : CollectM Unit := do
-  modify fun s => { s with commands := s.commands ++ cmds }
+  modify fun s =>
+    let commands := Id.run do
+      let mut acc := s.commands
+      for cmd in cmds do
+        acc := acc.push cmd
+      acc
+    { s with commands := commands }
 
 /-- Defer an absolute-positioned widget to render after normal flow. -/
 def deferAbsolute (w : Widget) (layouts : Trellis.LayoutResult) : CollectM Unit := do
@@ -360,10 +366,9 @@ def collectCommandsWithDebug (w : Widget) (layouts : Trellis.LayoutResult)
 /-! ## Cached Collection
 
 These functions provide render command caching at the widget level.
-Cache is keyed by path-based identity + layout hash. Each widget gets a unique
-path based on its position in the tree (e.g., "0.2.1" for the 2nd child of the
-3rd child of the 1st child of root). This provides automatic caching for all
-CustomSpec widgets without requiring explicit names.
+Cache is keyed by a path-derived key + layout hash. Each widget gets a unique
+path key based on its position in the tree, which provides automatic caching
+for all CustomSpec widgets without requiring explicit names.
 
 When data changes, dynWidget rebuilds a subtree, and the paths within that
 subtree naturally change, causing cache misses for the updated widgets. -/
@@ -371,8 +376,8 @@ subtree naturally change, causing cache misses for the updated widgets. -/
 /-- Cached collector state with access to the render cache. -/
 structure CachedCollectState where
   commands : Array RenderCommand := #[]
-  /-- Deferred absolute-positioned widgets with their paths for cache key generation. -/
-  deferredAbsolute : Array (Widget × Trellis.LayoutResult × String) := #[]
+  /-- Deferred absolute-positioned widgets with their path keys for cache key generation. -/
+  deferredAbsolute : Array (Widget × Trellis.LayoutResult × CacheKey) := #[]
   cacheHits : Nat := 0
   cacheMisses : Nat := 0
 deriving Inhabited
@@ -386,10 +391,16 @@ def emit (cmd : RenderCommand) : CachedCollectM Unit := do
   modify fun s => { s with commands := s.commands.push cmd }
 
 def emitAll (cmds : Array RenderCommand) : CachedCollectM Unit := do
-  modify fun s => { s with commands := s.commands ++ cmds }
+  modify fun s =>
+    let commands := Id.run do
+      let mut acc := s.commands
+      for cmd in cmds do
+        acc := acc.push cmd
+      acc
+    { s with commands := commands }
 
-def deferAbsolute (w : Widget) (layouts : Trellis.LayoutResult) (path : String) : CachedCollectM Unit := do
-  modify fun s => { s with deferredAbsolute := s.deferredAbsolute.push (w, layouts, path) }
+def deferAbsolute (w : Widget) (layouts : Trellis.LayoutResult) (pathKey : CacheKey) : CachedCollectM Unit := do
+  modify fun s => { s with deferredAbsolute := s.deferredAbsolute.push (w, layouts, pathKey) }
 
 def recordCacheHit : CachedCollectM Unit := do
   modify fun s => { s with cacheHits := s.cacheHits + 1 }
@@ -398,10 +409,6 @@ def recordCacheMiss : CachedCollectM Unit := do
   modify fun s => { s with cacheMisses := s.cacheMisses + 1 }
 
 end CachedCollectM
-
-/-- Build a child path by appending an index to the parent path. -/
-def childPath (parentPath : String) (index : Nat) : String :=
-  if parentPath.isEmpty then s!"{index}" else s!"{parentPath}.{index}"
 
 /-- Collect box background and border render commands (cached version). -/
 def collectBoxStyleCached (rect : Trellis.LayoutRect) (style : BoxStyle) : CachedCollectM Unit := do
@@ -444,7 +451,7 @@ mutual
 partial def collectScaledChildrenCached (cache : IO.Ref RenderCache)
     (contentRect : Trellis.LayoutRect) (m : Trellis.ScaleMetadata)
     (children : Array Widget) (layouts : Trellis.LayoutResult)
-    (path : String) : CachedCollectM Unit := do
+    (pathKey : CacheKey) : CachedCollectM Unit := do
   let clipRect : Rect := ⟨⟨contentRect.x, contentRect.y⟩, ⟨contentRect.width, contentRect.height⟩⟩
   CachedCollectM.emit (.pushClip clipRect)
   CachedCollectM.emit .save
@@ -453,14 +460,14 @@ partial def collectScaledChildrenCached (cache : IO.Ref RenderCache)
   CachedCollectM.emit (.pushScale m.scaleX m.scaleY)
   CachedCollectM.emit (.pushTranslate (-childBounds.x) (-childBounds.y))
   let (flowChildren, absChildren) := partitionChildren children
-  -- Track child indices for path generation
+  -- Track child indices for path key generation
   let mut flowIdx := 0
   for child in flowChildren do
-    collectWidgetCached cache child layouts (childPath path flowIdx)
+    collectWidgetCached cache child layouts (childPathKey pathKey flowIdx)
     flowIdx := flowIdx + 1
   let mut absIdx := flowIdx
   for child in absChildren do
-    CachedCollectM.deferAbsolute child layouts (childPath path absIdx)
+    CachedCollectM.deferAbsolute child layouts (childPathKey pathKey absIdx)
     absIdx := absIdx + 1
   CachedCollectM.emit .popTransform
   CachedCollectM.emit .popTransform
@@ -469,10 +476,10 @@ partial def collectScaledChildrenCached (cache : IO.Ref RenderCache)
   CachedCollectM.emit .popClip
 
 /-- Collect render commands for a widget tree with caching support.
-    All CustomSpec widgets are automatically cached using path-based identity.
-    The path represents the widget's position in the tree (e.g., "0.2.1"). -/
+    All CustomSpec widgets are automatically cached using path keys derived
+    from their position in the tree. -/
 partial def collectWidgetCached (cache : IO.Ref RenderCache)
-    (w : Widget) (layouts : Trellis.LayoutResult) (path : String) : CachedCollectM Unit := do
+    (w : Widget) (layouts : Trellis.LayoutResult) (pathKey : CacheKey) : CachedCollectM Unit := do
   let some computed := layouts.get w.id | return
   let borderRect := computed.borderRect
   let contentRect := computed.contentRect
@@ -495,13 +502,13 @@ partial def collectWidgetCached (cache : IO.Ref RenderCache)
     collectBoxStyleCached borderRect style
     let layoutHash := hashLayoutRect contentRect
 
-    -- Cache key: widget name if provided, otherwise path.
+    -- Cache key: widget name if provided, otherwise path key.
     -- We store generation in the cache entry itself, not in the key.
     -- This allows animated widgets to update in place (same key) rather than
     -- creating new entries each frame, preventing unbounded memory growth.
     let cacheKey := match name with
-      | some widgetName => widgetName
-      | none => s!"@{path}"
+      | some widgetName => nameCacheKey widgetName
+      | none => pathKey
 
     let renderCache ← cache.get
     match renderCache.find? cacheKey with
@@ -528,32 +535,32 @@ partial def collectWidgetCached (cache : IO.Ref RenderCache)
     collectBoxStyleCached borderRect style
     match computed.scaleMetadata with
     | some m =>
-      collectScaledChildrenCached cache contentRect m children layouts path
+      collectScaledChildrenCached cache contentRect m children layouts pathKey
     | none =>
       let (flowChildren, absChildren) := partitionChildren children
       let mut flowIdx := 0
       for child in flowChildren do
-        collectWidgetCached cache child layouts (childPath path flowIdx)
+        collectWidgetCached cache child layouts (childPathKey pathKey flowIdx)
         flowIdx := flowIdx + 1
       let mut absIdx := flowIdx
       for child in absChildren do
-        CachedCollectM.deferAbsolute child layouts (childPath path absIdx)
+        CachedCollectM.deferAbsolute child layouts (childPathKey pathKey absIdx)
         absIdx := absIdx + 1
 
   | .grid _ _ _ style children =>
     collectBoxStyleCached borderRect style
     match computed.scaleMetadata with
     | some m =>
-      collectScaledChildrenCached cache contentRect m children layouts path
+      collectScaledChildrenCached cache contentRect m children layouts pathKey
     | none =>
       let (flowChildren, absChildren) := partitionChildren children
       let mut flowIdx := 0
       for child in flowChildren do
-        collectWidgetCached cache child layouts (childPath path flowIdx)
+        collectWidgetCached cache child layouts (childPathKey pathKey flowIdx)
         flowIdx := flowIdx + 1
       let mut absIdx := flowIdx
       for child in absChildren do
-        CachedCollectM.deferAbsolute child layouts (childPath path absIdx)
+        CachedCollectM.deferAbsolute child layouts (childPathKey pathKey absIdx)
         absIdx := absIdx + 1
 
   | .scroll _ _ style scrollState contentWidth contentHeight scrollbarConfig child =>
@@ -562,7 +569,7 @@ partial def collectWidgetCached (cache : IO.Ref RenderCache)
     CachedCollectM.emit (.pushClip clipRect)
     CachedCollectM.emit .save
     CachedCollectM.emit (.pushTranslate (-scrollState.offsetX) (-scrollState.offsetY))
-    collectWidgetCached cache child layouts (childPath path 0)
+    collectWidgetCached cache child layouts (childPathKey pathKey 0)
     CachedCollectM.emit .popTransform
     CachedCollectM.emit .restore
     CachedCollectM.emit .popClip
@@ -608,19 +615,19 @@ end  -- mutual
 partial def renderDeferredAbsoluteCached (cache : IO.Ref RenderCache) : CachedCollectM Unit := do
   let state ← get
   set { state with deferredAbsolute := #[] }
-  for (widget, layouts, widgetPath) in state.deferredAbsolute do
-    collectWidgetCached cache widget layouts widgetPath
+  for (widget, layouts, widgetPathKey) in state.deferredAbsolute do
+    collectWidgetCached cache widget layouts widgetPathKey
   let newState ← get
   if newState.deferredAbsolute.size > 0 then
     renderDeferredAbsoluteCached cache
 
 /-- Collect render commands with caching.
     This is the main entry point for cached render command collection.
-    All CustomSpec widgets are automatically cached using path-based identity. -/
+    All CustomSpec widgets are automatically cached using path keys. -/
 def collectCommandsCached (cache : IO.Ref RenderCache) (w : Widget)
     (layouts : Trellis.LayoutResult) : IO (Array RenderCommand) := do
   let ((), state) ← StateT.run (do
-    collectWidgetCached cache w layouts ""  -- Start with empty path at root
+    collectWidgetCached cache w layouts rootPathKey  -- Start with root path key
     renderDeferredAbsoluteCached cache) {}
   pure state.commands
 
@@ -629,7 +636,7 @@ def collectCommandsCached (cache : IO.Ref RenderCache) (w : Widget)
 def collectCommandsCachedWithStats (cache : IO.Ref RenderCache) (w : Widget)
     (layouts : Trellis.LayoutResult) : IO (Array RenderCommand × Nat × Nat) := do
   let ((), state) ← StateT.run (do
-    collectWidgetCached cache w layouts ""  -- Start with empty path at root
+    collectWidgetCached cache w layouts rootPathKey  -- Start with root path key
     renderDeferredAbsoluteCached cache) {}
   pure (state.commands, state.cacheHits, state.cacheMisses)
 
