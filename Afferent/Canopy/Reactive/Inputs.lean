@@ -3,6 +3,7 @@
   Creates trigger events that the demo loop fires when FFI events occur.
 -/
 import Reactive
+import Std.Data.HashMap
 import Afferent.Canopy.Reactive.Types
 
 open Reactive Reactive.Host
@@ -83,6 +84,8 @@ structure ReactiveEvents where
   mouseUpEvent : Event Spider MouseButtonData
   /-- Hover events with position and layout context. -/
   hoverEvent : Event Spider HoverData
+  /-- Hover state changes by widget name (only changed keys fire). -/
+  hoverFan : Event.Fan Spider String Bool
   /-- Keyboard events. -/
   keyEvent : Event Spider KeyData
   /-- Animation frame events (fires each frame with dt).
@@ -95,6 +98,36 @@ structure ReactiveEvents where
   scrollEvent : Event Spider ScrollData
   /-- Component registry for auto-generating names. -/
   registry : ComponentRegistry
+
+private def hoverChangedByName (data : HoverData) (name : String) : Bool :=
+  match data.nameMap.get? name with
+  | some wid => data.hitPath.any (· == wid)
+  | none => false
+
+private def buildHoverChangeEvent (hoverEvent : Event Spider HoverData) (registry : ComponentRegistry)
+    : SpiderM (Event Spider (Std.HashMap String Bool)) := do
+  let nodeId ← SpiderM.freshNodeId
+  let derived ← SpiderM.liftIO <|
+    Reactive.Event.newNodeWithId (t := Spider) nodeId (hoverEvent.height.inc)
+  let stateRef ← SpiderM.liftIO <| IO.mkRef (∅ : Std.HashMap String Bool)
+  let _ ← Reactive.Host.Event.subscribeM hoverEvent fun data => do
+    let names ← registry.interactiveNames.get
+    if names.isEmpty then
+      pure ()
+    else
+      let prev ← stateRef.get
+      let mut next := prev
+      let mut delta : Std.HashMap String Bool := {}
+      for name in names do
+        let hovered := hoverChangedByName data name
+        let prevVal := prev.getD name false
+        if hovered != prevVal then
+          next := next.insert name hovered
+          delta := delta.insert name hovered
+      if !delta.isEmpty then
+        stateRef.set next
+        Reactive.Event.fire derived delta
+  pure derived
 
 /-- Reset the component registry for a new frame.
     Call this at the start of each frame to prevent memory leaks from
@@ -119,11 +152,14 @@ def createInputs : SpiderM (ReactiveEvents × ReactiveInputs) := do
 
   -- Create a SINGLE shared Dynamic for elapsed time that all widgets use
   let elapsedTime ← foldDyn (fun dt acc => acc + dt) 0.0 animFrameEvent
+  let hoverChanges ← buildHoverChangeEvent hoverEvent registry
+  let hoverFan ← Event.fanM hoverChanges
 
   let events : ReactiveEvents := {
     clickEvent := clickEvent
     mouseUpEvent := mouseUpEvent
     hoverEvent := hoverEvent
+    hoverFan := hoverFan
     keyEvent := keyEvent
     animationFrame := animFrameEvent
     elapsedTime := elapsedTime

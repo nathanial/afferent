@@ -386,32 +386,12 @@ and set up subscriptions automatically.
 def useHover (name : String) : ReactiveM (Dynamic Spider Bool) := do
   let events ← getEvents
   let metricsOpt ← SpiderM.liftIO hoverMetricsRef.get
-  let hoverChanges ← match metricsOpt with
-    | none =>
-        -- Pure FRP: map hover events to bool, hold latest value
-        Event.mapM (fun data => hitWidgetHover data name) events.hoverEvent
-    | some metrics =>
-        let nodeId ← SpiderM.freshNodeId
-        let derived ← SpiderM.liftIO <|
-          Reactive.Event.newNodeWithId (t := Spider) nodeId (events.hoverEvent.height.inc)
-        let _ ← Reactive.Host.Event.subscribeM events.hoverEvent fun data => do
-          let t0 ← IO.monoNanosNow
-          let hit := hitWidgetHover data name
-          let t1 ← IO.monoNanosNow
-          recordHoverMap metrics name (t1 - t0)
-          Reactive.Event.fire derived hit
-        pure derived
+  let hoverChanges ← Event.selectM events.hoverFan name
 
   match metricsOpt with
   | none =>
-      let nodeId ← SpiderM.freshNodeId
-      let (dyn, update) ← SpiderM.liftIO <|
-        Reactive.Dynamic.newWithId (t := Spider) false nodeId
-      let _ ← Reactive.Host.Event.subscribeM hoverChanges fun value => do
-        let old ← dyn.sample
-        if value != old then
-          update value
-      pure dyn
+      let baseDyn ← holdDyn false hoverChanges
+      Dynamic.holdUniqDynM baseDyn
   | some metrics =>
       let nodeId ← SpiderM.freshNodeId
       let (dyn, update) ← SpiderM.liftIO <|
