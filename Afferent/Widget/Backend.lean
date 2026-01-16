@@ -678,6 +678,24 @@ def coalesceByCategory (bounded : Array BoundedCommand) : Array RenderCommand :=
 
   sorted.map (·.cmd)
 
+/-- Coalesce commands by category while preserving stateful command order.
+    Splits at any non-batchable ("other") command so transforms/clips apply. -/
+def coalesceByCategoryWithClip (bounded : Array BoundedCommand) : Array RenderCommand := Id.run do
+  if bounded.isEmpty then return #[]
+  let mut out : Array RenderCommand := #[]
+  let mut segment : Array BoundedCommand := #[]
+  for bc in bounded do
+    if bc.cmd.category == .other then
+      if !segment.isEmpty then
+        out := out ++ (coalesceByCategory segment)
+        segment := #[]
+      out := out.push bc.cmd
+    else
+      segment := segment.push bc
+  if !segment.isEmpty then
+    out := out ++ (coalesceByCategory segment)
+  out
+
 /-- Execute a batch of fillRect commands in a single draw call. -/
 def executeFillRectBatch (rects : Array RectBatchEntry) (cornerRadius : Float) : CanvasM Unit := do
   if rects.isEmpty then return
@@ -808,7 +826,7 @@ def executeCommandsBatchedWithStats (reg : FontRegistry) (cmds : Array Afferent.
       lineCmds := lineCmds.push bc.cmd
     else
       nonLine := nonLine.push bc
-  let cmds ← pure (coalesceByCategory nonLine)
+  let cmds ← pure (coalesceByCategoryWithClip nonLine)
   let tCoalesce1 ← IO.monoNanosNow
 
   -- Time: Main batch loop (batch building + draw calls)
