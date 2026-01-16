@@ -177,6 +177,13 @@ def switch (label : Option String) (theme : Theme) (initialOn : Bool := false)
   let isOn ← Reactive.foldDyn (fun _ on => !on) initialOn clicks
   let onToggle := isOn.updated
 
+  -- Only subscribe to animation frames while the switch is animating
+  let ctx ← SpiderM.getTimelineCtx
+  let neverFrames ← SpiderM.liftIO (Reactive.Event.never ctx)
+  let (frameSourceUpdates, fireFrameSource) ← Reactive.newTriggerEvent (t := Spider) (a := Reactive.Event Spider Float)
+  let frameSourceDyn ← Reactive.foldDyn (fun new _ => new) neverFrames frameSourceUpdates
+  let activeFrames ← Event.switchDynM frameSourceDyn
+
   let initialAnim := if initialOn then 1.0 else 0.0
   let animProgress ← SpiderM.fixDynM fun animBehavior => do
     let updateEvent ← Event.attachWithM
@@ -188,8 +195,23 @@ def switch (label : Option String) (theme : Theme) (initialOn : Bool := false)
         let diff := target - anim
         if diff.abs < 0.01 then target else anim + diff * lerpFactor)
       (Reactive.Behavior.zipWith Prod.mk animBehavior isOn.current)
-      animFrames
+      activeFrames
     Reactive.holdDyn initialAnim updateEvent
+
+  -- Start animation frames on toggle
+  let startFrames ← Event.mapM (fun _ => fireFrameSource animFrames) onToggle
+  let _ ← performEvent_ startFrames
+
+  -- Stop animation frames when progress reaches the target
+  let doneCandidates ← Event.attachWithM
+    (fun on anim =>
+      let target := if on then 1.0 else 0.0
+      if (target - anim).abs < 0.01 then some () else none)
+    isOn.current
+    animProgress.updated
+  let animDone ← Event.mapMaybeM id doneCandidates
+  let stopFrames ← Event.mapM (fun _ => fireFrameSource neverFrames) animDone
+  let _ ← performEvent_ stopFrames
 
   -- Combine dynamics for efficient change-driven rebuilds
   let renderState ← Dynamic.zipWithM (fun h a => (h, a)) isHovered animProgress
