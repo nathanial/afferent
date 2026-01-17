@@ -39,7 +39,7 @@ structure Slice where
   value : Float
   label : Option String := none
   color : Option Color := none
-deriving Repr, Inhabited
+deriving Repr, Inhabited, BEq
 
 /-- Create an annular (ring) segment path.
     This creates a closed path for a donut slice by:

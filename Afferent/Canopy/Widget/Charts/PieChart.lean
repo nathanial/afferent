@@ -37,7 +37,7 @@ structure Slice where
   value : Float
   label : Option String := none
   color : Option Color := none
-deriving Repr, Inhabited
+deriving Repr, Inhabited, BEq
 
 /-- Custom spec for pie chart rendering. -/
 def pieChartSpec (slices : Array Slice) (theme : Theme)
