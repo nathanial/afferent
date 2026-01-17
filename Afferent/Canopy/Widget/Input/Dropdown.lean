@@ -31,8 +31,8 @@ deriving Repr, Inhabited
 /-- Default dropdown dimensions. -/
 def defaultDimensions : Dimensions := {}
 
-/-- Build a chevron path (V shape pointing down or up). -/
-def chevronPath (x y : Float) (isOpen : Bool) : Arbor.Path :=
+/-- Build chevron points (V shape pointing down or up). -/
+def chevronPoints (x y : Float) (isOpen : Bool) : Arbor.Point × Arbor.Point × Arbor.Point :=
   let chevronSize : Float := 6.0
   let halfSize := chevronSize / 2
   let (y1, y2) := if isOpen then
@@ -42,10 +42,7 @@ def chevronPath (x y : Float) (isOpen : Bool) : Arbor.Path :=
   let p1 : Arbor.Point := ⟨x - chevronSize, y1⟩
   let p2 : Arbor.Point := ⟨x, y2⟩
   let p3 : Arbor.Point := ⟨x + chevronSize, y1⟩
-  Arbor.Path.empty
-    |>.moveTo p1
-    |>.lineTo p2
-    |>.lineTo p3
+  (p1, p2, p3)
 
 /-- Custom spec for dropdown arrow (downward chevron). -/
 def arrowSpec (isOpen : Bool) (theme : Theme) (dims : Dimensions := defaultDimensions) : CustomSpec := {
@@ -54,21 +51,23 @@ def arrowSpec (isOpen : Bool) (theme : Theme) (dims : Dimensions := defaultDimen
     let rect := layout.contentRect
     let centerX := rect.x + rect.width / 2
     let centerY := rect.y + rect.height / 2
-    let path := chevronPath centerX centerY isOpen
+    let (p1, p2, p3) := chevronPoints centerX centerY isOpen
+    let c := theme.textMuted
+    let data : Array Float := #[
+      p1.x, p1.y, p2.x, p2.y, c.r, c.g, c.b, c.a, 0.0,
+      p2.x, p2.y, p3.x, p3.y, c.r, c.g, c.b, c.a, 0.0
+    ]
     RenderM.build do
-      RenderM.strokePath path theme.textMuted 2.0
+      RenderM.strokeLineBatch data 2 2.0
   draw := none
 }
 
-/-- Build a checkmark path for menu items. -/
-def checkmarkPath (x y : Float) : Arbor.Path :=
+/-- Build checkmark points for menu items. -/
+def checkmarkPoints (x y : Float) : Arbor.Point × Arbor.Point × Arbor.Point :=
   let p1 : Arbor.Point := ⟨x - 5, y⟩
   let p2 : Arbor.Point := ⟨x - 1, y + 4⟩
   let p3 : Arbor.Point := ⟨x + 6, y - 4⟩
-  Arbor.Path.empty
-    |>.moveTo p1
-    |>.lineTo p2
-    |>.lineTo p3
+  (p1, p2, p3)
 
 /-- Custom spec for checkmark in menu item. -/
 def checkmarkSpec (theme : Theme) : CustomSpec := {
@@ -77,9 +76,14 @@ def checkmarkSpec (theme : Theme) : CustomSpec := {
     let rect := layout.contentRect
     let centerX := rect.x + rect.width / 2
     let centerY := rect.y + rect.height / 2
-    let path := checkmarkPath centerX centerY
+    let (p1, p2, p3) := checkmarkPoints centerX centerY
+    let c := theme.primary.foreground
+    let data : Array Float := #[
+      p1.x, p1.y, p2.x, p2.y, c.r, c.g, c.b, c.a, 0.0,
+      p2.x, p2.y, p3.x, p3.y, c.r, c.g, c.b, c.a, 0.0
+    ]
     RenderM.build do
-      RenderM.strokePath path theme.primary.foreground 2.0
+      RenderM.strokeLineBatch data 2 2.0
   draw := none
 }
 
