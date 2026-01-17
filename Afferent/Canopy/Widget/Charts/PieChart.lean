@@ -250,42 +250,37 @@ open Afferent.Canopy.Reactive
 /-- PieChart result - provides access to chart state. -/
 structure PieChartResult where
   /-- The slices being displayed. -/
-  slices : Reactive.Dynamic Spider (Array PieChart.Slice)
+  slices : Dyn (Array PieChart.Slice)
 
-/-- Create a pie chart component using WidgetM.
-    Displays a static pie chart with the given slices.
-    - `slices`: Array of pie slices with values, labels, and optional colors
+/-- Create a pie chart component using WidgetM with dynamic data.
+    The chart automatically rebuilds when the slices Dynamic changes.
+    - `slices`: Dynamic array of pie slices with values, labels, and optional colors
     - `theme`: Theme for styling
     - `dims`: Chart dimensions
 -/
-def pieChart (slices : Array PieChart.Slice)
+def pieChart (slices : Dyn (Array PieChart.Slice))
     (theme : Theme) (dims : PieChart.Dimensions := PieChart.defaultDimensions)
     : WidgetM PieChartResult := do
-  let name ← registerComponentW "pie-chart" (isInteractive := false)
+  let _ ← dynWidget slices fun currentSlices => do
+    let name ← registerComponentW "pie-chart" (isInteractive := false)
+    emit do pure (pieChartVisual name currentSlices theme dims)
 
-  let slicesDyn ← Dynamic.pureM slices
+  pure { slices }
 
-  emit do
-    pure (pieChartVisual name slices theme dims)
-
-  pure { slices := slicesDyn }
-
-/-- Create a pie chart with legend component using WidgetM.
-    - `slices`: Array of pie slices
+/-- Create a pie chart with legend component using WidgetM with dynamic data.
+    The chart automatically rebuilds when the slices Dynamic changes.
+    - `slices`: Dynamic array of pie slices
     - `theme`: Theme for styling
     - `dims`: Chart dimensions
 -/
-def pieChartWithLegend (slices : Array PieChart.Slice)
+def pieChartWithLegend (slices : Dyn (Array PieChart.Slice))
     (theme : Theme) (dims : PieChart.Dimensions := PieChart.defaultDimensions)
     : WidgetM PieChartResult := do
-  let name ← registerComponentW "pie-chart" (isInteractive := false)
+  let _ ← dynWidget slices fun currentSlices => do
+    let name ← registerComponentW "pie-chart" (isInteractive := false)
+    emit do pure (pieChartWithLegendVisual name currentSlices theme dims)
 
-  let slicesDyn ← Dynamic.pureM slices
-
-  emit do
-    pure (pieChartWithLegendVisual name slices theme dims)
-
-  pure { slices := slicesDyn }
+  pure { slices }
 
 /-- Helper to create slices from simple value/label pairs. -/
 def PieChart.Slice.fromPairs (pairs : Array (Float × String)) : Array PieChart.Slice :=

@@ -292,50 +292,45 @@ open Afferent.Canopy.Reactive
 /-- LineChart result - provides access to chart state. -/
 structure LineChartResult where
   /-- The data being displayed. -/
-  data : Reactive.Dynamic Spider (Array Float)
+  data : Dyn (Array Float)
 
-/-- Create a line chart component using WidgetM.
-    Displays a static line chart with the given data.
-    - `data`: Array of values to display
+/-- Create a line chart component using WidgetM with dynamic data.
+    The chart automatically rebuilds when the data Dynamic changes.
+    - `data`: Dynamic array of values to display
     - `labels`: Optional labels for each data point
     - `theme`: Theme for styling
     - `variant`: Color variant for the line
     - `dims`: Chart dimensions
 -/
-def lineChart (data : Array Float) (labels : Array String := #[])
+def lineChart (data : Dyn (Array Float)) (labels : Array String := #[])
     (theme : Theme) (variant : LineChartVariant := .primary)
     (dims : LineChart.Dimensions := LineChart.defaultDimensions)
     : WidgetM LineChartResult := do
-  let name ← registerComponentW "line-chart" (isInteractive := false)
+  let _ ← dynWidget data fun currentData => do
+    let name ← registerComponentW "line-chart" (isInteractive := false)
+    emit do pure (lineChartVisual name currentData labels variant theme dims)
 
-  let dataDyn ← Dynamic.pureM data
-
-  emit do
-    pure (lineChartVisual name data labels variant theme dims)
-
-  pure { data := dataDyn }
+  pure { data }
 
 /-- MultiSeriesLineChart result. -/
 structure MultiSeriesLineChartResult where
-  series : Reactive.Dynamic Spider (Array LineChart.Series)
+  series : Dyn (Array LineChart.Series)
 
 /-- Create a multi-series line chart for comparing multiple data sets.
-    - `series`: Array of data series with values and optional colors/labels
+    The chart automatically rebuilds when the series Dynamic changes.
+    - `series`: Dynamic array of data series with values and optional colors/labels
     - `labels`: Labels for the X-axis
     - `theme`: Theme for styling
     - `dims`: Chart dimensions
 -/
-def multiSeriesLineChart (series : Array LineChart.Series)
+def multiSeriesLineChart (series : Dyn (Array LineChart.Series))
     (labels : Array String := #[]) (theme : Theme)
     (dims : LineChart.Dimensions := LineChart.defaultDimensions)
     : WidgetM MultiSeriesLineChartResult := do
-  let name ← registerComponentW "line-chart" (isInteractive := false)
+  let _ ← dynWidget series fun currentSeries => do
+    let name ← registerComponentW "line-chart" (isInteractive := false)
+    emit do pure (multiSeriesLineChartVisual name currentSeries labels theme dims)
 
-  let seriesDyn ← Dynamic.pureM series
-
-  emit do
-    pure (multiSeriesLineChartVisual name series labels theme dims)
-
-  pure { series := seriesDyn }
+  pure { series }
 
 end Afferent.Canopy

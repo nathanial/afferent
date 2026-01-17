@@ -38,7 +38,7 @@ structure Series where
   values : Array Float
   /-- Color for this series. -/
   color : Option Color := none
-deriving Repr, Inhabited
+deriving Repr, Inhabited, BEq
 
 /-- Stacked area chart data. -/
 structure Data where
@@ -46,7 +46,7 @@ structure Data where
   labels : Array String
   /-- Data series to stack. -/
   series : Array Series
-deriving Repr, Inhabited
+deriving Repr, Inhabited, BEq
 
 /-- Default series colors. -/
 def defaultColors : Array Color := #[
@@ -323,40 +323,28 @@ def stackedAreaChart (data : Dyn StackedAreaChart.Data)
 
   pure { data }
 
-/-- Create a stacked area chart with static data.
-    Convenience function that wraps static data in a constant Dynamic.
-    - `data`: Static stacked area chart data with labels and series
-    - `theme`: Theme for styling
-    - `dims`: Chart dimensions
--/
-def stackedAreaChart' (data : StackedAreaChart.Data)
-    (theme : Theme) (dims : StackedAreaChart.Dimensions := StackedAreaChart.defaultDimensions)
-    : WidgetM StackedAreaChartResult := do
-  let dataDyn ← Dynamic.pureM data
-  stackedAreaChart dataDyn theme dims
-
-/-- Create a stacked area chart from simple arrays (static data).
+/-- Create a stacked area chart from dynamic arrays.
     - `labels`: X-axis labels
     - `seriesNames`: Names for each series (for legend)
-    - `seriesData`: Array of value arrays, one per series
+    - `seriesData`: Dynamic array of value arrays, one per series
     - `colors`: Optional colors for each series
     - `theme`: Theme for styling
     - `dims`: Chart dimensions
 -/
 def stackedAreaChartFromArrays (labels : Array String)
-    (seriesNames : Array String) (seriesData : Array (Array Float))
+    (seriesNames : Array String) (seriesData : Dyn (Array (Array Float)))
     (colors : Array Color := #[])
     (theme : Theme) (dims : StackedAreaChart.Dimensions := StackedAreaChart.defaultDimensions)
     : WidgetM StackedAreaChartResult := do
-  let series := Id.run do
+  let dataDyn ← Dynamic.mapM (fun currentSeriesData => Id.run do
     let mut result : Array StackedAreaChart.Series := #[]
     for i in [0:seriesNames.size] do
       let name := seriesNames[i]!
-      let values := if i < seriesData.size then seriesData[i]! else #[]
+      let values := if i < currentSeriesData.size then currentSeriesData[i]! else #[]
       let color := if i < colors.size then some colors[i]! else none
       result := result.push { name, values, color }
-    result
-  let data : StackedAreaChart.Data := { labels, series }
-  stackedAreaChart' data theme dims
+    ({ labels, series := result } : StackedAreaChart.Data)
+  ) seriesData
+  stackedAreaChart dataDyn theme dims
 
 end Afferent.Canopy

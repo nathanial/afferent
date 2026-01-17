@@ -38,7 +38,7 @@ structure Summary where
   outliers : Array Float := #[]
   /-- Optional label for this box. -/
   label : Option String := none
-deriving Repr, Inhabited
+deriving Repr, Inhabited, BEq
 
 /-- A complete box plot data set (can have multiple boxes). -/
 structure DataSet where
@@ -419,93 +419,75 @@ open Afferent.Canopy.Reactive
 /-- BoxPlot result - provides access to chart state. -/
 structure BoxPlotResult where
   /-- The summaries being displayed. -/
-  summaries : Reactive.Dynamic Spider (Array BoxPlot.Summary)
+  summaries : Dyn (Array BoxPlot.Summary)
 
-/-- Create a box plot component from pre-computed summaries using WidgetM.
-    - `summaries`: Array of five-number summaries
+/-- Create a box plot component from pre-computed summaries using WidgetM with dynamic data.
+    The chart automatically rebuilds when the summaries Dynamic changes.
+    - `summaries`: Dynamic array of five-number summaries
     - `theme`: Theme for styling
     - `dims`: Chart dimensions
 -/
-def boxPlot (summaries : Array BoxPlot.Summary)
+def boxPlot (summaries : Dyn (Array BoxPlot.Summary))
     (theme : Theme) (dims : BoxPlot.Dimensions := BoxPlot.defaultDimensions)
     : WidgetM BoxPlotResult := do
-  let name ← registerComponentW "box-plot" (isInteractive := false)
+  let _ ← dynWidget summaries fun currentSummaries => do
+    let name ← registerComponentW "box-plot" (isInteractive := false)
+    emit do pure (boxPlotVisual name currentSummaries theme dims)
 
-  let summariesDyn ← Dynamic.pureM summaries
+  pure { summaries }
 
-  emit do
-    pure (boxPlotVisual name summaries theme dims)
-
-  pure { summaries := summariesDyn }
-
-/-- Create a box plot from raw data arrays.
+/-- Create a box plot from dynamic raw data arrays.
     Each array represents a different group/category.
-    - `dataArrays`: Array of raw data arrays
+    - `dataArrays`: Dynamic array of raw data arrays
     - `labels`: Labels for each box
     - `theme`: Theme for styling
     - `dims`: Chart dimensions
 -/
-def boxPlotFromData (dataArrays : Array (Array Float)) (labels : Array String := #[])
+def boxPlotFromData (dataArrays : Dyn (Array (Array Float))) (labels : Array String := #[])
     (theme : Theme) (dims : BoxPlot.Dimensions := BoxPlot.defaultDimensions)
     : WidgetM BoxPlotResult := do
-  let name ← registerComponentW "box-plot" (isInteractive := false)
-
-  let summaries := Id.run do
+  let summariesDyn ← Dynamic.mapM (fun currentDataArrays => Id.run do
     let mut result : Array BoxPlot.Summary := #[]
-    for i in [0:dataArrays.size] do
-      let data := dataArrays[i]!
+    for i in [0:currentDataArrays.size] do
+      let data := currentDataArrays[i]!
       let label := if i < labels.size then some labels[i]! else none
       result := result.push (BoxPlot.computeSummary data label dims.outlierThreshold)
     result
+  ) dataArrays
+  boxPlot summariesDyn theme dims
 
-  let summariesDyn ← Dynamic.pureM summaries
-
-  emit do
-    pure (boxPlotVisual name summaries theme dims)
-
-  pure { summaries := summariesDyn }
-
-/-- Create a horizontal box plot component.
-    - `summaries`: Array of five-number summaries
+/-- Create a horizontal box plot component with dynamic data.
+    The chart automatically rebuilds when the summaries Dynamic changes.
+    - `summaries`: Dynamic array of five-number summaries
     - `theme`: Theme for styling
     - `dims`: Chart dimensions
 -/
-def horizontalBoxPlot (summaries : Array BoxPlot.Summary)
+def horizontalBoxPlot (summaries : Dyn (Array BoxPlot.Summary))
     (theme : Theme) (dims : BoxPlot.Dimensions := BoxPlot.defaultDimensions)
     : WidgetM BoxPlotResult := do
-  let name ← registerComponentW "box-plot" (isInteractive := false)
+  let _ ← dynWidget summaries fun currentSummaries => do
+    let name ← registerComponentW "box-plot" (isInteractive := false)
+    emit do pure (horizontalBoxPlotVisual name currentSummaries theme dims)
 
-  let summariesDyn ← Dynamic.pureM summaries
+  pure { summaries }
 
-  emit do
-    pure (horizontalBoxPlotVisual name summaries theme dims)
-
-  pure { summaries := summariesDyn }
-
-/-- Create a horizontal box plot from raw data arrays.
-    - `dataArrays`: Array of raw data arrays
+/-- Create a horizontal box plot from dynamic raw data arrays.
+    - `dataArrays`: Dynamic array of raw data arrays
     - `labels`: Labels for each box
     - `theme`: Theme for styling
     - `dims`: Chart dimensions
 -/
-def horizontalBoxPlotFromData (dataArrays : Array (Array Float)) (labels : Array String := #[])
+def horizontalBoxPlotFromData (dataArrays : Dyn (Array (Array Float))) (labels : Array String := #[])
     (theme : Theme) (dims : BoxPlot.Dimensions := BoxPlot.defaultDimensions)
     : WidgetM BoxPlotResult := do
-  let name ← registerComponentW "box-plot" (isInteractive := false)
-
-  let summaries := Id.run do
+  let summariesDyn ← Dynamic.mapM (fun currentDataArrays => Id.run do
     let mut result : Array BoxPlot.Summary := #[]
-    for i in [0:dataArrays.size] do
-      let data := dataArrays[i]!
+    for i in [0:currentDataArrays.size] do
+      let data := currentDataArrays[i]!
       let label := if i < labels.size then some labels[i]! else none
       result := result.push (BoxPlot.computeSummary data label dims.outlierThreshold)
     result
-
-  let summariesDyn ← Dynamic.pureM summaries
-
-  emit do
-    pure (horizontalBoxPlotVisual name summaries theme dims)
-
-  pure { summaries := summariesDyn }
+  ) dataArrays
+  horizontalBoxPlot summariesDyn theme dims
 
 end Afferent.Canopy

@@ -280,46 +280,41 @@ open Afferent.Canopy.Reactive
 /-- ScatterPlot result - provides access to chart state. -/
 structure ScatterPlotResult where
   /-- The points being displayed. -/
-  points : Reactive.Dynamic Spider (Array ScatterPlot.DataPoint)
+  points : Dyn (Array ScatterPlot.DataPoint)
 
-/-- Create a scatter plot component using WidgetM.
-    Displays a static scatter plot with the given data points.
-    - `points`: Array of X/Y data points
+/-- Create a scatter plot component using WidgetM with dynamic data.
+    The chart automatically rebuilds when the points Dynamic changes.
+    - `points`: Dynamic array of X/Y data points
     - `theme`: Theme for styling
     - `dims`: Chart dimensions
 -/
-def scatterPlot (points : Array ScatterPlot.DataPoint)
+def scatterPlot (points : Dyn (Array ScatterPlot.DataPoint))
     (theme : Theme) (dims : ScatterPlot.Dimensions := ScatterPlot.defaultDimensions)
     : WidgetM ScatterPlotResult := do
-  let name ← registerComponentW "scatter-plot" (isInteractive := false)
+  let _ ← dynWidget points fun currentPoints => do
+    let name ← registerComponentW "scatter-plot" (isInteractive := false)
+    emit do pure (scatterPlotVisual name currentPoints theme dims)
 
-  let pointsDyn ← Dynamic.pureM points
-
-  emit do
-    pure (scatterPlotVisual name points theme dims)
-
-  pure { points := pointsDyn }
+  pure { points }
 
 /-- MultiSeriesScatterPlot result. -/
 structure MultiSeriesScatterPlotResult where
-  series : Reactive.Dynamic Spider (Array ScatterPlot.Series)
+  series : Dyn (Array ScatterPlot.Series)
 
 /-- Create a multi-series scatter plot for comparing multiple data sets.
-    - `series`: Array of data series with points and optional colors/labels
+    The chart automatically rebuilds when the series Dynamic changes.
+    - `series`: Dynamic array of data series with points and optional colors/labels
     - `theme`: Theme for styling
     - `dims`: Chart dimensions
 -/
-def multiSeriesScatterPlot (series : Array ScatterPlot.Series)
+def multiSeriesScatterPlot (series : Dyn (Array ScatterPlot.Series))
     (theme : Theme) (dims : ScatterPlot.Dimensions := ScatterPlot.defaultDimensions)
     : WidgetM MultiSeriesScatterPlotResult := do
-  let name ← registerComponentW "scatter-plot" (isInteractive := false)
+  let _ ← dynWidget series fun currentSeries => do
+    let name ← registerComponentW "scatter-plot" (isInteractive := false)
+    emit do pure (multiSeriesScatterPlotVisual name currentSeries theme dims)
 
-  let seriesDyn ← Dynamic.pureM series
-
-  emit do
-    pure (multiSeriesScatterPlotVisual name series theme dims)
-
-  pure { series := seriesDyn }
+  pure { series }
 
 /-- Helper to create data points from X/Y pairs. -/
 def ScatterPlot.DataPoint.fromPairs (pairs : Array (Float × Float)) : Array ScatterPlot.DataPoint :=

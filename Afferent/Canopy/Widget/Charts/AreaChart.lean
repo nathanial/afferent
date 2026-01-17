@@ -306,50 +306,45 @@ open Afferent.Canopy.Reactive
 /-- AreaChart result - provides access to chart state. -/
 structure AreaChartResult where
   /-- The data being displayed. -/
-  data : Reactive.Dynamic Spider (Array Float)
+  data : Dyn (Array Float)
 
-/-- Create an area chart component using WidgetM.
-    Displays a static area chart with the given data.
-    - `data`: Array of values to display
+/-- Create an area chart component using WidgetM with dynamic data.
+    The chart automatically rebuilds when the data Dynamic changes.
+    - `data`: Dynamic array of values to display
     - `labels`: Optional labels for each data point
     - `theme`: Theme for styling
     - `variant`: Color variant for the area
     - `dims`: Chart dimensions
 -/
-def areaChart (data : Array Float) (labels : Array String := #[])
+def areaChart (data : Dyn (Array Float)) (labels : Array String := #[])
     (theme : Theme) (variant : AreaChartVariant := .primary)
     (dims : AreaChart.Dimensions := AreaChart.defaultDimensions)
     : WidgetM AreaChartResult := do
-  let name ← registerComponentW "area-chart" (isInteractive := false)
+  let _ ← dynWidget data fun currentData => do
+    let name ← registerComponentW "area-chart" (isInteractive := false)
+    emit do pure (areaChartVisual name currentData labels variant theme dims)
 
-  let dataDyn ← Dynamic.pureM data
-
-  emit do
-    pure (areaChartVisual name data labels variant theme dims)
-
-  pure { data := dataDyn }
+  pure { data }
 
 /-- MultiSeriesAreaChart result. -/
 structure MultiSeriesAreaChartResult where
-  series : Reactive.Dynamic Spider (Array AreaChart.Series)
+  series : Dyn (Array AreaChart.Series)
 
 /-- Create a multi-series area chart for comparing multiple data sets.
-    - `series`: Array of data series with values and optional colors/labels
+    The chart automatically rebuilds when the series Dynamic changes.
+    - `series`: Dynamic array of data series with values and optional colors/labels
     - `labels`: Labels for the X-axis
     - `theme`: Theme for styling
     - `dims`: Chart dimensions
 -/
-def multiSeriesAreaChart (series : Array AreaChart.Series)
+def multiSeriesAreaChart (series : Dyn (Array AreaChart.Series))
     (labels : Array String := #[]) (theme : Theme)
     (dims : AreaChart.Dimensions := AreaChart.defaultDimensions)
     : WidgetM MultiSeriesAreaChartResult := do
-  let name ← registerComponentW "area-chart" (isInteractive := false)
+  let _ ← dynWidget series fun currentSeries => do
+    let name ← registerComponentW "area-chart" (isInteractive := false)
+    emit do pure (multiSeriesAreaChartVisual name currentSeries labels theme dims)
 
-  let seriesDyn ← Dynamic.pureM series
-
-  emit do
-    pure (multiSeriesAreaChartVisual name series labels theme dims)
-
-  pure { series := seriesDyn }
+  pure { series }
 
 end Afferent.Canopy

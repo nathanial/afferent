@@ -51,7 +51,7 @@ structure Series where
   values : Array Float
   /-- Color for this series. -/
   color : Option Color := none
-deriving Repr, Inhabited
+deriving Repr, Inhabited, BEq
 
 /-- Radar chart data. -/
 structure Data where
@@ -61,7 +61,7 @@ structure Data where
   series : Array Series
   /-- Maximum value for scaling (auto-computed if none). -/
   maxValue : Option Float := none
-deriving Repr, Inhabited
+deriving Repr, Inhabited, BEq
 
 /-- Default series colors. -/
 def defaultColors : Array Color := #[
@@ -296,63 +296,62 @@ open Afferent.Canopy.Reactive
 /-- RadarChart result - provides access to chart state. -/
 structure RadarChartResult where
   /-- The data being displayed. -/
-  data : Reactive.Dynamic Spider RadarChart.Data
+  data : Dyn RadarChart.Data
 
-/-- Create a radar chart component using WidgetM.
-    - `data`: Radar chart data with axis labels and series
+/-- Create a radar chart component using WidgetM with dynamic data.
+    The chart automatically rebuilds when the data Dynamic changes.
+    - `data`: Dynamic radar chart data with axis labels and series
     - `theme`: Theme for styling
     - `dims`: Chart dimensions
 -/
-def radarChart (data : RadarChart.Data)
+def radarChart (data : Dyn RadarChart.Data)
     (theme : Theme) (dims : RadarChart.Dimensions := RadarChart.defaultDimensions)
     : WidgetM RadarChartResult := do
-  let name ← registerComponentW "radar-chart" (isInteractive := false)
+  let _ ← dynWidget data fun currentData => do
+    let name ← registerComponentW "radar-chart" (isInteractive := false)
+    emit do pure (radarChartVisual name currentData theme dims)
 
-  let dataDyn ← Dynamic.pureM data
+  pure { data }
 
-  emit do
-    pure (radarChartVisual name data theme dims)
-
-  pure { data := dataDyn }
-
-/-- Create a radar chart from simple arrays.
+/-- Create a radar chart from dynamic arrays.
     - `axisLabels`: Labels for each axis
     - `seriesNames`: Names for each series (for legend)
-    - `seriesData`: Array of value arrays, one per series
+    - `seriesData`: Dynamic array of value arrays, one per series
     - `colors`: Optional colors for each series
     - `theme`: Theme for styling
     - `dims`: Chart dimensions
 -/
 def radarChartFromArrays (axisLabels : Array String)
-    (seriesNames : Array String) (seriesData : Array (Array Float))
+    (seriesNames : Array String) (seriesData : Dyn (Array (Array Float)))
     (colors : Array Color := #[])
     (theme : Theme) (dims : RadarChart.Dimensions := RadarChart.defaultDimensions)
     : WidgetM RadarChartResult := do
-  let series := Id.run do
+  let dataDyn ← Dynamic.mapM (fun currentSeriesData => Id.run do
     let mut result : Array RadarChart.Series := #[]
     for i in [0:seriesNames.size] do
       let name := seriesNames[i]!
-      let values := if i < seriesData.size then seriesData[i]! else #[]
+      let values := if i < currentSeriesData.size then currentSeriesData[i]! else #[]
       let color := if i < colors.size then some colors[i]! else none
       result := result.push { name, values, color }
-    result
-  let data : RadarChart.Data := { axisLabels, series }
-  radarChart data theme dims
+    ({ axisLabels, series := result } : RadarChart.Data)
+  ) seriesData
+  radarChart dataDyn theme dims
 
-/-- Create a single-series radar chart.
+/-- Create a single-series radar chart with dynamic values.
     - `axisLabels`: Labels for each axis
-    - `values`: Values for each axis
+    - `values`: Dynamic values for each axis
     - `seriesName`: Name for the series
     - `color`: Optional color for the series
     - `theme`: Theme for styling
     - `dims`: Chart dimensions
 -/
-def radarChartSingle (axisLabels : Array String) (values : Array Float)
+def radarChartSingle (axisLabels : Array String) (values : Dyn (Array Float))
     (seriesName : String := "Data") (color : Option Color := none)
     (theme : Theme) (dims : RadarChart.Dimensions := RadarChart.defaultDimensions)
     : WidgetM RadarChartResult := do
-  let series : Array RadarChart.Series := #[{ name := seriesName, values, color }]
-  let data : RadarChart.Data := { axisLabels, series }
-  radarChart data theme dims
+  let dataDyn ← Dynamic.mapM (fun currentValues =>
+    ({ axisLabels, series := #[{ name := seriesName, values := currentValues, color }] } : RadarChart.Data)
+  ) values
+  radarChart dataDyn theme dims
 
 end Afferent.Canopy

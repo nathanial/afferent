@@ -53,7 +53,7 @@ structure Candle where
   volume : Option Float := none
   /-- Optional label (e.g., date). -/
   label : Option String := none
-deriving Repr, Inhabited
+deriving Repr, Inhabited, BEq
 
 /-- Candlestick chart data. -/
 structure Data where
@@ -62,7 +62,7 @@ structure Data where
   /-- Optional fixed price range (auto-computed if none). -/
   minPrice : Option Float := none
   maxPrice : Option Float := none
-deriving Repr, Inhabited
+deriving Repr, Inhabited, BEq
 
 /-- Check if a candle is bullish (close >= open). -/
 def Candle.isBullish (c : Candle) : Bool := c.closePrice >= c.openPrice
@@ -260,56 +260,59 @@ open Afferent.Canopy.Reactive
 /-- CandlestickChart result - provides access to chart state. -/
 structure CandlestickChartResult where
   /-- The data being displayed. -/
-  data : Reactive.Dynamic Spider CandlestickChart.Data
+  data : Dyn CandlestickChart.Data
 
-/-- Create a candlestick chart component using WidgetM.
-    - `data`: Candlestick chart data with OHLC candles
+/-- Create a candlestick chart component using WidgetM with dynamic data.
+    The chart automatically rebuilds when the data Dynamic changes.
+    - `data`: Dynamic candlestick chart data with OHLC candles
     - `theme`: Theme for styling
     - `colors`: Candle colors
     - `dims`: Chart dimensions
 -/
-def candlestickChart (data : CandlestickChart.Data)
+def candlestickChart (data : Dyn CandlestickChart.Data)
     (theme : Theme) (colors : CandlestickChart.CandleColors := CandlestickChart.defaultColors)
     (dims : CandlestickChart.Dimensions := CandlestickChart.defaultDimensions)
     : WidgetM CandlestickChartResult := do
-  let name ← registerComponentW "candlestick-chart" (isInteractive := false)
+  let _ ← dynWidget data fun currentData => do
+    let name ← registerComponentW "candlestick-chart" (isInteractive := false)
+    emit do pure (candlestickChartVisual name currentData theme colors dims)
 
-  let dataDyn ← Dynamic.pureM data
+  pure { data }
 
-  emit do
-    pure (candlestickChartVisual name data theme colors dims)
+/-- Bundled OHLC price data for candlestick arrays. -/
+structure OHLCArrays where
+  opens : Array Float
+  highs : Array Float
+  lows : Array Float
+  closes : Array Float
+deriving Repr, Inhabited, BEq
 
-  pure { data := dataDyn }
-
-/-- Create a candlestick chart from simple OHLC arrays.
-    - `opens`: Opening prices
-    - `highs`: High prices
-    - `lows`: Low prices
-    - `closes`: Closing prices
+/-- Create a candlestick chart from dynamic OHLC arrays.
+    - `ohlc`: Dynamic OHLC price arrays
     - `labels`: Optional date/time labels
     - `theme`: Theme for styling
     - `colors`: Candle colors
     - `dims`: Chart dimensions
 -/
-def candlestickChartFromArrays (opens highs lows closes : Array Float)
+def candlestickChartFromArrays (ohlc : Dyn OHLCArrays)
     (labels : Array String := #[])
     (theme : Theme) (colors : CandlestickChart.CandleColors := CandlestickChart.defaultColors)
     (dims : CandlestickChart.Dimensions := CandlestickChart.defaultDimensions)
     : WidgetM CandlestickChartResult := do
-  let numCandles := min opens.size (min highs.size (min lows.size closes.size))
-  let candles := Id.run do
+  let dataDyn ← Dynamic.mapM (fun currentOhlc => Id.run do
+    let numCandles := min currentOhlc.opens.size (min currentOhlc.highs.size (min currentOhlc.lows.size currentOhlc.closes.size))
     let mut result : Array CandlestickChart.Candle := #[]
     for i in [0:numCandles] do
       let label := if i < labels.size then some labels[i]! else none
       result := result.push {
-        openPrice := opens[i]!
-        highPrice := highs[i]!
-        lowPrice := lows[i]!
-        closePrice := closes[i]!
+        openPrice := currentOhlc.opens[i]!
+        highPrice := currentOhlc.highs[i]!
+        lowPrice := currentOhlc.lows[i]!
+        closePrice := currentOhlc.closes[i]!
         label
       }
-    result
-  let data : CandlestickChart.Data := { candles }
-  candlestickChart data theme colors dims
+    ({ candles := result } : CandlestickChart.Data)
+  ) ohlc
+  candlestickChart dataDyn theme colors dims
 
 end Afferent.Canopy

@@ -39,13 +39,13 @@ structure Stage where
   value : Float
   /-- Optional color (uses default palette if none). -/
   color : Option Color := none
-deriving Repr, Inhabited
+deriving Repr, Inhabited, BEq
 
 /-- Funnel chart data. -/
 structure Data where
   /-- Stages in the funnel (typically in decreasing order). -/
   stages : Array Stage
-deriving Repr, Inhabited
+deriving Repr, Inhabited, BEq
 
 /-- Default stage colors. -/
 def defaultColors : Array Color := #[
@@ -210,48 +210,46 @@ open Afferent.Canopy.Reactive
 /-- FunnelChart result - provides access to chart state. -/
 structure FunnelChartResult where
   /-- The data being displayed. -/
-  data : Reactive.Dynamic Spider FunnelChart.Data
+  data : Dyn FunnelChart.Data
 
-/-- Create a funnel chart component using WidgetM.
-    - `data`: Funnel chart data with stages
+/-- Create a funnel chart component using WidgetM with dynamic data.
+    The chart automatically rebuilds when the data Dynamic changes.
+    - `data`: Dynamic funnel chart data with stages
     - `theme`: Theme for styling
     - `dims`: Chart dimensions
 -/
-def funnelChart (data : FunnelChart.Data)
+def funnelChart (data : Dyn FunnelChart.Data)
     (theme : Theme) (dims : FunnelChart.Dimensions := FunnelChart.defaultDimensions)
     : WidgetM FunnelChartResult := do
-  let name ← registerComponentW "funnel-chart" (isInteractive := false)
+  let _ ← dynWidget data fun currentData => do
+    let name ← registerComponentW "funnel-chart" (isInteractive := false)
+    emit do pure (funnelChartVisual name currentData theme dims)
 
-  let dataDyn ← Dynamic.pureM data
+  pure { data }
 
-  emit do
-    pure (funnelChartVisual name data theme dims)
-
-  pure { data := dataDyn }
-
-/-- Create a funnel chart from simple arrays.
+/-- Create a funnel chart from dynamic arrays.
     - `labels`: Labels for each stage
-    - `values`: Values for each stage
+    - `values`: Dynamic values for each stage
     - `colors`: Optional colors for each stage
     - `theme`: Theme for styling
     - `dims`: Chart dimensions
 -/
-def funnelChartFromArrays (labels : Array String) (values : Array Float)
+def funnelChartFromArrays (labels : Array String) (values : Dyn (Array Float))
     (colors : Array Color := #[])
     (theme : Theme) (dims : FunnelChart.Dimensions := FunnelChart.defaultDimensions)
     : WidgetM FunnelChartResult := do
-  let numStages := min labels.size values.size
-  let stages := Id.run do
+  let dataDyn ← Dynamic.mapM (fun currentValues => Id.run do
+    let numStages := min labels.size currentValues.size
     let mut result : Array FunnelChart.Stage := #[]
     for i in [0:numStages] do
       let color := if i < colors.size then some colors[i]! else none
       result := result.push {
         label := labels[i]!
-        value := values[i]!
+        value := currentValues[i]!
         color
       }
-    result
-  let data : FunnelChart.Data := { stages }
-  funnelChart data theme dims
+    ({ stages := result } : FunnelChart.Data)
+  ) values
+  funnelChart dataDyn theme dims
 
 end Afferent.Canopy

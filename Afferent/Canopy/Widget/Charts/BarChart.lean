@@ -278,48 +278,43 @@ open Afferent.Canopy.Reactive
 /-- BarChart result - provides access to chart state. -/
 structure BarChartResult where
   /-- The data being displayed. -/
-  data : Reactive.Dynamic Spider (Array Float)
+  data : Dyn (Array Float)
 
-/-- Create a bar chart component using WidgetM.
-    Displays a static bar chart with the given data.
-    - `data`: Array of values to display
+/-- Create a bar chart component using WidgetM with dynamic data.
+    The chart automatically rebuilds when the data Dynamic changes.
+    - `data`: Dynamic array of values to display
     - `labels`: Optional labels for each bar
     - `theme`: Theme for styling
     - `variant`: Color variant for bars
     - `dims`: Chart dimensions
 -/
-def barChart (data : Array Float) (labels : Array String := #[])
+def barChart (data : Dyn (Array Float)) (labels : Array String := #[])
     (theme : Theme) (variant : BarChartVariant := .primary)
     (dims : BarChart.Dimensions := BarChart.defaultDimensions)
     : WidgetM BarChartResult := do
-  let name ← registerComponentW "bar-chart" (isInteractive := false)
+  let _ ← dynWidget data fun currentData => do
+    let name ← registerComponentW "bar-chart" (isInteractive := false)
+    emit do pure (barChartVisual name currentData labels variant theme dims)
 
-  let dataDyn ← Dynamic.pureM data
-
-  emit do
-    pure (barChartVisual name data labels variant theme dims)
-
-  pure { data := dataDyn }
+  pure { data }
 
 /-- MultiColorBarChart result. -/
 structure MultiColorBarChartResult where
-  data : Reactive.Dynamic Spider (Array BarChart.DataPoint)
+  data : Dyn (Array BarChart.DataPoint)
 
 /-- Create a multi-color bar chart where each bar can have its own color.
-    - `data`: Array of data points with values, labels, and optional colors
+    The chart automatically rebuilds when the data Dynamic changes.
+    - `data`: Dynamic array of data points with values, labels, and optional colors
     - `theme`: Theme for styling
     - `dims`: Chart dimensions
 -/
-def multiColorBarChart (data : Array BarChart.DataPoint)
+def multiColorBarChart (data : Dyn (Array BarChart.DataPoint))
     (theme : Theme) (dims : BarChart.Dimensions := BarChart.defaultDimensions)
     : WidgetM MultiColorBarChartResult := do
-  let name ← registerComponentW "bar-chart" (isInteractive := false)
+  let _ ← dynWidget data fun currentData => do
+    let name ← registerComponentW "bar-chart" (isInteractive := false)
+    emit do pure (multiColorBarChartVisual name currentData theme dims)
 
-  let dataDyn ← Dynamic.pureM data
-
-  emit do
-    pure (multiColorBarChartVisual name data theme dims)
-
-  pure { data := dataDyn }
+  pure { data }
 
 end Afferent.Canopy

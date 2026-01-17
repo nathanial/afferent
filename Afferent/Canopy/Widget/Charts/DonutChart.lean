@@ -317,42 +317,37 @@ open Afferent.Canopy.Reactive
 /-- DonutChart result - provides access to chart state. -/
 structure DonutChartResult where
   /-- The slices being displayed. -/
-  slices : Reactive.Dynamic Spider (Array DonutChart.Slice)
+  slices : Dyn (Array DonutChart.Slice)
 
-/-- Create a donut chart component using WidgetM.
-    Displays a static donut chart with the given slices.
-    - `slices`: Array of donut slices with values, labels, and optional colors
+/-- Create a donut chart component using WidgetM with dynamic data.
+    The chart automatically rebuilds when the slices Dynamic changes.
+    - `slices`: Dynamic array of donut slices with values, labels, and optional colors
     - `theme`: Theme for styling
     - `dims`: Chart dimensions
 -/
-def donutChart (slices : Array DonutChart.Slice)
+def donutChart (slices : Dyn (Array DonutChart.Slice))
     (theme : Theme) (dims : DonutChart.Dimensions := DonutChart.defaultDimensions)
     : WidgetM DonutChartResult := do
-  let name ← registerComponentW "donut-chart" (isInteractive := false)
+  let _ ← dynWidget slices fun currentSlices => do
+    let name ← registerComponentW "donut-chart" (isInteractive := false)
+    emit do pure (donutChartVisual name currentSlices theme dims)
 
-  let slicesDyn ← Dynamic.pureM slices
+  pure { slices }
 
-  emit do
-    pure (donutChartVisual name slices theme dims)
-
-  pure { slices := slicesDyn }
-
-/-- Create a donut chart with legend component using WidgetM.
-    - `slices`: Array of donut slices
+/-- Create a donut chart with legend component using WidgetM with dynamic data.
+    The chart automatically rebuilds when the slices Dynamic changes.
+    - `slices`: Dynamic array of donut slices
     - `theme`: Theme for styling
     - `dims`: Chart dimensions
 -/
-def donutChartWithLegend (slices : Array DonutChart.Slice)
+def donutChartWithLegend (slices : Dyn (Array DonutChart.Slice))
     (theme : Theme) (dims : DonutChart.Dimensions := DonutChart.defaultDimensions)
     : WidgetM DonutChartResult := do
-  let name ← registerComponentW "donut-chart" (isInteractive := false)
+  let _ ← dynWidget slices fun currentSlices => do
+    let name ← registerComponentW "donut-chart" (isInteractive := false)
+    emit do pure (donutChartWithLegendVisual name currentSlices theme dims)
 
-  let slicesDyn ← Dynamic.pureM slices
-
-  emit do
-    pure (donutChartWithLegendVisual name slices theme dims)
-
-  pure { slices := slicesDyn }
+  pure { slices }
 
 /-- Helper to create slices from simple value/label pairs. -/
 def DonutChart.Slice.fromPairs (pairs : Array (Float × String)) : Array DonutChart.Slice :=

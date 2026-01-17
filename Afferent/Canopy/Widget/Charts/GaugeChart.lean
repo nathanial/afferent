@@ -46,7 +46,7 @@ structure Segment where
   endFrac : Float
   /-- Color for this segment. -/
   color : Color
-deriving Repr, Inhabited
+deriving Repr, Inhabited, BEq
 
 /-- Default segments (green-yellow-red traffic light style). -/
 def defaultSegments : Array Segment := #[
@@ -61,7 +61,7 @@ structure ChartColors where
   needleCenter : Color := Color.rgba 0.60 0.60 0.60 1.0
   tickMarks : Color := Color.rgba 0.70 0.70 0.70 1.0
   background : Color := Color.rgba 0.20 0.20 0.20 0.5
-deriving Repr, Inhabited
+deriving Repr, Inhabited, BEq
 
 /-- Default chart colors. -/
 def defaultColors : ChartColors := {}
@@ -80,7 +80,7 @@ structure Data where
   unit : Option String := none
   /-- Colored segments (uses default if empty). -/
   segments : Array Segment := #[]
-deriving Repr, Inhabited
+deriving Repr, Inhabited, BEq
 
 /-- Format a value for display. -/
 private def formatValue (v : Float) (unit : Option String) : String :=
@@ -256,29 +256,27 @@ open Afferent.Canopy.Reactive
 /-- GaugeChart result - provides access to chart state. -/
 structure GaugeChartResult where
   /-- The data being displayed. -/
-  data : Reactive.Dynamic Spider GaugeChart.Data
+  data : Dyn GaugeChart.Data
 
-/-- Create a gauge chart component using WidgetM.
-    - `data`: Gauge chart data
+/-- Create a gauge chart component using WidgetM with dynamic data.
+    The chart automatically rebuilds when the data Dynamic changes.
+    - `data`: Dynamic gauge chart data
     - `theme`: Theme for styling
     - `colors`: Chart colors
     - `dims`: Chart dimensions
 -/
-def gaugeChart (data : GaugeChart.Data)
+def gaugeChart (data : Dyn GaugeChart.Data)
     (theme : Theme) (colors : GaugeChart.ChartColors := GaugeChart.defaultColors)
     (dims : GaugeChart.Dimensions := GaugeChart.defaultDimensions)
     : WidgetM GaugeChartResult := do
-  let name ← registerComponentW "gauge-chart" (isInteractive := false)
+  let _ ← dynWidget data fun currentData => do
+    let name ← registerComponentW "gauge-chart" (isInteractive := false)
+    emit do pure (gaugeChartVisual name currentData theme colors dims)
 
-  let dataDyn ← Dynamic.pureM data
+  pure { data }
 
-  emit do
-    pure (gaugeChartVisual name data theme colors dims)
-
-  pure { data := dataDyn }
-
-/-- Create a simple gauge chart with just a value.
-    - `value`: Current value
+/-- Create a simple gauge chart with dynamic value.
+    - `value`: Dynamic current value
     - `minValue`: Minimum value
     - `maxValue`: Maximum value
     - `label`: Optional label
@@ -286,12 +284,14 @@ def gaugeChart (data : GaugeChart.Data)
     - `theme`: Theme for styling
     - `dims`: Chart dimensions
 -/
-def gaugeChartSimple (value : Float)
+def gaugeChartSimple (value : Dyn Float)
     (minValue : Float := 0.0) (maxValue : Float := 100.0)
     (label : Option String := none) (unit : Option String := none)
     (theme : Theme) (dims : GaugeChart.Dimensions := GaugeChart.defaultDimensions)
     : WidgetM GaugeChartResult := do
-  let data : GaugeChart.Data := { value, minValue, maxValue, label, unit }
-  gaugeChart data theme GaugeChart.defaultColors dims
+  let dataDyn ← Dynamic.mapM (fun v =>
+    ({ value := v, minValue, maxValue, label, unit } : GaugeChart.Data)
+  ) value
+  gaugeChart dataDyn theme GaugeChart.defaultColors dims
 
 end Afferent.Canopy

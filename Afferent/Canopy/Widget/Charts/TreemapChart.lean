@@ -37,7 +37,7 @@ structure TreeNode where
   color : Option Color := none
   /-- Child nodes. -/
   children : Array TreeNode := #[]
-deriving Repr, Inhabited
+deriving Repr, Inhabited, BEq
 
 /-- Get the total value of a node (sum of children if branch, own value if leaf). -/
 partial def TreeNode.totalValue (node : TreeNode) : Float :=
@@ -50,7 +50,7 @@ partial def TreeNode.totalValue (node : TreeNode) : Float :=
 structure Data where
   /-- Root nodes of the treemap. -/
   nodes : Array TreeNode
-deriving Repr, Inhabited
+deriving Repr, Inhabited, BEq
 
 /-- Default node colors. -/
 def defaultColors : Array Color := #[
@@ -305,48 +305,46 @@ open Afferent.Canopy.Reactive
 /-- TreemapChart result - provides access to chart state. -/
 structure TreemapChartResult where
   /-- The data being displayed. -/
-  data : Reactive.Dynamic Spider TreemapChart.Data
+  data : Dyn TreemapChart.Data
 
-/-- Create a treemap chart component using WidgetM.
-    - `data`: Treemap chart data with nodes
+/-- Create a treemap chart component using WidgetM with dynamic data.
+    The chart automatically rebuilds when the data Dynamic changes.
+    - `data`: Dynamic treemap chart data with nodes
     - `theme`: Theme for styling
     - `dims`: Chart dimensions
 -/
-def treemapChart (data : TreemapChart.Data)
+def treemapChart (data : Dyn TreemapChart.Data)
     (theme : Theme) (dims : TreemapChart.Dimensions := TreemapChart.defaultDimensions)
     : WidgetM TreemapChartResult := do
-  let name ← registerComponentW "treemap-chart" (isInteractive := false)
+  let _ ← dynWidget data fun currentData => do
+    let name ← registerComponentW "treemap-chart" (isInteractive := false)
+    emit do pure (treemapChartVisual name currentData theme dims)
 
-  let dataDyn ← Dynamic.pureM data
+  pure { data }
 
-  emit do
-    pure (treemapChartVisual name data theme dims)
-
-  pure { data := dataDyn }
-
-/-- Create a treemap chart from simple flat data (no hierarchy).
+/-- Create a treemap chart from dynamic flat data (no hierarchy).
     - `labels`: Labels for each node
-    - `values`: Values for each node
+    - `values`: Dynamic values for each node
     - `colors`: Optional colors for each node
     - `theme`: Theme for styling
     - `dims`: Chart dimensions
 -/
-def treemapChartFromArrays (labels : Array String) (values : Array Float)
+def treemapChartFromArrays (labels : Array String) (values : Dyn (Array Float))
     (colors : Array Color := #[])
     (theme : Theme) (dims : TreemapChart.Dimensions := TreemapChart.defaultDimensions)
     : WidgetM TreemapChartResult := do
-  let numNodes := min labels.size values.size
-  let nodes := Id.run do
+  let dataDyn ← Dynamic.mapM (fun currentValues => Id.run do
+    let numNodes := min labels.size currentValues.size
     let mut result : Array TreemapChart.TreeNode := #[]
     for i in [0:numNodes] do
       let color := if i < colors.size then some colors[i]! else none
       result := result.push {
         label := labels[i]!
-        value := values[i]!
+        value := currentValues[i]!
         color
       }
-    result
-  let data : TreemapChart.Data := { nodes }
-  treemapChart data theme dims
+    ({ nodes := result } : TreemapChart.Data)
+  ) values
+  treemapChart dataDyn theme dims
 
 end Afferent.Canopy

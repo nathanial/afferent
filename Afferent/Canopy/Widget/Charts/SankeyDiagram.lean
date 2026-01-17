@@ -62,7 +62,7 @@ structure Data where
   nodes : Array Node
   /-- All links between nodes. -/
   links : Array Link
-deriving Repr, Inhabited
+deriving Repr, Inhabited, BEq
 
 /-- Default node colors. -/
 def defaultColors : Array Color := #[
@@ -389,29 +389,25 @@ open Afferent.Canopy.Reactive
 /-- SankeyDiagram result - provides access to diagram state. -/
 structure SankeyDiagramResult where
   /-- The data being displayed. -/
-  data : Reactive.Dynamic Spider SankeyDiagram.Data
+  data : Dyn SankeyDiagram.Data
 
-/-- Create a Sankey diagram component using WidgetM with FRP-based layout caching.
-    Layout is computed once at creation time and reused every frame.
-    - `data`: Sankey diagram data with nodes and links
+/-- Create a Sankey diagram component using WidgetM with dynamic data and FRP-based layout caching.
+    Layout is computed when data changes and cached - only recomputed when data changes.
+    - `data`: Dynamic Sankey diagram data with nodes and links
     - `theme`: Theme for styling
     - `dims`: Diagram dimensions
 -/
-def sankeyDiagram (data : SankeyDiagram.Data)
+def sankeyDiagram (data : Dyn SankeyDiagram.Data)
     (theme : Theme) (dims : SankeyDiagram.Dimensions := SankeyDiagram.defaultDimensions)
     : WidgetM SankeyDiagramResult := do
-  let name ← registerComponentW "sankey-diagram" (isInteractive := false)
-
-  -- Create data Dynamic
-  let dataDyn ← Dynamic.pureM data
-
-  -- Pre-compute layout once (cached via Dynamic.mapM - only recomputes if data changes)
-  let layoutDyn ← Dynamic.mapM (fun d => SankeyDiagram.computeLayout d dims) dataDyn
+  -- Pre-compute layout (cached via Dynamic.mapM - only recomputes if data changes)
+  let layoutDyn ← Dynamic.mapM (fun d => SankeyDiagram.computeLayout d dims) data
 
   -- dynWidget rebuilds visual only when cached layout changes
-  let _ ← dynWidget layoutDyn fun cached =>
-    emit (pure (sankeyDiagramVisualCached name cached data theme dims))
+  let _ ← dynWidget (← Dynamic.zipWithM (·, ·) data layoutDyn) fun (currentData, cached) => do
+    let name ← registerComponentW "sankey-diagram" (isInteractive := false)
+    emit (pure (sankeyDiagramVisualCached name cached currentData theme dims))
 
-  pure { data := dataDyn }
+  pure { data }
 
 end Afferent.Canopy

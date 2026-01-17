@@ -57,7 +57,7 @@ structure Bin where
   count : Nat
   /-- Density (count / total / binWidth) if normalized. -/
   density : Float
-deriving Repr, Inhabited
+deriving Repr, Inhabited, BEq
 
 /-- Get the fill color for a variant. -/
 def variantColor (variant : HistogramVariant) (theme : Theme) : Color :=
@@ -397,74 +397,65 @@ open Afferent.Canopy.Reactive
 /-- Histogram result - provides access to computed bins. -/
 structure HistogramResult where
   /-- The computed bins. -/
-  bins : Reactive.Dynamic Spider (Array Histogram.Bin)
+  bins : Dyn (Array Histogram.Bin)
 
-/-- Create a histogram component from raw data using WidgetM.
-    Automatically computes bins using Sturges' formula or specified count.
-    - `data`: Array of numerical values to bin
-    - `theme`: Theme for styling
-    - `variant`: Color variant for bars
-    - `dims`: Chart dimensions
-    - `binConfig`: Configuration for binning
--/
-def histogram (data : Array Float)
-    (theme : Theme) (variant : HistogramVariant := .primary)
-    (dims : Histogram.Dimensions := Histogram.defaultDimensions)
-    (binConfig : Histogram.BinConfig := Histogram.defaultBinConfig)
-    : WidgetM HistogramResult := do
-  let name ← registerComponentW "histogram" (isInteractive := false)
-
-  let bins := Histogram.computeBins data binConfig
-  let binsDyn ← Dynamic.pureM bins
-
-  emit do
-    pure (histogramFromBinsVisual name bins variant theme dims binConfig.normalize)
-
-  pure { bins := binsDyn }
-
-/-- Create a histogram from pre-computed bins.
-    - `bins`: Pre-computed histogram bins
+/-- Create a histogram from pre-computed bins with dynamic data.
+    The chart automatically rebuilds when the bins Dynamic changes.
+    - `bins`: Dynamic pre-computed histogram bins
     - `theme`: Theme for styling
     - `variant`: Color variant for bars
     - `dims`: Chart dimensions
     - `showDensity`: Whether to show density instead of counts
 -/
-def histogramFromBins (bins : Array Histogram.Bin)
+def histogramFromBins (bins : Dyn (Array Histogram.Bin))
     (theme : Theme) (variant : HistogramVariant := .primary)
     (dims : Histogram.Dimensions := Histogram.defaultDimensions)
     (showDensity : Bool := false)
     : WidgetM HistogramResult := do
-  let name ← registerComponentW "histogram" (isInteractive := false)
+  let _ ← dynWidget bins fun currentBins => do
+    let name ← registerComponentW "histogram" (isInteractive := false)
+    emit do pure (histogramFromBinsVisual name currentBins variant theme dims showDensity)
 
-  let binsDyn ← Dynamic.pureM bins
+  pure { bins }
 
-  emit do
-    pure (histogramFromBinsVisual name bins variant theme dims showDensity)
-
-  pure { bins := binsDyn }
+/-- Create a histogram component from dynamic raw data.
+    Automatically computes bins using Sturges' formula or specified count.
+    - `data`: Dynamic array of numerical values to bin
+    - `theme`: Theme for styling
+    - `variant`: Color variant for bars
+    - `dims`: Chart dimensions
+    - `binConfig`: Configuration for binning
+-/
+def histogram (data : Dyn (Array Float))
+    (theme : Theme) (variant : HistogramVariant := .primary)
+    (dims : Histogram.Dimensions := Histogram.defaultDimensions)
+    (binConfig : Histogram.BinConfig := Histogram.defaultBinConfig)
+    : WidgetM HistogramResult := do
+  let binsDyn ← Dynamic.mapM (fun currentData =>
+    Histogram.computeBins currentData binConfig
+  ) data
+  histogramFromBins binsDyn theme variant dims binConfig.normalize
 
 /-- Histogram from counts result. -/
 structure HistogramFromCountsResult where
-  counts : Reactive.Dynamic Spider (Array Nat)
+  counts : Dyn (Array Nat)
 
-/-- Create a histogram from categorical labels and counts.
+/-- Create a histogram from categorical labels and counts with dynamic data.
+    The chart automatically rebuilds when the counts Dynamic changes.
     - `labels`: Category labels
-    - `counts`: Count for each category
+    - `counts`: Dynamic count for each category
     - `theme`: Theme for styling
     - `variant`: Color variant for bars
     - `dims`: Chart dimensions
 -/
-def histogramFromCounts (labels : Array String) (counts : Array Nat)
+def histogramFromCounts (labels : Array String) (counts : Dyn (Array Nat))
     (theme : Theme) (variant : HistogramVariant := .primary)
     (dims : Histogram.Dimensions := Histogram.defaultDimensions)
     : WidgetM HistogramFromCountsResult := do
-  let name ← registerComponentW "histogram" (isInteractive := false)
+  let _ ← dynWidget counts fun currentCounts => do
+    let name ← registerComponentW "histogram" (isInteractive := false)
+    emit do pure (histogramFromCountsVisual name labels currentCounts variant theme dims)
 
-  let countsDyn ← Dynamic.pureM counts
-
-  emit do
-    pure (histogramFromCountsVisual name labels counts variant theme dims)
-
-  pure { counts := countsDyn }
+  pure { counts }
 
 end Afferent.Canopy

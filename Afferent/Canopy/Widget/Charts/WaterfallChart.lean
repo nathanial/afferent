@@ -42,7 +42,7 @@ inductive BarType where
   | increase  -- Positive change
   | decrease  -- Negative change
   | total     -- Subtotal or final total
-deriving Repr, Inhabited, BEq
+deriving Repr, Inhabited, BEq, Hashable
 
 /-- A single bar in the waterfall chart. -/
 structure Bar where
@@ -52,13 +52,13 @@ structure Bar where
   value : Float
   /-- Type of bar. -/
   barType : BarType := .increase
-deriving Repr, Inhabited
+deriving Repr, Inhabited, BEq
 
 /-- Waterfall chart data. -/
 structure Data where
   /-- Array of bars in order. -/
   bars : Array Bar
-deriving Repr, Inhabited
+deriving Repr, Inhabited, BEq
 
 /-- Format a value for axis labels. -/
 private def formatValue (v : Float) : String :=
@@ -269,51 +269,49 @@ open Afferent.Canopy.Reactive
 /-- WaterfallChart result - provides access to chart state. -/
 structure WaterfallChartResult where
   /-- The data being displayed. -/
-  data : Reactive.Dynamic Spider WaterfallChart.Data
+  data : Dyn WaterfallChart.Data
 
-/-- Create a waterfall chart component using WidgetM.
-    - `data`: Waterfall chart data with bars
+/-- Create a waterfall chart component using WidgetM with dynamic data.
+    The chart automatically rebuilds when the data Dynamic changes.
+    - `data`: Dynamic waterfall chart data with bars
     - `theme`: Theme for styling
     - `colors`: Chart colors
     - `dims`: Chart dimensions
 -/
-def waterfallChart (data : WaterfallChart.Data)
+def waterfallChart (data : Dyn WaterfallChart.Data)
     (theme : Theme) (colors : WaterfallChart.ChartColors := WaterfallChart.defaultColors)
     (dims : WaterfallChart.Dimensions := WaterfallChart.defaultDimensions)
     : WidgetM WaterfallChartResult := do
-  let name ← registerComponentW "waterfall-chart" (isInteractive := false)
+  let _ ← dynWidget data fun currentData => do
+    let name ← registerComponentW "waterfall-chart" (isInteractive := false)
+    emit do pure (waterfallChartVisual name currentData theme colors dims)
 
-  let dataDyn ← Dynamic.pureM data
+  pure { data }
 
-  emit do
-    pure (waterfallChartVisual name data theme colors dims)
-
-  pure { data := dataDyn }
-
-/-- Create a waterfall chart from simple arrays.
+/-- Create a waterfall chart from dynamic arrays.
     - `labels`: Labels for each bar
-    - `values`: Values for each bar (positive for increase, negative for decrease)
+    - `values`: Dynamic values for each bar (positive for increase, negative for decrease)
     - `barTypes`: Type of each bar
     - `theme`: Theme for styling
     - `colors`: Chart colors
     - `dims`: Chart dimensions
 -/
-def waterfallChartFromArrays (labels : Array String) (values : Array Float)
+def waterfallChartFromArrays (labels : Array String) (values : Dyn (Array Float))
     (barTypes : Array WaterfallChart.BarType)
     (theme : Theme) (colors : WaterfallChart.ChartColors := WaterfallChart.defaultColors)
     (dims : WaterfallChart.Dimensions := WaterfallChart.defaultDimensions)
     : WidgetM WaterfallChartResult := do
-  let numBars := min labels.size (min values.size barTypes.size)
-  let bars := Id.run do
+  let dataDyn ← Dynamic.mapM (fun currentValues => Id.run do
+    let numBars := min labels.size (min currentValues.size barTypes.size)
     let mut result : Array WaterfallChart.Bar := #[]
     for i in [0:numBars] do
       result := result.push {
         label := labels[i]!
-        value := values[i]!
+        value := currentValues[i]!
         barType := barTypes[i]!
       }
-    result
-  let data : WaterfallChart.Data := { bars }
-  waterfallChart data theme colors dims
+    ({ bars := result } : WaterfallChart.Data)
+  ) values
+  waterfallChart dataDyn theme colors dims
 
 end Afferent.Canopy

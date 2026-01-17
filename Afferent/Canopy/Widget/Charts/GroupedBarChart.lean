@@ -36,7 +36,7 @@ structure Series where
   values : Array Float
   /-- Color for this series. -/
   color : Option Color := none
-deriving Repr, Inhabited
+deriving Repr, Inhabited, BEq
 
 /-- Grouped bar chart data. -/
 structure Data where
@@ -44,7 +44,7 @@ structure Data where
   categories : Array String
   /-- Data series to group. -/
   series : Array Series
-deriving Repr, Inhabited
+deriving Repr, Inhabited, BEq
 
 /-- Default series colors. -/
 def defaultColors : Array Color := #[
@@ -227,47 +227,45 @@ open Afferent.Canopy.Reactive
 /-- GroupedBarChart result - provides access to chart state. -/
 structure GroupedBarChartResult where
   /-- The data being displayed. -/
-  data : Reactive.Dynamic Spider GroupedBarChart.Data
+  data : Dyn GroupedBarChart.Data
 
-/-- Create a grouped bar chart component using WidgetM.
-    - `data`: Grouped bar chart data with categories and series
+/-- Create a grouped bar chart component using WidgetM with dynamic data.
+    The chart automatically rebuilds when the data Dynamic changes.
+    - `data`: Dynamic grouped bar chart data with categories and series
     - `theme`: Theme for styling
     - `dims`: Chart dimensions
 -/
-def groupedBarChart (data : GroupedBarChart.Data)
+def groupedBarChart (data : Dyn GroupedBarChart.Data)
     (theme : Theme) (dims : GroupedBarChart.Dimensions := GroupedBarChart.defaultDimensions)
     : WidgetM GroupedBarChartResult := do
-  let name ← registerComponentW "grouped-bar-chart" (isInteractive := false)
+  let _ ← dynWidget data fun currentData => do
+    let name ← registerComponentW "grouped-bar-chart" (isInteractive := false)
+    emit do pure (groupedBarChartVisual name currentData theme dims)
 
-  let dataDyn ← Dynamic.pureM data
+  pure { data }
 
-  emit do
-    pure (groupedBarChartVisual name data theme dims)
-
-  pure { data := dataDyn }
-
-/-- Create a grouped bar chart from simple arrays.
+/-- Create a grouped bar chart from dynamic arrays.
     - `categories`: Category labels for x-axis
     - `seriesNames`: Names for each series (for legend)
-    - `seriesData`: Array of value arrays, one per series
+    - `seriesData`: Dynamic array of value arrays, one per series
     - `colors`: Optional colors for each series
     - `theme`: Theme for styling
     - `dims`: Chart dimensions
 -/
 def groupedBarChartFromArrays (categories : Array String)
-    (seriesNames : Array String) (seriesData : Array (Array Float))
+    (seriesNames : Array String) (seriesData : Dyn (Array (Array Float)))
     (colors : Array Color := #[])
     (theme : Theme) (dims : GroupedBarChart.Dimensions := GroupedBarChart.defaultDimensions)
     : WidgetM GroupedBarChartResult := do
-  let series := Id.run do
+  let dataDyn ← Dynamic.mapM (fun currentSeriesData => Id.run do
     let mut result : Array GroupedBarChart.Series := #[]
     for i in [0:seriesNames.size] do
       let name := seriesNames[i]!
-      let values := if i < seriesData.size then seriesData[i]! else #[]
+      let values := if i < currentSeriesData.size then currentSeriesData[i]! else #[]
       let color := if i < colors.size then some colors[i]! else none
       result := result.push { name, values, color }
-    result
-  let data : GroupedBarChart.Data := { categories, series }
-  groupedBarChart data theme dims
+    ({ categories, series := result } : GroupedBarChart.Data)
+  ) seriesData
+  groupedBarChart dataDyn theme dims
 
 end Afferent.Canopy

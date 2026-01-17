@@ -485,63 +485,56 @@ open Afferent.Canopy.Reactive
 /-- BubbleChart result - provides access to chart state. -/
 structure BubbleChartResult where
   /-- The points being displayed. -/
-  points : Reactive.Dynamic Spider (Array BubbleChart.DataPoint)
+  points : Dyn (Array BubbleChart.DataPoint)
 
-/-- Create a bubble chart component using WidgetM.
-    Displays a static bubble chart with the given data points.
-    - `points`: Array of bubble data points (x, y, size)
+/-- Create a bubble chart component using WidgetM with dynamic data.
+    The chart automatically rebuilds when the points Dynamic changes.
+    - `points`: Dynamic array of bubble data points (x, y, size)
     - `theme`: Theme for styling
     - `dims`: Chart dimensions
 -/
-def bubbleChart (points : Array BubbleChart.DataPoint)
+def bubbleChart (points : Dyn (Array BubbleChart.DataPoint))
     (theme : Theme) (dims : BubbleChart.Dimensions := BubbleChart.defaultDimensions)
     : WidgetM BubbleChartResult := do
-  let name ← registerComponentW "bubble-chart" (isInteractive := false)
+  let _ ← dynWidget points fun currentPoints => do
+    let name ← registerComponentW "bubble-chart" (isInteractive := false)
+    emit do pure (bubbleChartVisual name currentPoints theme dims)
 
-  let pointsDyn ← Dynamic.pureM points
-
-  emit do
-    pure (bubbleChartVisual name points theme dims)
-
-  pure { points := pointsDyn }
+  pure { points }
 
 /-- MultiSeriesBubbleChart result. -/
 structure MultiSeriesBubbleChartResult where
-  series : Reactive.Dynamic Spider (Array BubbleChart.Series)
+  series : Dyn (Array BubbleChart.Series)
 
 /-- Create a multi-series bubble chart for comparing multiple data sets.
-    - `series`: Array of data series with points and optional colors/labels
+    The chart automatically rebuilds when the series Dynamic changes.
+    - `series`: Dynamic array of data series with points and optional colors/labels
     - `theme`: Theme for styling
     - `dims`: Chart dimensions
 -/
-def multiSeriesBubbleChart (series : Array BubbleChart.Series)
+def multiSeriesBubbleChart (series : Dyn (Array BubbleChart.Series))
     (theme : Theme) (dims : BubbleChart.Dimensions := BubbleChart.defaultDimensions)
     : WidgetM MultiSeriesBubbleChartResult := do
-  let name ← registerComponentW "bubble-chart" (isInteractive := false)
+  let _ ← dynWidget series fun currentSeries => do
+    let name ← registerComponentW "bubble-chart" (isInteractive := false)
+    emit do pure (multiSeriesBubbleChartVisual name currentSeries theme dims)
 
-  let seriesDyn ← Dynamic.pureM series
-
-  emit do
-    pure (multiSeriesBubbleChartVisual name series theme dims)
-
-  pure { series := seriesDyn }
+  pure { series }
 
 /-- Create a bubble chart with legend for comparing multiple data sets.
-    - `series`: Array of data series with points and optional colors/labels
+    The chart automatically rebuilds when the series Dynamic changes.
+    - `series`: Dynamic array of data series with points and optional colors/labels
     - `theme`: Theme for styling
     - `dims`: Chart dimensions
 -/
-def bubbleChartWithLegend (series : Array BubbleChart.Series)
+def bubbleChartWithLegend (series : Dyn (Array BubbleChart.Series))
     (theme : Theme) (dims : BubbleChart.Dimensions := BubbleChart.defaultDimensions)
     : WidgetM MultiSeriesBubbleChartResult := do
-  let name ← registerComponentW "bubble-chart" (isInteractive := false)
+  let _ ← dynWidget series fun currentSeries => do
+    let name ← registerComponentW "bubble-chart" (isInteractive := false)
+    emit do pure (bubbleChartWithLegendVisual name currentSeries theme dims)
 
-  let seriesDyn ← Dynamic.pureM series
-
-  emit do
-    pure (bubbleChartWithLegendVisual name series theme dims)
-
-  pure { series := seriesDyn }
+  pure { series }
 
 /-- Helper to create bubble data points from (x, y, size) tuples. -/
 def BubbleChart.DataPoint.fromTuples (tuples : Array (Float × Float × Float)) : Array BubbleChart.DataPoint :=

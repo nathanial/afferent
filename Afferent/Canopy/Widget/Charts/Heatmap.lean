@@ -32,7 +32,7 @@ inductive ColorScale where
   | viridis
   /-- Custom two-color gradient. -/
   | custom (low high : Color)
-deriving Repr, Inhabited
+deriving Repr, Inhabited, BEq
 
 /-- Dimensions and styling for heatmap rendering. -/
 structure Dimensions extends ChartSize, ChartMargins where
@@ -64,7 +64,7 @@ structure Data where
   minValue : Option Float := none
   /-- Optional maximum value for scaling (auto-computed if none). -/
   maxValue : Option Float := none
-deriving Repr, Inhabited
+deriving Repr, Inhabited, BEq
 
 /-- Interpolate between two colors. -/
 private def lerpColor (c1 c2 : Color) (t : Float) : Color :=
@@ -264,58 +264,55 @@ open Afferent.Canopy.Reactive
 /-- Heatmap result - provides access to chart state. -/
 structure HeatmapResult where
   /-- The data being displayed. -/
-  data : Reactive.Dynamic Spider Heatmap.Data
+  data : Dyn Heatmap.Data
 
-/-- Create a heatmap component using WidgetM.
-    - `data`: Heatmap data with 2D values and optional labels
+/-- Create a heatmap component using WidgetM with dynamic data.
+    The chart automatically rebuilds when the data Dynamic changes.
+    - `data`: Dynamic heatmap data with 2D values and optional labels
     - `scale`: Color scale for mapping values to colors
     - `theme`: Theme for styling
     - `dims`: Chart dimensions
 -/
-def heatmap (data : Heatmap.Data) (scale : Heatmap.ColorScale := .viridis)
+def heatmap (data : Dyn Heatmap.Data) (scale : Heatmap.ColorScale := .viridis)
     (theme : Theme) (dims : Heatmap.Dimensions := Heatmap.defaultDimensions)
     : WidgetM HeatmapResult := do
-  let name ← registerComponentW "heatmap" (isInteractive := false)
+  let _ ← dynWidget data fun currentData => do
+    let name ← registerComponentW "heatmap" (isInteractive := false)
+    emit do pure (heatmapVisual name currentData scale theme dims)
 
-  let dataDyn ← Dynamic.pureM data
+  pure { data }
 
-  emit do
-    pure (heatmapVisual name data scale theme dims)
-
-  pure { data := dataDyn }
-
-/-- Create a heatmap from a simple 2D array of values.
-    - `values`: 2D array of values (row-major)
+/-- Create a heatmap from a dynamic 2D array of values.
+    - `values`: Dynamic 2D array of values (row-major)
     - `rowLabels`: Optional row labels
     - `columnLabels`: Optional column labels
     - `scale`: Color scale
     - `theme`: Theme for styling
     - `dims`: Chart dimensions
 -/
-def heatmapFromValues (values : Array (Array Float))
+def heatmapFromValues (values : Dyn (Array (Array Float)))
     (rowLabels : Array String := #[]) (columnLabels : Array String := #[])
     (scale : Heatmap.ColorScale := .viridis)
     (theme : Theme) (dims : Heatmap.Dimensions := Heatmap.defaultDimensions)
     : WidgetM HeatmapResult := do
-  let data : Heatmap.Data := { values, rowLabels, columnLabels }
-  heatmap data scale theme dims
+  let dataDyn ← Dynamic.mapM (fun currentValues =>
+    ({ values := currentValues, rowLabels, columnLabels } : Heatmap.Data)
+  ) values
+  heatmap dataDyn scale theme dims
 
-/-- Create a correlation matrix heatmap (uses blue-white-red scale centered at 0).
-    - `values`: 2D array of correlation values (-1 to 1)
+/-- Create a correlation matrix heatmap with dynamic values (uses blue-white-red scale centered at 0).
+    - `values`: Dynamic 2D array of correlation values (-1 to 1)
     - `labels`: Labels for both rows and columns
     - `theme`: Theme for styling
     - `dims`: Chart dimensions
 -/
-def correlationMatrix (values : Array (Array Float)) (labels : Array String := #[])
+def correlationMatrix (values : Dyn (Array (Array Float))) (labels : Array String := #[])
     (theme : Theme) (dims : Heatmap.Dimensions := Heatmap.defaultDimensions)
     : WidgetM HeatmapResult := do
-  let data : Heatmap.Data := {
-    values
-    rowLabels := labels
-    columnLabels := labels
-    minValue := some (-1.0)
-    maxValue := some 1.0
-  }
-  heatmap data .blueWhiteRed theme dims
+  let dataDyn ← Dynamic.mapM (fun currentValues =>
+    ({ values := currentValues, rowLabels := labels, columnLabels := labels,
+       minValue := some (-1.0), maxValue := some 1.0 } : Heatmap.Data)
+  ) values
+  heatmap dataDyn .blueWhiteRed theme dims
 
 end Afferent.Canopy

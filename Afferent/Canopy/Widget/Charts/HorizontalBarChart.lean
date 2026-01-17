@@ -291,48 +291,43 @@ open Afferent.Canopy.Reactive
 /-- HorizontalBarChart result - provides access to chart state. -/
 structure HorizontalBarChartResult where
   /-- The data being displayed. -/
-  data : Reactive.Dynamic Spider (Array Float)
+  data : Dyn (Array Float)
 
-/-- Create a horizontal bar chart component using WidgetM.
-    Displays a static horizontal bar chart with the given data.
-    - `data`: Array of values to display
+/-- Create a horizontal bar chart component using WidgetM with dynamic data.
+    The chart automatically rebuilds when the data Dynamic changes.
+    - `data`: Dynamic array of values to display
     - `labels`: Optional labels for each bar
     - `theme`: Theme for styling
     - `variant`: Color variant for bars
     - `dims`: Chart dimensions
 -/
-def horizontalBarChart (data : Array Float) (labels : Array String := #[])
+def horizontalBarChart (data : Dyn (Array Float)) (labels : Array String := #[])
     (theme : Theme) (variant : HorizontalBarChartVariant := .primary)
     (dims : HorizontalBarChart.Dimensions := HorizontalBarChart.defaultDimensions)
     : WidgetM HorizontalBarChartResult := do
-  let name ← registerComponentW "horizontal-bar-chart" (isInteractive := false)
+  let _ ← dynWidget data fun currentData => do
+    let name ← registerComponentW "horizontal-bar-chart" (isInteractive := false)
+    emit do pure (horizontalBarChartVisual name currentData labels variant theme dims)
 
-  let dataDyn ← Dynamic.pureM data
-
-  emit do
-    pure (horizontalBarChartVisual name data labels variant theme dims)
-
-  pure { data := dataDyn }
+  pure { data }
 
 /-- MultiColorHorizontalBarChart result. -/
 structure MultiColorHorizontalBarChartResult where
-  data : Reactive.Dynamic Spider (Array HorizontalBarChart.DataPoint)
+  data : Dyn (Array HorizontalBarChart.DataPoint)
 
 /-- Create a multi-color horizontal bar chart where each bar can have its own color.
-    - `data`: Array of data points with values, labels, and optional colors
+    The chart automatically rebuilds when the data Dynamic changes.
+    - `data`: Dynamic array of data points with values, labels, and optional colors
     - `theme`: Theme for styling
     - `dims`: Chart dimensions
 -/
-def multiColorHorizontalBarChart (data : Array HorizontalBarChart.DataPoint)
+def multiColorHorizontalBarChart (data : Dyn (Array HorizontalBarChart.DataPoint))
     (theme : Theme) (dims : HorizontalBarChart.Dimensions := HorizontalBarChart.defaultDimensions)
     : WidgetM MultiColorHorizontalBarChartResult := do
-  let name ← registerComponentW "horizontal-bar-chart" (isInteractive := false)
+  let _ ← dynWidget data fun currentData => do
+    let name ← registerComponentW "horizontal-bar-chart" (isInteractive := false)
+    emit do pure (multiColorHorizontalBarChartVisual name currentData theme dims)
 
-  let dataDyn ← Dynamic.pureM data
-
-  emit do
-    pure (multiColorHorizontalBarChartVisual name data theme dims)
-
-  pure { data := dataDyn }
+  pure { data }
 
 end Afferent.Canopy
