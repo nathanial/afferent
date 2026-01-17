@@ -95,21 +95,16 @@ def radioGroup (options : Array RadioOption) (theme : Theme) (initialSelection :
     optionNames := optionNames.push name
 
   let allClicks ← useAllClicks
-  let allHovers ← useAllHovers
 
   let findClickedOption (data : ClickData) : Option String :=
     (options.zip optionNames).findSome? fun (opt, name) =>
       if hitWidget data name then some opt.value else none
 
-  let findHoveredOption (data : HoverData) : Option String :=
-    optionNames.findSome? fun name =>
-      if hitWidgetHover data name then some name else none
-
   let selectionChanges ← Event.mapMaybeM findClickedOption allClicks
   let selected ← Reactive.holdDyn initialSelection selectionChanges
   let onSelect := selectionChanges
 
-  let hoverChanges ← Event.mapM findHoveredOption allHovers
+  let hoverChanges ← StateT.lift (hoverEventForTargets (optionNames.map fun name => (name, name)))
   let hoveredOption ← Reactive.holdDyn none hoverChanges
 
   let optionsWithNames := options.zip optionNames

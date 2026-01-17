@@ -214,7 +214,6 @@ def table (columns : Array TableColumn) (rows : Array (Array String))
 
   -- Hooks
   let allClicks ← useAllClicks
-  let allHovers ← useAllHovers
 
   -- Find which row was clicked
   let findClickedRow (data : ClickData) : Option Nat :=
@@ -222,10 +221,6 @@ def table (columns : Array TableColumn) (rows : Array (Array String))
       if hitWidget data (rowNameFn i) then some i else none
 
   -- Find which row is hovered
-  let findHoveredRow (data : HoverData) : Option Nat :=
-    (List.range rows.size).findSome? fun i =>
-      if hitWidgetHover data (rowNameFn i) then some i else none
-
   -- Row click events
   let rowClicks ← Event.mapMaybeM findClickedRow allClicks
 
@@ -235,7 +230,7 @@ def table (columns : Array TableColumn) (rows : Array (Array String))
     #[] rowClicks
 
   -- Track hovered row
-  let hoveredRowEvents ← Event.mapM findHoveredRow allHovers
+  let hoveredRowEvents ← StateT.lift (hoverIndexEvent rowNames)
   let hoveredRow ← Reactive.holdDyn none hoveredRowEvents
 
   -- Use dynWidget for efficient change-driven rebuilds

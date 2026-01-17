@@ -174,6 +174,16 @@ def menuBar (menus : Array MenuBarMenu) (theme : Theme)
   let allHovers ← useAllHovers
   let keyEvents ← useKeyboard
 
+  let triggerHoverTargets := triggerNames.mapIdx fun i name => (name, i)
+  let hoveredTriggerChanges ← StateT.lift (hoverEventForTargets triggerHoverTargets)
+
+  let mut itemHoverTargets : Array (String × (Nat × MenuPath)) := #[]
+  for menuIdx in [:menus.size] do
+    let paths := allPathsByMenu.getD menuIdx []
+    for path in paths do
+      itemHoverTargets := itemHoverTargets.push (itemNameFn menuIdx path, (menuIdx, path))
+  let hoverPathChanges ← StateT.lift (hoverEventForTargets itemHoverTargets)
+
   -- Update trigger widths from hover data
   let _ ← performEvent_ (← Event.mapM (fun data => do
     for i in [:triggerNames.size] do
@@ -196,11 +206,6 @@ def menuBar (menus : Array MenuBarMenu) (theme : Theme)
         let menu := menus.getD i { label := "", items := #[] }
         if menu.enabled then some i else none
       else none
-
-  -- Find which trigger is hovered
-  let findHoveredTrigger (data : HoverData) : Option Nat :=
-    (List.range menus.size).findSome? fun i =>
-      if hitWidgetHover data (triggerNames.getD i "") then some i else none
 
   -- Find clicked enabled action item (returns menu index and path)
   let findClickedAction (data : ClickData) : Option MenuBarPath :=
@@ -240,13 +245,13 @@ def menuBar (menus : Array MenuBarMenu) (theme : Theme)
     ) triggerClickEvents
 
     -- Hover trigger while menu open switches immediately
-    let hoveredTriggerEvents ← Event.mapMaybeM (fun data =>
-      match findHoveredTrigger data with
+    let hoveredTriggerEvents ← Event.mapMaybeM (fun idxOpt =>
+      match idxOpt with
       | some idx =>
         let menu := menus.getD idx { label := "", items := #[] }
         if menu.enabled then some idx else none
       | none => none
-    ) allHovers
+    ) hoveredTriggerChanges
     let switchOnHover ← Event.gateM (openMenuBehavior.map (·.isSome)) hoveredTriggerEvents
     let switchMenu ← Event.mapM (fun idx _ => some idx) switchOnHover
 
@@ -268,18 +273,10 @@ def menuBar (menus : Array MenuBarMenu) (theme : Theme)
     Reactive.foldDyn (fun f s => f s) none allTransitions
 
   -- Track hovered trigger (for visual feedback)
-  let hoveredTriggerEvents ← Event.mapM findHoveredTrigger allHovers
-  let hoveredTrigger ← Reactive.holdDyn none hoveredTriggerEvents
+  let hoveredTrigger ← Reactive.holdDyn none hoveredTriggerChanges
 
   -- Track hover path within all menus (we'll filter by open menu at render time)
   -- For each menu, find if any of its items are hovered
-  let findAnyHoveredPath (data : HoverData) : Option (Nat × MenuPath) :=
-    (List.range menus.size).findSome? fun menuIdx =>
-      let paths := allPathsByMenu.getD menuIdx []
-      paths.findSome? fun path =>
-        if hitWidgetHover data (itemNameFn menuIdx path) then some (menuIdx, path) else none
-
-  let hoverPathChanges ← Event.mapM findAnyHoveredPath allHovers
   let closeEvents ← Event.filterM (fun open_ => open_.isNone) openMenu.updated
   let resetHoverPath ← Event.mapM (fun _ => (none : Option (Nat × MenuPath))) closeEvents
   let mergedHoverPath ← Event.mergeM hoverPathChanges resetHoverPath

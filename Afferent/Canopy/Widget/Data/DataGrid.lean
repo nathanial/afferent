@@ -184,7 +184,7 @@ structure DataGridResult where
 
 inductive DataGridInputEvent where
   | click (data : ClickData)
-  | hover (data : HoverData)
+  | hover (cell : Option (Nat × Nat))
   | key (data : KeyData)
 
 /-- Create a reactive data grid component using WidgetM.
@@ -221,12 +221,16 @@ def dataGrid (columns : Array DataGridColumn) (rows : Array (Array String))
     cellNames.getD (r * colCount + c) ""
 
   let allClicks ← useAllClicks
-  let allHovers ← useAllHovers
   let keyEvents ← useKeyboard
 
   let liftSpider {α : Type} : SpiderM α → WidgetM α := fun m => StateT.lift (liftM m)
   let clickEvents ← liftSpider (Event.mapM DataGridInputEvent.click allClicks)
-  let hoverEvents ← liftSpider (Event.mapM DataGridInputEvent.hover allHovers)
+  let mut hoverTargets : Array (String × (Nat × Nat)) := #[]
+  for r in [:rowCount] do
+    for c in [:colCount] do
+      hoverTargets := hoverTargets.push (cellNameFn r c, (r, c))
+  let hoverChanges ← StateT.lift (hoverEventForTargets hoverTargets)
+  let hoverEvents ← liftSpider (Event.mapM DataGridInputEvent.hover hoverChanges)
   let keyEvents ← liftSpider (Event.mapM DataGridInputEvent.key keyEvents)
   let allInputEvents ← liftSpider (Event.leftmostM [clickEvents, hoverEvents, keyEvents])
 
@@ -249,11 +253,6 @@ def dataGrid (columns : Array DataGridColumn) (rows : Array (Array String))
       (List.range colCount).findSome? fun c =>
         if hitWidget data (cellNameFn r c) then some (r, c) else none
 
-  let findHoveredCell (data : HoverData) : Option (Nat × Nat) :=
-    (List.range rowCount).findSome? fun r =>
-      (List.range colCount).findSome? fun c =>
-        if hitWidgetHover data (cellNameFn r c) then some (r, c) else none
-
   let combinedState ← Reactive.foldDynM
     (fun event state => do
       match event with
@@ -272,8 +271,7 @@ def dataGrid (columns : Array DataGridColumn) (rows : Array (Array String))
           | none =>
             pure { state with editing := none, hovered := none }
 
-      | .hover data =>
-        let hoveredCell := findHoveredCell data
+      | .hover hoveredCell =>
         pure { state with hovered := hoveredCell }
 
       | .key data =>

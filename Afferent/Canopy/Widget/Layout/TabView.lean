@@ -216,21 +216,16 @@ def tabView (tabs : Array TabDef) (theme : Theme) (initialTab : Nat := 0)
     tabContentRenders := tabContentRenders.push renders
 
   let allClicks ← useAllClicks
-  let allHovers ← useAllHovers
 
   let findClickedTab (data : ClickData) : Option Nat :=
     (List.range tabs.size).findSome? fun i =>
       if hitWidget data (headerNameFn i) then some i else none
 
-  let findHoveredTab (data : HoverData) : Option Nat :=
-    (List.range tabs.size).findSome? fun i =>
-      if hitWidgetHover data (headerNameFn i) then some i else none
-
   let tabChanges ← Event.mapMaybeM findClickedTab allClicks
   let activeTab ← Reactive.holdDyn initialTab tabChanges
   let onTabChange := tabChanges
 
-  let hoverChanges ← Event.mapM findHoveredTab allHovers
+  let hoverChanges ← StateT.lift (hoverIndexEvent headerNames)
   let hoveredTab ← Reactive.holdDyn none hoverChanges
 
   let tabsRef := tabs

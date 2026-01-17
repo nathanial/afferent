@@ -405,6 +405,31 @@ def useHover (name : String) : ReactiveM (Dynamic Spider Bool) := do
           recordHoverHold metrics name (t1 - t0)
       pure dyn
 
+/-- Build a hover event for named targets using hoverFan.
+    Returns `some payload` on enter and `none` on leave, preferring enters when both occur. -/
+def hoverEventForTargets (targets : Array (String × α))
+    : ReactiveM (Reactive.Event Spider (Option α)) := do
+  let events ← getEvents
+  let mut enterEvents : Array (Reactive.Event Spider (Option α)) := #[]
+  let mut leaveEvents : Array (Reactive.Event Spider (Option α)) := #[]
+  for (name, payload) in targets do
+    let hoverChanges ← Event.selectM events.hoverFan name
+    let enter ← Event.mapMaybeM (fun hovered => if hovered then some (some payload) else none) hoverChanges
+    let leave ← Event.mapMaybeM (fun hovered => if hovered then some (none : Option α) else none) hoverChanges
+    enterEvents := enterEvents.push enter
+    leaveEvents := leaveEvents.push leave
+  let ctx ← SpiderM.getTimelineCtx
+  let neverHover ← SpiderM.liftIO (Reactive.Event.never ctx)
+  let combined := enterEvents ++ leaveEvents
+  match combined.toList with
+  | [] => pure neverHover
+  | events => Event.leftmostM events
+
+/-- Convenience: hover event that returns the hovered index (or none). -/
+def hoverIndexEvent (names : Array String) : ReactiveM (Reactive.Event Spider (Option Nat)) := do
+  let targets := names.mapIdx fun i name => (name, i)
+  hoverEventForTargets targets
+
 /-- Create a click event for a widget that fires Unit (like React's onClick handler).
     Returns an Event that fires when the widget is clicked. -/
 def useClick (name : String) : ReactiveM (Event Spider Unit) := do

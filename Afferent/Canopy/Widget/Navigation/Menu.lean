@@ -405,11 +405,6 @@ def menu (items : Array MenuItem) (theme : Theme)
     allPaths.findSome? fun path =>
       if hitWidget data (itemNameFn path) && Menu.isEnabledActionAtPath items path then some path else none
 
-  -- Find which item path is being hovered
-  let findHoveredPath (data : HoverData) : Option MenuPath :=
-    allPaths.findSome? fun path =>
-      if hitWidgetHover data (itemNameFn path) then some path else none
-
   -- Check if click is on any menu container or item
   let isClickInMenu (data : ClickData) : Bool :=
     -- Check all containers
@@ -444,7 +439,8 @@ def menu (items : Array MenuItem) (theme : Theme)
     Reactive.foldDyn (fun f s => f s) false allTransitions
 
   -- Track hovered path (only when menu is open)
-  let hoverPathChanges ← Event.mapM findHoveredPath allHovers
+  let hoverTargets := allPaths.toArray.map (fun path => (itemNameFn path, path))
+  let hoverPathChanges ← StateT.lift (hoverEventForTargets hoverTargets)
   let gatedHoverPath ← Event.gateM isOpen.current hoverPathChanges
   let closeEvents ← Event.filterM (fun open_ => !open_) isOpen.updated
   let resetHoverPath ← Event.mapM (fun _ => (none : Option MenuPath)) closeEvents

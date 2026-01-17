@@ -116,7 +116,6 @@ def listBox (items : Array String) (theme : Theme)
 
   -- Hooks
   let allClicks ← useAllClicks
-  let allHovers ← useAllHovers
 
   -- Calculate visible height (used when not filling available space)
   let visibleHeight := (min items.size config.maxVisibleItems).toFloat * config.itemHeight
@@ -138,10 +137,6 @@ def listBox (items : Array String) (theme : Theme)
       if hitWidget data (itemNameFn i) then some i else none
 
   -- Find which item is hovered
-  let findHoveredItem (data : HoverData) : Option Nat :=
-    (List.range items.size).findSome? fun i =>
-      if hitWidgetHover data (itemNameFn i) then some i else none
-
   -- Item click events
   let itemClicks ← Event.mapMaybeM findClickedItem allClicks
 
@@ -155,7 +150,7 @@ def listBox (items : Array String) (theme : Theme)
     itemClicks
 
   -- Track hovered item
-  let hoverChanges ← Event.mapM findHoveredItem allHovers
+  let hoverChanges ← StateT.lift (hoverIndexEvent itemNames)
   let hoveredItem ← Reactive.holdDyn (none : Option Nat) hoverChanges
 
   -- Use scroll container for scrolling - items are emitted INSIDE
@@ -186,7 +181,6 @@ def listBoxWithSelection (items : Array String) (initialSelection : Array Nat)
 
   -- Hooks
   let allClicks ← useAllClicks
-  let allHovers ← useAllHovers
 
   -- Calculate visible height (used when not filling available space)
   let visibleHeight := (min items.size config.maxVisibleItems).toFloat * config.itemHeight
@@ -208,10 +202,6 @@ def listBoxWithSelection (items : Array String) (initialSelection : Array Nat)
       if hitWidget data (itemNameFn i) then some i else none
 
   -- Find which item is hovered
-  let findHoveredItem (data : HoverData) : Option Nat :=
-    (List.range items.size).findSome? fun i =>
-      if hitWidgetHover data (itemNameFn i) then some i else none
-
   -- Item click events
   let itemClicks ← Event.mapMaybeM findClickedItem allClicks
 
@@ -225,7 +215,7 @@ def listBoxWithSelection (items : Array String) (initialSelection : Array Nat)
     itemClicks
 
   -- Track hovered item
-  let hoverChanges ← Event.mapM findHoveredItem allHovers
+  let hoverChanges ← StateT.lift (hoverIndexEvent itemNames)
   let hoveredItem ← Reactive.holdDyn (none : Option Nat) hoverChanges
 
   -- Use scroll container for scrolling - items are emitted INSIDE

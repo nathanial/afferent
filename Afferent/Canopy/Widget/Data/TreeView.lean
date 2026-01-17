@@ -297,7 +297,6 @@ def treeView (nodes : Array TreeNode) (theme : Theme)
 
   -- Hooks
   let allClicks ← useAllClicks
-  let allHovers ← useAllHovers
 
   -- Create triggers for events
   let (selectTrigger, fireSelect) ← Reactive.newTriggerEvent (t := Spider) (a := TreePath)
@@ -312,11 +311,6 @@ def treeView (nodes : Array TreeNode) (theme : Theme)
   let findClickedItem (data : ClickData) : Option TreePath :=
     allPaths.findSome? fun path =>
       if hitWidget data (itemNameFn path) && TreeView.isEnabledAtPath nodes path then some path else none
-
-  -- Find which item is hovered
-  let findHoveredItem (data : HoverData) : Option TreePath :=
-    allPaths.findSome? fun path =>
-      if hitWidgetHover data (itemNameFn path) then some path else none
 
   -- Toggle clicks (expand/collapse branches)
   let toggleClicks ← Event.mapMaybeM findClickedToggle allClicks
@@ -347,7 +341,8 @@ def treeView (nodes : Array TreeNode) (theme : Theme)
     itemClicks
 
   -- Track hovered node
-  let hoverChanges ← Event.mapM findHoveredItem allHovers
+  let hoverTargets := allPaths.toArray.map (fun path => (itemNameFn path, path))
+  let hoverChanges ← StateT.lift (hoverEventForTargets hoverTargets)
   let hoveredNode ← Reactive.holdDyn (none : Option TreePath) hoverChanges
 
   -- Calculate scroll container size
@@ -394,7 +389,6 @@ def treeViewWithExpanded (nodes : Array TreeNode) (initialExpanded : Array TreeP
 
   -- Hooks
   let allClicks ← useAllClicks
-  let allHovers ← useAllHovers
 
   -- Create triggers for events
   let (selectTrigger, fireSelect) ← Reactive.newTriggerEvent (t := Spider) (a := TreePath)
@@ -409,11 +403,6 @@ def treeViewWithExpanded (nodes : Array TreeNode) (initialExpanded : Array TreeP
   let findClickedItem (data : ClickData) : Option TreePath :=
     allPaths.findSome? fun path =>
       if hitWidget data (itemNameFn path) && TreeView.isEnabledAtPath nodes path then some path else none
-
-  -- Find which item is hovered
-  let findHoveredItem (data : HoverData) : Option TreePath :=
-    allPaths.findSome? fun path =>
-      if hitWidgetHover data (itemNameFn path) then some path else none
 
   -- Toggle clicks (expand/collapse branches)
   let toggleClicks ← Event.mapMaybeM findClickedToggle allClicks
@@ -445,7 +434,8 @@ def treeViewWithExpanded (nodes : Array TreeNode) (initialExpanded : Array TreeP
     itemClicks
 
   -- Track hovered node
-  let hoverChanges ← Event.mapM findHoveredItem allHovers
+  let hoverTargets := allPaths.toArray.map (fun path => (itemNameFn path, path))
+  let hoverChanges ← StateT.lift (hoverEventForTargets hoverTargets)
   let hoveredNode ← Reactive.holdDyn (none : Option TreePath) hoverChanges
 
   -- Calculate scroll container size

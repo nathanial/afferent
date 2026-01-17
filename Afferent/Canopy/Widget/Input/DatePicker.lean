@@ -298,7 +298,7 @@ structure DatePickerResult where
 
 inductive DatePickerInputEvent where
   | click (data : ClickData)
-  | hover (data : HoverData)
+  | hover (cell : Option Nat)
 
 /-- Create a reactive date picker component using WidgetM.
     - `theme`: Theme for styling
@@ -319,7 +319,6 @@ def datePicker (theme : Theme) (initialDate : DatePickerDate)
   let cellNameFn (i : Nat) : String := cellNames.getD i ""
 
   let allClicks ← useAllClicks
-  let allHovers ← useAllHovers
   let prevHover ← useHover prevName
   let nextHover ← useHover nextName
 
@@ -327,16 +326,13 @@ def datePicker (theme : Theme) (initialDate : DatePickerDate)
 
   let liftSpider {α : Type} : SpiderM α → WidgetM α := fun m => StateT.lift (liftM m)
   let clickEvents ← liftSpider (Event.mapM DatePickerInputEvent.click allClicks)
-  let hoverEvents ← liftSpider (Event.mapM DatePickerInputEvent.hover allHovers)
+  let hoverChanges ← StateT.lift (hoverIndexEvent cellNames)
+  let hoverEvents ← liftSpider (Event.mapM DatePickerInputEvent.hover hoverChanges)
   let allInputEvents ← liftSpider (Event.leftmostM [clickEvents, hoverEvents])
 
   let findClickedCell (data : ClickData) : Option Nat :=
     (List.range cellCount).findSome? fun i =>
       if hitWidget data (cellNameFn i) then some i else none
-
-  let findHoveredCell (data : HoverData) : Option Nat :=
-    (List.range cellCount).findSome? fun i =>
-      if hitWidgetHover data (cellNameFn i) then some i else none
 
   let clickedDate (data : ClickData) (year month : Nat) : Option DatePickerDate :=
     if data.click.button != 0 then none
@@ -371,8 +367,7 @@ def datePicker (theme : Theme) (initialDate : DatePickerDate)
               pure { state with selected := some date }
           | none => pure state
 
-      | .hover data =>
-        let hoveredCell := findHoveredCell data
+      | .hover hoveredCell =>
         match hoveredCell with
         | some idx =>
           let grid := DatePicker.monthGrid state.viewYear state.viewMonth
