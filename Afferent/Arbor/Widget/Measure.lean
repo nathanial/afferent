@@ -62,6 +62,7 @@ def applyGridItem (node : Trellis.LayoutNode) (style : Option BoxStyle) : Trelli
 structure MeasureResult where
   node : Trellis.LayoutNode
   widget : Widget
+  hasContentScale : Bool := false
 deriving Inhabited
 
 /-- Get the intrinsic content size stored on a layout node (0 if missing). -/
@@ -129,18 +130,18 @@ partial def measureWidget {M : Type → Type} [Monad M] [TextMeasurer M] (w : Wi
     let contentSize := Trellis.ContentSize.mk' textLayout.maxWidth textLayout.totalHeight
     let node := Trellis.LayoutNode.leaf id contentSize
     let updatedWidget := Widget.text id name content font color align maxWidthOpt (some textLayout)
-    pure ⟨node, updatedWidget⟩
+    pure ⟨node, updatedWidget, false⟩
 
   | .rect id _ style =>
     let box := styleToBoxConstraints style
     let contentW := style.minWidth.getD 0
     let contentH := style.minHeight.getD 0
     let node := Trellis.LayoutNode.leaf id (Trellis.ContentSize.mk' contentW contentH) box
-    pure ⟨node, w⟩
+    pure ⟨node, w, false⟩
 
   | .spacer id _ width height =>
     let node := Trellis.LayoutNode.leaf id (Trellis.ContentSize.mk' width height)
-    pure ⟨node, w⟩
+    pure ⟨node, w, false⟩
 
   | .custom id _ style spec =>
     let box := styleToBoxConstraints style
@@ -148,25 +149,27 @@ partial def measureWidget {M : Type → Type} [Monad M] [TextMeasurer M] (w : Wi
     let contentW := max measuredW box.minWidth
     let contentH := max measuredH box.minHeight
     let node := Trellis.LayoutNode.leaf id (Trellis.ContentSize.mk' contentW contentH) box
-    pure ⟨node, w⟩
+    pure ⟨node, w, false⟩
 
   | .flex id name props style children =>
     let box := styleToBoxConstraints style
-    let hasContentScale := style.contentScale.isSome
+    let containerHasContentScale := style.contentScale.isSome
+    let mut hasContentScale := containerHasContentScale
     -- For containers with contentScale, measure children with relaxed constraints
     -- so they get their intrinsic size instead of being constrained to container
     let (childAvailW, childAvailH) :=
-      if hasContentScale then (10000.0, 10000.0) else (availWidth, availHeight)
+      if containerHasContentScale then (10000.0, 10000.0) else (availWidth, availHeight)
     -- Recursively measure children, applying flexItem properties
     let mut childNodes : Array Trellis.LayoutNode := #[]
     let mut updatedChildren : Array Widget := #[]
     for child in children do
       let result ← measureWidget child childAvailW childAvailH
+      hasContentScale := hasContentScale || result.hasContentScale
       -- Apply flexItem from child's BoxStyle if present
       let nodeWithItem := applyFlexItem result.node (widgetBoxStyle child)
       -- For contentScale containers, fix children to their intrinsic size
       -- so Trellis doesn't constrain them to container's available space
-      let finalNode := if hasContentScale then fixToContentSize nodeWithItem else nodeWithItem
+      let finalNode := if containerHasContentScale then fixToContentSize nodeWithItem else nodeWithItem
       childNodes := childNodes.push finalNode
       updatedChildren := updatedChildren.push result.widget
     -- Store an intrinsic content size on the container so parent flex/grid layout
@@ -195,24 +198,26 @@ partial def measureWidget {M : Type → Type} [Monad M] [TextMeasurer M] (w : Wi
     let node :=
       Trellis.LayoutNode.mk id box (.flex props) .none (some (Trellis.ContentSize.mk' contentW contentH)) childNodes
     let updatedWidget := Widget.flex id name props style updatedChildren
-    pure ⟨node, updatedWidget⟩
+    pure ⟨node, updatedWidget, hasContentScale⟩
 
   | .grid id name props style children =>
     let box := styleToBoxConstraints style
-    let hasContentScale := style.contentScale.isSome
+    let containerHasContentScale := style.contentScale.isSome
+    let mut hasContentScale := containerHasContentScale
     -- For containers with contentScale, measure children with relaxed constraints
     -- so they get their intrinsic size instead of being constrained to container
     let (childAvailW, childAvailH) :=
-      if hasContentScale then (10000.0, 10000.0) else (availWidth, availHeight)
+      if containerHasContentScale then (10000.0, 10000.0) else (availWidth, availHeight)
     -- Recursively measure children
     let mut childNodes : Array Trellis.LayoutNode := #[]
     let mut updatedChildren : Array Widget := #[]
     for child in children do
       let result ← measureWidget child childAvailW childAvailH
+      hasContentScale := hasContentScale || result.hasContentScale
       -- Apply gridItem from child's BoxStyle if present
       let nodeWithItem := applyGridItem result.node (widgetBoxStyle child)
       -- For contentScale containers, fix children to their intrinsic size
-      let finalNode := if hasContentScale then fixToContentSize nodeWithItem else nodeWithItem
+      let finalNode := if containerHasContentScale then fixToContentSize nodeWithItem else nodeWithItem
       childNodes := childNodes.push finalNode
       updatedChildren := updatedChildren.push result.widget
     -- Store an intrinsic content size on the container so parent flex/grid layout
@@ -244,7 +249,7 @@ partial def measureWidget {M : Type → Type} [Monad M] [TextMeasurer M] (w : Wi
     let node :=
       Trellis.LayoutNode.mk id box (.grid props) .none (some (Trellis.ContentSize.mk' contentW contentH)) childNodes
     let updatedWidget := Widget.grid id name props style updatedChildren
-    pure ⟨node, updatedWidget⟩
+    pure ⟨node, updatedWidget, hasContentScale⟩
 
   | .scroll id name style scrollState contentW contentH scrollbarConfig child =>
     let box := styleToBoxConstraints style
@@ -276,7 +281,7 @@ partial def measureWidget {M : Type → Type} [Monad M] [TextMeasurer M] (w : Wi
       Trellis.LayoutNode.mk id box (.flex Trellis.FlexContainer.default) .none
         (some (Trellis.ContentSize.mk' viewportBorderW viewportBorderH)) #[childNode]
     let updatedWidget := Widget.scroll id name style scrollState contentW contentH scrollbarConfig childResult.widget
-    pure ⟨node, updatedWidget⟩
+    pure ⟨node, updatedWidget, childResult.hasContentScale⟩
 
 /-- Convenience function that just returns the LayoutNode. -/
 def toLayoutNode {M : Type → Type} [Monad M] [TextMeasurer M] (w : Widget) (availWidth availHeight : Float)
