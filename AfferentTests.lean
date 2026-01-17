@@ -8,7 +8,6 @@ import Afferent.Tests.LayoutTests
 import Afferent.Tests.CanvasStateTests
 import Afferent.Tests.FontTests
 import Afferent.Tests.RenderSmokeTests
-import Afferent.Tests.ContentScaleTests
 import Afferent.Tests.CSSTests
 import Afferent.Tests.ScrollContainerTests
 import Afferent.Tests.TooltipTests

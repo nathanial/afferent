@@ -112,75 +112,6 @@ def collectSingleLineText (contentRect : Trellis.LayoutRect) (text : String)
   let verticalOffset := (contentRect.height - lineHeight) / 2
   CollectM.emit (.fillText text x (contentRect.y + verticalOffset + ascender) font color)
 
-/-- Compute the bounding box of children from their layouts. -/
-def computeChildrenBounds (children : Array Widget) (layouts : Trellis.LayoutResult)
-    : Trellis.LayoutRect :=
-  let (minX, minY, maxX, maxY) := children.foldl (init := (1000000.0, 1000000.0, -1000000.0, -1000000.0))
-    fun (minX, minY, maxX, maxY) child =>
-      match layouts.get child.id with
-      | some computed =>
-        let r := computed.borderRect
-        (min minX r.x, min minY r.y, max maxX (r.x + r.width), max maxY (r.y + r.height))
-      | none => (minX, minY, maxX, maxY)
-  if minX == 1000000.0 then
-    { x := 0, y := 0, width := 0, height := 0 }
-  else
-    { x := minX, y := minY, width := maxX - minX, height := maxY - minY }
-
-mutual
-/-- Collect render commands for scaled children.
-    Applies clip, translate, and scale transforms before rendering children.
-
-    The transform maps from children's intrinsic bounding box to the
-    container's available space with proper scaling and centering.
-
-    Children are laid out with relaxed constraints during measure, so they
-    have their intrinsic size. Trellis positions them within the container,
-    potentially extending beyond contentRect if larger than available space.
-
-    Transform sequence:
-    1. Compute children's actual bounding box from layouts
-    2. Translate to final position (contentRect origin + anchor offset)
-    3. Scale by computed factors
-    4. Translate children's bounding box to origin
--/
-partial def collectScaledChildren (contentRect : Trellis.LayoutRect)
-    (m : Trellis.ScaleMetadata)
-    (children : Array Widget)
-    (layouts : Trellis.LayoutResult) : CollectM Unit := do
-  -- Clip to content area
-  let clipRect : Rect := ⟨⟨contentRect.x, contentRect.y⟩, ⟨contentRect.width, contentRect.height⟩⟩
-  CollectM.emit (.pushClip clipRect)
-  CollectM.emit .save
-
-  -- Compute the actual bounding box of children from their layouts.
-  -- This may differ from contentRect if children are larger (e.g., centered overflow)
-  let childBounds := computeChildrenBounds children layouts
-
-  -- Apply transforms: translate to final position, scale, translate children to origin
-  -- T1 * S * T2 where:
-  -- T2 = translate(-childBounds.x, -childBounds.y): move children so their bounding box is at origin
-  -- S = scale(scaleX, scaleY): scale the content
-  -- T1 = translate(contentRect.x + offsetX, contentRect.y + offsetY): position at anchor
-  CollectM.emit (.pushTranslate (contentRect.x + m.offsetX) (contentRect.y + m.offsetY))
-  CollectM.emit (.pushScale m.scaleX m.scaleY)
-  CollectM.emit (.pushTranslate (-childBounds.x) (-childBounds.y))
-
-  -- Render children (they have absolute coordinates that we're transforming)
-  -- Defer absolute children to render after all normal flow content
-  let (flowChildren, absChildren) := partitionChildren children
-  for child in flowChildren do
-    collectWidget child layouts
-  for child in absChildren do
-    CollectM.deferAbsolute child layouts
-
-  -- Pop transforms in reverse order
-  CollectM.emit .popTransform  -- translate to origin
-  CollectM.emit .popTransform  -- scale
-  CollectM.emit .popTransform  -- translate to final position
-  CollectM.emit .restore
-  CollectM.emit .popClip
-
 /-- Collect render commands for a widget tree using computed layout positions.
     The widget should have been measured (text layouts computed) before calling this.
     Returns an array of RenderCommands that can be executed by any backend. -/
@@ -212,31 +143,21 @@ partial def collectWidget (w : Widget) (layouts : Trellis.LayoutResult) : Collec
 
   | .flex _ _ _ style children =>
     collectBoxStyle borderRect style
-    match computed.scaleMetadata with
-    | some m =>
-      -- Apply content scale transforms
-      collectScaledChildren contentRect m children layouts
-    | none =>
-      -- Render flow children inline, defer absolute children
-      let (flowChildren, absChildren) := partitionChildren children
-      for child in flowChildren do
-        collectWidget child layouts
-      for child in absChildren do
-        CollectM.deferAbsolute child layouts
+    -- Render flow children inline, defer absolute children
+    let (flowChildren, absChildren) := partitionChildren children
+    for child in flowChildren do
+      collectWidget child layouts
+    for child in absChildren do
+      CollectM.deferAbsolute child layouts
 
   | .grid _ _ _ style children =>
     collectBoxStyle borderRect style
-    match computed.scaleMetadata with
-    | some m =>
-      -- Apply content scale transforms
-      collectScaledChildren contentRect m children layouts
-    | none =>
-      -- Render flow children inline, defer absolute children
-      let (flowChildren, absChildren) := partitionChildren children
-      for child in flowChildren do
-        collectWidget child layouts
-      for child in absChildren do
-        CollectM.deferAbsolute child layouts
+    -- Render flow children inline, defer absolute children
+    let (flowChildren, absChildren) := partitionChildren children
+    for child in flowChildren do
+      collectWidget child layouts
+    for child in absChildren do
+      CollectM.deferAbsolute child layouts
 
   | .scroll _ _ style scrollState contentWidth contentHeight scrollbarConfig child =>
     -- Render background
@@ -308,8 +229,6 @@ partial def collectWidget (w : Widget) (layouts : Trellis.LayoutResult) : Collec
       -- Thumb rect
       let thumbRect : Rect := ⟨⟨contentRect.x + thumbX, trackY⟩, ⟨thumbWidth, thickness⟩⟩
       CollectM.emit (.fillRect thumbRect scrollbarConfig.thumbColor radius)
-
-end  -- mutual
 
 /-- Render all deferred absolute-positioned widgets.
     Called after the main tree traversal to ensure they render on top. -/
@@ -539,35 +458,6 @@ def collectSingleLineTextCached (contentRect : Trellis.LayoutRect) (text : Strin
   let verticalOffset := (contentRect.height - lineHeight) / 2
   CachedCollectM.emit (.fillText text x (contentRect.y + verticalOffset + ascender) font color)
 
-mutual
-/-- Collect scaled children (cached version with path tracking). -/
-partial def collectScaledChildrenCached (cache : IO.Ref RenderCache)
-    (contentRect : Trellis.LayoutRect) (m : Trellis.ScaleMetadata)
-    (children : Array Widget) (layouts : Trellis.LayoutResult)
-    (pathKey : CacheKey) : CachedCollectM Unit := do
-  let clipRect : Rect := ⟨⟨contentRect.x, contentRect.y⟩, ⟨contentRect.width, contentRect.height⟩⟩
-  CachedCollectM.emit (.pushClip clipRect)
-  CachedCollectM.emit .save
-  let childBounds := computeChildrenBounds children layouts
-  CachedCollectM.emit (.pushTranslate (contentRect.x + m.offsetX) (contentRect.y + m.offsetY))
-  CachedCollectM.emit (.pushScale m.scaleX m.scaleY)
-  CachedCollectM.emit (.pushTranslate (-childBounds.x) (-childBounds.y))
-  let (flowChildren, absChildren) := partitionChildren children
-  -- Track child indices for path key generation
-  let mut flowIdx := 0
-  for child in flowChildren do
-    collectWidgetCached cache child layouts (childPathKey pathKey flowIdx)
-    flowIdx := flowIdx + 1
-  let mut absIdx := flowIdx
-  for child in absChildren do
-    CachedCollectM.deferAbsolute child layouts (childPathKey pathKey absIdx)
-    absIdx := absIdx + 1
-  CachedCollectM.emit .popTransform
-  CachedCollectM.emit .popTransform
-  CachedCollectM.emit .popTransform
-  CachedCollectM.emit .restore
-  CachedCollectM.emit .popClip
-
 /-- Collect render commands for a widget tree with caching support.
     All CustomSpec widgets are automatically cached using path keys derived
     from their position in the tree. -/
@@ -684,35 +574,27 @@ partial def collectWidgetCached (cache : IO.Ref RenderCache)
 
   | .flex _ _ _ style children =>
     collectBoxStyleCached borderRect style
-    match computed.scaleMetadata with
-    | some m =>
-      collectScaledChildrenCached cache contentRect m children layouts pathKey
-    | none =>
-      let (flowChildren, absChildren) := partitionChildren children
-      let mut flowIdx := 0
-      for child in flowChildren do
-        collectWidgetCached cache child layouts (childPathKey pathKey flowIdx)
-        flowIdx := flowIdx + 1
-      let mut absIdx := flowIdx
-      for child in absChildren do
-        CachedCollectM.deferAbsolute child layouts (childPathKey pathKey absIdx)
-        absIdx := absIdx + 1
+    let (flowChildren, absChildren) := partitionChildren children
+    let mut flowIdx := 0
+    for child in flowChildren do
+      collectWidgetCached cache child layouts (childPathKey pathKey flowIdx)
+      flowIdx := flowIdx + 1
+    let mut absIdx := flowIdx
+    for child in absChildren do
+      CachedCollectM.deferAbsolute child layouts (childPathKey pathKey absIdx)
+      absIdx := absIdx + 1
 
   | .grid _ _ _ style children =>
     collectBoxStyleCached borderRect style
-    match computed.scaleMetadata with
-    | some m =>
-      collectScaledChildrenCached cache contentRect m children layouts pathKey
-    | none =>
-      let (flowChildren, absChildren) := partitionChildren children
-      let mut flowIdx := 0
-      for child in flowChildren do
-        collectWidgetCached cache child layouts (childPathKey pathKey flowIdx)
-        flowIdx := flowIdx + 1
-      let mut absIdx := flowIdx
-      for child in absChildren do
-        CachedCollectM.deferAbsolute child layouts (childPathKey pathKey absIdx)
-        absIdx := absIdx + 1
+    let (flowChildren, absChildren) := partitionChildren children
+    let mut flowIdx := 0
+    for child in flowChildren do
+      collectWidgetCached cache child layouts (childPathKey pathKey flowIdx)
+      flowIdx := flowIdx + 1
+    let mut absIdx := flowIdx
+    for child in absChildren do
+      CachedCollectM.deferAbsolute child layouts (childPathKey pathKey absIdx)
+      absIdx := absIdx + 1
 
   | .scroll _ _ style scrollState contentWidth contentHeight scrollbarConfig child =>
     collectBoxStyleCached borderRect style
@@ -759,8 +641,6 @@ partial def collectWidgetCached (cache : IO.Ref RenderCache)
       CachedCollectM.emit (.fillRect trackRect scrollbarConfig.trackColor radius)
       let thumbRect : Rect := ⟨⟨contentRect.x + thumbX, trackY⟩, ⟨thumbWidth, thickness⟩⟩
       CachedCollectM.emit (.fillRect thumbRect scrollbarConfig.thumbColor radius)
-
-end  -- mutual
 
 /-- Render all deferred absolute-positioned widgets (cached version). -/
 partial def renderDeferredAbsoluteCached (cache : IO.Ref RenderCache) : CachedCollectM Unit := do

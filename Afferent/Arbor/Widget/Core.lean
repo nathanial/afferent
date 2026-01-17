@@ -94,8 +94,6 @@ structure BoxStyle where
   left : Option Float := none
   /-- Flex item properties (grow, shrink, basis, alignSelf) when this widget is a flex child -/
   flexItem : Option Trellis.FlexItem := none
-  /-- Content scaling for containers (contain, cover, stretch). -/
-  contentScale : Option Trellis.ContentScale := none
   /-- Grid item properties when this widget is a grid child. -/
   gridItem : Option Trellis.GridItem := none
 deriving Repr, BEq, Inhabited

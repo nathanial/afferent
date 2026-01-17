@@ -36,20 +36,11 @@ def add (a b : ScrollOffset) : ScrollOffset :=
 
 end ScrollOffset
 
-/-- Transform for hit testing that includes scroll offset and scale.
+/-- Transform for hit testing that includes scroll offset.
     Used to track cumulative transforms when descending into containers. -/
 structure HitTransform where
   scrollX : Float := 0
   scrollY : Float := 0
-  /-- Scale factors (1.0 = no scale). Applied after scroll adjustment. -/
-  scaleX : Float := 1.0
-  scaleY : Float := 1.0
-  /-- Origin for scale transform (childBounds position of scaled children). -/
-  scaleOriginX : Float := 0
-  scaleOriginY : Float := 0
-  /-- Offset within scaled container (contentRect.x + offsetX - scaleOriginX). -/
-  scaleOffsetX : Float := 0
-  scaleOffsetY : Float := 0
 deriving Repr, Inhabited
 
 namespace HitTransform
@@ -60,36 +51,13 @@ def zero : HitTransform := {}
 def addScroll (t : HitTransform) (dx dy : Float) : HitTransform :=
   { t with scrollX := t.scrollX + dx, scrollY := t.scrollY + dy }
 
-/-- Apply scale transform from a scaled container.
-    childBoundsOrigin is the top-left of the children's bounding box,
-    which may differ from contentRect if children overflow. -/
-def withScale (t : HitTransform) (m : Trellis.ScaleMetadata)
-    (contentRect : Trellis.LayoutRect) (childBoundsOriginX childBoundsOriginY : Float)
-    : HitTransform :=
-  { t with
-    scaleX := m.scaleX
-    scaleY := m.scaleY
-    scaleOriginX := childBoundsOriginX
-    scaleOriginY := childBoundsOriginY
-    scaleOffsetX := contentRect.x + m.offsetX - childBoundsOriginX
-    scaleOffsetY := contentRect.y + m.offsetY - childBoundsOriginY }
-
 /-- Transform screen coordinates to child coordinates.
-    Applies scroll adjustment, then inverts the scale transform. -/
+    Applies scroll adjustment. -/
 def transformPoint (t : HitTransform) (x y : Float) : Float × Float :=
   -- First apply scroll offset
   let scrolledX := x + t.scrollX
   let scrolledY := y + t.scrollY
-  -- Then invert scale transform:
-  -- Rendering does: translate(cx + ox, cy + oy) * scale(sx, sy) * translate(-childBoundsX, -childBoundsY) * p
-  -- Inverse: ((screen - cx - ox) / sx) + childBoundsX, ((screen - cy - oy) / sy) + childBoundsY
-  if t.scaleX == 1.0 && t.scaleY == 1.0 &&
-      t.scaleOffsetX == 0.0 && t.scaleOffsetY == 0.0 then
-    (scrolledX, scrolledY)
-  else
-    let localX := (scrolledX - t.scaleOriginX - t.scaleOffsetX) / t.scaleX + t.scaleOriginX
-    let localY := (scrolledY - t.scaleOriginY - t.scaleOffsetY) / t.scaleY + t.scaleOriginY
-    (localX, localY)
+  (scrolledX, scrolledY)
 
 end HitTransform
 
@@ -107,35 +75,6 @@ def orderChildrenForHit (children : Array Widget) : Array Widget := Id.run do
     else
       flow := flow.push child
   flow ++ abs
-
-/-- Compute the bounding box origin of children from their layouts. -/
-def computeChildBoundsOrigin (children : Array Widget) (layouts : Trellis.LayoutResult)
-    : Float × Float :=
-  let (minX, minY) := children.foldl (init := (1000000.0, 1000000.0))
-    fun (minX, minY) child =>
-      match layouts.get child.id with
-      | some computed =>
-        let r := computed.borderRect
-        (min minX r.x, min minY r.y)
-      | none => (minX, minY)
-  if minX == 1000000.0 then (0.0, 0.0) else (minX, minY)
-
-/-- Check if a point is inside the hit area of a scaled container.
-    Handles both hitArea modes (scaled vs container). -/
-def isInsideScaledHitArea (layout : Trellis.ComputedLayout) (m : Trellis.ScaleMetadata)
-    (adjX adjY : Float) : Bool :=
-  match m.hitArea with
-  | .scaled =>
-    -- Check if point is inside the scaled content bounds
-    let scaledX := layout.contentRect.x + m.offsetX
-    let scaledY := layout.contentRect.y + m.offsetY
-    let scaledW := m.intrinsicWidth * m.scaleX
-    let scaledH := m.intrinsicHeight * m.scaleY
-    adjX >= scaledX && adjX <= scaledX + scaledW &&
-    adjY >= scaledY && adjY <= scaledY + scaledH
-  | .container =>
-    -- Use the full container bounds
-    layout.borderRect.contains adjX adjY
 
 /-- Information about an absolute positioned widget for priority hit testing. -/
 structure AbsoluteWidgetInfo where
@@ -156,16 +95,10 @@ where
 
     -- Compute child transform
     let childTransform := match layouts.get w.id with
-      | some layout =>
+      | some _layout =>
         match w with
         | .scroll _ _ _ scrollState _ _ _ _ =>
           transform.addScroll scrollState.offsetX scrollState.offsetY
-        | .flex _ _ _ _ children | .grid _ _ _ _ children =>
-          match layout.scaleMetadata with
-          | some m =>
-            let (boundsX, boundsY) := computeChildBoundsOrigin children layouts
-            transform.withScale m layout.contentRect boundsX boundsY
-          | none => transform
         | _ => transform
       | none => transform
 
@@ -220,15 +153,12 @@ where
     let (adjX, adjY) := transform.transformPoint x y
 
     -- Check if point is inside this absolute widget's bounds
-    let inside := match layout.scaleMetadata with
-      | some m => isInsideScaledHitArea layout m adjX adjY
-      | none =>
-        match w with
-        | .custom _ _ _ spec =>
-            match spec.hitTest with
-            | some hit => hit layout ⟨adjX, adjY⟩
-            | none => layout.borderRect.contains adjX adjY
-        | _ => layout.borderRect.contains adjX adjY
+    let inside := match w with
+      | .custom _ _ _ spec =>
+          match spec.hitTest with
+          | some hit => hit layout ⟨adjX, adjY⟩
+          | none => layout.borderRect.contains adjX adjY
+      | _ => layout.borderRect.contains adjX adjY
 
     if !inside then
       none
@@ -239,12 +169,6 @@ where
     let childTransform := match w with
       | .scroll _ _ _ scrollState _ _ _ _ =>
         transform.addScroll scrollState.offsetX scrollState.offsetY
-      | .flex _ _ _ _ children | .grid _ _ _ _ children =>
-        match layout.scaleMetadata with
-        | some m =>
-          let (boundsX, boundsY) := computeChildBoundsOrigin children layouts
-          transform.withScale m layout.contentRect boundsX boundsY
-        | none => transform
       | _ => transform
 
     -- Check children (use normal hit test helper for children)
@@ -277,15 +201,12 @@ where
     let (adjX, adjY) := transform.transformPoint x y
 
     -- Check if point is within this widget's bounds
-    let inside := match layout.scaleMetadata with
-      | some m => isInsideScaledHitArea layout m adjX adjY
-      | none =>
-        match w with
-        | .custom _ _ _ spec =>
-            match spec.hitTest with
-            | some hit => hit layout ⟨adjX, adjY⟩
-            | none => layout.borderRect.contains adjX adjY
-        | _ => layout.borderRect.contains adjX adjY
+    let inside := match w with
+      | .custom _ _ _ spec =>
+          match spec.hitTest with
+          | some hit => hit layout ⟨adjX, adjY⟩
+          | none => layout.borderRect.contains adjX adjY
+      | _ => layout.borderRect.contains adjX adjY
 
     -- Clip to bounds (restore original behavior for normal traversal)
     if !inside then
@@ -293,16 +214,10 @@ where
 
     let currentPath := path.push w.id
 
-    -- Compute child transform based on widget type and scale metadata
+    -- Compute child transform based on widget type
     let childTransform := match w with
       | .scroll _ _ _ scrollState _ _ _ _ =>
         transform.addScroll scrollState.offsetX scrollState.offsetY
-      | .flex _ _ _ _ children | .grid _ _ _ _ children =>
-        match layout.scaleMetadata with
-        | some m =>
-          let (boundsX, boundsY) := computeChildBoundsOrigin children layouts
-          transform.withScale m layout.contentRect boundsX boundsY
-        | none => transform
       | _ => transform
 
     -- Check children in reverse order (last rendered = topmost)
@@ -354,30 +269,21 @@ where
     | some layout =>
       let (adjX, adjY) := transform.transformPoint x y
 
-      let inside := match layout.scaleMetadata with
-        | some m => isInsideScaledHitArea layout m adjX adjY
-        | none =>
-          match w with
-          | .custom _ _ _ spec =>
-              match spec.hitTest with
-              | some hit => hit layout ⟨adjX, adjY⟩
-              | none => layout.borderRect.contains adjX adjY
-          | _ => layout.borderRect.contains adjX adjY
+      let inside := match w with
+        | .custom _ _ _ spec =>
+            match spec.hitTest with
+            | some hit => hit layout ⟨adjX, adjY⟩
+            | none => layout.borderRect.contains adjX adjY
+        | _ => layout.borderRect.contains adjX adjY
       if !inside then
         #[]
       else
         let currentPath := path.push w.id
 
-        -- Compute child transform based on widget type and scale metadata
+        -- Compute child transform based on widget type
         let childTransform := match w with
           | .scroll _ _ _ scrollState _ _ _ _ =>
             transform.addScroll scrollState.offsetX scrollState.offsetY
-          | .flex _ _ _ _ children | .grid _ _ _ _ children =>
-            match layout.scaleMetadata with
-            | some m =>
-              let (boundsX, boundsY) := computeChildBoundsOrigin children layouts
-              transform.withScale m layout.contentRect boundsX boundsY
-            | none => transform
           | _ => transform
 
         -- Collect hits from children (in reverse order, topmost first)
@@ -444,23 +350,12 @@ structure HitTestIndex where
 deriving Inhabited
 
 private def toScreenPoint (t : HitTransform) (x y : Float) : Float × Float :=
-  let scaledX := (x - t.scaleOriginX) * t.scaleX + t.scaleOriginX + t.scaleOffsetX
-  let scaledY := (y - t.scaleOriginY) * t.scaleY + t.scaleOriginY + t.scaleOffsetY
-  let screenX := scaledX - t.scrollX
-  let screenY := scaledY - t.scrollY
+  let screenX := x - t.scrollX
+  let screenY := y - t.scrollY
   (screenX, screenY)
 
 private def localHitRect (layout : Trellis.ComputedLayout) : Trellis.LayoutRect :=
-  match layout.scaleMetadata with
-  | some m =>
-    match m.hitArea with
-    | .scaled =>
-      { x := layout.contentRect.x + m.offsetX
-        y := layout.contentRect.y + m.offsetY
-        width := m.intrinsicWidth * m.scaleX
-        height := m.intrinsicHeight * m.scaleY }
-    | .container => layout.borderRect
-  | none => layout.borderRect
+  layout.borderRect
 
 private def rectToScreenBounds (t : HitTransform) (r : Trellis.LayoutRect) : Linalg.AABB2D :=
   let (x1, y1) := toScreenPoint t r.x r.y
@@ -471,29 +366,20 @@ private def rectToScreenBounds (t : HitTransform) (r : Trellis.LayoutRect) : Lin
   let maxY := max y1 y2
   Linalg.AABB2D.fromMinMax (Linalg.Vec2.mk minX minY) (Linalg.Vec2.mk maxX maxY)
 
-private def childTransformFor (w : Widget) (layout : Trellis.ComputedLayout)
-    (layouts : Trellis.LayoutResult) (transform : HitTransform) : HitTransform :=
+private def childTransformFor (w : Widget) (_layout : Trellis.ComputedLayout)
+    (_layouts : Trellis.LayoutResult) (transform : HitTransform) : HitTransform :=
   match w with
   | .scroll _ _ _ scrollState _ _ _ _ =>
     transform.addScroll scrollState.offsetX scrollState.offsetY
-  | .flex _ _ _ _ children | .grid _ _ _ _ children =>
-    match layout.scaleMetadata with
-    | some m =>
-      let (boundsX, boundsY) := computeChildBoundsOrigin children layouts
-      transform.withScale m layout.contentRect boundsX boundsY
-    | none => transform
   | _ => transform
 
 private def isPointInsideWidget (w : Widget) (layout : Trellis.ComputedLayout) (adjX adjY : Float) : Bool :=
-  match layout.scaleMetadata with
-  | some m => isInsideScaledHitArea layout m adjX adjY
-  | none =>
-    match w with
-    | .custom _ _ _ spec =>
-        match spec.hitTest with
-        | some hit => hit layout ⟨adjX, adjY⟩
-        | none => layout.borderRect.contains adjX adjY
-    | _ => layout.borderRect.contains adjX adjY
+  match w with
+  | .custom _ _ _ spec =>
+      match spec.hitTest with
+      | some hit => hit layout ⟨adjX, adjY⟩
+      | none => layout.borderRect.contains adjX adjY
+  | _ => layout.borderRect.contains adjX adjY
 
 private structure HitTestBuildState where
   items : Array HitTestIndexItem := #[]
