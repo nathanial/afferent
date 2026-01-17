@@ -6,6 +6,7 @@ import Reactive
 import Afferent.Canopy.Core
 import Afferent.Canopy.Theme
 import Afferent.Canopy.Reactive.Component
+import Afferent.Canopy.Widget.Charts.Core
 
 namespace Afferent.Canopy
 
@@ -34,13 +35,11 @@ inductive ColorScale where
 deriving Repr, Inhabited
 
 /-- Dimensions and styling for heatmap rendering. -/
-structure Dimensions where
-  width : Float := 400.0
-  height : Float := 300.0
-  marginTop : Float := 40.0
-  marginBottom : Float := 20.0
-  marginLeft : Float := 60.0
-  marginRight : Float := 20.0
+structure Dimensions extends ChartSize, ChartMargins where
+  height := 300.0
+  marginTop := 40.0
+  marginBottom := 20.0
+  marginLeft := 60.0
   cellGap : Float := 1.0
   cornerRadius : Float := 2.0
   showValues : Bool := false
@@ -250,7 +249,7 @@ def heatmapVisual (name : String) (data : Heatmap.Data) (scale : Heatmap.ColorSc
     height := .percent 1.0
     flexItem := some (Trellis.FlexItem.growing 1)
   }
-  let style : BoxStyle := { width := .percent 1.0, height := .percent 1.0, flexItem := some (Trellis.FlexItem.growing 1) }
+  let style : BoxStyle := { width := .percent 1.0, height := .percent 1.0, minWidth := some dims.width, minHeight := some dims.height, flexItem := some (Trellis.FlexItem.growing 1) }
   let props : Trellis.FlexContainer := { Trellis.FlexContainer.column 0 with alignItems := .stretch }
   pure (.flex wid (some name) props style #[chart])
 

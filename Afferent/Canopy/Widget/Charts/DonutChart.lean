@@ -6,6 +6,7 @@ import Reactive
 import Afferent.Canopy.Core
 import Afferent.Canopy.Theme
 import Afferent.Canopy.Reactive.Component
+import Afferent.Canopy.Widget.Charts.Core
 import Afferent.Canopy.Widget.Charts.ChartUtils
 
 namespace Afferent.Canopy
@@ -16,9 +17,9 @@ open ChartUtils
 namespace DonutChart
 
 /-- Dimensions and styling for donut chart rendering. -/
-structure Dimensions where
-  width : Float := 300.0
-  height : Float := 300.0
+structure Dimensions extends ChartSize where
+  width := 300.0
+  height := 300.0
   outerRadius : Float := 100.0
   innerRadius : Float := 60.0
   showLabels : Bool := true
@@ -282,7 +283,7 @@ def donutChartVisual (name : String) (slices : Array DonutChart.Slice)
     height := .percent 1.0
     flexItem := some (Trellis.FlexItem.growing 1)
   }
-  let style : BoxStyle := { width := .percent 1.0, height := .percent 1.0, flexItem := some (Trellis.FlexItem.growing 1) }
+  let style : BoxStyle := { width := .percent 1.0, height := .percent 1.0, minWidth := some dims.width, minHeight := some dims.height, flexItem := some (Trellis.FlexItem.growing 1) }
   let props : Trellis.FlexContainer := { Trellis.FlexContainer.column 0 with alignItems := .stretch }
   pure (.flex wid (some name) props style #[chart])
 
@@ -301,7 +302,7 @@ def donutChartWithLegendVisual (name : String) (slices : Array DonutChart.Slice)
     height := .percent 1.0
     flexItem := some (Trellis.FlexItem.growing 1)
   }
-  let style : BoxStyle := { width := .percent 1.0, height := .percent 1.0, flexItem := some (Trellis.FlexItem.growing 1) }
+  let style : BoxStyle := { width := .percent 1.0, height := .percent 1.0, minWidth := some dims.width, minHeight := some dims.height, flexItem := some (Trellis.FlexItem.growing 1) }
   let props : Trellis.FlexContainer := { Trellis.FlexContainer.column 0 with alignItems := .stretch }
   pure (.flex wid (some name) props style #[chart])
 

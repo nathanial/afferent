@@ -6,6 +6,7 @@ import Reactive
 import Afferent.Canopy.Core
 import Afferent.Canopy.Theme
 import Afferent.Canopy.Reactive.Component
+import Afferent.Canopy.Widget.Charts.Core
 import Afferent.Canopy.Widget.Charts.ChartUtils
 
 namespace Afferent.Canopy
@@ -25,17 +26,9 @@ deriving Repr, BEq, Inhabited
 namespace BarChart
 
 /-- Dimensions and spacing for bar chart rendering. -/
-structure Dimensions where
-  width : Float := 400.0
-  height : Float := 250.0
-  marginTop : Float := 20.0
-  marginBottom : Float := 40.0
-  marginLeft : Float := 50.0
-  marginRight : Float := 20.0
+structure Dimensions extends AxisChartDimensions where
   barGap : Float := 8.0
   cornerRadius : Float := 4.0
-  showGridLines : Bool := true
-  gridLineCount : Nat := 5
 deriving Repr, Inhabited
 
 /-- Default bar chart dimensions. -/
@@ -242,6 +235,8 @@ def barChartVisual (name : String) (data : Array Float)
   let style : BoxStyle := {
     width := .percent 1.0
     height := .percent 1.0
+    minWidth := some dims.width
+    minHeight := some dims.height
     flexItem := some (Trellis.FlexItem.growing 1)
   }
   let props : Trellis.FlexContainer := { Trellis.FlexContainer.column 0 with alignItems := .stretch }
@@ -265,6 +260,8 @@ def multiColorBarChartVisual (name : String) (data : Array BarChart.DataPoint)
   let style : BoxStyle := {
     width := .percent 1.0
     height := .percent 1.0
+    minWidth := some dims.width
+    minHeight := some dims.height
     flexItem := some (Trellis.FlexItem.growing 1)
   }
   let props : Trellis.FlexContainer := { Trellis.FlexContainer.column 0 with alignItems := .stretch }

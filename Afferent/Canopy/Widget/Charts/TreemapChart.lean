@@ -6,6 +6,7 @@ import Reactive
 import Afferent.Canopy.Core
 import Afferent.Canopy.Theme
 import Afferent.Canopy.Reactive.Component
+import Afferent.Canopy.Widget.Charts.Core
 
 namespace Afferent.Canopy
 
@@ -14,9 +15,8 @@ open Afferent.Arbor hiding Event
 namespace TreemapChart
 
 /-- Dimensions and styling for treemap chart rendering. -/
-structure Dimensions where
-  width : Float := 400.0
-  height : Float := 300.0
+structure Dimensions extends ChartSize where
+  height := 300.0
   padding : Float := 2.0
   labelPadding : Float := 4.0
   showLabels : Bool := true
@@ -287,6 +287,8 @@ def treemapChartVisual (name : String) (data : TreemapChart.Data)
   let style : BoxStyle := {
     width := .percent 1.0
     height := .percent 1.0
+    minWidth := some dims.width
+    minHeight := some dims.height
     flexItem := some (Trellis.FlexItem.growing 1)
   }
   let props : Trellis.FlexContainer := { Trellis.FlexContainer.column 0 with alignItems := .stretch }

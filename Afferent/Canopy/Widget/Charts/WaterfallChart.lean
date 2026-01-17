@@ -6,6 +6,7 @@ import Reactive
 import Afferent.Canopy.Core
 import Afferent.Canopy.Theme
 import Afferent.Canopy.Reactive.Component
+import Afferent.Canopy.Widget.Charts.Core
 
 namespace Afferent.Canopy
 
@@ -14,17 +15,10 @@ open Afferent.Arbor hiding Event
 namespace WaterfallChart
 
 /-- Dimensions and styling for waterfall chart rendering. -/
-structure Dimensions where
-  width : Float := 400.0
-  height : Float := 280.0
-  marginTop : Float := 20.0
-  marginBottom : Float := 40.0
-  marginLeft : Float := 50.0
-  marginRight : Float := 20.0
+structure Dimensions extends AxisChartDimensions where
+  height := 280.0
   barGap : Float := 8.0
   connectorWidth : Float := 1.0
-  showGridLines : Bool := true
-  gridLineCount : Nat := 5
   showConnectors : Bool := true
 deriving Repr, Inhabited
 
@@ -260,7 +254,7 @@ def waterfallChartVisual (name : String) (data : WaterfallChart.Data)
     height := .percent 1.0
     flexItem := some (Trellis.FlexItem.growing 1)
   }
-  let style : BoxStyle := { width := .percent 1.0, height := .percent 1.0, flexItem := some (Trellis.FlexItem.growing 1) }
+  let style : BoxStyle := { width := .percent 1.0, height := .percent 1.0, minWidth := some dims.width, minHeight := some dims.height, flexItem := some (Trellis.FlexItem.growing 1) }
   let props : Trellis.FlexContainer := { Trellis.FlexContainer.column 0 with alignItems := .stretch }
   pure (.flex wid (some name) props style #[chart])
 

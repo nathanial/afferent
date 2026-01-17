@@ -6,6 +6,7 @@ import Reactive
 import Afferent.Canopy.Core
 import Afferent.Canopy.Theme
 import Afferent.Canopy.Reactive.Component
+import Afferent.Canopy.Widget.Charts.Core
 
 namespace Afferent.Canopy
 
@@ -14,13 +15,13 @@ open Afferent.Arbor hiding Event
 namespace SankeyDiagram
 
 /-- Dimensions and styling for Sankey diagram rendering. -/
-structure Dimensions where
-  width : Float := 500.0
-  height : Float := 300.0
-  marginTop : Float := 20.0
-  marginBottom : Float := 20.0
-  marginLeft : Float := 20.0
-  marginRight : Float := 20.0
+structure Dimensions extends ChartSize, ChartMargins where
+  width := 500.0
+  height := 300.0
+  marginTop := 20.0
+  marginBottom := 20.0
+  marginLeft := 20.0
+  marginRight := 20.0
   nodeWidth : Float := 20.0
   nodePadding : Float := 10.0  -- Vertical padding between nodes
   linkOpacity : Float := 0.4
@@ -369,6 +370,8 @@ def sankeyDiagramVisualCached (name : String) (cached : SankeyDiagram.CachedLayo
   let style : BoxStyle := {
     width := .percent 1.0
     height := .percent 1.0
+    minWidth := some dims.width
+    minHeight := some dims.height
     flexItem := some (Trellis.FlexItem.growing 1)
   }
   let props : Trellis.FlexContainer := { Trellis.FlexContainer.column 0 with alignItems := .stretch }

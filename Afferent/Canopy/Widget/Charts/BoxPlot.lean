@@ -6,6 +6,7 @@ import Reactive
 import Afferent.Canopy.Core
 import Afferent.Canopy.Theme
 import Afferent.Canopy.Reactive.Component
+import Afferent.Canopy.Widget.Charts.Core
 
 namespace Afferent.Canopy
 
@@ -14,17 +15,9 @@ open Afferent.Arbor hiding Event
 namespace BoxPlot
 
 /-- Dimensions and styling for box plot rendering. -/
-structure Dimensions where
-  width : Float := 400.0
-  height : Float := 250.0
-  marginTop : Float := 20.0
-  marginBottom : Float := 40.0
-  marginLeft : Float := 50.0
-  marginRight : Float := 20.0
+structure Dimensions extends AxisChartDimensions where
   boxWidth : Float := 40.0
   whiskerWidth : Float := 20.0
-  showGridLines : Bool := true
-  gridLineCount : Nat := 5
   showOutliers : Bool := true
   outlierRadius : Float := 4.0
   /-- IQR multiplier for outlier detection (typically 1.5). -/
@@ -392,7 +385,7 @@ def boxPlotVisual (name : String) (summaries : Array BoxPlot.Summary)
     height := .percent 1.0
     flexItem := some (Trellis.FlexItem.growing 1)
   }
-  let style : BoxStyle := { width := .percent 1.0, height := .percent 1.0, flexItem := some (Trellis.FlexItem.growing 1) }
+  let style : BoxStyle := { width := .percent 1.0, height := .percent 1.0, minWidth := some dims.width, minHeight := some dims.height, flexItem := some (Trellis.FlexItem.growing 1) }
   let props : Trellis.FlexContainer := { Trellis.FlexContainer.column 0 with alignItems := .stretch }
   pure (.flex wid (some name) props style #[chart])
 
@@ -411,7 +404,7 @@ def horizontalBoxPlotVisual (name : String) (summaries : Array BoxPlot.Summary)
     height := .percent 1.0
     flexItem := some (Trellis.FlexItem.growing 1)
   }
-  let style : BoxStyle := { width := .percent 1.0, height := .percent 1.0, flexItem := some (Trellis.FlexItem.growing 1) }
+  let style : BoxStyle := { width := .percent 1.0, height := .percent 1.0, minWidth := some dims.width, minHeight := some dims.height, flexItem := some (Trellis.FlexItem.growing 1) }
   let props : Trellis.FlexContainer := { Trellis.FlexContainer.column 0 with alignItems := .stretch }
   pure (.flex wid (some name) props style #[chart])
 

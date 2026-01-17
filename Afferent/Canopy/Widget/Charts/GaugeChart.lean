@@ -6,6 +6,7 @@ import Reactive
 import Afferent.Canopy.Core
 import Afferent.Canopy.Theme
 import Afferent.Canopy.Reactive.Component
+import Afferent.Canopy.Widget.Charts.Core
 
 namespace Afferent.Canopy
 
@@ -17,9 +18,9 @@ namespace GaugeChart
 private def pi : Float := 3.14159265358979323846
 
 /-- Dimensions and styling for gauge chart rendering. -/
-structure Dimensions where
-  width : Float := 250.0
-  height : Float := 180.0
+structure Dimensions extends ChartSize where
+  width := 250.0
+  height := 180.0
   radius : Float := 80.0
   arcThickness : Float := 20.0
   needleLength : Float := 65.0
@@ -237,6 +238,8 @@ def gaugeChartVisual (name : String) (data : GaugeChart.Data)
   let style : BoxStyle := {
     width := .percent 1.0
     height := .percent 1.0
+    minWidth := some dims.width
+    minHeight := some dims.height
     flexItem := some (Trellis.FlexItem.growing 1)
   }
   let props : Trellis.FlexContainer := { Trellis.FlexContainer.column 0 with alignItems := .stretch }

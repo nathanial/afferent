@@ -6,6 +6,7 @@ import Reactive
 import Afferent.Canopy.Core
 import Afferent.Canopy.Theme
 import Afferent.Canopy.Reactive.Component
+import Afferent.Canopy.Widget.Charts.Core
 import Afferent.Canopy.Widget.Charts.ChartUtils
 
 namespace Afferent.Canopy
@@ -19,13 +20,13 @@ namespace RadarChart
 private def pi : Float := 3.14159265358979323846
 
 /-- Dimensions and styling for radar chart rendering. -/
-structure Dimensions where
-  width : Float := 350.0
-  height : Float := 350.0
-  marginTop : Float := 40.0
-  marginBottom : Float := 40.0
-  marginLeft : Float := 40.0
-  marginRight : Float := 100.0  -- Extra space for legend
+structure Dimensions extends ChartSize, ChartMargins where
+  width := 350.0
+  height := 350.0
+  marginTop := 40.0
+  marginBottom := 40.0
+  marginLeft := 40.0
+  marginRight := 100.0  -- Extra space for legend
   radius : Float := 120.0
   gridLevels : Nat := 5
   showGridPolygons : Bool := true
@@ -280,7 +281,7 @@ def radarChartVisual (name : String) (data : RadarChart.Data)
     height := .percent 1.0
     flexItem := some (Trellis.FlexItem.growing 1)
   }
-  let style : BoxStyle := { width := .percent 1.0, height := .percent 1.0, flexItem := some (Trellis.FlexItem.growing 1) }
+  let style : BoxStyle := { width := .percent 1.0, height := .percent 1.0, minWidth := some dims.width, minHeight := some dims.height, flexItem := some (Trellis.FlexItem.growing 1) }
   let props : Trellis.FlexContainer := { Trellis.FlexContainer.column 0 with alignItems := .stretch }
   pure (.flex wid (some name) props style #[chart])
 

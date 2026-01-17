@@ -6,6 +6,7 @@ import Reactive
 import Afferent.Canopy.Core
 import Afferent.Canopy.Theme
 import Afferent.Canopy.Reactive.Component
+import Afferent.Canopy.Widget.Charts.Core
 
 namespace Afferent.Canopy
 
@@ -14,13 +15,12 @@ open Afferent.Arbor hiding Event
 namespace FunnelChart
 
 /-- Dimensions and styling for funnel chart rendering. -/
-structure Dimensions where
-  width : Float := 350.0
-  height : Float := 280.0
-  marginTop : Float := 20.0
-  marginBottom : Float := 20.0
-  marginLeft : Float := 20.0
-  marginRight : Float := 120.0  -- Space for labels
+structure Dimensions extends ChartSize, ChartMargins where
+  width := 350.0
+  height := 280.0
+  marginBottom := 20.0
+  marginLeft := 20.0
+  marginRight := 120.0  -- Space for labels
   stageGap : Float := 4.0
   minBottomWidth : Float := 60.0  -- Minimum width at bottom of funnel
   showLabels : Bool := true
@@ -192,6 +192,8 @@ def funnelChartVisual (name : String) (data : FunnelChart.Data)
   let style : BoxStyle := {
     width := .percent 1.0
     height := .percent 1.0
+    minWidth := some dims.width
+    minHeight := some dims.height
     flexItem := some (Trellis.FlexItem.growing 1)
   }
   let props : Trellis.FlexContainer := { Trellis.FlexContainer.column 0 with alignItems := .stretch }

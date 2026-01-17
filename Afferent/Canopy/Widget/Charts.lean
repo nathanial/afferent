@@ -2,6 +2,8 @@
   Canopy Chart Widgets
   Re-exports all chart widget modules.
 -/
+import Afferent.Canopy.Widget.Charts.Core
+import Afferent.Canopy.Widget.Charts.ChartUtils
 import Afferent.Canopy.Widget.Charts.AreaChart
 import Afferent.Canopy.Widget.Charts.BarChart
 import Afferent.Canopy.Widget.Charts.BoxPlot
