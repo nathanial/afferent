@@ -276,10 +276,10 @@ def dropdown (options : Array String) (theme : Theme) (initialSelection : Nat :=
     optionNames := optionNames.push name
   let optionNameFn (i : Nat) : String := optionNames.getD i ""
 
+  let events ← getEventsW
   let isTriggerHovered ← useHover triggerName
   let triggerClicks ← useClick triggerName
   let allClicks ← useAllClicks
-  let allHovers ← useAllHovers
 
   let findClickedOption (data : ClickData) : Option Nat :=
     (List.range options.size).findSome? fun i =>
@@ -287,10 +287,6 @@ def dropdown (options : Array String) (theme : Theme) (initialSelection : Nat :=
 
   let isClickOutside (data : ClickData) : Bool :=
     !hitWidget data containerName && !hitWidget data triggerName
-
-  let findHoveredOption (data : HoverData) : Option Nat :=
-    (List.range options.size).findSome? fun i =>
-      if hitWidgetHover data (optionNameFn i) then some i else none
 
   let optionClicks ← Event.mapMaybeM findClickedOption allClicks
   let selection ← Reactive.holdDyn initialSelection optionClicks
@@ -305,8 +301,19 @@ def dropdown (options : Array String) (theme : Theme) (initialSelection : Nat :=
     let allTransitions ← Event.leftmostM [closeOnOption, closeOnOutside, toggleEvents]
     Reactive.foldDyn (fun f s => f s) false allTransitions
 
-  let hoverChanges ← Event.mapM findHoveredOption allHovers
-  let gatedHover ← Event.gateM isOpen.current hoverChanges
+  let mut optionHoverEvents : Array (Reactive.Event Spider (Option Nat)) := #[]
+  for i in [:options.size] do
+    let hoverChanges ← Event.selectM events.hoverFan (optionNameFn i)
+    let enter ← Event.mapMaybeM (fun hovered => if hovered then some (some i) else none) hoverChanges
+    let leave ← Event.mapMaybeM (fun hovered => if hovered then some (none : Option Nat) else none) hoverChanges
+    optionHoverEvents := optionHoverEvents.push enter
+    optionHoverEvents := optionHoverEvents.push leave
+  let ctx ← SpiderM.getTimelineCtx
+  let neverHover ← SpiderM.liftIO (Reactive.Event.never ctx)
+  let hoverEvents ← match optionHoverEvents.toList with
+    | [] => pure neverHover
+    | events => Event.leftmostM events
+  let gatedHover ← Event.gateM isOpen.current hoverEvents
   let closeEvents ← Event.filterM (fun open_ => !open_) isOpen.updated
   let resetHover ← Event.mapM (fun _ => (none : Option Nat)) closeEvents
   let mergedHover ← Event.mergeM gatedHover resetHover
