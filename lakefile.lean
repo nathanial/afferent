@@ -91,14 +91,128 @@ target text_render_o pkg : FilePath := do
     "-O2"
   ] #[] "cc"
 
-target lean_bridge_o pkg : FilePath := do
-  let oFile := pkg.buildDir / "native" / "lean_bridge.o"
-  let srcFile := pkg.dir / "native" / "src" / "lean_bridge.c"
+target lean_bridge_init_o pkg : FilePath := do
+  let oFile := pkg.buildDir / "native" / "lean_bridge_init.o"
+  let srcFile := pkg.dir / "native" / "src" / "lean_bridge" / "init.c"
   let includeDir := pkg.dir / "native" / "include"
+  let bridgeDir := pkg.dir / "native" / "src" / "lean_bridge"
   let leanIncludeDir ← getLeanIncludeDir
   buildO oFile (← inputTextFile srcFile) #[
     "-I", leanIncludeDir.toString,
     "-I", includeDir.toString,
+    "-I", bridgeDir.toString,
+    "-fPIC",
+    "-O2"
+  ] #[] "cc"
+
+target lean_bridge_window_o pkg : FilePath := do
+  let oFile := pkg.buildDir / "native" / "lean_bridge_window.o"
+  let srcFile := pkg.dir / "native" / "src" / "lean_bridge" / "window.c"
+  let includeDir := pkg.dir / "native" / "include"
+  let bridgeDir := pkg.dir / "native" / "src" / "lean_bridge"
+  let leanIncludeDir ← getLeanIncludeDir
+  buildO oFile (← inputTextFile srcFile) #[
+    "-I", leanIncludeDir.toString,
+    "-I", includeDir.toString,
+    "-I", bridgeDir.toString,
+    "-fPIC",
+    "-O2"
+  ] #[] "cc"
+
+target lean_bridge_renderer_o pkg : FilePath := do
+  let oFile := pkg.buildDir / "native" / "lean_bridge_renderer.o"
+  let srcFile := pkg.dir / "native" / "src" / "lean_bridge" / "renderer.c"
+  let includeDir := pkg.dir / "native" / "include"
+  let bridgeDir := pkg.dir / "native" / "src" / "lean_bridge"
+  let leanIncludeDir ← getLeanIncludeDir
+  buildO oFile (← inputTextFile srcFile) #[
+    "-I", leanIncludeDir.toString,
+    "-I", includeDir.toString,
+    "-I", bridgeDir.toString,
+    "-fPIC",
+    "-O2"
+  ] #[] "cc"
+
+target lean_bridge_buffers_o pkg : FilePath := do
+  let oFile := pkg.buildDir / "native" / "lean_bridge_buffers.o"
+  let srcFile := pkg.dir / "native" / "src" / "lean_bridge" / "buffers.c"
+  let includeDir := pkg.dir / "native" / "include"
+  let bridgeDir := pkg.dir / "native" / "src" / "lean_bridge"
+  let leanIncludeDir ← getLeanIncludeDir
+  buildO oFile (← inputTextFile srcFile) #[
+    "-I", leanIncludeDir.toString,
+    "-I", includeDir.toString,
+    "-I", bridgeDir.toString,
+    "-fPIC",
+    "-O2"
+  ] #[] "cc"
+
+target lean_bridge_text_o pkg : FilePath := do
+  let oFile := pkg.buildDir / "native" / "lean_bridge_text.o"
+  let srcFile := pkg.dir / "native" / "src" / "lean_bridge" / "text.c"
+  let includeDir := pkg.dir / "native" / "include"
+  let bridgeDir := pkg.dir / "native" / "src" / "lean_bridge"
+  let leanIncludeDir ← getLeanIncludeDir
+  buildO oFile (← inputTextFile srcFile) #[
+    "-I", leanIncludeDir.toString,
+    "-I", includeDir.toString,
+    "-I", bridgeDir.toString,
+    "-fPIC",
+    "-O2"
+  ] #[] "cc"
+
+target lean_bridge_float_buffer_o pkg : FilePath := do
+  let oFile := pkg.buildDir / "native" / "lean_bridge_float_buffer.o"
+  let srcFile := pkg.dir / "native" / "src" / "lean_bridge" / "float_buffer.c"
+  let includeDir := pkg.dir / "native" / "include"
+  let bridgeDir := pkg.dir / "native" / "src" / "lean_bridge"
+  let leanIncludeDir ← getLeanIncludeDir
+  buildO oFile (← inputTextFile srcFile) #[
+    "-I", leanIncludeDir.toString,
+    "-I", includeDir.toString,
+    "-I", bridgeDir.toString,
+    "-fPIC",
+    "-O2"
+  ] #[] "cc"
+
+target lean_bridge_texture_o pkg : FilePath := do
+  let oFile := pkg.buildDir / "native" / "lean_bridge_texture.o"
+  let srcFile := pkg.dir / "native" / "src" / "lean_bridge" / "texture.c"
+  let includeDir := pkg.dir / "native" / "include"
+  let bridgeDir := pkg.dir / "native" / "src" / "lean_bridge"
+  let leanIncludeDir ← getLeanIncludeDir
+  buildO oFile (← inputTextFile srcFile) #[
+    "-I", leanIncludeDir.toString,
+    "-I", includeDir.toString,
+    "-I", bridgeDir.toString,
+    "-fPIC",
+    "-O2"
+  ] #[] "cc"
+
+target lean_bridge_mesh_o pkg : FilePath := do
+  let oFile := pkg.buildDir / "native" / "lean_bridge_mesh.o"
+  let srcFile := pkg.dir / "native" / "src" / "lean_bridge" / "mesh.c"
+  let includeDir := pkg.dir / "native" / "include"
+  let bridgeDir := pkg.dir / "native" / "src" / "lean_bridge"
+  let leanIncludeDir ← getLeanIncludeDir
+  buildO oFile (← inputTextFile srcFile) #[
+    "-I", leanIncludeDir.toString,
+    "-I", includeDir.toString,
+    "-I", bridgeDir.toString,
+    "-fPIC",
+    "-O2"
+  ] #[] "cc"
+
+target lean_bridge_batch_o pkg : FilePath := do
+  let oFile := pkg.buildDir / "native" / "lean_bridge_batch.o"
+  let srcFile := pkg.dir / "native" / "src" / "lean_bridge" / "batch.c"
+  let includeDir := pkg.dir / "native" / "include"
+  let bridgeDir := pkg.dir / "native" / "src" / "lean_bridge"
+  let leanIncludeDir ← getLeanIncludeDir
+  buildO oFile (← inputTextFile srcFile) #[
+    "-I", leanIncludeDir.toString,
+    "-I", includeDir.toString,
+    "-I", bridgeDir.toString,
     "-fPIC",
     "-O2"
   ] #[] "cc"
@@ -131,7 +245,31 @@ extern_lib libafferent_native pkg := do
   let metalO ← metal_render_o.fetch
   let draw2dO ← draw_2d_o.fetch
   let textO ← text_render_o.fetch
-  let bridgeO ← lean_bridge_o.fetch
+  let bridgeInitO ← lean_bridge_init_o.fetch
+  let bridgeWindowO ← lean_bridge_window_o.fetch
+  let bridgeRendererO ← lean_bridge_renderer_o.fetch
+  let bridgeBuffersO ← lean_bridge_buffers_o.fetch
+  let bridgeTextO ← lean_bridge_text_o.fetch
+  let bridgeFloatBufferO ← lean_bridge_float_buffer_o.fetch
+  let bridgeTextureO ← lean_bridge_texture_o.fetch
+  let bridgeMeshO ← lean_bridge_mesh_o.fetch
+  let bridgeBatchO ← lean_bridge_batch_o.fetch
   let floatBufferO ← float_buffer_o.fetch
   let textureO ← texture_o.fetch
-  buildStaticLib (pkg.staticLibDir / name) #[windowO, metalO, draw2dO, textO, bridgeO, floatBufferO, textureO]
+  buildStaticLib (pkg.staticLibDir / name) #[
+    windowO,
+    metalO,
+    draw2dO,
+    textO,
+    bridgeInitO,
+    bridgeWindowO,
+    bridgeRendererO,
+    bridgeBuffersO,
+    bridgeTextO,
+    bridgeFloatBufferO,
+    bridgeTextureO,
+    bridgeMeshO,
+    bridgeBatchO,
+    floatBufferO,
+    textureO
+  ]
