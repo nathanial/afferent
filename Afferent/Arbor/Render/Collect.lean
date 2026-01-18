@@ -483,6 +483,13 @@ partial def collectWidgetCached (cache : IO.Ref RenderCache)
 
   | .custom _ name style spec =>
     collectBoxStyleCached borderRect style
+
+    -- Skip cache entirely for widgets that change every frame (e.g., spinners)
+    if spec.skipCache then
+      let cmds := spec.collect computed
+      CachedCollectM.emitAll cmds
+    else
+
     let layoutHash := hashLayoutRect contentRect
 
     -- Cache key: widget name if provided, otherwise path key.

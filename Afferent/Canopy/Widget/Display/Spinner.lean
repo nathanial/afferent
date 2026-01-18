@@ -558,7 +558,8 @@ end Spinner
 def spinnerVisual (name : String) (t : Float) (config : Spinner.Config)
     (theme : Theme) : WidgetBuilder := do
   let color := Spinner.getColor config theme
-  let spec := Spinner.variantSpec config.variant t color config.dims
+  let baseSpec := Spinner.variantSpec config.variant t color config.dims
+  let spec := { baseSpec with skipCache := true }
 
   let wid ← freshId
   let props : Trellis.FlexContainer := { Trellis.FlexContainer.column 0 with alignItems := .center }

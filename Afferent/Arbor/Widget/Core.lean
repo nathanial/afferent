@@ -147,6 +147,9 @@ structure CustomSpec where
   /-- Cache generation number. Widgets with different generations are not cached together.
       This is automatically set by dynWidget to invalidate cache on rebuild. -/
   generation : Nat := 0
+  /-- Skip render cache entirely. Use for widgets that change every frame (e.g., spinners)
+      where caching adds overhead without benefit. -/
+  skipCache : Bool := false
 
 namespace CustomSpec
 
