@@ -39,7 +39,7 @@ def variantSpec (variant : SpinnerVariant) (t : Float) (color : Color)
   | .dualRing => dualRingSpec t color dims
   | .orbit => orbitSpec t color dims
   | .pulse => pulseSpec t color dims
-  | .helix => helixFragmentSpec t color dims
+  | .helix => helixSpec t color dims
   | .wave => waveSpec t color dims
   | .spiral => spiralSpec t color dims
   | .clock => clockSpec t color dims

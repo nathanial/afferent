@@ -36,68 +36,9 @@ def helixFragment : ShaderFragment := fragmentCircle "helix" 16 8
 initialize helixFragmentRegistration : Unit ← do
   registerFragment helixFragment
 
-/-- Precomputed y-offsets for helix dots (8 values, only depends on index). -/
-private def helixYOffsets : Array Float := Id.run do
-  let mut offsets : Array Float := Array.mkEmpty 8
-  for i in [:8] do
-    offsets := offsets.push (i.toFloat / 8.0 - 0.5)
-  return offsets
-
-/-- Precomputed phase bases for helix dots (8 values, only depends on index). -/
-private def helixPhaseBases : Array Float := Id.run do
-  let mut bases : Array Float := Array.mkEmpty 8
-  for i in [:8] do
-    bases := bases.push (i.toFloat * Float.pi / 4.0)
-  return bases
-
-/-- Helix: DNA-like double helix rotating.
-    Uses fillCircleBatch for efficient rendering (single emit for all 16 circles).
-    Uses trig identities: sin(x + π) = -sin(x), cos(x + π) = -cos(x). -/
+/-- Helix: DNA-like double helix using GPU shader fragment.
+    Passes only 8 floats to GPU; the shader computes all 16 circle positions, sizes, and colors. -/
 def helixSpec (t : Float) (color : Color) (dims : Dimensions) : CustomSpec := {
-  measure := fun _ _ => (dims.size, dims.size)
-  collect := fun layout =>
-    let rect := layout.contentRect
-    let cx := rect.x + dims.size / 2
-    let cy := rect.y + dims.size / 2
-    let amplitude := dims.size * 0.3
-    let dotRadius := dims.size * 0.05
-    let yScale := dims.size * 0.7
-    let basePhase := t * Float.twoPi
-
-    -- Build all 16 circles (8 pairs) in a single batch
-    -- Format: [cx, cy, radius, r, g, b, a] per circle (7 floats)
-    RenderM.build do
-      let mut data : Array Float := Array.mkEmpty (16 * 7)
-      for i in [:8] do
-        let yOffset := helixYOffsets[i]! * yScale
-        let phase := basePhase + helixPhaseBases[i]!
-        let sinP := Float.sin phase
-        let cosP := Float.cos phase
-        -- Strand 1
-        let x1 := cx + amplitude * sinP
-        let depth1 := (cosP + 1.0) / 2.0
-        let radius1 := dotRadius * (0.6 + 0.4 * depth1)
-        let alpha1 := 0.4 + 0.6 * depth1
-        data := data.push x1 |>.push (cy + yOffset) |>.push radius1
-                     |>.push color.r |>.push color.g |>.push color.b |>.push (color.a * alpha1)
-        -- Strand 2 (180° offset): sin(p + π) = -sinP, cos(p + π) = -cosP
-        let x2 := cx - amplitude * sinP  -- -sin(phase)
-        let depth2 := (-cosP + 1.0) / 2.0  -- -cos(phase)
-        let radius2 := dotRadius * (0.6 + 0.4 * depth2)
-        let alpha2 := 0.4 + 0.6 * depth2
-        data := data.push x2 |>.push (cy + yOffset) |>.push radius2
-                     |>.push color.r |>.push color.g |>.push color.b |>.push (color.a * alpha2)
-      RenderM.fillCircleBatch data 16
-  draw := none
-}
-
-/-- Helix (Fragment version): DNA-like double helix using GPU shader fragment.
-    Passes only 8 floats to GPU instead of building 112 floats on CPU.
-    The fragment shader computes all 16 circle positions, sizes, and colors.
-
-    NOTE: This requires fragment pipeline caching to be integrated with the canvas.
-    Currently a demonstration of the API pattern. -/
-def helixFragmentSpec (t : Float) (color : Color) (dims : Dimensions) : CustomSpec := {
   measure := fun _ _ => (dims.size, dims.size)
   collect := fun layout =>
     let rect := layout.contentRect
