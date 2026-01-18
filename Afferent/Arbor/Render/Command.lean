@@ -76,6 +76,10 @@ inductive RenderCommand where
       data layout: [x1, y1, x2, y2, r, g, b, a, padding] per line. -/
   | strokeLineBatch (data : Array Float) (count : Nat) (lineWidth : Float)
 
+  /-- Fill multiple circles in a single command.
+      data layout: [cx, cy, radius, r, g, b, a] per circle (7 floats). -/
+  | fillCircleBatch (data : Array Float) (count : Nat)
+
   /-- Fill text at a position. -/
   | fillText (text : String) (x y : Float) (font : FontId) (color : Color)
 
@@ -240,7 +244,7 @@ namespace RenderCommand
 def category : RenderCommand → CommandCategory
   | .fillRect .. | .fillRectStyle .. => .fillRect
   | .strokeRect .. => .strokeRect
-  | .fillCircle .. => .fillCircle
+  | .fillCircle .. | .fillCircleBatch .. => .fillCircle
   | .strokeCircle .. => .strokeCircle
   | .strokeLine .. | .strokeLineBatch .. => .strokeLine
   | .fillText .. | .fillTextBlock .. => .fillText

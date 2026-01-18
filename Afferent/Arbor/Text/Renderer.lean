@@ -201,6 +201,17 @@ def executeCommand (state : RenderState) (cmd : RenderCommand) : RenderState :=
             canvas.setChar cx1 cy1 '*' |>.setChar cx2 cy2 '*'
       return { state with canvas }
 
+  | .fillCircleBatch data count =>
+    Id.run do
+      let mut canvas := state.canvas
+      for i in [:count] do
+        let base := i * 7
+        let cx := data[base]!
+        let cy := data[base + 1]!
+        let (x, y) := state.toCanvasCoords cx cy
+        canvas := canvas.setChar x y 'o'
+      return { state with canvas }
+
   | .fillText text x y _font _color =>
     let (cx, cy) := state.toCanvasCoords x y
     let canvas := state.canvas.drawText cx cy text

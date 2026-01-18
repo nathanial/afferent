@@ -133,6 +133,29 @@ def executeCommand (reg : FontRegistry) (cmd : Afferent.Arbor.RenderCommand) : C
       let (canvasWidth, canvasHeight) ← canvas.ctx.getCurrentSize
       canvas.ctx.renderer.drawLineBatch data count.toUInt32 lineWidth canvasWidth canvasHeight
 
+  | .fillCircleBatch data count =>
+    if count == 0 then
+      pure ()
+    else
+      let canvas ← CanvasM.getCanvas
+      let (canvasWidth, canvasHeight) ← canvas.ctx.getCurrentSize
+      -- Convert from [cx, cy, radius, r, g, b, a] (7 floats) to [x, y, w, h, r, g, b, a, cornerRadius] (9 floats)
+      let mut batchData : Array Float := Array.mkEmpty (count * 9)
+      for i in [:count] do
+        let base := i * 7
+        let cx := data[base]!
+        let cy := data[base + 1]!
+        let radius := data[base + 2]!
+        let r := data[base + 3]!
+        let g := data[base + 4]!
+        let b := data[base + 5]!
+        let a := data[base + 6]!
+        let diameter := radius * 2.0
+        batchData := batchData.push (cx - radius) |>.push (cy - radius)
+                               |>.push diameter |>.push diameter
+                               |>.push r |>.push g |>.push b |>.push a |>.push 0.0
+      canvas.ctx.renderer.drawBatch 1 batchData count.toUInt32 0.0 0.0 canvasWidth canvasHeight
+
   | .fillText text x y fontId color =>
     match reg.get fontId with
     | some font =>
@@ -625,6 +648,57 @@ def flattenCommand (cmd : RenderCommand) (transform : Transform)
                    |>.push p
         let bounds := some { minX, minY, maxX, maxY : CommandBounds }
         return (.strokeLineBatch out count lineWidth, bounds)
+  | .fillCircleBatch data count =>
+      Id.run do
+        if count == 0 then
+          return (.fillCircleBatch data count, none)
+        if transform == Transform.identity then
+          -- No transform needed, just compute bounds
+          let cx0 := data[0]!
+          let cy0 := data[1]!
+          let r0 := data[2]!
+          let mut minX := cx0 - r0
+          let mut minY := cy0 - r0
+          let mut maxX := cx0 + r0
+          let mut maxY := cy0 + r0
+          for i in [1:count] do
+            let base := i * 7
+            let cx := data[base]!
+            let cy := data[base + 1]!
+            let radius := data[base + 2]!
+            minX := min minX (cx - radius)
+            minY := min minY (cy - radius)
+            maxX := max maxX (cx + radius)
+            maxY := max maxY (cy + radius)
+          let bounds := some { minX, minY, maxX, maxY : CommandBounds }
+          return (.fillCircleBatch data count, bounds)
+        -- Transform all circle centers
+        let cx0 := data[0]!
+        let cy0 := data[1]!
+        let r0 := data[2]!
+        let tc0 := transform.apply ⟨cx0, cy0⟩
+        let mut minX := tc0.x - r0
+        let mut minY := tc0.y - r0
+        let mut maxX := tc0.x + r0
+        let mut maxY := tc0.y + r0
+        let mut out : Array Float := Array.mkEmpty data.size
+        out := out.push tc0.x |>.push tc0.y |>.push r0
+                 |>.push data[3]! |>.push data[4]! |>.push data[5]! |>.push data[6]!
+        for i in [1:count] do
+          let base := i * 7
+          let cx := data[base]!
+          let cy := data[base + 1]!
+          let radius := data[base + 2]!
+          let tc := transform.apply ⟨cx, cy⟩
+          minX := min minX (tc.x - radius)
+          minY := min minY (tc.y - radius)
+          maxX := max maxX (tc.x + radius)
+          maxY := max maxY (tc.y + radius)
+          out := out.push tc.x |>.push tc.y |>.push radius
+                   |>.push data[base + 3]! |>.push data[base + 4]!
+                   |>.push data[base + 5]! |>.push data[base + 6]!
+        let bounds := some { minX, minY, maxX, maxY : CommandBounds }
+        return (.fillCircleBatch out count, bounds)
   | .strokePath path color lw =>
       match isSimpleLine path with
       | some (p1, p2) =>
@@ -1336,6 +1410,20 @@ def executeCommandsBatchedWithStats (reg : FontRegistry) (cmds : Array Afferent.
         r := color.r, g := color.g, b := color.b, a := color.a
       }
       circleBatch := circleBatch.push entry
+
+    | .fillCircleBatch data count =>
+      -- Flush any pending circle batch first (can't mix individual + batched)
+      if !circleBatch.isEmpty then
+        let (s, dt) ← flushCircles circleBatch stats
+        stats := s; drawCallTimeNs := drawCallTimeNs + dt
+        circleBatch := #[]
+      -- Execute the batch directly
+      if count > 0 then
+        let t0 ← IO.monoNanosNow
+        executeCommand reg cmd
+        let t1 ← IO.monoNanosNow
+        drawCallTimeNs := drawCallTimeNs + (t1 - t0)
+        stats := { stats with batchedCalls := stats.batchedCalls + 1, circlesBatched := stats.circlesBatched + count }
 
     | .strokeCircle center radius color lineWidth =>
       -- Only flush other batches if non-empty

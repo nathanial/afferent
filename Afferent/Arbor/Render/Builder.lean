@@ -81,6 +81,11 @@ def strokePath (path : Path) (color : Color) (lineWidth : Float) : RenderM Unit 
 def strokeLineBatch (data : Array Float) (count : Nat) (lineWidth : Float) : RenderM Unit :=
   emit (.strokeLineBatch data count lineWidth)
 
+/-- Fill multiple circles in a single command.
+    data layout: [cx, cy, radius, r, g, b, a] per circle (7 floats). -/
+def fillCircleBatch (data : Array Float) (count : Nat) : RenderM Unit :=
+  emit (.fillCircleBatch data count)
+
 /-! ## Polygon Commands -/
 
 /-- Fill a convex polygon with a solid color. -/
