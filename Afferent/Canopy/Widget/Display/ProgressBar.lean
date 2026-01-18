@@ -89,6 +89,7 @@ def indeterminateSpec (animationProgress : Float) (variant : ProgressVariant)
       -- Animated segment
       RenderM.fillRect segmentRect fillColor dims.cornerRadius
   draw := none
+  skipCache := true
 }
 
 end ProgressBar
