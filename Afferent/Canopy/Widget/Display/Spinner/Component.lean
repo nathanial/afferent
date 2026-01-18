@@ -99,7 +99,11 @@ def spinner (theme : Theme) (config : Spinner.Config := {}) : WidgetM Unit := do
 
   -- Variants using sin/cos need raw time for seamless animation (they handle any angle).
   -- Other variants use wrapped progress [0,1) for their animation cycles.
-  let useRawTime := config.variant == .ring || config.variant == .dualRing || config.variant == .helix
+  let useRawTime := match config.variant with
+    | .ring | .dualRing => true          -- Arc rendering with angles
+    | .helix | .wave | .circleDots       -- Shader DSL with sin/cos
+    | .pendulum | .orbit | .bouncingDots => true
+    | _ => false
   let _ ← dynWidget elapsedTime fun t => do
     let offsetT := t + timeOffset
     let animTime := if useRawTime then offsetT * config.speed else floatMod offsetT cycleDuration / cycleDuration
