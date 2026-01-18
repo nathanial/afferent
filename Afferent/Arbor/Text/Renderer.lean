@@ -264,6 +264,10 @@ def executeCommand (state : RenderState) (cmd : RenderCommand) : RenderState :=
     -- Instanced polygon rendering not supported in text mode
     state
 
+  | .strokeArcInstanced _instances _segments =>
+    -- Instanced arc rendering not supported in text mode
+    state
+
   | .pushClip rect =>
     state.pushClip rect
 

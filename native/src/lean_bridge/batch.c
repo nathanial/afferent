@@ -268,3 +268,81 @@ LEAN_EXPORT lean_obj_res lean_afferent_mesh_draw_instanced_buffer(
 
     return lean_io_result_mk_ok(lean_box(0));
 }
+
+// =============================================================================
+// Instanced Arc Stroke Rendering
+// =============================================================================
+
+// Draw instanced arcs from Lean Array Float
+// instance_data: 10 floats per instance [centerX, centerY, startAngle, sweepAngle,
+//                                        radius, strokeWidth, r, g, b, a]
+LEAN_EXPORT lean_obj_res lean_afferent_arc_draw_instanced(
+    lean_obj_arg renderer_obj,
+    lean_obj_arg instance_data_arr,
+    uint32_t instance_count,
+    uint32_t segments,
+    double canvas_width,
+    double canvas_height,
+    lean_obj_arg world
+) {
+    AfferentRendererRef renderer = (AfferentRendererRef)lean_get_external_data(renderer_obj);
+
+    size_t arr_size = lean_array_size(instance_data_arr);
+    size_t expected_size = (size_t)instance_count * 10;  // 10 floats per instance
+
+    if (arr_size < expected_size || instance_count == 0) {
+        return lean_io_result_mk_ok(lean_box(0));
+    }
+
+    float* data = malloc(arr_size * sizeof(float));
+    if (!data) {
+        return lean_io_result_mk_ok(lean_box(0));
+    }
+
+    for (size_t i = 0; i < arr_size; i++) {
+        data[i] = (float)lean_unbox_float(lean_array_get_core(instance_data_arr, i));
+    }
+
+    afferent_arc_draw_instanced(
+        renderer,
+        data,
+        instance_count,
+        segments,
+        (float)canvas_width,
+        (float)canvas_height
+    );
+
+    free(data);
+    return lean_io_result_mk_ok(lean_box(0));
+}
+
+// Draw instanced arcs from FloatBuffer (high-performance, no copy)
+LEAN_EXPORT lean_obj_res lean_afferent_arc_draw_instanced_buffer(
+    lean_obj_arg renderer_obj,
+    lean_obj_arg buffer_obj,
+    uint32_t instance_count,
+    uint32_t segments,
+    double canvas_width,
+    double canvas_height,
+    lean_obj_arg world
+) {
+    AfferentRendererRef renderer = (AfferentRendererRef)lean_get_external_data(renderer_obj);
+    AfferentFloatBufferRef buffer = (AfferentFloatBufferRef)lean_get_external_data(buffer_obj);
+
+    if (instance_count == 0) {
+        return lean_io_result_mk_ok(lean_box(0));
+    }
+
+    const float* data = afferent_float_buffer_data(buffer);
+
+    afferent_arc_draw_instanced(
+        renderer,
+        data,
+        instance_count,
+        segments,
+        (float)canvas_width,
+        (float)canvas_height
+    );
+
+    return lean_io_result_mk_ok(lean_box(0));
+}

@@ -169,4 +169,29 @@ opaque Renderer.drawBatchBuffer
   (param1 : Float)
   (canvasWidth canvasHeight : Float) : IO Unit
 
+-- ============================================================================
+-- INSTANCED ARC STROKE RENDERING
+-- ============================================================================
+
+-- Draw multiple arc strokes in a single draw call with GPU-generated geometry.
+-- instanceData: Array of 10 floats per arc [centerX, centerY, startAngle, sweepAngle,
+--                                           radius, strokeWidth, r, g, b, a]
+-- segments: Number of subdivisions per arc (higher = smoother)
+@[extern "lean_afferent_arc_draw_instanced"]
+opaque Renderer.drawArcInstanced
+  (renderer : @& Renderer)
+  (instanceData : @& Array Float)
+  (instanceCount : UInt32)
+  (segments : UInt32)
+  (canvasWidth canvasHeight : Float) : IO Unit
+
+-- Draw multiple arc strokes from a FloatBuffer (high-performance path).
+@[extern "lean_afferent_arc_draw_instanced_buffer"]
+opaque Renderer.drawArcInstancedBuffer
+  (renderer : @& Renderer)
+  (buffer : @& FloatBuffer)
+  (instanceCount : UInt32)
+  (segments : UInt32)
+  (canvasWidth canvasHeight : Float) : IO Unit
+
 end Afferent.FFI

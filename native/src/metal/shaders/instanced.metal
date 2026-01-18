@@ -345,3 +345,71 @@ vertex MeshVertexOut mesh_instanced_vertex(
 fragment float4 mesh_instanced_fragment(MeshVertexOut in [[stage_in]]) {
     return in.color;
 }
+
+// =============================================================================
+// INSTANCED ARC STROKE RENDERING
+// GPU-side arc geometry generation with per-instance parameters.
+// Each arc is rendered as a triangle strip forming a thick arc stroke.
+// Instance data: center(2) + angles(2) + radius(1) + strokeWidth(1) + color(4) = 10 floats
+// =============================================================================
+
+struct ArcInstance {
+    packed_float2 center;     // Arc center position
+    float startAngle;         // Start angle in radians
+    float sweepAngle;         // Sweep angle in radians
+    float radius;             // Arc radius
+    float strokeWidth;        // Stroke thickness
+    packed_float4 color;      // RGBA
+};
+
+struct ArcUniforms {
+    float2 viewport;          // Canvas width, height
+    uint segments;            // Subdivisions per arc (e.g., 16)
+    uint padding;
+};
+
+struct ArcVertexOut {
+    float4 position [[position]];
+    float4 color;
+};
+
+vertex ArcVertexOut arc_instanced_vertex(
+    uint vid [[vertex_id]],
+    uint iid [[instance_id]],
+    constant ArcInstance* instances [[buffer(0)]],
+    constant ArcUniforms& uniforms [[buffer(1)]]
+) {
+    ArcInstance inst = instances[iid];
+    uint segments = uniforms.segments;
+
+    // Each arc needs (segments+1)*2 vertices for triangle strip
+    // vertexInArc tells us which vertex within the arc we're processing
+    uint vertexInArc = vid;
+    uint segmentIdx = vertexInArc / 2;
+    bool isOuter = (vertexInArc % 2) == 0;
+
+    // Calculate angle for this segment
+    float t = float(segmentIdx) / float(segments);
+    float angle = inst.startAngle + t * inst.sweepAngle;
+
+    // Inner/outer radius for stroke thickness
+    float halfStroke = inst.strokeWidth * 0.5;
+    float r = isOuter ? (inst.radius + halfStroke) : (inst.radius - halfStroke);
+
+    // Calculate position
+    float2 pos = inst.center + float2(cos(angle), sin(angle)) * r;
+
+    // Convert to NDC
+    float2 ndc;
+    ndc.x = (pos.x / uniforms.viewport.x) * 2.0 - 1.0;
+    ndc.y = 1.0 - (pos.y / uniforms.viewport.y) * 2.0;
+
+    ArcVertexOut out;
+    out.position = float4(ndc, 0.0, 1.0);
+    out.color = inst.color;
+    return out;
+}
+
+fragment float4 arc_instanced_fragment(ArcVertexOut in [[stage_in]]) {
+    return in.color;
+}

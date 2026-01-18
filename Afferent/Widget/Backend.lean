@@ -235,6 +235,20 @@ def executeCommand (reg : FontRegistry) (cmd : Afferent.Arbor.RenderCommand) : C
       let (canvasWidth, canvasHeight) ← canvas.ctx.getCurrentSize
       FFI.MeshCache.drawInstancedBuffer canvas.ctx.renderer mesh buf instances.size.toUInt32 canvasWidth canvasHeight
 
+  | .strokeArcInstanced instances segments =>
+    if instances.size == 0 then
+      pure ()
+    else
+      let canvas ← CanvasM.getCanvas
+      let (canvasWidth, canvasHeight) ← canvas.ctx.getCurrentSize
+      -- Pack arc instances into Float array: 10 floats per instance
+      let data := instances.foldl (init := #[]) fun acc inst =>
+        acc.push inst.centerX |>.push inst.centerY
+           |>.push inst.startAngle |>.push inst.sweepAngle
+           |>.push inst.radius |>.push inst.strokeWidth
+           |>.push inst.r |>.push inst.g |>.push inst.b |>.push inst.a
+      canvas.ctx.renderer.drawArcInstanced data instances.size.toUInt32 segments.toUInt32 canvasWidth canvasHeight
+
   | .pushClip rect =>
     let afferentRect := toAfferentRect rect
     CanvasM.clip afferentRect
@@ -769,12 +783,16 @@ def coalesceByCategoryWithClip (bounded : Array BoundedCommand) : Array RenderCo
   let mut out : Array RenderCommand := Array.mkEmpty bounded.size
 
   -- Temporary buckets for current segment (reused across segments)
+  -- Priority: fillRect(0), fillCircle(1), strokeRect(2), strokeCircle(3), strokeLine(4),
+  --           strokeArcInstanced(5), fillText(6), fillPolygonInstanced(7)
   let mut bucket0 : Array RenderCommand := #[]
   let mut bucket1 : Array RenderCommand := #[]
   let mut bucket2 : Array RenderCommand := #[]
   let mut bucket3 : Array RenderCommand := #[]
   let mut bucket4 : Array RenderCommand := #[]
   let mut bucket5 : Array RenderCommand := #[]
+  let mut bucket6 : Array RenderCommand := #[]
+  let mut bucket7 : Array RenderCommand := #[]
 
   for bc in bounded do
     if bc.cmd.category == .other then
@@ -785,8 +803,11 @@ def coalesceByCategoryWithClip (bounded : Array BoundedCommand) : Array RenderCo
       for cmd in bucket3 do out := out.push cmd
       for cmd in bucket4 do out := out.push cmd
       for cmd in bucket5 do out := out.push cmd
+      for cmd in bucket6 do out := out.push cmd
+      for cmd in bucket7 do out := out.push cmd
       bucket0 := #[]; bucket1 := #[]; bucket2 := #[]
       bucket3 := #[]; bucket4 := #[]; bucket5 := #[]
+      bucket6 := #[]; bucket7 := #[]
       -- Add the "other" command directly
       out := out.push bc.cmd
     else
@@ -797,7 +818,9 @@ def coalesceByCategoryWithClip (bounded : Array BoundedCommand) : Array RenderCo
       | 2 => bucket2 := bucket2.push bc.cmd
       | 3 => bucket3 := bucket3.push bc.cmd
       | 4 => bucket4 := bucket4.push bc.cmd
-      | _ => bucket5 := bucket5.push bc.cmd  -- fillText (5) goes here
+      | 5 => bucket5 := bucket5.push bc.cmd  -- strokeArcInstanced
+      | 6 => bucket6 := bucket6.push bc.cmd  -- fillText
+      | _ => bucket7 := bucket7.push bc.cmd  -- fillPolygonInstanced
 
   -- Flush any remaining commands
   for cmd in bucket0 do out := out.push cmd
@@ -806,6 +829,8 @@ def coalesceByCategoryWithClip (bounded : Array BoundedCommand) : Array RenderCo
   for cmd in bucket3 do out := out.push cmd
   for cmd in bucket4 do out := out.push cmd
   for cmd in bucket5 do out := out.push cmd
+  for cmd in bucket6 do out := out.push cmd
+  for cmd in bucket7 do out := out.push cmd
   out
 
 /-- Ensure a FloatBuffer has at least the required capacity, reusing or growing as needed. -/
@@ -1023,6 +1048,46 @@ def mergeInstancedPolygons (cmds : Array RenderCommand) : Array RenderCommand :=
 
   result
 
+/-- Merge strokeArcInstanced commands with the same segment count into single commands.
+    This converts N separate draw calls into M draw calls where M = number of unique segment counts.
+    Since most arcs use the same segment count (16), this typically results in 1 draw call. -/
+def mergeInstancedArcs (cmds : Array RenderCommand) : Array RenderCommand := Id.run do
+  if cmds.isEmpty then return #[]
+
+  -- Group arcs by segment count (instances, segments)
+  let mut arcGroups : Array (Array ArcInstance × Nat) := #[]
+  let mut otherCmds : Array RenderCommand := #[]
+
+  for cmd in cmds do
+    match cmd with
+    | .strokeArcInstanced instances segments =>
+      -- Find existing group with same segment count
+      let mut found := false
+      let mut newGroups : Array (Array ArcInstance × Nat) := #[]
+      for group in arcGroups do
+        let (insts, segs) := group
+        if segs == segments then
+          -- Merge instances into existing group
+          newGroups := newGroups.push (insts ++ instances, segs)
+          found := true
+        else
+          newGroups := newGroups.push group
+      if found then
+        arcGroups := newGroups
+      else
+        -- Add new group
+        arcGroups := arcGroups.push (instances, segments)
+    | _ =>
+      otherCmds := otherCmds.push cmd
+
+  -- Build output: other commands first, then merged arcs
+  let mut result := otherCmds
+  for group in arcGroups do
+    let (instances, segments) := group
+    result := result.push (.strokeArcInstanced instances segments)
+
+  result
+
 /-- Execute an array of RenderCommands using CanvasM with batching optimization.
     First coalesces commands within scopes to maximize batching opportunities, then
     groups consecutive fillRect commands (per-instance cornerRadius),
@@ -1049,6 +1114,9 @@ def executeCommandsBatchedWithStats (reg : FontRegistry) (cmds : Array Afferent.
 
   -- Merge fillPolygonInstanced commands with the same pathHash
   let cmds ← pure (mergeInstancedPolygons cmds)
+
+  -- Merge strokeArcInstanced commands with the same segment count
+  let cmds ← pure (mergeInstancedArcs cmds)
 
   let tCoalesce1 ← IO.monoNanosNow
 

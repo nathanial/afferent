@@ -102,6 +102,13 @@ def fillPolygonInstanced (pathHash : UInt64) (vertices : Array Float) (indices :
     (instances : Array MeshInstance) (centerX centerY : Float) : RenderM Unit :=
   emit (.fillPolygonInstanced pathHash vertices indices instances centerX centerY)
 
+/-- Stroke multiple arcs with instanced rendering.
+    GPU-generated arc geometry for high-performance repeated arc strokes.
+    - instances: Per-instance arc parameters (center, angles, radius, strokeWidth, color)
+    - segments: Number of subdivisions per arc (higher = smoother, default 16) -/
+def strokeArcInstanced (instances : Array ArcInstance) (segments : Nat := 16) : RenderM Unit :=
+  emit (.strokeArcInstanced instances segments)
+
 /-! ## Circles -/
 
 /-- Fill a circle with a solid color (GPU-batched). -/

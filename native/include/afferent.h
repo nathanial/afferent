@@ -521,6 +521,24 @@ void afferent_mesh_draw_instanced(
     float canvas_height
 );
 
+// ============================================================================
+// Instanced Arc Stroke Rendering
+// Draw multiple arc strokes in a single draw call with GPU-generated geometry.
+// ============================================================================
+
+// Draw instanced arc strokes
+// instance_data: 10 floats per instance [centerX, centerY, startAngle, sweepAngle,
+//                                        radius, strokeWidth, r, g, b, a]
+// segments: number of subdivisions per arc (higher = smoother, default 16)
+void afferent_arc_draw_instanced(
+    AfferentRendererRef renderer,
+    const float* instance_data,
+    uint32_t instance_count,
+    uint32_t segments,
+    float canvas_width,
+    float canvas_height
+);
+
 #ifdef __cplusplus
 }
 #endif

@@ -354,6 +354,28 @@ AfferentResult create_pipelines(struct AfferentRenderer* renderer) {
     );
     if (!renderer->meshInstancedPipelineState) return AFFERENT_ERROR_PIPELINE_FAILED;
 
+    // Create arc instanced pipeline (for GPU-generated arc strokes)
+    id<MTLFunction> arcInstancedVertexFunc = [instancedLibrary newFunctionWithName:@"arc_instanced_vertex"];
+    id<MTLFunction> arcInstancedFragmentFunc = [instancedLibrary newFunctionWithName:@"arc_instanced_fragment"];
+    if (!arcInstancedVertexFunc || !arcInstancedFragmentFunc) {
+        NSLog(@"Failed to find arc instanced shader functions");
+        return AFFERENT_ERROR_PIPELINE_FAILED;
+    }
+
+    MTLRenderPipelineDescriptor *arcInstancedPipelineDesc = [[MTLRenderPipelineDescriptor alloc] init];
+    arcInstancedPipelineDesc.vertexFunction = arcInstancedVertexFunc;
+    arcInstancedPipelineDesc.fragmentFunction = arcInstancedFragmentFunc;
+    arcInstancedPipelineDesc.colorAttachments[0].pixelFormat = MTLPixelFormatBGRA8Unorm;
+    apply_alpha_blend(arcInstancedPipelineDesc.colorAttachments[0]);
+
+    renderer->arcInstancedPipelineState = build_pipeline(
+        renderer->device,
+        arcInstancedPipelineDesc,
+        "ArcInstanced",
+        &error
+    );
+    if (!renderer->arcInstancedPipelineState) return AFFERENT_ERROR_PIPELINE_FAILED;
+
     // Create sprite pipeline (textured quads)
     id<MTLLibrary> spriteLibrary = [renderer->device newLibraryWithSource:spriteShaderSource
                                                                   options:nil

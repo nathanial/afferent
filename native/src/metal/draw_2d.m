@@ -569,3 +569,77 @@ void afferent_mesh_draw_instanced(
         [renderer->currentEncoder setRenderPipelineState:renderer->pipelineState];
     }
 }
+
+// =============================================================================
+// INSTANCED ARC STROKE RENDERING
+// Draw multiple arcs in a single draw call with GPU-generated geometry.
+// instance_data: 10 floats per instance [centerX, centerY, startAngle, sweepAngle,
+//                                        radius, strokeWidth, r, g, b, a]
+// =============================================================================
+
+// Uniforms matching shader ArcUniforms
+typedef struct {
+    float viewport[2];
+    uint32_t segments;
+    uint32_t padding;
+} ArcUniforms;
+
+void afferent_arc_draw_instanced(
+    AfferentRendererRef renderer,
+    const float* instance_data,
+    uint32_t instance_count,
+    uint32_t segments,
+    float canvas_width,
+    float canvas_height
+) {
+    if (!renderer || !renderer->currentEncoder || !instance_data || instance_count == 0) {
+        return;
+    }
+
+    if (!renderer->arcInstancedPipelineState) {
+        NSLog(@"ArcInstanced pipeline not available");
+        return;
+    }
+
+    @autoreleasepool {
+        // 10 floats per instance
+        size_t data_size = instance_count * 10 * sizeof(float);
+        id<MTLBuffer> instanceBuffer = pool_acquire_buffer(
+            renderer->device,
+            g_buffer_pool.vertex_pool,
+            &g_buffer_pool.vertex_pool_count,
+            data_size
+        );
+
+        if (!instanceBuffer) {
+            instanceBuffer = [renderer->device newBufferWithLength:data_size options:MTLResourceStorageModeShared];
+        }
+
+        if (!instanceBuffer) {
+            NSLog(@"Failed to create arc instance buffer");
+            return;
+        }
+
+        memcpy([instanceBuffer contents], instance_data, data_size);
+
+        ArcUniforms u;
+        u.viewport[0] = canvas_width;
+        u.viewport[1] = canvas_height;
+        u.segments = segments > 0 ? segments : 16;
+        u.padding = 0;
+
+        [renderer->currentEncoder setRenderPipelineState:renderer->arcInstancedPipelineState];
+        [renderer->currentEncoder setDepthStencilState:renderer->depthStateDisabled];
+        [renderer->currentEncoder setVertexBuffer:instanceBuffer offset:0 atIndex:0];
+        [renderer->currentEncoder setVertexBytes:&u length:sizeof(ArcUniforms) atIndex:1];
+
+        // Each arc uses (segments+1)*2 vertices as a triangle strip
+        uint32_t vertexCount = (u.segments + 1) * 2;
+        [renderer->currentEncoder drawPrimitives:MTLPrimitiveTypeTriangleStrip
+                                     vertexStart:0
+                                     vertexCount:vertexCount
+                                   instanceCount:instance_count];
+
+        [renderer->currentEncoder setRenderPipelineState:renderer->pipelineState];
+    }
+}

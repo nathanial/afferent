@@ -106,7 +106,8 @@ def circleDotsSpec (t : Float) (color : Color) (dims : Dimensions) : CustomSpec 
   draw := none
 }
 
-/-- Ring: Rotating arc segment (macOS/iOS style). -/
+/-- Ring: Rotating arc segment (macOS/iOS style).
+    Uses instanced arc rendering for GPU batching. -/
 def ringSpec (t : Float) (color : Color) (dims : Dimensions) : CustomSpec := {
   measure := fun _ _ => (dims.size, dims.size)
   collect := fun layout =>
@@ -117,9 +118,19 @@ def ringSpec (t : Float) (color : Color) (dims : Dimensions) : CustomSpec := {
     let startAngle := t * Float.twoPi
     let sweepAngle := Float.pi * 1.5  -- 270° arc
 
-    let arcPath := Arbor.Path.arcPath (Arbor.Point.mk' cx cy) radius startAngle (startAngle + sweepAngle)
     RenderM.build do
-      RenderM.strokePath arcPath color dims.strokeWidth
+      RenderM.strokeArcInstanced #[{
+        centerX := cx
+        centerY := cy
+        startAngle := startAngle
+        sweepAngle := sweepAngle
+        radius := radius
+        strokeWidth := dims.strokeWidth
+        r := color.r
+        g := color.g
+        b := color.b
+        a := color.a
+      }]
   draw := none
 }
 
@@ -167,7 +178,8 @@ def barsSpec (t : Float) (color : Color) (dims : Dimensions) : CustomSpec := {
   draw := none
 }
 
-/-- DualRing: Two concentric rings rotating in opposite directions. -/
+/-- DualRing: Two concentric rings rotating in opposite directions.
+    Uses instanced arc rendering for GPU batching - multiple spinners batch into single draw calls. -/
 def dualRingSpec (t : Float) (color : Color) (dims : Dimensions) : CustomSpec := {
   measure := fun _ _ => (dims.size, dims.size)
   collect := fun layout =>
@@ -178,13 +190,36 @@ def dualRingSpec (t : Float) (color : Color) (dims : Dimensions) : CustomSpec :=
     let innerRadius := outerRadius * 0.6
     let outerAngle := t * Float.twoPi
     let innerAngle := -t * Float.twoPi * 1.5  -- Opposite direction, faster
-
-    let outerArc := Arbor.Path.arcPath (Arbor.Point.mk' cx cy) outerRadius outerAngle (outerAngle + Float.pi)
-    let innerArc := Arbor.Path.arcPath (Arbor.Point.mk' cx cy) innerRadius innerAngle (innerAngle + Float.pi * 0.75)
+    let innerColor := color.withAlpha 0.6
+    let innerStrokeWidth := dims.strokeWidth * 0.7
 
     RenderM.build do
-      RenderM.strokePath outerArc color dims.strokeWidth
-      RenderM.strokePath innerArc (color.withAlpha 0.6) (dims.strokeWidth * 0.7)
+      -- Outer arc (180°)
+      RenderM.strokeArcInstanced #[{
+        centerX := cx
+        centerY := cy
+        startAngle := outerAngle
+        sweepAngle := Float.pi
+        radius := outerRadius
+        strokeWidth := dims.strokeWidth
+        r := color.r
+        g := color.g
+        b := color.b
+        a := color.a
+      }]
+      -- Inner arc (135°)
+      RenderM.strokeArcInstanced #[{
+        centerX := cx
+        centerY := cy
+        startAngle := innerAngle
+        sweepAngle := Float.pi * 0.75
+        radius := innerRadius
+        strokeWidth := innerStrokeWidth
+        r := innerColor.r
+        g := innerColor.g
+        b := innerColor.b
+        a := innerColor.a
+      }]
   draw := none
 }
 

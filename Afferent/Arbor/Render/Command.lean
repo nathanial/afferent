@@ -35,6 +35,22 @@ structure MeshInstance where
   a : Float       -- Alpha component [0, 1]
 deriving Repr, BEq, Inhabited
 
+/-- Instance data for instanced arc stroke rendering.
+    10 floats per instance: center(2), startAngle(1), sweepAngle(1),
+    radius(1), strokeWidth(1), color(4). -/
+structure ArcInstance where
+  centerX : Float      -- Arc center X position
+  centerY : Float      -- Arc center Y position
+  startAngle : Float   -- Start angle in radians
+  sweepAngle : Float   -- Sweep angle in radians (can be negative for CCW)
+  radius : Float       -- Arc radius
+  strokeWidth : Float  -- Stroke thickness
+  r : Float            -- Red component [0, 1]
+  g : Float            -- Green component [0, 1]
+  b : Float            -- Blue component [0, 1]
+  a : Float            -- Alpha component [0, 1]
+deriving Repr, BEq, Inhabited
+
 /-- Abstract render command.
     These commands describe what to render without knowing how. -/
 inductive RenderCommand where
@@ -91,6 +107,12 @@ inductive RenderCommand where
       - centerX, centerY: Mesh centroid for rotation pivot -/
   | fillPolygonInstanced (pathHash : UInt64) (vertices : Array Float) (indices : Array UInt32)
       (instances : Array MeshInstance) (centerX centerY : Float)
+
+  /-- Stroke arcs with instanced rendering.
+      GPU-generated arc geometry for high-performance repeated arc strokes.
+      - instances: Array of ArcInstance (center, angles, radius, strokeWidth, color)
+      - segments: Number of subdivisions per arc (higher = smoother, default 16) -/
+  | strokeArcInstanced (instances : Array ArcInstance) (segments : Nat := 16)
 
   /-- Push a clipping rectangle onto the clip stack. -/
   | pushClip (rect : Rect)
@@ -190,6 +212,7 @@ inductive CommandCategory
   | strokeLine
   | fillText
   | fillPolygonInstanced
+  | strokeArcInstanced
   | other
 deriving Repr, BEq, Hashable
 
@@ -204,9 +227,10 @@ def sortPriority : CommandCategory → Nat
   | .strokeRect => 2
   | .strokeCircle => 3
   | .strokeLine => 4
-  | .fillText => 5
-  | .fillPolygonInstanced => 6
-  | .other => 7
+  | .strokeArcInstanced => 5
+  | .fillText => 6
+  | .fillPolygonInstanced => 7
+  | .other => 8
 
 end CommandCategory
 
@@ -221,6 +245,7 @@ def category : RenderCommand → CommandCategory
   | .strokeLine .. | .strokeLineBatch .. => .strokeLine
   | .fillText .. | .fillTextBlock .. => .fillText
   | .fillPolygonInstanced .. => .fillPolygonInstanced
+  | .strokeArcInstanced .. => .strokeArcInstanced
   | _ => .other
 
 end RenderCommand
