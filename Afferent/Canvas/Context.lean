@@ -515,6 +515,10 @@ structure Canvas where
   strokeCircleBuffer : Option FFI.FloatBuffer := none
   /-- Capacity of strokeCircle FloatBuffer (in floats). -/
   strokeCircleBufferCapacity : Nat := 0
+  /-- High-performance mutable FloatBuffer for padded fragment params. -/
+  fragmentBuffer : Option FFI.FloatBuffer := none
+  /-- Capacity of fragment FloatBuffer (in floats). -/
+  fragmentBufferCapacity : Nat := 0
   /-- Cache of GPU meshes keyed by path hash for instanced polygon rendering. -/
   meshCache : Std.HashMap UInt64 FFI.CachedMesh := {}
   /-- High-performance mutable FloatBuffer for mesh instance data. -/
@@ -806,6 +810,8 @@ def endFrame' (c : Canvas) : IO Unit := do
 
 def destroy (c : Canvas) : IO Unit := do
   if let some buf := c.floatBuffer then
+    FFI.FloatBuffer.destroy buf
+  if let some buf := c.fragmentBuffer then
     FFI.FloatBuffer.destroy buf
   c.ctx.destroy
 

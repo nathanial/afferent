@@ -22,8 +22,7 @@ private def pColor : ShaderExpr .float4 := param "color" .float4
 
 /-- Pendulum shader definition using the DSL.
     Computes 7 circles: pivot (idx 0), trail (idx 1-5), bob (idx 6).
-    Parameters: pivot(2), size(1), time(1), strokeWidth(1), pad(3), color(4) = 12 floats.
-    Note: padding keeps float4 aligned in Metal struct layout. -/
+    Parameters: pivot(2), size(1), time(1), strokeWidth(1), color(4) = 9 floats. -/
 def pendulumShader : CircleShader := {
   name := "pendulum"
   instanceCount := 7
@@ -32,9 +31,6 @@ def pendulumShader : CircleShader := {
     ⟨"size", .float⟩,
     ⟨"time", .float⟩,
     ⟨"strokeWidth", .float⟩,
-    ⟨"_pad0", .float⟩,
-    ⟨"_pad1", .float⟩,
-    ⟨"_pad2", .float⟩,
     ⟨"color", .float4⟩
   ]
   body :=
@@ -83,7 +79,7 @@ initialize pendulumFragmentRegistration : Unit ← do
   registerFragment pendulumFragment
 
 /-- Pendulum: Swinging pendulum with motion trail using GPU shader fragment.
-    Passes 12 floats to GPU for circles (includes 3 padding floats); rod drawn separately. -/
+    Passes 9 floats to GPU for circles; rod drawn separately. -/
 def pendulumSpec (t : Float) (color : Color) (dims : Dimensions) : CustomSpec := {
   measure := fun _ _ => (dims.size, dims.size)
   collect := fun layout =>
@@ -98,13 +94,12 @@ def pendulumSpec (t : Float) (color : Color) (dims : Dimensions) : CustomSpec :=
     let bobX := cx + length * Float.sin angle
     let bobY := pivotY + length * Float.cos angle
 
-    -- 12 floats: pivot(2), size(1), time(1), strokeWidth(1), pad(3), color(4)
+    -- 9 floats: pivot(2), size(1), time(1), strokeWidth(1), color(4)
     let params : Array Float := #[
       cx, pivotY,                         -- pivot point
       dims.size,                          -- size
       t,                                  -- time (raw seconds)
       dims.strokeWidth,                   -- strokeWidth
-      0.0, 0.0, 0.0,                       -- padding for float4 alignment
       color.r, color.g, color.b, color.a  -- color
     ]
 

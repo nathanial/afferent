@@ -16,6 +16,7 @@
 struct AfferentFloatBuffer {
     float* data;
     size_t capacity;
+    size_t count;
 };
 
 AfferentResult afferent_float_buffer_create(size_t capacity, AfferentFloatBufferRef* out) {
@@ -31,6 +32,7 @@ AfferentResult afferent_float_buffer_create(size_t capacity, AfferentFloatBuffer
     }
 
     buf->capacity = capacity;
+    buf->count = capacity;
     // Zero-initialize for safety
     memset(buf->data, 0, capacity * sizeof(float));
 
@@ -64,8 +66,16 @@ float* afferent_float_buffer_data(AfferentFloatBufferRef buf) {
 }
 
 size_t afferent_float_buffer_count(AfferentFloatBufferRef buf) {
-    // For now, count equals capacity (buffer is always fully used)
-    return buf->capacity;
+    return buf->count;
+}
+
+void afferent_float_buffer_set_count(AfferentFloatBufferRef buf, size_t count) {
+    if (!buf) return;
+    if (count > buf->capacity) {
+        buf->count = buf->capacity;
+    } else {
+        buf->count = count;
+    }
 }
 
 void afferent_float_buffer_set_vec8(AfferentFloatBufferRef buf, size_t index,

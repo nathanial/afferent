@@ -32,8 +32,12 @@ structure ShaderFragment where
   name : String
   /-- Output primitive type. -/
   primitive : FragmentPrimitive
-  /-- Number of floats in the parameter struct (per instance). -/
+  /-- Number of floats in the parameter struct (per instance, padded for Metal layout). -/
   paramsFloatCount : Nat
+  /-- Number of floats in the packed parameter struct (no padding). -/
+  paramsPackedFloatCount : Nat
+  /-- Mapping from packed float index to padded float index. -/
+  paramsPackOffsets : Array Nat
   /-- Metal struct definition for parameters (e.g., "struct HelixParams { float2 center; ... };"). -/
   paramsStructCode : String
   /-- Fragment function body (computes primitive from index and params). -/
@@ -51,11 +55,41 @@ def hash (f : ShaderFragment) : UInt64 :=
   let h3 := Hashable.hash f.functionCode
   let h4 := Hashable.hash f.primitive
   let h5 := Hashable.hash f.paramsFloatCount
+  let h6 := Hashable.hash f.paramsPackedFloatCount
+  let h7 := Hashable.hash f.paramsPackOffsets
   -- Combine hashes using FNV-1a style mixing
   let mix (a b : UInt64) : UInt64 := (a ^^^ b) * 0x100000001b3
-  mix (mix (mix (mix h1 h2) h3) h4) h5
+  mix (mix (mix (mix (mix (mix h1 h2) h3) h4) h5) h6) h7
+
+private def foldNat {α} (n : Nat) (init : α) (f : Nat → α → α) : α :=
+  Nat.rec (motive := fun _ => α) init (fun i acc => f i acc) n
+
+/-- Expand a packed params array to match Metal struct padding. -/
+def padParams (f : ShaderFragment) (params : Array Float) : Array Float :=
+  if f.paramsPackedFloatCount == f.paramsFloatCount then
+    params
+  else if f.paramsPackedFloatCount == 0 then
+    params
+  else if f.paramsPackOffsets.size != f.paramsPackedFloatCount then
+    params
+  else if params.size % f.paramsPackedFloatCount != 0 then
+    params
+  else
+    let packed := f.paramsPackedFloatCount
+    let padded := f.paramsFloatCount
+    let batchCount := params.size / packed
+    let out := foldNat (batchCount * padded) #[] (fun _ acc => acc.push 0.0)
+    foldNat batchCount out fun batch acc =>
+      let baseIn := batch * packed
+      let baseOut := batch * padded
+      foldNat packed acc fun i acc =>
+        let outIdx := baseOut + f.paramsPackOffsets[i]!
+        acc.set! outIdx (params[baseIn + i]!)
 
 end ShaderFragment
+
+private def identityOffsets (n : Nat) : Array Nat :=
+  Nat.rec (motive := fun _ => Array Nat) #[] (fun i acc => acc.push i) n
 
 /-- Define a circle-generating fragment.
     The function body should compute and return a CircleResult.
@@ -72,6 +106,21 @@ def fragmentCircle (name : String) (instanceCount : Nat) (paramsFloatCount : Nat
   { name
     primitive := .circle
     paramsFloatCount
+    paramsPackedFloatCount := paramsFloatCount
+    paramsPackOffsets := identityOffsets paramsFloatCount
+    paramsStructCode := paramsStruct
+    functionCode := functionBody
+    instanceCount }
+
+/-- Define a circle-generating fragment with explicit packing layout. -/
+def fragmentCirclePacked (name : String) (instanceCount : Nat) (paramsFloatCount : Nat)
+    (paramsPackedFloatCount : Nat) (paramsPackOffsets : Array Nat)
+    (paramsStruct : String) (functionBody : String) : ShaderFragment :=
+  { name
+    primitive := .circle
+    paramsFloatCount
+    paramsPackedFloatCount
+    paramsPackOffsets
     paramsStructCode := paramsStruct
     functionCode := functionBody
     instanceCount }
@@ -96,6 +145,15 @@ def lookupFragment (hash : UInt64) : IO (Option ShaderFragment) := do
 def fragmentCircleRegistered (name : String) (instanceCount : Nat) (paramsFloatCount : Nat)
     (paramsStruct : String) (functionBody : String) : IO ShaderFragment := do
   let f := fragmentCircle name instanceCount paramsFloatCount paramsStruct functionBody
+  registerFragment f
+  pure f
+
+/-- Define a circle fragment with packing layout and register it globally. -/
+def fragmentCircleRegisteredPacked (name : String) (instanceCount : Nat) (paramsFloatCount : Nat)
+    (paramsPackedFloatCount : Nat) (paramsPackOffsets : Array Nat)
+    (paramsStruct : String) (functionBody : String) : IO ShaderFragment := do
+  let f := fragmentCirclePacked name instanceCount paramsFloatCount paramsPackedFloatCount paramsPackOffsets
+    paramsStruct functionBody
   registerFragment f
   pure f
 

@@ -424,7 +424,9 @@ test "CircleShader.compile produces ShaderFragment" := do
   let fragment := shader.compile
   shouldBe fragment.name "test"
   shouldBe fragment.instanceCount 4
-  shouldBe fragment.paramsFloatCount 3
+  shouldBe fragment.paramsFloatCount 4
+  shouldBe fragment.paramsPackedFloatCount 3
+  shouldBe fragment.paramsPackOffsets.size 3
   shouldContainSubstr fragment.paramsStructCode "struct TestParams"
   shouldContainSubstr fragment.paramsStructCode "float2 center;"
   shouldContainSubstr fragment.paramsStructCode "float size;"

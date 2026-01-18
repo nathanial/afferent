@@ -1,4 +1,5 @@
 #include "lean_bridge_internal.h"
+#include <string.h>
 
 // ============== FloatBuffer FFI ==============
 // High-performance mutable float buffer for instance data
@@ -45,6 +46,16 @@ LEAN_EXPORT lean_obj_res lean_afferent_float_buffer_get(
     return lean_io_result_mk_ok(lean_box_float((double)value));
 }
 
+LEAN_EXPORT lean_obj_res lean_afferent_float_buffer_set_count(
+    lean_obj_arg buffer_obj,
+    size_t count,
+    lean_obj_arg world
+) {
+    AfferentFloatBufferRef buffer = (AfferentFloatBufferRef)lean_get_external_data(buffer_obj);
+    afferent_float_buffer_set_count(buffer, count);
+    return lean_io_result_mk_ok(lean_box(0));
+}
+
 // Set 8 floats at once - 8x less FFI overhead than 8 separate calls
 LEAN_EXPORT lean_obj_res lean_afferent_float_buffer_set_vec8(
     lean_obj_arg buffer_obj,
@@ -83,6 +94,55 @@ LEAN_EXPORT lean_obj_res lean_afferent_float_buffer_set_vec5(
     AfferentFloatBufferRef buffer = (AfferentFloatBufferRef)lean_get_external_data(buffer_obj);
     afferent_float_buffer_set_vec5(buffer, index,
         (float)v0, (float)v1, (float)v2, (float)v3, (float)v4);
+    return lean_io_result_mk_ok(lean_box(0));
+}
+
+// Bulk-write packed params into a padded layout in FloatBuffer.
+// params_arr: Array Float (packed)
+// offsets_arr: Array Nat (packed index -> padded index)
+LEAN_EXPORT lean_obj_res lean_afferent_float_buffer_write_padded(
+    lean_obj_arg buffer_obj,
+    lean_obj_arg params_arr,
+    uint32_t packed_count,
+    uint32_t padded_count,
+    lean_obj_arg offsets_arr,
+    lean_obj_arg world
+) {
+    AfferentFloatBufferRef buffer = (AfferentFloatBufferRef)lean_get_external_data(buffer_obj);
+    if (!buffer || packed_count == 0 || padded_count == 0) {
+        return lean_io_result_mk_ok(lean_box(0));
+    }
+
+    size_t param_count = lean_array_size(params_arr);
+    if (param_count == 0 || param_count % packed_count != 0) {
+        return lean_io_result_mk_ok(lean_box(0));
+    }
+
+    size_t offsets_size = lean_array_size(offsets_arr);
+    if (offsets_size != packed_count) {
+        return lean_io_result_mk_ok(lean_box(0));
+    }
+
+    size_t batch_count = param_count / packed_count;
+    size_t needed = batch_count * padded_count;
+    if (afferent_float_buffer_capacity(buffer) < needed) {
+        return lean_io_result_mk_ok(lean_box(0));
+    }
+
+    float* out = (float*)afferent_float_buffer_data(buffer);
+    memset(out, 0, needed * sizeof(float));
+
+    for (size_t batch = 0; batch < batch_count; batch++) {
+        size_t base_in = batch * packed_count;
+        size_t base_out = batch * padded_count;
+        for (size_t i = 0; i < packed_count; i++) {
+            size_t out_off = (size_t)lean_unbox(lean_array_get_core(offsets_arr, i));
+            float value = (float)lean_unbox_float(lean_array_get_core(params_arr, base_in + i));
+            out[base_out + out_off] = value;
+        }
+    }
+
+    afferent_float_buffer_set_count(buffer, needed);
     return lean_io_result_mk_ok(lean_box(0));
 }
 

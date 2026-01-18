@@ -21,6 +21,9 @@ opaque FloatBuffer.set (buf : @& FloatBuffer) (index : USize) (value : Float) : 
 @[extern "lean_afferent_float_buffer_get"]
 opaque FloatBuffer.get (buf : @& FloatBuffer) (index : USize) : IO Float
 
+@[extern "lean_afferent_float_buffer_set_count"]
+opaque FloatBuffer.setCount (buf : @& FloatBuffer) (count : USize) : IO Unit
+
 -- Set 8 consecutive floats at once (8x less FFI overhead for instance data)
 @[extern "lean_afferent_float_buffer_set_vec8"]
 opaque FloatBuffer.setVec8 (buf : @& FloatBuffer) (index : USize)
@@ -35,6 +38,15 @@ opaque FloatBuffer.setVec9 (buf : @& FloatBuffer) (index : USize)
 @[extern "lean_afferent_float_buffer_set_vec5"]
 opaque FloatBuffer.setVec5 (buf : @& FloatBuffer) (index : USize)
   (v0 v1 v2 v3 v4 : Float) : IO Unit
+
+-- Bulk-write packed params into a padded layout in FloatBuffer.
+@[extern "lean_afferent_float_buffer_write_padded"]
+opaque FloatBuffer.writePadded
+  (buffer : @& FloatBuffer)
+  (params : @& Array Float)
+  (packedCount : UInt32)
+  (paddedCount : UInt32)
+  (offsets : @& Array Nat) : IO Unit
 
 -- Bulk-write sprite instance data from a ParticleState data array.
 -- particleData layout: [x, y, vx, vy, hue] per particle (5 floats).

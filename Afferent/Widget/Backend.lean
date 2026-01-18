@@ -1344,7 +1344,41 @@ def executeCommandsBatchedWithStats (reg : FontRegistry) (cmds : Array Afferent.
         | some pipeline =>
           let t0 ← IO.monoNanosNow
           let (canvasWidth, canvasHeight) ← canvas.ctx.getCurrentSize
-          FFI.Fragment.draw canvas.ctx.renderer pipeline params canvasWidth canvasHeight
+          match (← Shader.lookupFragment fragmentHash) with
+          | some fragment =>
+            if fragment.paramsPackedFloatCount == fragment.paramsFloatCount then
+              FFI.Fragment.draw canvas.ctx.renderer pipeline params canvasWidth canvasHeight
+            else if fragment.paramsPackedFloatCount == 0 || params.size % fragment.paramsPackedFloatCount != 0 then
+              -- Fallback to direct draw if packing info doesn't match params.
+              FFI.Fragment.draw canvas.ctx.renderer pipeline params canvasWidth canvasHeight
+            else
+              let batchCount := params.size / fragment.paramsPackedFloatCount
+              let requiredFloats := batchCount * fragment.paramsFloatCount
+              let canvas ← CanvasM.getCanvas
+              let canvas ←
+                match canvas.fragmentBuffer with
+                | some buf =>
+                  if canvas.fragmentBufferCapacity >= requiredFloats then
+                    pure canvas
+                  else
+                    FFI.FloatBuffer.destroy buf
+                    let newBuf ← FFI.FloatBuffer.create requiredFloats.toUSize
+                    pure { canvas with fragmentBuffer := some newBuf, fragmentBufferCapacity := requiredFloats }
+                | none =>
+                  let newBuf ← FFI.FloatBuffer.create requiredFloats.toUSize
+                  pure { canvas with fragmentBuffer := some newBuf, fragmentBufferCapacity := requiredFloats }
+              CanvasM.setCanvas canvas
+              match canvas.fragmentBuffer with
+              | some buf =>
+                FFI.FloatBuffer.writePadded buf params
+                  fragment.paramsPackedFloatCount.toUInt32
+                  fragment.paramsFloatCount.toUInt32
+                  fragment.paramsPackOffsets
+                FFI.Fragment.drawBuffer canvas.ctx.renderer pipeline buf canvasWidth canvasHeight
+              | none =>
+                FFI.Fragment.draw canvas.ctx.renderer pipeline params canvasWidth canvasHeight
+          | none =>
+            FFI.Fragment.draw canvas.ctx.renderer pipeline params canvasWidth canvasHeight
           let t1 ← IO.monoNanosNow
           pure ({ s with batchedCalls := s.batchedCalls + 1 }, t1 - t0)
         | none => pure (s, 0)

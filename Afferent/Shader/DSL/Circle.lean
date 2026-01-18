@@ -56,7 +56,9 @@ def paramsTypeName (shader : CircleShader) : String :=
 def compile (shader : CircleShader) : ShaderFragment :=
   let paramsStruct := shader.params.toMetal shader.paramsTypeName
   let bodyCode := shader.body.toMetal
-  fragmentCircle shader.name shader.instanceCount shader.params.floatCount paramsStruct bodyCode
+  let layout := shader.params.layout
+  fragmentCirclePacked shader.name shader.instanceCount layout.paddedFloatCount
+    layout.packedFloatCount layout.packOffsets paramsStruct bodyCode
 
 end CircleShader
 
