@@ -748,15 +748,20 @@ private def floatMod (x y : Float) : Float :=
 def spinner (theme : Theme) (config : Spinner.Config := {}) : WidgetM Unit := do
   let name ← registerComponentW "spinner" (isInteractive := false)
 
+  -- Generate a random time offset so multiple spinners don't animate in sync
+  let cycleDuration : Float := 2.0 / config.speed
+  let randomSeed ← (IO.rand 0 10000 : IO Nat)
+  let timeOffset : Float := randomSeed.toFloat / 10000.0 * cycleDuration
+
   -- Use shared elapsed time (all widgets share ONE Dynamic, no per-widget foldDyn)
   let elapsedTime ← useElapsedTime
 
   -- Ring variants use raw time for seamless animation (cos/sin handle any angle).
   -- Other variants use wrapped progress [0,1) for their animation cycles.
-  let cycleDuration : Float := 2.0 / config.speed
   let useRawTime := config.variant == .ring || config.variant == .dualRing
   let _ ← dynWidget elapsedTime fun t => do
-    let animTime := if useRawTime then t * config.speed else floatMod t cycleDuration / cycleDuration
+    let offsetT := t + timeOffset
+    let animTime := if useRawTime then offsetT * config.speed else floatMod offsetT cycleDuration / cycleDuration
     emit do pure (spinnerVisual name animTime config theme)
 
 /-- Convenience function: Create a default ring spinner. -/
