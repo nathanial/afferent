@@ -154,4 +154,19 @@ opaque Renderer.drawLineBatchBuffer
   (lineWidth : Float)
   (canvasWidth canvasHeight : Float) : IO Unit
 
+-- Draw multiple shapes from a FloatBuffer (high-performance path).
+-- kind: 0=rect, 1=circle, 2=strokeRect
+-- buffer: FloatBuffer with 9 floats per instance
+-- param0: unused for rects (per-instance cornerRadius), ignored for circles, lineWidth for strokeRect
+-- param1: unused
+@[extern "lean_afferent_renderer_draw_batch_buffer"]
+opaque Renderer.drawBatchBuffer
+  (renderer : @& Renderer)
+  (kind : UInt32)
+  (buffer : @& FloatBuffer)
+  (instanceCount : UInt32)
+  (param0 : Float)
+  (param1 : Float)
+  (canvasWidth canvasHeight : Float) : IO Unit
+
 end Afferent.FFI

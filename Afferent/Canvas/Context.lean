@@ -493,10 +493,22 @@ structure Canvas where
   stateStack : StateStack
   /-- Screen scale factor (e.g., 2.0 for Retina). Used for auto-scaling mode. -/
   screenScale : Float := 1.0
-  /-- High-performance mutable FloatBuffer for zero-copy instanced rendering. -/
+  /-- High-performance mutable FloatBuffer for zero-copy line rendering. -/
   floatBuffer : Option FFI.FloatBuffer := none
-  /-- Capacity of FloatBuffer (in floats). -/
+  /-- Capacity of line FloatBuffer (in floats). -/
   floatBufferCapacity : Nat := 0
+  /-- High-performance mutable FloatBuffer for zero-copy rect rendering. -/
+  rectBuffer : Option FFI.FloatBuffer := none
+  /-- Capacity of rect FloatBuffer (in floats). -/
+  rectBufferCapacity : Nat := 0
+  /-- High-performance mutable FloatBuffer for zero-copy circle rendering. -/
+  circleBuffer : Option FFI.FloatBuffer := none
+  /-- Capacity of circle FloatBuffer (in floats). -/
+  circleBufferCapacity : Nat := 0
+  /-- High-performance mutable FloatBuffer for zero-copy strokeRect rendering. -/
+  strokeRectBuffer : Option FFI.FloatBuffer := none
+  /-- Capacity of strokeRect FloatBuffer (in floats). -/
+  strokeRectBufferCapacity : Nat := 0
   /-- Persistent cache for CustomSpec render commands across frames.
       Cache is keyed by widget name (from registerComponentW) + layout hash.
       When data changes, dynWidget rebuilds and generates new widget names,

@@ -664,86 +664,176 @@ def computeBoundedCommands (cmds : Array RenderCommand) : Array BoundedCommand :
 
   result
 
-/-- Coalesce commands by grouping same-category commands together.
-    Uses a stable sort so relative order within each category is preserved.
+/-- Coalesce commands by grouping same-category commands together using bucket sort.
+    O(N) bucket sort by category priority, preserving original order within each bucket.
 
     After transform flattening, simple geometry (rects, circles) is in
     absolute coordinates and doesn't depend on transform state.
-    Text captures its transform during batching (TextBatchEntry.transform).
-
-    This is O(N log N) and avoids the O(N²) memory of full overlap analysis. -/
+    Text captures its transform during batching (TextBatchEntry.transform). -/
 def coalesceByCategory (bounded : Array BoundedCommand) : Array RenderCommand := Id.run do
   if bounded.isEmpty then return #[]
 
-  -- Stable sort by category priority, preserving original order within category
-  -- We use (priority, originalIndex) as sort key for stability
-  let sorted := bounded.qsort fun a b =>
-    let pa := a.cmd.category.sortPriority
-    let pb := b.cmd.category.sortPriority
-    if pa != pb then decide (pa < pb)
-    else decide (a.originalIndex < b.originalIndex)
+  -- 7 buckets for priorities 0-6: fillRect, fillCircle, strokeRect, strokeCircle, strokeLine, fillText, other
+  let mut bucket0 : Array RenderCommand := #[]  -- fillRect
+  let mut bucket1 : Array RenderCommand := #[]  -- fillCircle
+  let mut bucket2 : Array RenderCommand := #[]  -- strokeRect
+  let mut bucket3 : Array RenderCommand := #[]  -- strokeCircle
+  let mut bucket4 : Array RenderCommand := #[]  -- strokeLine
+  let mut bucket5 : Array RenderCommand := #[]  -- fillText
+  let mut bucket6 : Array RenderCommand := #[]  -- other
 
-  sorted.map (·.cmd)
-
-/-- Coalesce commands by category while preserving stateful command order.
-    Splits at any non-batchable ("other") command so transforms/clips apply. -/
-def coalesceByCategoryWithClip (bounded : Array BoundedCommand) : Array RenderCommand := Id.run do
-  if bounded.isEmpty then return #[]
-  let mut out : Array RenderCommand := #[]
-  let mut segment : Array BoundedCommand := #[]
+  -- Distribute into buckets (O(N))
   for bc in bounded do
-    if bc.cmd.category == .other then
-      if !segment.isEmpty then
-        out := out ++ (coalesceByCategory segment)
-        segment := #[]
-      out := out.push bc.cmd
-    else
-      segment := segment.push bc
-  if !segment.isEmpty then
-    out := out ++ (coalesceByCategory segment)
+    match bc.cmd.category.sortPriority with
+    | 0 => bucket0 := bucket0.push bc.cmd
+    | 1 => bucket1 := bucket1.push bc.cmd
+    | 2 => bucket2 := bucket2.push bc.cmd
+    | 3 => bucket3 := bucket3.push bc.cmd
+    | 4 => bucket4 := bucket4.push bc.cmd
+    | 5 => bucket5 := bucket5.push bc.cmd
+    | _ => bucket6 := bucket6.push bc.cmd
+
+  -- Concatenate buckets in priority order
+  -- Pre-allocate output array for efficiency
+  let totalSize := bucket0.size + bucket1.size + bucket2.size + bucket3.size +
+                   bucket4.size + bucket5.size + bucket6.size
+  let mut out : Array RenderCommand := Array.mkEmpty totalSize
+  for cmd in bucket0 do out := out.push cmd
+  for cmd in bucket1 do out := out.push cmd
+  for cmd in bucket2 do out := out.push cmd
+  for cmd in bucket3 do out := out.push cmd
+  for cmd in bucket4 do out := out.push cmd
+  for cmd in bucket5 do out := out.push cmd
+  for cmd in bucket6 do out := out.push cmd
   out
 
-/-- Execute a batch of fillRect commands in a single draw call. -/
+/-- Coalesce commands by category while preserving stateful command order.
+    Splits at any non-batchable ("other") command so transforms/clips apply.
+    Uses bucket sort within each segment for O(N) performance. -/
+def coalesceByCategoryWithClip (bounded : Array BoundedCommand) : Array RenderCommand := Id.run do
+  if bounded.isEmpty then return #[]
+
+  -- Pre-allocate output array (at most bounded.size commands)
+  let mut out : Array RenderCommand := Array.mkEmpty bounded.size
+
+  -- Temporary buckets for current segment (reused across segments)
+  let mut bucket0 : Array RenderCommand := #[]
+  let mut bucket1 : Array RenderCommand := #[]
+  let mut bucket2 : Array RenderCommand := #[]
+  let mut bucket3 : Array RenderCommand := #[]
+  let mut bucket4 : Array RenderCommand := #[]
+  let mut bucket5 : Array RenderCommand := #[]
+
+  for bc in bounded do
+    if bc.cmd.category == .other then
+      -- Flush accumulated buckets before the "other" command
+      for cmd in bucket0 do out := out.push cmd
+      for cmd in bucket1 do out := out.push cmd
+      for cmd in bucket2 do out := out.push cmd
+      for cmd in bucket3 do out := out.push cmd
+      for cmd in bucket4 do out := out.push cmd
+      for cmd in bucket5 do out := out.push cmd
+      bucket0 := #[]; bucket1 := #[]; bucket2 := #[]
+      bucket3 := #[]; bucket4 := #[]; bucket5 := #[]
+      -- Add the "other" command directly
+      out := out.push bc.cmd
+    else
+      -- Distribute into buckets
+      match bc.cmd.category.sortPriority with
+      | 0 => bucket0 := bucket0.push bc.cmd
+      | 1 => bucket1 := bucket1.push bc.cmd
+      | 2 => bucket2 := bucket2.push bc.cmd
+      | 3 => bucket3 := bucket3.push bc.cmd
+      | 4 => bucket4 := bucket4.push bc.cmd
+      | _ => bucket5 := bucket5.push bc.cmd  -- fillText (5) goes here
+
+  -- Flush any remaining commands
+  for cmd in bucket0 do out := out.push cmd
+  for cmd in bucket1 do out := out.push cmd
+  for cmd in bucket2 do out := out.push cmd
+  for cmd in bucket3 do out := out.push cmd
+  for cmd in bucket4 do out := out.push cmd
+  for cmd in bucket5 do out := out.push cmd
+  out
+
+/-- Ensure a FloatBuffer has at least the required capacity, reusing or growing as needed. -/
+private def ensureBufferCapacity (bufOpt : Option FFI.FloatBuffer) (currentCap : Nat) (required : Nat)
+    : IO (FFI.FloatBuffer × Nat) := do
+  match bufOpt with
+  | some buf =>
+    if currentCap >= required then
+      pure (buf, currentCap)
+    else
+      FFI.FloatBuffer.destroy buf
+      let newBuf ← FFI.FloatBuffer.create required.toUSize
+      pure (newBuf, required)
+  | none =>
+    let newBuf ← FFI.FloatBuffer.create required.toUSize
+    pure (newBuf, required)
+
+/-- Execute a batch of fillRect commands in a single draw call using FloatBuffer. -/
 def executeFillRectBatch (rects : Array RectBatchEntry) : CanvasM Unit := do
   if rects.isEmpty then return
   let canvas ← CanvasM.getCanvas
-  -- Use current drawable size for NDC conversion (dynamic resize support)
   let (canvasWidth, canvasHeight) ← canvas.ctx.getCurrentSize
-  -- Pack into Float array: [x, y, w, h, r, g, b, a, cornerRadius] per rect
-  let data := rects.foldl (init := #[]) fun acc entry =>
-    acc.push entry.x |>.push entry.y |>.push entry.width |>.push entry.height
-       |>.push entry.r |>.push entry.g |>.push entry.b |>.push entry.a
-       |>.push entry.cornerRadius
-  canvas.ctx.renderer.drawBatch 0 data rects.size.toUInt32 0.0 0.0
+
+  -- Ensure rectBuffer has enough capacity (9 floats per rect)
+  let requiredFloats := rects.size * 9
+  let (buf, newCap) ← ensureBufferCapacity canvas.rectBuffer canvas.rectBufferCapacity requiredFloats
+  CanvasM.setCanvas { canvas with rectBuffer := some buf, rectBufferCapacity := newCap }
+
+  -- Write directly to FloatBuffer (O(1) per write, no array allocation)
+  let mut idx : USize := 0
+  for entry in rects do
+    buf.setVec9 idx entry.x entry.y entry.width entry.height
+                    entry.r entry.g entry.b entry.a entry.cornerRadius
+    idx := idx + 9
+
+  canvas.ctx.renderer.drawBatchBuffer 0 buf rects.size.toUInt32 0.0 0.0
     canvasWidth canvasHeight
 
-/-- Execute a batch of fillCircle commands in a single draw call. -/
+/-- Execute a batch of fillCircle commands in a single draw call using FloatBuffer. -/
 def executeFillCircleBatch (circles : Array CircleBatchEntry) : CanvasM Unit := do
   if circles.isEmpty then return
   let canvas ← CanvasM.getCanvas
   let (canvasWidth, canvasHeight) ← canvas.ctx.getCurrentSize
-  -- Pack into Float array: [x, y, w, h, r, g, b, a, padding] per circle (bounding box)
-  let data := circles.foldl (init := #[]) fun acc entry =>
+
+  -- Ensure circleBuffer has enough capacity (9 floats per circle)
+  let requiredFloats := circles.size * 9
+  let (buf, newCap) ← ensureBufferCapacity canvas.circleBuffer canvas.circleBufferCapacity requiredFloats
+  CanvasM.setCanvas { canvas with circleBuffer := some buf, circleBufferCapacity := newCap }
+
+  -- Write directly to FloatBuffer
+  let mut idx : USize := 0
+  for entry in circles do
     let size := entry.radius * 2.0
     let x := entry.centerX - entry.radius
     let y := entry.centerY - entry.radius
-    acc.push x |>.push y |>.push size |>.push size
-       |>.push entry.r |>.push entry.g |>.push entry.b |>.push entry.a
-       |>.push 0.0
-  canvas.ctx.renderer.drawBatch 1 data circles.size.toUInt32 0.0 0.0
+    buf.setVec9 idx x y size size entry.r entry.g entry.b entry.a 0.0
+    idx := idx + 9
+
+  canvas.ctx.renderer.drawBatchBuffer 1 buf circles.size.toUInt32 0.0 0.0
     canvasWidth canvasHeight
 
-/-- Execute a batch of strokeRect commands in a single draw call. -/
+/-- Execute a batch of strokeRect commands in a single draw call using FloatBuffer. -/
 def executeStrokeRectBatch (rects : Array StrokeRectBatchEntry) (lineWidth : Float) : CanvasM Unit := do
   if rects.isEmpty then return
   let canvas ← CanvasM.getCanvas
   let (canvasWidth, canvasHeight) ← canvas.ctx.getCurrentSize
-  -- Pack into Float array: [x, y, w, h, r, g, b, a, cornerRadius] per rect
-  let data := rects.foldl (init := #[]) fun acc entry =>
-    acc.push entry.x |>.push entry.y |>.push entry.width |>.push entry.height
-       |>.push entry.r |>.push entry.g |>.push entry.b |>.push entry.a
-       |>.push entry.cornerRadius
-  canvas.ctx.renderer.drawBatch 2 data rects.size.toUInt32 lineWidth 0.0
+
+  -- Ensure strokeRectBuffer has enough capacity (9 floats per rect)
+  let requiredFloats := rects.size * 9
+  let (buf, newCap) ← ensureBufferCapacity canvas.strokeRectBuffer canvas.strokeRectBufferCapacity requiredFloats
+  CanvasM.setCanvas { canvas with strokeRectBuffer := some buf, strokeRectBufferCapacity := newCap }
+
+  -- Write directly to FloatBuffer
+  let mut idx : USize := 0
+  for entry in rects do
+    buf.setVec9 idx entry.x entry.y entry.width entry.height
+                    entry.r entry.g entry.b entry.a entry.cornerRadius
+    idx := idx + 9
+
+  canvas.ctx.renderer.drawBatchBuffer 2 buf rects.size.toUInt32 lineWidth 0.0
     canvasWidth canvasHeight
 
 /-- Execute a batch of strokeLine commands in a single draw call. -/
