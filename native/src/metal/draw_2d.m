@@ -437,3 +437,135 @@ void afferent_renderer_draw_line_batch(
         "LineBatch"
     );
 }
+
+// =============================================================================
+// CACHED MESH INSTANCED RENDERING (for complex polygons like gears)
+// Tessellate polygon ONCE, store in GPU memory, draw all instances in one call
+// =============================================================================
+
+// Uniforms matching shader MeshUniforms
+typedef struct {
+    float viewport[2];
+    float meshCenter[2];
+    uint32_t padding0;
+    uint32_t padding1;
+} MeshUniforms;
+
+// Create a cached mesh from tessellated polygon data
+AfferentCachedMeshRef afferent_mesh_cache_create(
+    AfferentRendererRef renderer,
+    const float* vertices,      // Flat array of [x, y, x, y, ...] positions
+    uint32_t vertex_count,      // Number of vertices (not floats)
+    const uint32_t* indices,    // Triangle indices
+    uint32_t index_count,       // Number of indices
+    float center_x,             // Mesh centroid X (rotation pivot)
+    float center_y              // Mesh centroid Y (rotation pivot)
+) {
+    if (!renderer || !vertices || !indices || vertex_count == 0 || index_count == 0) {
+        return NULL;
+    }
+
+    AfferentCachedMeshRef mesh = (AfferentCachedMeshRef)malloc(sizeof(AfferentCachedMesh));
+    if (!mesh) return NULL;
+
+    // Create vertex buffer (2 floats per vertex)
+    size_t vertex_size = vertex_count * 2 * sizeof(float);
+    mesh->vertexBuffer = [renderer->device newBufferWithBytes:vertices
+                                                       length:vertex_size
+                                                      options:MTLResourceStorageModeShared];
+    if (!mesh->vertexBuffer) {
+        free(mesh);
+        return NULL;
+    }
+
+    // Create index buffer
+    size_t index_size = index_count * sizeof(uint32_t);
+    mesh->indexBuffer = [renderer->device newBufferWithBytes:indices
+                                                      length:index_size
+                                                     options:MTLResourceStorageModeShared];
+    if (!mesh->indexBuffer) {
+        mesh->vertexBuffer = nil;
+        free(mesh);
+        return NULL;
+    }
+
+    mesh->vertexCount = vertex_count;
+    mesh->indexCount = index_count;
+    mesh->centerX = center_x;
+    mesh->centerY = center_y;
+
+    return mesh;
+}
+
+// Destroy a cached mesh and free GPU resources
+void afferent_mesh_cache_destroy(AfferentCachedMeshRef mesh) {
+    if (!mesh) return;
+    mesh->vertexBuffer = nil;
+    mesh->indexBuffer = nil;
+    free(mesh);
+}
+
+// Draw all instances of a cached mesh in a single draw call
+// instance_data: flat array of [x, y, rotation, scale, r, g, b, a] per instance (8 floats)
+void afferent_mesh_draw_instanced(
+    AfferentRendererRef renderer,
+    AfferentCachedMeshRef mesh,
+    const float* instance_data,
+    uint32_t instance_count,
+    float canvas_width,
+    float canvas_height
+) {
+    if (!renderer || !renderer->currentEncoder || !mesh || !instance_data || instance_count == 0) {
+        return;
+    }
+
+    if (!renderer->meshInstancedPipelineState) {
+        NSLog(@"MeshInstanced pipeline not available");
+        return;
+    }
+
+    @autoreleasepool {
+        // 8 floats per instance (position, rotation, scale, color)
+        size_t data_size = instance_count * 8 * sizeof(float);
+        id<MTLBuffer> instanceBuffer = pool_acquire_buffer(
+            renderer->device,
+            g_buffer_pool.vertex_pool,
+            &g_buffer_pool.vertex_pool_count,
+            data_size
+        );
+
+        if (!instanceBuffer) {
+            instanceBuffer = [renderer->device newBufferWithLength:data_size options:MTLResourceStorageModeShared];
+        }
+
+        if (!instanceBuffer) {
+            NSLog(@"Failed to create mesh instance buffer");
+            return;
+        }
+
+        memcpy([instanceBuffer contents], instance_data, data_size);
+
+        MeshUniforms u;
+        u.viewport[0] = canvas_width;
+        u.viewport[1] = canvas_height;
+        u.meshCenter[0] = mesh->centerX;
+        u.meshCenter[1] = mesh->centerY;
+        u.padding0 = 0;
+        u.padding1 = 0;
+
+        [renderer->currentEncoder setRenderPipelineState:renderer->meshInstancedPipelineState];
+        [renderer->currentEncoder setDepthStencilState:renderer->depthStateDisabled];
+        [renderer->currentEncoder setVertexBuffer:mesh->vertexBuffer offset:0 atIndex:0];
+        [renderer->currentEncoder setVertexBuffer:instanceBuffer offset:0 atIndex:1];
+        [renderer->currentEncoder setVertexBytes:&u length:sizeof(MeshUniforms) atIndex:2];
+
+        [renderer->currentEncoder drawIndexedPrimitives:MTLPrimitiveTypeTriangle
+                                             indexCount:mesh->indexCount
+                                              indexType:MTLIndexTypeUInt32
+                                            indexBuffer:mesh->indexBuffer
+                                      indexBufferOffset:0
+                                          instanceCount:instance_count];
+
+        [renderer->currentEncoder setRenderPipelineState:renderer->pipelineState];
+    }
+}

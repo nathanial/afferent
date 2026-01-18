@@ -453,7 +453,64 @@ def heartbeatSpec (t : Float) (color : Color) (dims : Dimensions) : CustomSpec :
   draw := none
 }
 
-/-- Gears: Two interlocking gears rotating in opposite directions. -/
+/-! ## Precomputed Gear Tessellation for Instanced Rendering -/
+
+/-- Tessellate a canonical gear (centered at origin, outer radius = 1.0) as triangles.
+    Returns (vertices, indices, centerX, centerY) for instanced rendering. -/
+private def tessellateCanonicalGear (teeth : Nat) : Array Float × Array UInt32 × Float × Float := Id.run do
+  let innerRadius : Float := 0.7   -- Inner radius as fraction of outer
+  let toothDepth : Float := 0.3    -- Tooth extends outward by this fraction
+  let outerRadius : Float := 1.0 + toothDepth  -- Total outer extent
+  let numPoints := teeth * 4  -- 4 points per tooth
+  let angleStep := Float.twoPi / numPoints.toFloat
+
+  -- Generate perimeter points (at rotation=0)
+  let mut perimeterPoints : Array (Float × Float) := Array.mkEmpty numPoints
+  for i in [:numPoints] do
+    let angle := i.toFloat * angleStep
+    let posInTooth := i % 4
+    let r := match posInTooth with
+      | 0 => innerRadius           -- Valley
+      | 1 => outerRadius           -- Outer
+      | 2 => outerRadius           -- Outer
+      | _ => innerRadius           -- Valley
+    perimeterPoints := perimeterPoints.push (r * Float.cos angle, r * Float.sin angle)
+
+  -- Vertices: center (0,0) + perimeter points
+  -- Layout: [cx, cy, x0, y0, x1, y1, ...]
+  let mut vertices : Array Float := Array.mkEmpty ((numPoints + 1) * 2)
+  vertices := vertices.push 0.0 |>.push 0.0  -- Center vertex
+  for (x, y) in perimeterPoints do
+    vertices := vertices.push x |>.push y
+
+  -- Indices: triangle fan from center
+  -- Each triangle: center (0), point i, point (i+1) % numPoints
+  let mut indices : Array UInt32 := Array.mkEmpty (numPoints * 3)
+  for i in [:numPoints] do
+    indices := indices.push 0  -- Center
+    indices := indices.push (i + 1).toUInt32
+    indices := indices.push ((i % numPoints) + 1 + 1).toUInt32
+  -- Fix last triangle to wrap around
+  indices := indices.set! (indices.size - 1) 1
+
+  return (vertices, indices, 0.0, 0.0)
+
+/-- Pre-computed 8-tooth gear tessellation. -/
+private def gear8Tessellation : Array Float × Array UInt32 × Float × Float :=
+  tessellateCanonicalGear 8
+
+/-- Pre-computed 6-tooth gear tessellation. -/
+private def gear6Tessellation : Array Float × Array UInt32 × Float × Float :=
+  tessellateCanonicalGear 6
+
+/-- Hash for 8-tooth gear (FNV-1a of "gear8"). -/
+private def gear8Hash : UInt64 := 0x67656172385F5F5F  -- "gear8___"
+
+/-- Hash for 6-tooth gear (FNV-1a of "gear6"). -/
+private def gear6Hash : UInt64 := 0x67656172365F5F5F  -- "gear6___"
+
+/-- Gears: Two interlocking gears rotating in opposite directions.
+    Uses instanced rendering for high performance with many gear copies. -/
 def gearsSpec (t : Float) (color : Color) (dims : Dimensions) : CustomSpec := {
   measure := fun _ _ => (dims.size, dims.size)
   collect := fun layout =>
@@ -462,10 +519,12 @@ def gearsSpec (t : Float) (color : Color) (dims : Dimensions) : CustomSpec := {
     let cy := rect.y + dims.size / 2
 
     -- Two gears offset horizontally
-    let gear1Center := Arbor.Point.mk' (cx - dims.size * 0.18) cy
-    let gear2Center := Arbor.Point.mk' (cx + dims.size * 0.18) cy
-    let gear1Radius := dims.size * 0.22
-    let gear2Radius := dims.size * 0.18
+    let gear1X := cx - dims.size * 0.18
+    let gear1Y := cy
+    let gear2X := cx + dims.size * 0.18
+    let gear2Y := cy
+    let gear1Scale := dims.size * 0.22  -- Scale to desired size
+    let gear2Scale := dims.size * 0.18
     let gear1Teeth : Nat := 8
     let gear2Teeth : Nat := 6
 
@@ -473,47 +532,35 @@ def gearsSpec (t : Float) (color : Color) (dims : Dimensions) : CustomSpec := {
     let gear1Angle := t * Float.twoPi
     let gear2Angle := -t * Float.twoPi * (gear1Teeth.toFloat / gear2Teeth.toFloat)
 
-    RenderM.build do
-      -- Draw gear 1 (larger)
-      let gear1Path := gearPath gear1Center gear1Radius gear1Teeth gear1Angle
-      RenderM.fillPath gear1Path color
-      RenderM.fillCircle gear1Center (gear1Radius * 0.25) (color.withAlpha 0.3)
+    -- Get pre-computed tessellations
+    let (gear8Verts, gear8Indices, gear8CX, gear8CY) := gear8Tessellation
+    let (gear6Verts, gear6Indices, gear6CX, gear6CY) := gear6Tessellation
 
-      -- Draw gear 2 (smaller)
-      let gear2Path := gearPath gear2Center gear2Radius gear2Teeth gear2Angle
-      RenderM.fillPath gear2Path (color.withAlpha 0.85)
-      RenderM.fillCircle gear2Center (gear2Radius * 0.25) (color.withAlpha 0.25)
+    RenderM.build do
+      -- Draw gear 1 (8-tooth) using instanced rendering
+      let gear1Instance : MeshInstance := {
+        x := gear1X, y := gear1Y
+        rotation := gear1Angle
+        scale := gear1Scale
+        r := color.r, g := color.g, b := color.b, a := color.a
+      }
+      RenderM.fillPolygonInstanced gear8Hash gear8Verts gear8Indices #[gear1Instance] gear8CX gear8CY
+
+      -- Draw gear 2 (6-tooth) using instanced rendering
+      let gear2Color := color.withAlpha 0.85
+      let gear2Instance : MeshInstance := {
+        x := gear2X, y := gear2Y
+        rotation := gear2Angle
+        scale := gear2Scale
+        r := gear2Color.r, g := gear2Color.g, b := gear2Color.b, a := gear2Color.a
+      }
+      RenderM.fillPolygonInstanced gear6Hash gear6Verts gear6Indices #[gear2Instance] gear6CX gear6CY
+
+      -- Center holes (using GPU-batched circles)
+      RenderM.fillCircle (Arbor.Point.mk' gear1X gear1Y) (gear1Scale * 0.25) (color.withAlpha 0.3)
+      RenderM.fillCircle (Arbor.Point.mk' gear2X gear2Y) (gear2Scale * 0.25) (color.withAlpha 0.25)
   draw := none
 }
-where
-  /-- Create a gear-shaped path. -/
-  gearPath (center : Arbor.Point) (radius : Float) (teeth : Nat) (rotation : Float) : Arbor.Path := Id.run do
-    let innerRadius := radius * 0.7
-    let toothDepth := radius * 0.3
-    let numPoints := teeth * 4  -- 4 points per tooth
-    let angleStep := Float.twoPi / numPoints.toFloat
-
-    let mut path := Arbor.Path.empty
-    let mut first := true
-
-    for i in [:numPoints] do
-      let angle := rotation + i.toFloat * angleStep
-      -- Alternate between inner and outer radius based on position in tooth cycle
-      let posInTooth := i % 4
-      let r := match posInTooth with
-        | 0 => innerRadius           -- Valley
-        | 1 => radius + toothDepth   -- Outer
-        | 2 => radius + toothDepth   -- Outer
-        | _ => innerRadius           -- Valley
-
-      let pt := Arbor.Point.mk' (center.x + r * Float.cos angle) (center.y + r * Float.sin angle)
-      if first then
-        path := path.moveTo pt
-        first := false
-      else
-        path := path.lineTo pt
-
-    return path.closePath
 
 /-- Get the appropriate spec for a spinner variant. -/
 def variantSpec (variant : SpinnerVariant) (t : Float) (color : Color)

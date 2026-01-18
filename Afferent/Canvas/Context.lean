@@ -11,6 +11,7 @@ import Afferent.Render.Dynamic
 import Afferent.Text.Font
 import Afferent.FFI
 import Afferent.Arbor.Render.Cache
+import Std.Data.HashMap
 
 namespace Afferent
 
@@ -513,6 +514,12 @@ structure Canvas where
   strokeCircleBuffer : Option FFI.FloatBuffer := none
   /-- Capacity of strokeCircle FloatBuffer (in floats). -/
   strokeCircleBufferCapacity : Nat := 0
+  /-- Cache of GPU meshes keyed by path hash for instanced polygon rendering. -/
+  meshCache : Std.HashMap UInt64 FFI.CachedMesh := {}
+  /-- High-performance mutable FloatBuffer for mesh instance data. -/
+  meshInstanceBuffer : Option FFI.FloatBuffer := none
+  /-- Capacity of mesh instance FloatBuffer (in floats). -/
+  meshInstanceBufferCapacity : Nat := 0
   /-- Persistent cache for CustomSpec render commands across frames.
       Cache is keyed by widget name (from registerComponentW) + layout hash.
       When data changes, dynWidget rebuilds and generates new widget names,

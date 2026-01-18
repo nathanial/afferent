@@ -48,6 +48,58 @@ def empty : Path :=
 def isEmpty (p : Path) : Bool :=
   p.commands.isEmpty
 
+/-- FNV-1a hash constants for 64-bit hashing. -/
+private def fnvOffsetBasis : UInt64 := 14695981039346656037
+private def fnvPrime : UInt64 := 1099511628211
+
+/-- Mix a float value into an FNV-1a hash. -/
+private def hashMixFloat (h : UInt64) (f : Float) : UInt64 :=
+  let bits := f.toUInt64
+  let h1 := h ^^^ (bits &&& 0xFF)
+  let h2 := (h1 * fnvPrime) ^^^ ((bits >>> 8) &&& 0xFF)
+  let h3 := (h2 * fnvPrime) ^^^ ((bits >>> 16) &&& 0xFF)
+  let h4 := (h3 * fnvPrime) ^^^ ((bits >>> 24) &&& 0xFF)
+  let h5 := (h4 * fnvPrime) ^^^ ((bits >>> 32) &&& 0xFF)
+  let h6 := (h5 * fnvPrime) ^^^ ((bits >>> 40) &&& 0xFF)
+  let h7 := (h6 * fnvPrime) ^^^ ((bits >>> 48) &&& 0xFF)
+  (h7 * fnvPrime) ^^^ ((bits >>> 56) &&& 0xFF)
+
+/-- Mix a byte value into an FNV-1a hash. -/
+private def hashMixByte (h : UInt64) (b : UInt8) : UInt64 :=
+  (h ^^^ b.toUInt64) * fnvPrime
+
+/-- Mix a Point into an FNV-1a hash. -/
+private def hashMixPoint (h : UInt64) (p : Point) : UInt64 :=
+  hashMixFloat (hashMixFloat h p.x) p.y
+
+/-- Mix a Rect into an FNV-1a hash. -/
+private def hashMixRect (h : UInt64) (r : Rect) : UInt64 :=
+  hashMixFloat (hashMixFloat (hashMixFloat (hashMixFloat h r.x) r.y) r.width) r.height
+
+/-- Hash a PathCommand using FNV-1a algorithm.
+    Each command type gets a unique tag byte, followed by its parameters. -/
+def hashCommand (h : UInt64) : PathCommand → UInt64
+  | .moveTo p => hashMixPoint (hashMixByte h 1) p
+  | .lineTo p => hashMixPoint (hashMixByte h 2) p
+  | .quadraticCurveTo cp p => hashMixPoint (hashMixPoint (hashMixByte h 3) cp) p
+  | .bezierCurveTo cp1 cp2 p => hashMixPoint (hashMixPoint (hashMixPoint (hashMixByte h 4) cp1) cp2) p
+  | .arcTo p1 p2 radius => hashMixFloat (hashMixPoint (hashMixPoint (hashMixByte h 5) p1) p2) radius
+  | .arc center radius startAngle endAngle counterclockwise =>
+      let h1 := hashMixByte h 6
+      let h2 := hashMixPoint h1 center
+      let h3 := hashMixFloat h2 radius
+      let h4 := hashMixFloat h3 startAngle
+      let h5 := hashMixFloat h4 endAngle
+      hashMixByte h5 (if counterclockwise then 1 else 0)
+  | .rect r => hashMixRect (hashMixByte h 7) r
+  | .closePath => hashMixByte h 8
+
+/-- Compute a 64-bit hash of a Path based on its commands.
+    Structurally identical paths will have the same hash.
+    Used for O(1) mesh cache lookup. -/
+def hash (p : Path) : UInt64 :=
+  p.commands.foldl hashCommand fnvOffsetBasis
+
 def moveTo (pt : Point) (path : Path) : Path :=
   { path with
     commands := path.commands.push (.moveTo pt)

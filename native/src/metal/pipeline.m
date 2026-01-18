@@ -332,6 +332,28 @@ AfferentResult create_pipelines(struct AfferentRenderer* renderer) {
     );
     if (!renderer->batchedPipelineState) return AFFERENT_ERROR_PIPELINE_FAILED;
 
+    // Create mesh instanced pipeline (for complex polygons like gears)
+    id<MTLFunction> meshInstancedVertexFunc = [instancedLibrary newFunctionWithName:@"mesh_instanced_vertex"];
+    id<MTLFunction> meshInstancedFragmentFunc = [instancedLibrary newFunctionWithName:@"mesh_instanced_fragment"];
+    if (!meshInstancedVertexFunc || !meshInstancedFragmentFunc) {
+        NSLog(@"Failed to find mesh instanced shader functions");
+        return AFFERENT_ERROR_PIPELINE_FAILED;
+    }
+
+    MTLRenderPipelineDescriptor *meshInstancedPipelineDesc = [[MTLRenderPipelineDescriptor alloc] init];
+    meshInstancedPipelineDesc.vertexFunction = meshInstancedVertexFunc;
+    meshInstancedPipelineDesc.fragmentFunction = meshInstancedFragmentFunc;
+    meshInstancedPipelineDesc.colorAttachments[0].pixelFormat = MTLPixelFormatBGRA8Unorm;
+    apply_alpha_blend(meshInstancedPipelineDesc.colorAttachments[0]);
+
+    renderer->meshInstancedPipelineState = build_pipeline(
+        renderer->device,
+        meshInstancedPipelineDesc,
+        "MeshInstanced",
+        &error
+    );
+    if (!renderer->meshInstancedPipelineState) return AFFERENT_ERROR_PIPELINE_FAILED;
+
     // Create sprite pipeline (textured quads)
     id<MTLLibrary> spriteLibrary = [renderer->device newLibraryWithSource:spriteShaderSource
                                                                   options:nil

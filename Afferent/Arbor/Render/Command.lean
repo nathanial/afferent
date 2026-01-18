@@ -22,6 +22,19 @@ inductive TextVAlign where
   | bottom
 deriving Repr, BEq, Inhabited
 
+/-- Instance data for instanced polygon rendering.
+    8 floats per instance: position(2), rotation(1), scale(1), color(4). -/
+structure MeshInstance where
+  x : Float       -- Position X
+  y : Float       -- Position Y
+  rotation : Float -- Rotation in radians
+  scale : Float   -- Uniform scale
+  r : Float       -- Red component [0, 1]
+  g : Float       -- Green component [0, 1]
+  b : Float       -- Blue component [0, 1]
+  a : Float       -- Alpha component [0, 1]
+deriving Repr, BEq, Inhabited
+
 /-- Abstract render command.
     These commands describe what to render without knowing how. -/
 inductive RenderCommand where
@@ -68,6 +81,16 @@ inductive RenderCommand where
 
   /-- Stroke a path outline. -/
   | strokePath (path : Path) (color : Color) (lineWidth : Float)
+
+  /-- Fill a polygon with instanced rendering.
+      Uses cached GPU mesh for high-performance repeated polygon rendering.
+      - pathHash: 64-bit hash of path for mesh cache lookup
+      - vertices: Flat array of [x, y, ...] tessellated positions
+      - indices: Triangle indices
+      - instances: Array of MeshInstance (x, y, rotation, scale, color)
+      - centerX, centerY: Mesh centroid for rotation pivot -/
+  | fillPolygonInstanced (pathHash : UInt64) (vertices : Array Float) (indices : Array UInt32)
+      (instances : Array MeshInstance) (centerX centerY : Float)
 
   /-- Push a clipping rectangle onto the clip stack. -/
   | pushClip (rect : Rect)
@@ -166,6 +189,7 @@ inductive CommandCategory
   | strokeCircle
   | strokeLine
   | fillText
+  | fillPolygonInstanced
   | other
 deriving Repr, BEq, Hashable
 
@@ -181,7 +205,8 @@ def sortPriority : CommandCategory → Nat
   | .strokeCircle => 3
   | .strokeLine => 4
   | .fillText => 5
-  | .other => 6
+  | .fillPolygonInstanced => 6
+  | .other => 7
 
 end CommandCategory
 
@@ -195,6 +220,7 @@ def category : RenderCommand → CommandCategory
   | .strokeCircle .. => .strokeCircle
   | .strokeLine .. | .strokeLineBatch .. => .strokeLine
   | .fillText .. | .fillTextBlock .. => .fillText
+  | .fillPolygonInstanced .. => .fillPolygonInstanced
   | _ => .other
 
 end RenderCommand

@@ -16,6 +16,7 @@ typedef struct AfferentBuffer* AfferentBufferRef;
 typedef struct AfferentFont* AfferentFontRef;
 typedef struct AfferentFloatBuffer* AfferentFloatBufferRef;
 typedef struct AfferentTexture* AfferentTextureRef;
+typedef struct AfferentCachedMesh* AfferentCachedMeshRef;
 
 // Result codes
 typedef enum {
@@ -483,6 +484,41 @@ void afferent_renderer_draw_mesh_3d_textured(
     float fog_start,
     float fog_end,
     AfferentTextureRef texture
+);
+
+// ============================================================================
+// Cached Mesh for Instanced Polygon Rendering
+// Tessellate a polygon once, store in GPU memory, draw many instances
+// ============================================================================
+
+// Create a cached mesh from tessellated polygon data
+// vertices: flat array of [x, y, x, y, ...] positions
+// vertex_count: number of vertices (not floats)
+// indices: triangle indices
+// index_count: number of indices
+// center_x, center_y: mesh centroid (rotation pivot)
+AfferentCachedMeshRef afferent_mesh_cache_create(
+    AfferentRendererRef renderer,
+    const float* vertices,
+    uint32_t vertex_count,
+    const uint32_t* indices,
+    uint32_t index_count,
+    float center_x,
+    float center_y
+);
+
+// Destroy a cached mesh and free GPU resources
+void afferent_mesh_cache_destroy(AfferentCachedMeshRef mesh);
+
+// Draw all instances of a cached mesh in a single draw call
+// instance_data: 8 floats per instance [x, y, rotation, scale, r, g, b, a]
+void afferent_mesh_draw_instanced(
+    AfferentRendererRef renderer,
+    AfferentCachedMeshRef mesh,
+    const float* instance_data,
+    uint32_t instance_count,
+    float canvas_width,
+    float canvas_height
 );
 
 #ifdef __cplusplus

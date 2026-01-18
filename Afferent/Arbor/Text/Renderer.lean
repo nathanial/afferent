@@ -260,6 +260,10 @@ def executeCommand (state : RenderState) (cmd : RenderCommand) : RenderState :=
     -- Path rendering not supported in text mode
     state
 
+  | .fillPolygonInstanced _pathHash _vertices _indices _instances _centerX _centerY =>
+    -- Instanced polygon rendering not supported in text mode
+    state
+
   | .pushClip rect =>
     state.pushClip rect
 

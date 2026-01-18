@@ -91,6 +91,17 @@ def fillPolygon (points : Array Point) (color : Color) : RenderM Unit :=
 def strokePolygon (points : Array Point) (color : Color) (lineWidth : Float := 1.0) : RenderM Unit :=
   emit (.strokePolygon points color lineWidth)
 
+/-- Fill multiple instances of a tessellated polygon.
+    High-performance path for rendering many identical shapes with different transforms.
+    - pathHash: Hash of the canonical path (for mesh cache lookup)
+    - vertices: Pre-tessellated vertex positions [x, y, x, y, ...]
+    - indices: Triangle indices
+    - instances: Per-instance transform and color data
+    - centerX, centerY: Centroid for rotation pivot -/
+def fillPolygonInstanced (pathHash : UInt64) (vertices : Array Float) (indices : Array UInt32)
+    (instances : Array MeshInstance) (centerX centerY : Float) : RenderM Unit :=
+  emit (.fillPolygonInstanced pathHash vertices indices instances centerX centerY)
+
 /-! ## Circles -/
 
 /-- Fill a circle with a solid color (GPU-batched). -/

@@ -36,4 +36,9 @@ opaque TexturePointed : NonemptyType
 def Texture : Type := TexturePointed.type
 instance : Nonempty Texture := TexturePointed.property
 
+-- CachedMesh handle (GPU-resident tessellated polygon for instanced rendering)
+opaque CachedMeshPointed : NonemptyType
+def CachedMesh : Type := CachedMeshPointed.type
+instance : Nonempty CachedMesh := CachedMeshPointed.property
+
 end Afferent.FFI

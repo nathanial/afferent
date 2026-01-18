@@ -279,3 +279,69 @@ fragment float4 batched_fragment(BatchedVertexOut in [[stage_in]]) {
     if (alpha < 0.01) discard_fragment();
     return float4(in.color.rgb, in.color.a * alpha);
 }
+
+// =============================================================================
+// INSTANCED MESH RENDERING (for complex polygons like gears)
+// Renders a pre-tessellated mesh (vertices + indices) with per-instance transforms.
+// - Mesh vertices are in local space (centered on origin)
+// - Each instance: position(2) + rotation(1) + scale(1) + color(4) = 8 floats
+// - Single draw call for all instances with indexed triangles
+// =============================================================================
+
+struct MeshInstance {
+    packed_float2 position;  // Screen-space center position
+    float rotation;          // Rotation in radians
+    float scale;             // Uniform scale factor
+    packed_float4 color;     // RGBA color
+};
+
+struct MeshUniforms {
+    float2 viewport;         // Canvas width, height
+    float2 meshCenter;       // Mesh centroid (rotation pivot)
+    uint padding0;
+    uint padding1;
+};
+
+struct MeshVertexOut {
+    float4 position [[position]];
+    float4 color;
+};
+
+vertex MeshVertexOut mesh_instanced_vertex(
+    uint vid [[vertex_id]],
+    uint iid [[instance_id]],
+    constant packed_float2* meshVertices [[buffer(0)]],
+    constant MeshInstance* instances [[buffer(1)]],
+    constant MeshUniforms& uniforms [[buffer(2)]]
+) {
+    // Get base mesh vertex and instance data
+    float2 localPos = meshVertices[vid];
+    MeshInstance inst = instances[iid];
+
+    // Transform: local → rotated around centroid → scaled → translated
+    float2 centered = localPos - uniforms.meshCenter;
+
+    float sinA = sin(inst.rotation);
+    float cosA = cos(inst.rotation);
+    float2 rotated = float2(
+        centered.x * cosA - centered.y * sinA,
+        centered.x * sinA + centered.y * cosA
+    );
+
+    float2 scaled = rotated * inst.scale;
+    float2 translated = scaled + inst.position;
+
+    // Convert to NDC
+    float2 ndc;
+    ndc.x = (translated.x / uniforms.viewport.x) * 2.0 - 1.0;
+    ndc.y = 1.0 - (translated.y / uniforms.viewport.y) * 2.0;
+
+    MeshVertexOut out;
+    out.position = float4(ndc, 0.0, 1.0);
+    out.color = inst.color;
+    return out;
+}
+
+fragment float4 mesh_instanced_fragment(MeshVertexOut in [[stage_in]]) {
+    return in.color;
+}

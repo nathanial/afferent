@@ -10,6 +10,7 @@ import Afferent.Text.Font
 import Afferent.Text.Measurer
 import Afferent.Arbor
 import Afferent.Arbor.Core.Path
+import Std.Data.HashMap
 
 namespace Afferent.Widget
 
@@ -191,6 +192,48 @@ def executeCommand (reg : FontRegistry) (cmd : Afferent.Arbor.RenderCommand) : C
     CanvasM.setStrokeColor (toAfferentColor color)
     CanvasM.setLineWidth lineWidth
     CanvasM.strokePath afferentPath
+
+  | .fillPolygonInstanced pathHash vertices indices instances centerX centerY =>
+    if instances.size == 0 then
+      pure ()
+    else
+      -- Get or create cached mesh
+      let canvas ← CanvasM.getCanvas
+      let (mesh, canvas) ← do
+        match canvas.meshCache.get? pathHash with
+        | some mesh => pure (mesh, canvas)
+        | none =>
+          -- Create new cached mesh
+          let mesh ← FFI.MeshCache.create canvas.ctx.renderer vertices indices centerX centerY
+          let cache := canvas.meshCache.insert pathHash mesh
+          pure (mesh, { canvas with meshCache := cache })
+
+      -- Ensure instance buffer has enough capacity (8 floats per instance)
+      let requiredFloats := instances.size * 8
+      let (buf, cap, canvas) ←
+        match canvas.meshInstanceBuffer with
+        | some buf =>
+          if canvas.meshInstanceBufferCapacity >= requiredFloats then
+            pure (buf, canvas.meshInstanceBufferCapacity, canvas)
+          else
+            FFI.FloatBuffer.destroy buf
+            let newBuf ← FFI.FloatBuffer.create requiredFloats.toUSize
+            pure (newBuf, requiredFloats, { canvas with meshInstanceBuffer := some newBuf, meshInstanceBufferCapacity := requiredFloats })
+        | none =>
+          let newBuf ← FFI.FloatBuffer.create requiredFloats.toUSize
+          pure (newBuf, requiredFloats, { canvas with meshInstanceBuffer := some newBuf, meshInstanceBufferCapacity := requiredFloats })
+
+      -- Write instance data to buffer
+      let mut idx : USize := 0
+      for inst in instances do
+        buf.setVec8 idx inst.x inst.y inst.rotation inst.scale inst.r inst.g inst.b inst.a
+        idx := idx + 8
+
+      CanvasM.setCanvas canvas
+
+      -- Draw all instances
+      let (canvasWidth, canvasHeight) ← canvas.ctx.getCurrentSize
+      FFI.MeshCache.drawInstancedBuffer canvas.ctx.renderer mesh buf instances.size.toUInt32 canvasWidth canvasHeight
 
   | .pushClip rect =>
     let afferentRect := toAfferentRect rect
@@ -940,6 +983,46 @@ def executeTextBatch (font : Font) (entries : Array TextBatchEntry) : CanvasM Un
   FFI.Text.renderBatch canvas.ctx.renderer font.handle texts positions colors transforms
     canvasWidth canvasHeight
 
+/-- Merge fillPolygonInstanced commands with the same pathHash into single commands.
+    This converts N separate draw calls into M draw calls where M = number of unique pathHashes. -/
+def mergeInstancedPolygons (cmds : Array RenderCommand) : Array RenderCommand := Id.run do
+  if cmds.isEmpty then return #[]
+
+  -- First pass: collect all fillPolygonInstanced by pathHash
+  -- Use an Array of (pathHash, vertices, indices, instances, centerX, centerY) tuples
+  let mut polygonGroups : Array (UInt64 × Array Float × Array UInt32 × Array MeshInstance × Float × Float) := #[]
+  let mut otherCmds : Array RenderCommand := #[]
+
+  for cmd in cmds do
+    match cmd with
+    | .fillPolygonInstanced pathHash vertices indices instances centerX centerY =>
+      -- Find existing group with same pathHash
+      let mut found := false
+      let mut newGroups : Array (UInt64 × Array Float × Array UInt32 × Array MeshInstance × Float × Float) := #[]
+      for group in polygonGroups do
+        let (hash, verts, inds, insts, cx, cy) := group
+        if hash == pathHash then
+          -- Merge instances into existing group
+          newGroups := newGroups.push (hash, verts, inds, insts ++ instances, cx, cy)
+          found := true
+        else
+          newGroups := newGroups.push group
+      if found then
+        polygonGroups := newGroups
+      else
+        -- Add new group
+        polygonGroups := polygonGroups.push (pathHash, vertices, indices, instances, centerX, centerY)
+    | _ =>
+      otherCmds := otherCmds.push cmd
+
+  -- Build output: other commands first (they have lower sort priorities), then merged polygons
+  let mut result := otherCmds
+  for group in polygonGroups do
+    let (pathHash, vertices, indices, instances, centerX, centerY) := group
+    result := result.push (.fillPolygonInstanced pathHash vertices indices instances centerX centerY)
+
+  result
+
 /-- Execute an array of RenderCommands using CanvasM with batching optimization.
     First coalesces commands within scopes to maximize batching opportunities, then
     groups consecutive fillRect commands (per-instance cornerRadius),
@@ -963,6 +1046,10 @@ def executeCommandsBatchedWithStats (reg : FontRegistry) (cmds : Array Afferent.
     else
       nonLine := nonLine.push bc
   let cmds ← pure (coalesceByCategoryWithClip nonLine)
+
+  -- Merge fillPolygonInstanced commands with the same pathHash
+  let cmds ← pure (mergeInstancedPolygons cmds)
+
   let tCoalesce1 ← IO.monoNanosNow
 
   -- Time: Main batch loop (batch building + draw calls)
