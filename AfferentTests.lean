@@ -21,6 +21,7 @@ import Afferent.Tests.ReactiveLayoutTests
 import Afferent.Tests.DynWidgetTests
 import Afferent.Tests.ChartPerformanceTests
 import Afferent.Tests.CoalescingTests
+import Afferent.Tests.ShaderDSLTests
 import Crucible
 
 open Crucible
