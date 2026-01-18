@@ -14,7 +14,6 @@ import Afferent.Canopy.Widget.Display.Spinner.DualRing
 import Afferent.Canopy.Widget.Display.Spinner.Orbit
 import Afferent.Canopy.Widget.Display.Spinner.Pulse
 import Afferent.Canopy.Widget.Display.Spinner.Helix
-import Afferent.Canopy.Widget.Display.Spinner.HelixDSL
 import Afferent.Canopy.Widget.Display.Spinner.Wave
 import Afferent.Canopy.Widget.Display.Spinner.Spiral
 import Afferent.Canopy.Widget.Display.Spinner.Clock
@@ -40,7 +39,7 @@ def variantSpec (variant : SpinnerVariant) (t : Float) (color : Color)
   | .dualRing => dualRingSpec t color dims
   | .orbit => orbitSpec t color dims
   | .pulse => pulseSpec t color dims
-  | .helix => helixSpecDSL t color dims
+  | .helix => helixSpec t color dims
   | .wave => waveSpec t color dims
   | .spiral => spiralSpec t color dims
   | .clock => clockSpec t color dims
