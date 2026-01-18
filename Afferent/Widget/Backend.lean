@@ -272,6 +272,26 @@ def executeCommand (reg : FontRegistry) (cmd : Afferent.Arbor.RenderCommand) : C
            |>.push inst.r |>.push inst.g |>.push inst.b |>.push inst.a
       canvas.ctx.renderer.drawArcInstanced data instances.size.toUInt32 segments.toUInt32 canvasWidth canvasHeight
 
+  | .drawFragment fragmentHash _primitiveType params _instanceCount =>
+    -- Get pipeline cache from canvas
+    let canvas ← CanvasM.getCanvas
+    let cache ← canvas.fragmentCache.get
+
+    -- Get or compile the fragment pipeline using global registry
+    let (maybePipeline, newCache) ← Shader.getOrCompileGlobal cache canvas.ctx.renderer fragmentHash
+
+    -- Update cache if changed
+    canvas.fragmentCache.set newCache
+
+    -- Draw if we have a pipeline
+    match maybePipeline with
+    | some pipeline =>
+      let (canvasWidth, canvasHeight) ← canvas.ctx.getCurrentSize
+      FFI.Fragment.draw canvas.ctx.renderer pipeline params canvasWidth canvasHeight
+    | none =>
+      -- Pipeline compilation failed or fragment not registered
+      pure ()
+
   | .pushClip rect =>
     let afferentRect := toAfferentRect rect
     CanvasM.clip afferentRect
@@ -1244,6 +1264,9 @@ def executeCommandsBatchedWithStats (reg : FontRegistry) (cmds : Array Afferent.
   let mut currentStrokeCircleLineWidth : Float := 0.0
   let mut textBatch : Array TextBatchEntry := #[]
   let mut currentTextFontId : Option FontId := none
+  -- Fragment batching: accumulate params for consecutive drawFragment commands with same hash
+  let mut fragmentParamsBatch : Array Float := #[]
+  let mut currentFragmentHash : Option UInt64 := none
   let mut stats : BatchStats := { totalCommands := cmds.size + lineCmds.size }
   let mut drawCallTimeNs : Nat := 0
 
@@ -1306,19 +1329,42 @@ def executeCommandsBatchedWithStats (reg : FontRegistry) (cmds : Array Afferent.
     else
       pure (s, 0)
 
+  -- Helper to flush fragment batch (batched params for same fragment hash)
+  let flushFragments := fun (params : Array Float) (hashOpt : Option UInt64) (s : BatchStats) => do
+    if params.isEmpty then
+      pure (s, 0)
+    else
+      match hashOpt with
+      | some fragmentHash =>
+        let canvas ← CanvasM.getCanvas
+        let cache ← canvas.fragmentCache.get
+        let (maybePipeline, newCache) ← Shader.getOrCompileGlobal cache canvas.ctx.renderer fragmentHash
+        canvas.fragmentCache.set newCache
+        match maybePipeline with
+        | some pipeline =>
+          let t0 ← IO.monoNanosNow
+          let (canvasWidth, canvasHeight) ← canvas.ctx.getCurrentSize
+          FFI.Fragment.draw canvas.ctx.renderer pipeline params canvasWidth canvasHeight
+          let t1 ← IO.monoNanosNow
+          pure ({ s with batchedCalls := s.batchedCalls + 1 }, t1 - t0)
+        | none => pure (s, 0)
+      | none => pure (s, 0)
+
   -- Helper to flush all batches (lines handled separately above)
   let flushAll := fun (rB : Array RectBatchEntry)
                       (sRB : Array StrokeRectBatchEntry) (slw : Float)
                       (cB : Array CircleBatchEntry)
                       (sCB : Array StrokeCircleBatchEntry) (sclw : Float)
                       (tB : Array TextBatchEntry) (tFontId : Option FontId)
+                      (fB : Array Float) (fHash : Option UInt64)
                       (s : BatchStats) (accTime : Nat) => do
     let (s, dt1) ← flushRects rB s
     let (s, dt2) ← flushStrokeRects sRB slw s
     let (s, dt3) ← flushCircles cB s
     let (s, dt4) ← flushStrokeCircles sCB sclw s
     let (s, dt5) ← flushTexts tB tFontId s
-    pure (s, accTime + dt1 + dt2 + dt3 + dt4 + dt5)
+    let (s, dt6) ← flushFragments fB fHash s
+    pure (s, accTime + dt1 + dt2 + dt3 + dt4 + dt5 + dt6)
 
   while h : i < cmds.size do
     let cmd := cmds[i]
@@ -1509,9 +1555,45 @@ def executeCommandsBatchedWithStats (reg : FontRegistry) (cmds : Array Afferent.
       -- Lines already processed in tight loop above - skip
       pure ()
 
+    | .drawFragment fragmentHash _primitiveType params _instanceCount =>
+      -- Fragment batching: accumulate params for consecutive commands with same hash
+      -- Flush other batches first
+      if !rectBatch.isEmpty then
+        let (s, dt) ← flushRects rectBatch stats
+        stats := s; drawCallTimeNs := drawCallTimeNs + dt
+        rectBatch := #[]
+      if !strokeRectBatch.isEmpty then
+        let (s, dt) ← flushStrokeRects strokeRectBatch currentStrokeLineWidth stats
+        stats := s; drawCallTimeNs := drawCallTimeNs + dt
+        strokeRectBatch := #[]
+      if !circleBatch.isEmpty then
+        let (s, dt) ← flushCircles circleBatch stats
+        stats := s; drawCallTimeNs := drawCallTimeNs + dt
+        circleBatch := #[]
+      if !strokeCircleBatch.isEmpty then
+        let (s, dt) ← flushStrokeCircles strokeCircleBatch currentStrokeCircleLineWidth stats
+        stats := s; drawCallTimeNs := drawCallTimeNs + dt
+        strokeCircleBatch := #[]
+      if !textBatch.isEmpty then
+        let (s, dt) ← flushTexts textBatch currentTextFontId stats
+        stats := s; drawCallTimeNs := drawCallTimeNs + dt
+        textBatch := #[]
+        currentTextFontId := none
+      -- Check if we can batch with current fragment
+      if currentFragmentHash == some fragmentHash then
+        -- Same fragment - accumulate params
+        fragmentParamsBatch := fragmentParamsBatch ++ params
+      else
+        -- Different fragment - flush previous batch and start new
+        if !fragmentParamsBatch.isEmpty then
+          let (s, dt) ← flushFragments fragmentParamsBatch currentFragmentHash stats
+          stats := s; drawCallTimeNs := drawCallTimeNs + dt
+        fragmentParamsBatch := params
+        currentFragmentHash := some fragmentHash
+
     | _ =>
       -- Non-batchable command - flush all pending batches first (lines handled separately)
-      let (s, dt) ← flushAll rectBatch strokeRectBatch currentStrokeLineWidth circleBatch strokeCircleBatch currentStrokeCircleLineWidth textBatch currentTextFontId stats drawCallTimeNs
+      let (s, dt) ← flushAll rectBatch strokeRectBatch currentStrokeLineWidth circleBatch strokeCircleBatch currentStrokeCircleLineWidth textBatch currentTextFontId fragmentParamsBatch currentFragmentHash stats drawCallTimeNs
       stats := s; drawCallTimeNs := dt
       rectBatch := #[]
       strokeRectBatch := #[]
@@ -1519,6 +1601,8 @@ def executeCommandsBatchedWithStats (reg : FontRegistry) (cmds : Array Afferent.
       strokeCircleBatch := #[]
       textBatch := #[]
       currentTextFontId := none
+      fragmentParamsBatch := #[]
+      currentFragmentHash := none
       -- Execute the command individually
       executeCommand reg cmd
       stats := { stats with individualCalls := stats.individualCalls + 1 }
@@ -1526,7 +1610,7 @@ def executeCommandsBatchedWithStats (reg : FontRegistry) (cmds : Array Afferent.
     i := i + 1
 
   -- Flush any remaining batches (lines handled separately below)
-  let (s, dt) ← flushAll rectBatch strokeRectBatch currentStrokeLineWidth circleBatch strokeCircleBatch currentStrokeCircleLineWidth textBatch currentTextFontId stats drawCallTimeNs
+  let (s, dt) ← flushAll rectBatch strokeRectBatch currentStrokeLineWidth circleBatch strokeCircleBatch currentStrokeCircleLineWidth textBatch currentTextFontId fragmentParamsBatch currentFragmentHash stats drawCallTimeNs
   stats := s; drawCallTimeNs := dt
 
   -- Process all lines in a tight loop AFTER other batches (lines sorted last)

@@ -114,6 +114,18 @@ def fillPolygonInstanced (pathHash : UInt64) (vertices : Array Float) (indices :
 def strokeArcInstanced (instances : Array ArcInstance) (segments : Nat := 16) : RenderM Unit :=
   emit (.strokeArcInstanced instances segments)
 
+/-! ## Fragment Commands -/
+
+/-- Draw using a custom shader fragment.
+    High-performance GPU code for computing primitive positions/colors.
+    - fragmentHash: Hash of the fragment definition (for pipeline caching)
+    - primitiveType: Type of primitive (0 = circle)
+    - params: Flat array of floats passed to the shader
+    - instanceCount: Number of primitives to generate -/
+def drawFragment (fragmentHash : UInt64) (primitiveType : UInt32)
+    (params : Array Float) (instanceCount : UInt32) : RenderM Unit :=
+  emit (.drawFragment fragmentHash primitiveType params instanceCount)
+
 /-! ## Circles -/
 
 /-- Fill a circle with a solid color (GPU-batched). -/

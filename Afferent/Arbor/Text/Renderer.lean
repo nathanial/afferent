@@ -279,6 +279,10 @@ def executeCommand (state : RenderState) (cmd : RenderCommand) : RenderState :=
     -- Instanced arc rendering not supported in text mode
     state
 
+  | .drawFragment _fragmentHash _primitiveType _params _instanceCount =>
+    -- Fragment shader rendering not supported in text mode
+    state
+
   | .pushClip rect =>
     state.pushClip rect
 

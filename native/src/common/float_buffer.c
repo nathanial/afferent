@@ -59,8 +59,13 @@ size_t afferent_float_buffer_capacity(AfferentFloatBufferRef buf) {
     return buf->capacity;
 }
 
-const float* afferent_float_buffer_data(AfferentFloatBufferRef buf) {
+float* afferent_float_buffer_data(AfferentFloatBufferRef buf) {
     return buf->data;
+}
+
+size_t afferent_float_buffer_count(AfferentFloatBufferRef buf) {
+    // For now, count equals capacity (buffer is always fully used)
+    return buf->capacity;
 }
 
 void afferent_float_buffer_set_vec8(AfferentFloatBufferRef buf, size_t index,

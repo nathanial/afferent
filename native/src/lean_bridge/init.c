@@ -8,6 +8,7 @@ lean_external_class* g_font_class = NULL;
 lean_external_class* g_float_buffer_class = NULL;
 lean_external_class* g_texture_class = NULL;
 lean_external_class* g_cached_mesh_class = NULL;
+lean_external_class* g_fragment_pipeline_class = NULL;
 static uint8_t g_afferent_initialized = 0;
 
 // Weak reference so we don't double-free if Lean GC happens after explicit destroy
@@ -48,6 +49,10 @@ static void cached_mesh_finalizer(void* ptr) {
     // Same as above
 }
 
+static void fragment_pipeline_finalizer(void* ptr) {
+    // Same as above - let explicit destroy handle cleanup
+}
+
 void afferent_ensure_initialized(void) {
     if (g_afferent_initialized) return;
 
@@ -58,6 +63,7 @@ void afferent_ensure_initialized(void) {
     g_float_buffer_class = lean_register_external_class(float_buffer_finalizer, afferent_external_foreach);
     g_texture_class = lean_register_external_class(texture_finalizer, afferent_external_foreach);
     g_cached_mesh_class = lean_register_external_class(cached_mesh_finalizer, afferent_external_foreach);
+    g_fragment_pipeline_class = lean_register_external_class(fragment_pipeline_finalizer, afferent_external_foreach);
 
     // Initialize text subsystem
     afferent_text_init();

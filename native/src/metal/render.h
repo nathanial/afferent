@@ -7,6 +7,9 @@
 #include "afferent.h"
 #include "types.h"
 
+// MSAA sample count used by render pass and pipelines.
+#define AFFERENT_MSAA_SAMPLE_COUNT 4
+
 // External declarations from window.m
 extern id<MTLDevice> afferent_window_get_device(AfferentWindowRef window);
 extern CAMetalLayer* afferent_window_get_metal_layer(AfferentWindowRef window);
@@ -179,5 +182,9 @@ id<MTLTexture> createMetalTexture(id<MTLDevice> device, const uint8_t* data, uin
 
 // 3D rendering helpers (draw_3d.m)
 void ensure_ocean_index_buffer(AfferentRendererRef renderer, uint32_t gridSize);
+
+// Renderer internal accessors (for FFI modules)
+id<MTLDevice> afferent_renderer_get_device(AfferentRendererRef renderer);
+id<MTLRenderCommandEncoder> afferent_renderer_get_encoder(AfferentRendererRef renderer);
 
 #endif // AFFERENT_METAL_RENDER_H

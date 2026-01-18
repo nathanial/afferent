@@ -110,6 +110,18 @@ void afferent_renderer_destroy(AfferentRendererRef renderer) {
 }
 
 // ============================================================================
+// Internal Accessors
+// ============================================================================
+
+id<MTLDevice> afferent_renderer_get_device(AfferentRendererRef renderer) {
+    return renderer ? renderer->device : nil;
+}
+
+id<MTLRenderCommandEncoder> afferent_renderer_get_encoder(AfferentRendererRef renderer) {
+    return renderer ? renderer->currentEncoder : nil;
+}
+
+// ============================================================================
 // Drawable Scale Control
 // ============================================================================
 

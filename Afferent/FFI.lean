@@ -11,6 +11,7 @@ import Afferent.FFI.Text
 import Afferent.FFI.FloatBuffer
 import Afferent.FFI.Texture
 import Afferent.FFI.MeshCache
+import Afferent.FFI.Fragment
 
 namespace Afferent.FFI
 -- All types and functions are re-exported from submodules

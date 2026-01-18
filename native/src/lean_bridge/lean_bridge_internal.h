@@ -44,6 +44,7 @@ extern lean_external_class* g_font_class;
 extern lean_external_class* g_float_buffer_class;
 extern lean_external_class* g_texture_class;
 extern lean_external_class* g_cached_mesh_class;
+extern lean_external_class* g_fragment_pipeline_class;
 
 void afferent_ensure_initialized(void);
 

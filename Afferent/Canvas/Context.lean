@@ -11,6 +11,7 @@ import Afferent.Render.Dynamic
 import Afferent.Text.Font
 import Afferent.FFI
 import Afferent.Arbor.Render.Cache
+import Afferent.Shader
 import Std.Data.HashMap
 
 namespace Afferent
@@ -525,6 +526,9 @@ structure Canvas where
       When data changes, dynWidget rebuilds and generates new widget names,
       causing natural cache invalidation. -/
   renderCache : IO.Ref Arbor.RenderCache
+  /-- Cache of compiled fragment pipelines by hash.
+      Fragment definitions are looked up from the global registry. -/
+  fragmentCache : IO.Ref Shader.FragmentCache
 
 namespace Canvas
 
@@ -532,13 +536,15 @@ namespace Canvas
 def create (width height : UInt32) (title : String) : IO Canvas := do
   let ctx ← DrawContext.create width height title
   let renderCache ← IO.mkRef Arbor.RenderCache.empty
-  pure { ctx, stateStack := StateStack.new, renderCache }
+  let fragmentCache ← IO.mkRef Shader.FragmentCache.empty
+  pure { ctx, stateStack := StateStack.new, renderCache, fragmentCache }
 
 /-- Create a new canvas with a window and explicit screen scale factor. -/
 def createWithScale (width height : UInt32) (title : String) (screenScale : Float) : IO Canvas := do
   let ctx ← DrawContext.create width height title
   let renderCache ← IO.mkRef Arbor.RenderCache.empty
-  pure { ctx, stateStack := StateStack.new, screenScale, renderCache }
+  let fragmentCache ← IO.mkRef Shader.FragmentCache.empty
+  pure { ctx, stateStack := StateStack.new, screenScale, renderCache, fragmentCache }
 
 /-- Get the current state. -/
 def state (c : Canvas) : CanvasState :=

@@ -10,15 +10,13 @@ static void apply_alpha_blend(MTLRenderPipelineColorAttachmentDescriptor *color)
     color.destinationAlphaBlendFactor = MTLBlendFactorOneMinusSourceAlpha;
 }
 
-static const NSUInteger kMSAASampleCount = 4;
-
 static id<MTLRenderPipelineState> build_pipeline(
     id<MTLDevice> device,
     MTLRenderPipelineDescriptor *desc,
     const char *label,
     NSError **error
 ) {
-    desc.rasterSampleCount = kMSAASampleCount;
+    desc.rasterSampleCount = AFFERENT_MSAA_SAMPLE_COUNT;
     id<MTLRenderPipelineState> pipeline = [device newRenderPipelineStateWithDescriptor:desc error:error];
     if (!pipeline) {
         NSLog(@"%s pipeline creation failed: %@", label, *error);
@@ -40,7 +38,7 @@ void ensureDepthTexture(AfferentRendererRef renderer, NSUInteger width, NSUInteg
     depthDesc.usage = MTLTextureUsageRenderTarget;
     depthDesc.storageMode = MTLStorageModePrivate;
     depthDesc.textureType = MTLTextureType2DMultisample;
-    depthDesc.sampleCount = kMSAASampleCount;
+    depthDesc.sampleCount = AFFERENT_MSAA_SAMPLE_COUNT;
     renderer->depthTexture = [renderer->device newTextureWithDescriptor:depthDesc];
 
     renderer->depthWidth = width;
@@ -60,7 +58,7 @@ void ensureMSAATexture(AfferentRendererRef renderer, NSUInteger width, NSUIntege
     colorDesc.usage = MTLTextureUsageRenderTarget;
     colorDesc.storageMode = MTLStorageModePrivate;
     colorDesc.textureType = MTLTextureType2DMultisample;
-    colorDesc.sampleCount = kMSAASampleCount;
+    colorDesc.sampleCount = AFFERENT_MSAA_SAMPLE_COUNT;
     renderer->msaaColorTexture = [renderer->device newTextureWithDescriptor:colorDesc];
 
     renderer->msaaWidth = width;

@@ -321,7 +321,8 @@ void afferent_float_buffer_destroy(AfferentFloatBufferRef buf);
 void afferent_float_buffer_set(AfferentFloatBufferRef buf, size_t index, float value);
 float afferent_float_buffer_get(AfferentFloatBufferRef buf, size_t index);
 size_t afferent_float_buffer_capacity(AfferentFloatBufferRef buf);
-const float* afferent_float_buffer_data(AfferentFloatBufferRef buf);
+float* afferent_float_buffer_data(AfferentFloatBufferRef buf);
+size_t afferent_float_buffer_count(AfferentFloatBufferRef buf);
 
 // Set 8 consecutive floats at once (reduces FFI overhead by 8x for instance data)
 void afferent_float_buffer_set_vec8(AfferentFloatBufferRef buf, size_t index,

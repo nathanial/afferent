@@ -118,6 +118,15 @@ inductive RenderCommand where
       - segments: Number of subdivisions per arc (higher = smoother, default 16) -/
   | strokeArcInstanced (instances : Array ArcInstance) (segments : Nat := 16)
 
+  /-- Draw using a custom shader fragment.
+      High-performance GPU code for computing primitive positions/colors.
+      - fragmentHash: Hash of the fragment definition (for pipeline caching)
+      - primitiveType: Type of primitive (0 = circle)
+      - params: Flat array of floats passed to the shader
+      - instanceCount: Number of primitives to generate -/
+  | drawFragment (fragmentHash : UInt64) (primitiveType : UInt32)
+      (params : Array Float) (instanceCount : UInt32)
+
   /-- Push a clipping rectangle onto the clip stack. -/
   | pushClip (rect : Rect)
 
@@ -217,6 +226,7 @@ inductive CommandCategory
   | fillText
   | fillPolygonInstanced
   | strokeArcInstanced
+  | drawFragment
   | other
 deriving Repr, BEq, Hashable
 
@@ -232,9 +242,10 @@ def sortPriority : CommandCategory → Nat
   | .strokeCircle => 3
   | .strokeLine => 4
   | .strokeArcInstanced => 5
-  | .fillText => 6
-  | .fillPolygonInstanced => 7
-  | .other => 8
+  | .drawFragment => 6
+  | .fillText => 7
+  | .fillPolygonInstanced => 8
+  | .other => 9
 
 end CommandCategory
 
@@ -250,6 +261,7 @@ def category : RenderCommand → CommandCategory
   | .fillText .. | .fillTextBlock .. => .fillText
   | .fillPolygonInstanced .. => .fillPolygonInstanced
   | .strokeArcInstanced .. => .strokeArcInstanced
+  | .drawFragment .. => .drawFragment
   | _ => .other
 
 end RenderCommand
