@@ -97,9 +97,9 @@ def spinner (theme : Theme) (config : Spinner.Config := {}) : WidgetM Unit := do
   -- Use shared elapsed time (all widgets share ONE Dynamic, no per-widget foldDyn)
   let elapsedTime ← useElapsedTime
 
-  -- Ring variants use raw time for seamless animation (cos/sin handle any angle).
+  -- Variants using sin/cos need raw time for seamless animation (they handle any angle).
   -- Other variants use wrapped progress [0,1) for their animation cycles.
-  let useRawTime := config.variant == .ring || config.variant == .dualRing
+  let useRawTime := config.variant == .ring || config.variant == .dualRing || config.variant == .helix
   let _ ← dynWidget elapsedTime fun t => do
     let offsetT := t + timeOffset
     let animTime := if useRawTime then offsetT * config.speed else floatMod offsetT cycleDuration / cycleDuration
