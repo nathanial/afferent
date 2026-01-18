@@ -102,7 +102,8 @@ def spinner (theme : Theme) (config : Spinner.Config := {}) : WidgetM Unit := do
   let useRawTime := match config.variant with
     | .ring | .dualRing => true          -- Arc rendering with angles
     | .helix | .wave | .circleDots       -- Shader DSL with sin/cos
-    | .pendulum | .orbit | .bouncingDots => true
+    | .pendulum | .orbit | .bouncingDots
+    | .ripple | .pulse | .bars => true
     | _ => false
   let _ ← dynWidget elapsedTime fun t => do
     let offsetT := t + timeOffset

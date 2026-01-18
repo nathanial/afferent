@@ -10,11 +10,13 @@ namespace Afferent.Shader.DSL
 open Afferent.Shader
 
 /-- The output of a circle fragment shader.
-    Expresses the computed center, radius, and color for a circle instance. -/
+    Expresses the computed center, radius, strokeWidth, and color for a circle instance.
+    strokeWidth = 0 renders a filled circle, > 0 renders a ring/stroke. -/
 structure CircleResultExpr where
-  center : ShaderExpr .float2
-  radius : ShaderExpr .float
-  color  : ShaderExpr .float4
+  center      : ShaderExpr .float2
+  radius      : ShaderExpr .float
+  strokeWidth : ShaderExpr .float := .litFloat 0.0  -- Default to filled circle
+  color       : ShaderExpr .float4
 
 namespace CircleResultExpr
 
@@ -24,6 +26,7 @@ def toMetal (result : CircleResultExpr) : String :=
     "CircleResult result;",
     s!"result.center = {result.center.toMetal};",
     s!"result.radius = {result.radius.toMetal};",
+    s!"result.strokeWidth = {result.strokeWidth.toMetal};",
     s!"result.color = {result.color.toMetal};",
     "return result;"
   ]

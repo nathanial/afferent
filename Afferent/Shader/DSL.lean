@@ -41,3 +41,4 @@ import Afferent.Shader.DSL.Render
 import Afferent.Shader.DSL.Ops
 import Afferent.Shader.DSL.Prelude
 import Afferent.Shader.DSL.Circle
+import Afferent.Shader.DSL.Rect

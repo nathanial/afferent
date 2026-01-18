@@ -125,6 +125,32 @@ def fragmentCirclePacked (name : String) (instanceCount : Nat) (paramsFloatCount
     functionCode := functionBody
     instanceCount }
 
+/-- Define a rectangle-generating fragment.
+    The function body should compute and return a RectResult. -/
+def fragmentRect (name : String) (instanceCount : Nat) (paramsFloatCount : Nat)
+    (paramsStruct : String) (functionBody : String) : ShaderFragment :=
+  { name
+    primitive := .rect
+    paramsFloatCount
+    paramsPackedFloatCount := paramsFloatCount
+    paramsPackOffsets := identityOffsets paramsFloatCount
+    paramsStructCode := paramsStruct
+    functionCode := functionBody
+    instanceCount }
+
+/-- Define a rectangle-generating fragment with explicit packing layout. -/
+def fragmentRectPacked (name : String) (instanceCount : Nat) (paramsFloatCount : Nat)
+    (paramsPackedFloatCount : Nat) (paramsPackOffsets : Array Nat)
+    (paramsStruct : String) (functionBody : String) : ShaderFragment :=
+  { name
+    primitive := .rect
+    paramsFloatCount
+    paramsPackedFloatCount
+    paramsPackOffsets
+    paramsStructCode := paramsStruct
+    functionCode := functionBody
+    instanceCount }
+
 /-! ## Global Fragment Registry -/
 
 /-- Global registry of all defined shader fragments.

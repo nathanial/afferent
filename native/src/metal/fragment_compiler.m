@@ -13,9 +13,11 @@ static const char* fragment_circle_template =
     "using namespace metal;\n"
     "\n"
     "// Result type for circle-generating fragments\n"
+    "// strokeWidth = 0 renders filled circle, >0 renders ring/stroke\n"
     "struct CircleResult {\n"
     "    float2 center;\n"
     "    float radius;\n"
+    "    float strokeWidth;\n"
     "    float4 color;\n"
     "};\n"
     "\n"
@@ -39,6 +41,7 @@ static const char* fragment_circle_template =
     "    float4 position [[position]];\n"
     "    float4 color;\n"
     "    float2 uv;\n"
+    "    float strokeRatio;  // strokeWidth / radius (0 = filled)\n"
     "};\n"
     "\n"
     "// Unit quad vertices (for generating circle quads)\n"
@@ -62,10 +65,12 @@ static const char* fragment_circle_template =
     "    // Call user's fragment function to compute circle properties\n"
     "    CircleResult c = %s(localIdx, params[paramIndex]);\n"  // FRAGMENT_NAME
     "\n"
-    "    // Generate quad vertices for this circle\n"
+    "    // Generate quad vertices for this circle/ring\n"
+    "    // For rings, the quad must include the stroke extending beyond radius\n"
     "    float2 uv = unitQuad[vid];\n"
-    "    float diameter = c.radius * 2.0;\n"
-    "    float2 pos = c.center - c.radius + uv * diameter;\n"
+    "    float outerRadius = c.radius + c.strokeWidth * 0.5;\n"
+    "    float diameter = outerRadius * 2.0;\n"
+    "    float2 pos = c.center - outerRadius + uv * diameter;\n"
     "\n"
     "    // Convert to NDC\n"
     "    float2 ndc;\n"
@@ -76,14 +81,115 @@ static const char* fragment_circle_template =
     "    out.position = float4(ndc, 0.0, 1.0);\n"
     "    out.color = c.color;\n"
     "    out.uv = uv;\n"
+    "    out.strokeRatio = (c.radius > 0.0) ? c.strokeWidth / c.radius : 0.0;\n"
     "    return out;\n"
     "}\n"
     "\n"
     "fragment float4 fragment_circle_fragment(FragmentCircleVertexOut in [[stage_in]]) {\n"
-    "    // Render smooth circle with anti-aliasing\n"
+    "    // Render smooth circle or ring with anti-aliasing\n"
     "    float2 local = in.uv * 2.0 - 1.0;\n"
     "    float dist = length(local);\n"
-    "    float alpha = 1.0 - smoothstep(0.95, 1.0, dist);\n"
+    "    float alpha;\n"
+    "    if (in.strokeRatio > 0.0) {\n"
+    "        // Ring mode: strokeRatio = strokeWidth / radius\n"
+    "        // UV space is scaled to outerRadius, so outer edge is at dist=1\n"
+    "        // Inner edge is at dist = 1 - strokeRatio / (1 + strokeRatio * 0.5)\n"
+    "        float normalizedStroke = in.strokeRatio / (1.0 + in.strokeRatio * 0.5);\n"
+    "        float innerEdge = 1.0 - normalizedStroke;\n"
+    "        float outerAlpha = 1.0 - smoothstep(0.95, 1.0, dist);\n"
+    "        float innerAlpha = smoothstep(innerEdge - 0.05, innerEdge, dist);\n"
+    "        alpha = outerAlpha * innerAlpha;\n"
+    "    } else {\n"
+    "        // Filled circle mode\n"
+    "        alpha = 1.0 - smoothstep(0.95, 1.0, dist);\n"
+    "    }\n"
+    "    if (alpha < 0.01) discard_fragment();\n"
+    "    return float4(in.color.rgb, in.color.a * alpha);\n"
+    "}\n";
+
+// Template shader for rectangle-generating fragments
+static const char* fragment_rect_template =
+    "#include <metal_stdlib>\n"
+    "using namespace metal;\n"
+    "\n"
+    "// Result type for rectangle-generating fragments\n"
+    "struct RectResult {\n"
+    "    float2 position;    // Top-left corner\n"
+    "    float2 size;        // Width, height\n"
+    "    float cornerRadius; // 0 = sharp corners\n"
+    "    float4 color;\n"
+    "};\n"
+    "\n"
+    "// === USER PARAMS STRUCT ===\n"
+    "%s\n"  // PARAMS_STRUCT
+    "\n"
+    "// === USER FRAGMENT FUNCTION ===\n"
+    "static inline RectResult %s(uint idx, constant %s& p) {\n"  // FRAGMENT_NAME, PARAMS_TYPE
+    "    %s\n"  // FRAGMENT_BODY
+    "}\n"
+    "\n"
+    "// Uniforms for fragment shader\n"
+    "struct FragmentRectUniforms {\n"
+    "    float2 viewport;\n"
+    "    uint primitivesPerInstance;\n"
+    "    uint totalInstances;\n"
+    "};\n"
+    "\n"
+    "// Vertex output\n"
+    "struct FragmentRectVertexOut {\n"
+    "    float4 position [[position]];\n"
+    "    float4 color;\n"
+    "    float2 uv;\n"
+    "    float2 rectSize;\n"
+    "    float cornerRadius;\n"
+    "};\n"
+    "\n"
+    "// Unit quad vertices\n"
+    "constant float2 unitQuad[4] = {\n"
+    "    float2(0, 0),\n"
+    "    float2(1, 0),\n"
+    "    float2(0, 1),\n"
+    "    float2(1, 1)\n"
+    "};\n"
+    "\n"
+    "vertex FragmentRectVertexOut fragment_rect_vertex(\n"
+    "    uint vid [[vertex_id]],\n"
+    "    uint iid [[instance_id]],\n"
+    "    constant %s* params [[buffer(0)]],\n"  // PARAMS_TYPE
+    "    constant FragmentRectUniforms& uniforms [[buffer(1)]]\n"
+    ") {\n"
+    "    uint paramIndex = iid / uniforms.primitivesPerInstance;\n"
+    "    uint localIdx = iid %% uniforms.primitivesPerInstance;\n"
+    "\n"
+    "    RectResult r = %s(localIdx, params[paramIndex]);\n"  // FRAGMENT_NAME
+    "\n"
+    "    float2 uv = unitQuad[vid];\n"
+    "    float2 pos = r.position + uv * r.size;\n"
+    "\n"
+    "    float2 ndc;\n"
+    "    ndc.x = (pos.x / uniforms.viewport.x) * 2.0 - 1.0;\n"
+    "    ndc.y = 1.0 - (pos.y / uniforms.viewport.y) * 2.0;\n"
+    "\n"
+    "    FragmentRectVertexOut out;\n"
+    "    out.position = float4(ndc, 0.0, 1.0);\n"
+    "    out.color = r.color;\n"
+    "    out.uv = uv;\n"
+    "    out.rectSize = r.size;\n"
+    "    out.cornerRadius = r.cornerRadius;\n"
+    "    return out;\n"
+    "}\n"
+    "\n"
+    "fragment float4 fragment_rect_fragment(FragmentRectVertexOut in [[stage_in]]) {\n"
+    "    if (in.cornerRadius <= 0.0) {\n"
+    "        // Sharp rectangle - no distance field needed\n"
+    "        return in.color;\n"
+    "    }\n"
+    "    // Rounded rectangle using SDF\n"
+    "    float2 halfSize = in.rectSize * 0.5;\n"
+    "    float2 localPos = (in.uv - 0.5) * in.rectSize;\n"
+    "    float2 q = abs(localPos) - halfSize + in.cornerRadius;\n"
+    "    float dist = length(max(q, 0.0)) + min(max(q.x, q.y), 0.0) - in.cornerRadius;\n"
+    "    float alpha = 1.0 - smoothstep(-1.0, 0.0, dist);\n"
     "    if (alpha < 0.01) discard_fragment();\n"
     "    return float4(in.color.rgb, in.color.a * alpha);\n"
     "}\n";
@@ -126,19 +232,34 @@ AfferentFragmentPipelineRef afferent_fragment_compile(
         return NULL;
     }
 
-    // Only circle primitives supported for now
-    if (primitiveType != AFFERENT_FRAGMENT_CIRCLE) {
-        NSLog(@"[FragmentCompiler] Only circle primitives are currently supported");
-        return NULL;
-    }
-
     // Extract param type name from struct definition
     NSString* paramsType = extractStructName(paramsStructCode);
+
+    // Select template based on primitive type
+    const char* shaderTemplate = NULL;
+    NSString* vertexFuncName = nil;
+    NSString* fragmentFuncName = nil;
+
+    switch (primitiveType) {
+        case AFFERENT_FRAGMENT_CIRCLE:
+            shaderTemplate = fragment_circle_template;
+            vertexFuncName = @"fragment_circle_vertex";
+            fragmentFuncName = @"fragment_circle_fragment";
+            break;
+        case AFFERENT_FRAGMENT_RECT:
+            shaderTemplate = fragment_rect_template;
+            vertexFuncName = @"fragment_rect_vertex";
+            fragmentFuncName = @"fragment_rect_fragment";
+            break;
+        default:
+            NSLog(@"[FragmentCompiler] Unsupported primitive type: %u", primitiveType);
+            return NULL;
+    }
 
     // Build shader source by substituting placeholders
     // Template has 6 format specifiers: paramsStruct, name, type, body, type (params ptr), name (call)
     NSString* shaderSource = [NSString stringWithFormat:
-        [NSString stringWithUTF8String:fragment_circle_template],
+        [NSString stringWithUTF8String:shaderTemplate],
         paramsStructCode,        // %s - PARAMS_STRUCT
         fragmentName,            // %s - FRAGMENT_NAME (function definition)
         [paramsType UTF8String], // %s - PARAMS_TYPE (in function signature)
@@ -164,8 +285,8 @@ AfferentFragmentPipelineRef afferent_fragment_compile(
     }
 
     // Get shader functions
-    id<MTLFunction> vertexFunction = [library newFunctionWithName:@"fragment_circle_vertex"];
-    id<MTLFunction> fragmentFunction = [library newFunctionWithName:@"fragment_circle_fragment"];
+    id<MTLFunction> vertexFunction = [library newFunctionWithName:vertexFuncName];
+    id<MTLFunction> fragmentFunction = [library newFunctionWithName:fragmentFuncName];
 
     if (!vertexFunction || !fragmentFunction) {
         NSLog(@"[FragmentCompiler] Failed to find shader functions for '%s'", fragmentName);
