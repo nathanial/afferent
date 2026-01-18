@@ -107,7 +107,8 @@ def circleDotsSpec (t : Float) (color : Color) (dims : Dimensions) : CustomSpec 
 }
 
 /-- Ring: Rotating arc segment (macOS/iOS style).
-    Uses instanced arc rendering for GPU batching. -/
+    Uses instanced arc rendering for GPU batching.
+    Note: `t` is raw elapsed time in seconds, not wrapped progress. -/
 def ringSpec (t : Float) (color : Color) (dims : Dimensions) : CustomSpec := {
   measure := fun _ _ => (dims.size, dims.size)
   collect := fun layout =>
@@ -115,7 +116,8 @@ def ringSpec (t : Float) (color : Color) (dims : Dimensions) : CustomSpec := {
     let cx := rect.x + dims.size / 2
     let cy := rect.y + dims.size / 2
     let radius := (dims.size - dims.strokeWidth) / 2 - 2
-    let startAngle := t * Float.twoPi
+    -- Use raw time directly - cos/sin handle any angle value smoothly
+    let startAngle := t * Float.pi  -- Half rotation per second
     let sweepAngle := Float.pi * 1.5  -- 270° arc
 
     RenderM.build do
@@ -179,7 +181,8 @@ def barsSpec (t : Float) (color : Color) (dims : Dimensions) : CustomSpec := {
 }
 
 /-- DualRing: Two concentric rings rotating in opposite directions.
-    Uses instanced arc rendering for GPU batching - multiple spinners batch into single draw calls. -/
+    Uses instanced arc rendering for GPU batching - multiple spinners batch into single draw calls.
+    Note: `t` is raw elapsed time in seconds, not wrapped progress. -/
 def dualRingSpec (t : Float) (color : Color) (dims : Dimensions) : CustomSpec := {
   measure := fun _ _ => (dims.size, dims.size)
   collect := fun layout =>
@@ -188,8 +191,9 @@ def dualRingSpec (t : Float) (color : Color) (dims : Dimensions) : CustomSpec :=
     let cy := rect.y + dims.size / 2
     let outerRadius := (dims.size - dims.strokeWidth) / 2 - 2
     let innerRadius := outerRadius * 0.6
-    let outerAngle := t * Float.twoPi
-    let innerAngle := -t * Float.twoPi * 1.5  -- Opposite direction, faster
+    -- Use raw time directly - cos/sin handle any angle value smoothly
+    let outerAngle := t * Float.pi  -- Half rotation per second
+    let innerAngle := -t * Float.pi * 1.5  -- Opposite direction, faster
     let innerColor := color.withAlpha 0.6
     let innerStrokeWidth := dims.strokeWidth * 0.7
 
@@ -661,12 +665,13 @@ def spinner (theme : Theme) (config : Spinner.Config := {}) : WidgetM Unit := do
   -- Use shared elapsed time (all widgets share ONE Dynamic, no per-widget foldDyn)
   let elapsedTime ← useElapsedTime
 
-  -- dynWidget auto-detects that this builder creates no subscriptions
-  -- and uses the fast path (skips scope management) automatically.
+  -- Ring variants use raw time for seamless animation (cos/sin handle any angle).
+  -- Other variants use wrapped progress [0,1) for their animation cycles.
   let cycleDuration : Float := 2.0 / config.speed
+  let useRawTime := config.variant == .ring || config.variant == .dualRing
   let _ ← dynWidget elapsedTime fun t => do
-    let progress := floatMod t cycleDuration / cycleDuration
-    emit do pure (spinnerVisual name progress config theme)
+    let animTime := if useRawTime then t * config.speed else floatMod t cycleDuration / cycleDuration
+    emit do pure (spinnerVisual name animTime config theme)
 
 /-- Convenience function: Create a default ring spinner. -/
 def spinnerRing (theme : Theme) (color : Option Color := none)
