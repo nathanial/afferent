@@ -102,8 +102,7 @@ def circleDotsSpec (t : Float) (color : Color) (dims : Dimensions) : CustomSpec 
         let phase := (t + i.toFloat / numDots.toFloat)
         let alpha := 0.3 + 0.7 * (1.0 - (phase - phase.floor))
         let dotColor := color.withAlpha alpha
-        let dotPath := Arbor.Path.circle (Arbor.Point.mk' dx dy) dotRadius
-        RenderM.fillPath dotPath dotColor
+        RenderM.fillCircle (Arbor.Point.mk' dx dy) dotRadius dotColor
   draw := none
 }
 
@@ -141,8 +140,7 @@ def bouncingDotsSpec (t : Float) (color : Color) (dims : Dimensions) : CustomSpe
         let yOffset := Float.abs (Float.sin phase) * bounceHeight
         let dx := cx + (i.toFloat - 1.0) * spacing
         let dy := cy - yOffset
-        let dotPath := Arbor.Path.circle (Arbor.Point.mk' dx dy) dotRadius
-        RenderM.fillPath dotPath color
+        RenderM.fillCircle (Arbor.Point.mk' dx dy) dotRadius color
   draw := none
 }
 
@@ -215,8 +213,7 @@ def orbitSpec (t : Float) (color : Color) (dims : Dimensions) : CustomSpec := {
         let dx := cx + radius * Float.cos angle
         let dy := cy + radius * Float.sin angle
         let dotRadius := dims.size * sizeFactor
-        let dotPath := Arbor.Path.circle (Arbor.Point.mk' dx dy) dotRadius
-        RenderM.fillPath dotPath (color.withAlpha alpha)
+        RenderM.fillCircle (Arbor.Point.mk' dx dy) dotRadius (color.withAlpha alpha)
   draw := none
 }
 
@@ -229,6 +226,7 @@ def pulseSpec (t : Float) (color : Color) (dims : Dimensions) : CustomSpec := {
     let cy := rect.y + dims.size / 2
     let maxRadius := dims.size * 0.45
     let numRings : Nat := 3
+    let center := Arbor.Point.mk' cx cy
 
     RenderM.build do
       for i in [:numRings] do
@@ -237,8 +235,7 @@ def pulseSpec (t : Float) (color : Color) (dims : Dimensions) : CustomSpec := {
         let radius := maxRadius * progress
         let alpha := 1.0 - progress
         if alpha > 0.05 then
-          let ringPath := Arbor.Path.circle (Arbor.Point.mk' cx cy) radius
-          RenderM.strokePath ringPath (color.withAlpha alpha) dims.strokeWidth
+          RenderM.strokeCircle center radius (color.withAlpha alpha) dims.strokeWidth
   draw := none
 }
 
@@ -260,13 +257,11 @@ def helixSpec (t : Float) (color : Color) (dims : Dimensions) : CustomSpec := {
         -- Strand 1
         let x1 := cx + amplitude * Float.sin phase
         let depth1 := (Float.cos phase + 1.0) / 2.0
-        let dotPath1 := Arbor.Path.circle (Arbor.Point.mk' x1 (cy + yOffset)) (dotRadius * (0.6 + 0.4 * depth1))
-        RenderM.fillPath dotPath1 (color.withAlpha (0.4 + 0.6 * depth1))
+        RenderM.fillCircle (Arbor.Point.mk' x1 (cy + yOffset)) (dotRadius * (0.6 + 0.4 * depth1)) (color.withAlpha (0.4 + 0.6 * depth1))
         -- Strand 2 (180° offset)
         let x2 := cx + amplitude * Float.sin (phase + Float.pi)
         let depth2 := (Float.cos (phase + Float.pi) + 1.0) / 2.0
-        let dotPath2 := Arbor.Path.circle (Arbor.Point.mk' x2 (cy + yOffset)) (dotRadius * (0.6 + 0.4 * depth2))
-        RenderM.fillPath dotPath2 (color.withAlpha (0.4 + 0.6 * depth2))
+        RenderM.fillCircle (Arbor.Point.mk' x2 (cy + yOffset)) (dotRadius * (0.6 + 0.4 * depth2)) (color.withAlpha (0.4 + 0.6 * depth2))
   draw := none
 }
 
@@ -287,8 +282,7 @@ def waveSpec (t : Float) (color : Color) (dims : Dimensions) : CustomSpec := {
         let xOffset := (i.toFloat - (numDots.toFloat - 1.0) / 2.0) * spacing
         let phase := t * Float.twoPi * 2.0 - i.toFloat * Float.pi / 3.0
         let yOffset := amplitude * Float.sin phase
-        let dotPath := Arbor.Path.circle (Arbor.Point.mk' (cx + xOffset) (cy + yOffset)) dotRadius
-        RenderM.fillPath dotPath color
+        RenderM.fillCircle (Arbor.Point.mk' (cx + xOffset) (cy + yOffset)) dotRadius color
   draw := none
 }
 
@@ -386,8 +380,7 @@ def pendulumSpec (t : Float) (color : Color) (dims : Dimensions) : CustomSpec :=
 
     RenderM.build do
       -- Pivot point
-      let pivotDot := Arbor.Path.circle (Arbor.Point.mk' cx pivotY) (dims.strokeWidth * 0.8)
-      RenderM.fillPath pivotDot (color.withAlpha 0.6)
+      RenderM.fillCircle (Arbor.Point.mk' cx pivotY) (dims.strokeWidth * 0.8) (color.withAlpha 0.6)
 
       -- Motion trail (ghost positions)
       for i in [:5] do
@@ -396,16 +389,13 @@ def pendulumSpec (t : Float) (color : Color) (dims : Dimensions) : CustomSpec :=
         let trailX := cx + length * Float.sin trailAngle
         let trailY := pivotY + length * Float.cos trailAngle
         let alpha := 0.15 * (1.0 - i.toFloat / 5.0)
-        let trailBob := Arbor.Path.circle (Arbor.Point.mk' trailX trailY) bobRadius
-        RenderM.fillPath trailBob (color.withAlpha alpha)
+        RenderM.fillCircle (Arbor.Point.mk' trailX trailY) bobRadius (color.withAlpha alpha)
 
-      -- Rod
-      let rodPath := Arbor.Path.empty |>.moveTo (Arbor.Point.mk' cx pivotY) |>.lineTo (Arbor.Point.mk' bobX bobY)
-      RenderM.strokePath rodPath (color.withAlpha 0.7) (dims.strokeWidth * 0.7)
+      -- Rod (uses strokeLineBatch for batching)
+      RenderM.strokeLineBatch #[cx, pivotY, bobX, bobY, color.r, color.g, color.b, color.a * 0.7, 0.0] 1 (dims.strokeWidth * 0.7)
 
       -- Bob
-      let bobPath := Arbor.Path.circle (Arbor.Point.mk' bobX bobY) bobRadius
-      RenderM.fillPath bobPath color
+      RenderM.fillCircle (Arbor.Point.mk' bobX bobY) bobRadius color
   draw := none
 }
 
@@ -418,11 +408,11 @@ def rippleSpec (t : Float) (color : Color) (dims : Dimensions) : CustomSpec := {
     let cy := rect.y + dims.size / 2
     let maxRadius := dims.size * 0.45
     let numRipples : Nat := 4
+    let center := Arbor.Point.mk' cx cy
 
     RenderM.build do
       -- Center dot
-      let centerDot := Arbor.Path.circle (Arbor.Point.mk' cx cy) (dims.size * 0.04)
-      RenderM.fillPath centerDot color
+      RenderM.fillCircle center (dims.size * 0.04) color
 
       -- Expanding ripples
       for i in [:numRipples] do
@@ -431,8 +421,7 @@ def rippleSpec (t : Float) (color : Color) (dims : Dimensions) : CustomSpec := {
         let radius := maxRadius * progress
         let alpha := (1.0 - progress) * 0.8
         if alpha > 0.05 then
-          let ripplePath := Arbor.Path.circle (Arbor.Point.mk' cx cy) radius
-          RenderM.strokePath ripplePath (color.withAlpha alpha) (dims.strokeWidth * 0.7)
+          RenderM.strokeCircle center radius (color.withAlpha alpha) (dims.strokeWidth * 0.7)
   draw := none
 }
 
@@ -488,14 +477,12 @@ def gearsSpec (t : Float) (color : Color) (dims : Dimensions) : CustomSpec := {
       -- Draw gear 1 (larger)
       let gear1Path := gearPath gear1Center gear1Radius gear1Teeth gear1Angle
       RenderM.fillPath gear1Path color
-      let gear1Hub := Arbor.Path.circle gear1Center (gear1Radius * 0.25)
-      RenderM.fillPath gear1Hub (color.withAlpha 0.3)
+      RenderM.fillCircle gear1Center (gear1Radius * 0.25) (color.withAlpha 0.3)
 
       -- Draw gear 2 (smaller)
       let gear2Path := gearPath gear2Center gear2Radius gear2Teeth gear2Angle
       RenderM.fillPath gear2Path (color.withAlpha 0.85)
-      let gear2Hub := Arbor.Path.circle gear2Center (gear2Radius * 0.25)
-      RenderM.fillPath gear2Hub (color.withAlpha 0.25)
+      RenderM.fillCircle gear2Center (gear2Radius * 0.25) (color.withAlpha 0.25)
   draw := none
 }
 where
