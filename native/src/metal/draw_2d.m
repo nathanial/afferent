@@ -371,7 +371,7 @@ typedef struct {
     uint32_t padding;
 } BatchedUniforms;
 
-// kind: 0=rect, 1=circle, 2=stroke rect
+// kind: 0=rect, 1=circle, 2=stroke rect, 4=strokeCircle
 void afferent_renderer_draw_batch(
     AfferentRendererRef renderer,
     uint32_t kind,
@@ -382,12 +382,14 @@ void afferent_renderer_draw_batch(
     float canvas_width,
     float canvas_height
 ) {
-    if (kind > 2) return;
+    // Allow kinds 0-2 and 4 (skip kind 3 which is handled by draw_line_batch)
+    if (kind > 4 || kind == 3) return;
 
     BatchedUniforms uniforms;
     uniforms.viewport[0] = canvas_width;
     uniforms.viewport[1] = canvas_height;
-    uniforms.lineWidth = (kind == 2) ? param0 : 0.0f;
+    // lineWidth: used by kind 2 (strokeRect) and kind 4 (strokeCircle)
+    uniforms.lineWidth = (kind == 2 || kind == 4) ? param0 : 0.0f;
     uniforms.cornerRadius = (kind == 0) ? param0 : (kind == 2 ? param1 : 0.0f);
     uniforms.shapeType = kind;
     uniforms.padding = 0;

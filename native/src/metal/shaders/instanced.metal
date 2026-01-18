@@ -229,6 +229,23 @@ fragment float4 batched_fragment(BatchedVertexOut in [[stage_in]]) {
         return in.color;
     }
 
+    // shapeType 4 = strokeCircle: ring/annulus shape
+    if (shapeType > 3.5 && shapeType < 4.5) {
+        float2 local = in.uv * 2.0 - 1.0;
+        float dist = length(local);
+        float lineWidth = in.params.x;
+        // Convert lineWidth from pixels to normalized units (stroke inside the circle)
+        float diameter = in.size.x;  // width and height should be equal for circles
+        float normalizedWidth = (lineWidth * 2.0) / diameter;
+        float innerEdge = 1.0 - normalizedWidth;
+        float innerAlpha = smoothstep(innerEdge - 0.02, innerEdge + 0.02, dist);
+        float outerAlpha = 1.0 - smoothstep(0.96, 1.0, dist);
+        float alpha = innerAlpha * outerAlpha;
+        if (alpha < 0.01) discard_fragment();
+        return float4(in.color.rgb, in.color.a * alpha);
+    }
+
+    // shapeType 1 = filled circle
     if (shapeType > 0.5 && shapeType < 1.5) {
         float2 local = in.uv * 2.0 - 1.0;
         float dist = length(local);

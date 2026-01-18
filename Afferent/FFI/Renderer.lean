@@ -118,10 +118,10 @@ opaque Renderer.drawInstancedShapesBuffer
 -- ============================================================================
 
 -- Draw multiple shapes in a single draw call.
--- kind: 0=rect, 1=circle, 2=strokeRect
--- instanceData: Array of 9 floats per instance
--- param0: unused for rects (per-instance cornerRadius), ignored for circles, lineWidth for strokeRect
--- param1: unused for strokeRect (per-instance cornerRadius), ignored otherwise
+-- kind: 0=rect, 1=circle, 2=strokeRect, 4=strokeCircle
+-- instanceData: Array of 9 floats per instance [x, y, w, h, r, g, b, a, cornerRadius]
+-- param0: lineWidth for strokeRect/strokeCircle, unused for rects (per-instance cornerRadius), ignored for circles
+-- param1: unused for strokeRect/strokeCircle (per-instance cornerRadius), ignored otherwise
 @[extern "lean_afferent_renderer_draw_batch"]
 opaque Renderer.drawBatch
   (renderer : @& Renderer)

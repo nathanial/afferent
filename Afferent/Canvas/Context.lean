@@ -509,6 +509,10 @@ structure Canvas where
   strokeRectBuffer : Option FFI.FloatBuffer := none
   /-- Capacity of strokeRect FloatBuffer (in floats). -/
   strokeRectBufferCapacity : Nat := 0
+  /-- High-performance mutable FloatBuffer for zero-copy strokeCircle rendering. -/
+  strokeCircleBuffer : Option FFI.FloatBuffer := none
+  /-- Capacity of strokeCircle FloatBuffer (in floats). -/
+  strokeCircleBufferCapacity : Nat := 0
   /-- Persistent cache for CustomSpec render commands across frames.
       Cache is keyed by widget name (from registerComponentW) + layout hash.
       When data changes, dynWidget rebuilds and generates new widget names,

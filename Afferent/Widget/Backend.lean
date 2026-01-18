@@ -283,6 +283,15 @@ structure CircleBatchEntry where
   b : Float
   a : Float
 
+structure StrokeCircleBatchEntry where
+  centerX : Float
+  centerY : Float
+  radius : Float
+  r : Float
+  g : Float
+  b : Float
+  a : Float
+
 /-- Entry for a batched stroked rectangle.
     Format: [x, y, width, height, r, g, b, a, cornerRadius] (9 floats) -/
 structure StrokeRectBatchEntry where
@@ -836,6 +845,31 @@ def executeStrokeRectBatch (rects : Array StrokeRectBatchEntry) (lineWidth : Flo
   canvas.ctx.renderer.drawBatchBuffer 2 buf rects.size.toUInt32 lineWidth 0.0
     canvasWidth canvasHeight
 
+/-- Execute a batch of strokeCircle commands in a single draw call using FloatBuffer. -/
+def executeStrokeCircleBatch (circles : Array StrokeCircleBatchEntry) (lineWidth : Float) : CanvasM Unit := do
+  if circles.isEmpty then return
+  let canvas ← CanvasM.getCanvas
+  let (canvasWidth, canvasHeight) ← canvas.ctx.getCurrentSize
+
+  -- Ensure strokeCircleBuffer has enough capacity (9 floats per circle)
+  let requiredFloats := circles.size * 9
+  let (buf, newCap) ← ensureBufferCapacity canvas.strokeCircleBuffer canvas.strokeCircleBufferCapacity requiredFloats
+  CanvasM.setCanvas { canvas with strokeCircleBuffer := some buf, strokeCircleBufferCapacity := newCap }
+
+  -- Write directly to FloatBuffer
+  -- Format: [x, y, width, height, r, g, b, a, 0] where width=height=diameter
+  let mut idx : USize := 0
+  for entry in circles do
+    let diameter := entry.radius * 2.0
+    let x := entry.centerX - entry.radius
+    let y := entry.centerY - entry.radius
+    buf.setVec9 idx x y diameter diameter entry.r entry.g entry.b entry.a 0.0
+    idx := idx + 9
+
+  -- kind 4 = strokeCircle, param0 = lineWidth
+  canvas.ctx.renderer.drawBatchBuffer 4 buf circles.size.toUInt32 lineWidth 0.0
+    canvasWidth canvasHeight
+
 /-- Execute a batch of strokeLine commands in a single draw call. -/
 def executeLineBatch (lines : Array LineBatchEntry) (lineWidth : Float) : CanvasM Unit := do
   if lines.isEmpty then return
@@ -977,6 +1011,8 @@ def executeCommandsBatchedWithStats (reg : FontRegistry) (cmds : Array Afferent.
   let mut strokeRectBatch : Array StrokeRectBatchEntry := #[]
   let mut currentStrokeLineWidth : Float := 0.0
   let mut circleBatch : Array CircleBatchEntry := #[]
+  let mut strokeCircleBatch : Array StrokeCircleBatchEntry := #[]
+  let mut currentStrokeCircleLineWidth : Float := 0.0
   let mut textBatch : Array TextBatchEntry := #[]
   let mut currentTextFontId : Option FontId := none
   let mut stats : BatchStats := { totalCommands := cmds.size + lineCmds.size }
@@ -1012,6 +1048,17 @@ def executeCommandsBatchedWithStats (reg : FontRegistry) (cmds : Array Afferent.
     else
       pure (s, 0)
 
+  -- Helper to flush stroke circle batch
+  let flushStrokeCircles := fun (batch : Array StrokeCircleBatchEntry) (lw : Float) (s : BatchStats) => do
+    if !batch.isEmpty then
+      let t0 ← IO.monoNanosNow
+      executeStrokeCircleBatch batch lw
+      let t1 ← IO.monoNanosNow
+      -- Reuse circlesBatched counter for stroke circles too
+      pure ({ s with batchedCalls := s.batchedCalls + 1, circlesBatched := s.circlesBatched + batch.size }, t1 - t0)
+    else
+      pure (s, 0)
+
   -- Lines are processed in a separate tight loop above, no flush helper needed
 
   -- Helper to flush text batch
@@ -1034,13 +1081,15 @@ def executeCommandsBatchedWithStats (reg : FontRegistry) (cmds : Array Afferent.
   let flushAll := fun (rB : Array RectBatchEntry)
                       (sRB : Array StrokeRectBatchEntry) (slw : Float)
                       (cB : Array CircleBatchEntry)
+                      (sCB : Array StrokeCircleBatchEntry) (sclw : Float)
                       (tB : Array TextBatchEntry) (tFontId : Option FontId)
                       (s : BatchStats) (accTime : Nat) => do
     let (s, dt1) ← flushRects rB s
     let (s, dt2) ← flushStrokeRects sRB slw s
     let (s, dt3) ← flushCircles cB s
-    let (s, dt4) ← flushTexts tB tFontId s
-    pure (s, accTime + dt1 + dt2 + dt3 + dt4)
+    let (s, dt4) ← flushStrokeCircles sCB sclw s
+    let (s, dt5) ← flushTexts tB tFontId s
+    pure (s, accTime + dt1 + dt2 + dt3 + dt4 + dt5)
 
   while h : i < cmds.size do
     let cmd := cmds[i]
@@ -1117,6 +1166,10 @@ def executeCommandsBatchedWithStats (reg : FontRegistry) (cmds : Array Afferent.
         let (s, dt) ← flushStrokeRects strokeRectBatch currentStrokeLineWidth stats
         stats := s; drawCallTimeNs := drawCallTimeNs + dt
         strokeRectBatch := #[]
+      if !strokeCircleBatch.isEmpty then
+        let (s, dt) ← flushStrokeCircles strokeCircleBatch currentStrokeCircleLineWidth stats
+        stats := s; drawCallTimeNs := drawCallTimeNs + dt
+        strokeCircleBatch := #[]
       if !textBatch.isEmpty then
         let (s, dt) ← flushTexts textBatch currentTextFontId stats
         stats := s; drawCallTimeNs := drawCallTimeNs + dt
@@ -1128,6 +1181,44 @@ def executeCommandsBatchedWithStats (reg : FontRegistry) (cmds : Array Afferent.
         r := color.r, g := color.g, b := color.b, a := color.a
       }
       circleBatch := circleBatch.push entry
+
+    | .strokeCircle center radius color lineWidth =>
+      -- Only flush other batches if non-empty
+      if !rectBatch.isEmpty then
+        let (s, dt) ← flushRects rectBatch stats
+        stats := s; drawCallTimeNs := drawCallTimeNs + dt
+        rectBatch := #[]
+      if !strokeRectBatch.isEmpty then
+        let (s, dt) ← flushStrokeRects strokeRectBatch currentStrokeLineWidth stats
+        stats := s; drawCallTimeNs := drawCallTimeNs + dt
+        strokeRectBatch := #[]
+      if !circleBatch.isEmpty then
+        let (s, dt) ← flushCircles circleBatch stats
+        stats := s; drawCallTimeNs := drawCallTimeNs + dt
+        circleBatch := #[]
+      if !textBatch.isEmpty then
+        let (s, dt) ← flushTexts textBatch currentTextFontId stats
+        stats := s; drawCallTimeNs := drawCallTimeNs + dt
+        textBatch := #[]
+        currentTextFontId := none
+      -- Check if we can add to current stroke circle batch (same lineWidth)
+      if strokeCircleBatch.isEmpty || currentStrokeCircleLineWidth == lineWidth then
+        let entry : StrokeCircleBatchEntry := {
+          centerX := center.x, centerY := center.y, radius := radius
+          r := color.r, g := color.g, b := color.b, a := color.a
+        }
+        strokeCircleBatch := strokeCircleBatch.push entry
+        currentStrokeCircleLineWidth := lineWidth
+      else
+        -- Different lineWidth - flush and start new batch
+        let (s, dt) ← flushStrokeCircles strokeCircleBatch currentStrokeCircleLineWidth stats
+        stats := s; drawCallTimeNs := drawCallTimeNs + dt
+        let entry : StrokeCircleBatchEntry := {
+          centerX := center.x, centerY := center.y, radius := radius
+          r := color.r, g := color.g, b := color.b, a := color.a
+        }
+        strokeCircleBatch := #[entry]
+        currentStrokeCircleLineWidth := lineWidth
 
     | .fillText text x y fontId color =>
       -- Only flush other batches if non-empty (lines handled separately)
@@ -1143,6 +1234,10 @@ def executeCommandsBatchedWithStats (reg : FontRegistry) (cmds : Array Afferent.
         let (s, dt) ← flushCircles circleBatch stats
         stats := s; drawCallTimeNs := drawCallTimeNs + dt
         circleBatch := #[]
+      if !strokeCircleBatch.isEmpty then
+        let (s, dt) ← flushStrokeCircles strokeCircleBatch currentStrokeCircleLineWidth stats
+        stats := s; drawCallTimeNs := drawCallTimeNs + dt
+        strokeCircleBatch := #[]
       -- Get current canvas transform for this text entry
       let canvas ← CanvasM.getCanvas
       let transform := canvas.state.transform.toArray
@@ -1173,11 +1268,12 @@ def executeCommandsBatchedWithStats (reg : FontRegistry) (cmds : Array Afferent.
 
     | _ =>
       -- Non-batchable command - flush all pending batches first (lines handled separately)
-      let (s, dt) ← flushAll rectBatch strokeRectBatch currentStrokeLineWidth circleBatch textBatch currentTextFontId stats drawCallTimeNs
+      let (s, dt) ← flushAll rectBatch strokeRectBatch currentStrokeLineWidth circleBatch strokeCircleBatch currentStrokeCircleLineWidth textBatch currentTextFontId stats drawCallTimeNs
       stats := s; drawCallTimeNs := dt
       rectBatch := #[]
       strokeRectBatch := #[]
       circleBatch := #[]
+      strokeCircleBatch := #[]
       textBatch := #[]
       currentTextFontId := none
       -- Execute the command individually
@@ -1187,7 +1283,7 @@ def executeCommandsBatchedWithStats (reg : FontRegistry) (cmds : Array Afferent.
     i := i + 1
 
   -- Flush any remaining batches (lines handled separately below)
-  let (s, dt) ← flushAll rectBatch strokeRectBatch currentStrokeLineWidth circleBatch textBatch currentTextFontId stats drawCallTimeNs
+  let (s, dt) ← flushAll rectBatch strokeRectBatch currentStrokeLineWidth circleBatch strokeCircleBatch currentStrokeCircleLineWidth textBatch currentTextFontId stats drawCallTimeNs
   stats := s; drawCallTimeNs := dt
 
   -- Process all lines in a tight loop AFTER other batches (lines sorted last)
