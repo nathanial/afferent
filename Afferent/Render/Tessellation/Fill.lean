@@ -10,6 +10,7 @@ import Afferent.Render.Tessellation.Types
 import Afferent.Render.Tessellation.Path
 import Afferent.Render.Tessellation.Triangulate
 import Afferent.Render.Tessellation.Gradient
+import Afferent.Render.Tessellation.Cache
 
 namespace Afferent
 
@@ -569,6 +570,47 @@ def tessellateTransformedRectNDC
   ]
 
   { vertices, indices := rectIndices }
+
+/-- Tessellate a polygon for caching (no color, no NDC conversion).
+    Takes an array of points in normalized 0-1 coordinates and returns a
+    TessellatedPolygon with positions and indices that can be transformed
+    and colored later during batched rendering. -/
+def tessellatePolygonForCache (points : Array Point) : TessellatedPolygon :=
+  if points.size < 3 then
+    TessellatedPolygon.empty
+  else Id.run do
+    -- Build positions array
+    let mut positions : Array Float := Array.mkEmpty (points.size * 2)
+    let mut minX := points[0]!.x
+    let mut minY := points[0]!.y
+    let mut maxX := minX
+    let mut maxY := minY
+    let mut sumX := 0.0
+    let mut sumY := 0.0
+
+    for p in points do
+      positions := positions.push p.x
+      positions := positions.push p.y
+      sumX := sumX + p.x
+      sumY := sumY + p.y
+      if p.x < minX then minX := p.x
+      if p.y < minY then minY := p.y
+      if p.x > maxX then maxX := p.x
+      if p.y > maxY then maxY := p.y
+
+    let centroidX := sumX / points.size.toFloat
+    let centroidY := sumY / points.size.toFloat
+
+    -- Use Earcut for tessellation
+    let data := pointsToData points
+    let indices := Earcut.earcut data #[]
+
+    { positions
+      indices
+      vertexCount := points.size
+      centroidX
+      centroidY
+      bounds := (minX, minY, maxX, maxY) }
 
 end Tessellation
 

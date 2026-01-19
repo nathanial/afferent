@@ -237,6 +237,20 @@ def executeCommand (reg : FontRegistry) (cmd : Afferent.Arbor.RenderCommand) : C
       -- Pipeline compilation failed or fragment not registered
       pure ()
 
+  | .fillTessellatedBatch vertices indices vertexCount =>
+    if vertexCount == 0 || indices.size == 0 then
+      pure ()
+    else
+      -- Create vertex and index buffers from pre-computed NDC data
+      let canvas ← CanvasM.getCanvas
+      let vertexBuffer ← FFI.Buffer.createVertex canvas.ctx.renderer vertices
+      let indexBuffer ← FFI.Buffer.createIndex canvas.ctx.renderer indices
+      -- Draw the tessellated triangles
+      canvas.ctx.renderer.drawTriangles vertexBuffer indexBuffer indices.size.toUInt32
+      -- Clean up buffers
+      FFI.Buffer.destroy indexBuffer
+      FFI.Buffer.destroy vertexBuffer
+
   | .pushClip rect =>
     let afferentRect := toAfferentRect rect
     CanvasM.clip afferentRect

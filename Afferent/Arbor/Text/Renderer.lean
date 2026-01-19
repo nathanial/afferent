@@ -283,6 +283,10 @@ def executeCommand (state : RenderState) (cmd : RenderCommand) : RenderState :=
     -- Fragment shader rendering not supported in text mode
     state
 
+  | .fillTessellatedBatch _vertices _indices _vertexCount =>
+    -- Tessellated batch rendering not supported in text mode
+    state
+
   | .pushClip rect =>
     state.pushClip rect
 

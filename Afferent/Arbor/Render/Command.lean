@@ -127,6 +127,13 @@ inductive RenderCommand where
   | drawFragment (fragmentHash : UInt64) (primitiveType : UInt32)
       (params : Array Float) (instanceCount : UInt32)
 
+  /-- Fill a batch of pre-tessellated triangles.
+      High-performance path for rendering many polygons with pre-computed tessellation.
+      - vertices: Flat array of [x, y, r, g, b, a, ...] in NDC
+      - indices: Triangle indices
+      - vertexCount: Number of vertices (vertices.size / 6) -/
+  | fillTessellatedBatch (vertices : Array Float) (indices : Array UInt32) (vertexCount : Nat)
+
   /-- Push a clipping rectangle onto the clip stack. -/
   | pushClip (rect : Rect)
 
@@ -227,6 +234,7 @@ inductive CommandCategory
   | fillPolygonInstanced
   | strokeArcInstanced
   | drawFragment
+  | fillTessellatedBatch
   | other
 deriving Repr, BEq, Hashable
 
@@ -245,7 +253,8 @@ def sortPriority : CommandCategory → Nat
   | .drawFragment => 6
   | .fillText => 7
   | .fillPolygonInstanced => 8
-  | .other => 9
+  | .fillTessellatedBatch => 9
+  | .other => 10
 
 end CommandCategory
 
@@ -262,6 +271,7 @@ def category : RenderCommand → CommandCategory
   | .fillPolygonInstanced .. => .fillPolygonInstanced
   | .strokeArcInstanced .. => .strokeArcInstanced
   | .drawFragment .. => .drawFragment
+  | .fillTessellatedBatch .. => .fillTessellatedBatch
   | _ => .other
 
 end RenderCommand

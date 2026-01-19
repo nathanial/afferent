@@ -126,6 +126,17 @@ def drawFragment (fragmentHash : UInt64) (primitiveType : UInt32)
     (params : Array Float) (instanceCount : UInt32) : RenderM Unit :=
   emit (.drawFragment fragmentHash primitiveType params instanceCount)
 
+/-! ## Batched Tessellation Commands -/
+
+/-- Fill a batch of pre-tessellated triangles.
+    High-performance path for rendering many polygons with pre-computed tessellation.
+    - vertices: Flat array of [x, y, r, g, b, a, ...] in NDC
+    - indices: Triangle indices
+    - vertexCount: Number of vertices (vertices.size / 6) -/
+def fillTessellatedBatch (vertices : Array Float) (indices : Array UInt32) (vertexCount : Nat) : RenderM Unit :=
+  if vertexCount == 0 then pure ()
+  else emit (.fillTessellatedBatch vertices indices vertexCount)
+
 /-! ## Circles -/
 
 /-- Fill a circle with a solid color (GPU-batched). -/
