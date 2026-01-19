@@ -270,6 +270,68 @@ LEAN_EXPORT lean_obj_res lean_afferent_mesh_draw_instanced_buffer(
 }
 
 // =============================================================================
+// Screen-coords Triangle Drawing (GPU-side NDC conversion)
+// =============================================================================
+
+// Draw tessellated triangles with screen-space coordinates
+// vertex_data: [x, y, r, g, b, a] per vertex (6 floats)
+// indices: triangle indices
+LEAN_EXPORT lean_obj_res lean_afferent_renderer_draw_triangles_screen_coords(
+    lean_obj_arg renderer_obj,
+    lean_obj_arg vertex_data_arr,
+    lean_obj_arg indices_arr,
+    uint32_t vertex_count,
+    double canvas_width,
+    double canvas_height,
+    lean_obj_arg world
+) {
+    AfferentRendererRef renderer = (AfferentRendererRef)lean_get_external_data(renderer_obj);
+
+    size_t vertex_arr_size = lean_array_size(vertex_data_arr);
+    size_t index_arr_size = lean_array_size(indices_arr);
+    size_t expected_vertex_size = (size_t)vertex_count * 6;  // 6 floats per vertex
+
+    if (vertex_arr_size < expected_vertex_size || index_arr_size == 0 || vertex_count == 0) {
+        return lean_io_result_mk_ok(lean_box(0));
+    }
+
+    // Copy vertex data
+    float* vertices = malloc(vertex_arr_size * sizeof(float));
+    if (!vertices) {
+        return lean_io_result_mk_ok(lean_box(0));
+    }
+
+    for (size_t i = 0; i < vertex_arr_size; i++) {
+        vertices[i] = (float)lean_unbox_float(lean_array_get_core(vertex_data_arr, i));
+    }
+
+    // Copy index data
+    uint32_t* indices = malloc(index_arr_size * sizeof(uint32_t));
+    if (!indices) {
+        free(vertices);
+        return lean_io_result_mk_ok(lean_box(0));
+    }
+
+    for (size_t i = 0; i < index_arr_size; i++) {
+        indices[i] = lean_unbox_uint32(lean_array_get_core(indices_arr, i));
+    }
+
+    afferent_renderer_draw_triangles_screen_coords(
+        renderer,
+        vertices,
+        indices,
+        vertex_count,
+        (uint32_t)index_arr_size,
+        (float)canvas_width,
+        (float)canvas_height
+    );
+
+    free(indices);
+    free(vertices);
+    return lean_io_result_mk_ok(lean_box(0));
+}
+
+// =============================================================================
 // Instanced Arc Stroke Rendering
 // =============================================================================
 

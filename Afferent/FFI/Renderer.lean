@@ -55,6 +55,17 @@ opaque Renderer.drawTriangles
   (vertexBuffer indexBuffer : @& Buffer)
   (indexCount : UInt32) : IO Unit
 
+-- Draw triangles with screen-space coordinates (GPU converts to NDC)
+-- vertexData: [x, y, r, g, b, a] per vertex (6 floats) in pixel coordinates
+-- indices: triangle indices
+@[extern "lean_afferent_renderer_draw_triangles_screen_coords"]
+opaque Renderer.drawTrianglesScreenCoords
+  (renderer : @& Renderer)
+  (vertexData : @& Array Float)
+  (indices : @& Array UInt32)
+  (vertexCount : UInt32)
+  (canvasWidth canvasHeight : Float) : IO Unit
+
 -- Draw extruded strokes (screen-space width)
 @[extern "lean_afferent_renderer_draw_stroke"]
 opaque Renderer.drawStroke

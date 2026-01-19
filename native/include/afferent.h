@@ -167,6 +167,19 @@ void afferent_renderer_draw_triangles(
     AfferentBufferRef index_buffer,
     uint32_t index_count
 );
+
+// Draw triangles with screen-space coordinates (GPU converts to NDC)
+// vertex_data: [x, y, r, g, b, a] per vertex (6 floats) in pixel coordinates
+// indices: triangle indices
+void afferent_renderer_draw_triangles_screen_coords(
+    AfferentRendererRef renderer,
+    const float* vertex_data,
+    const uint32_t* indices,
+    uint32_t vertex_count,
+    uint32_t index_count,
+    float canvas_width,
+    float canvas_height
+);
 void afferent_renderer_draw_stroke(
     AfferentRendererRef renderer,
     AfferentBufferRef vertex_buffer,

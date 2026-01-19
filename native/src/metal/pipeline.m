@@ -119,6 +119,27 @@ AfferentResult create_pipelines(struct AfferentRenderer* renderer) {
     );
     if (!renderer->pipelineState) return AFFERENT_ERROR_PIPELINE_FAILED;
 
+    // Create screen-coords triangle pipeline (GPU-side NDC conversion)
+    id<MTLFunction> screenCoordsVertexFunc = [library newFunctionWithName:@"vertex_screen_coords"];
+    if (!screenCoordsVertexFunc) {
+        NSLog(@"Failed to find vertex_screen_coords function");
+        return AFFERENT_ERROR_PIPELINE_FAILED;
+    }
+
+    MTLRenderPipelineDescriptor *screenCoordsPipelineDesc = [[MTLRenderPipelineDescriptor alloc] init];
+    screenCoordsPipelineDesc.vertexFunction = screenCoordsVertexFunc;
+    screenCoordsPipelineDesc.fragmentFunction = fragmentFunction;  // Reuse fragment_main
+    screenCoordsPipelineDesc.colorAttachments[0].pixelFormat = MTLPixelFormatBGRA8Unorm;
+    apply_alpha_blend(screenCoordsPipelineDesc.colorAttachments[0]);
+
+    renderer->screenCoordsPipelineState = build_pipeline(
+        renderer->device,
+        screenCoordsPipelineDesc,
+        "ScreenCoords",
+        &error
+    );
+    if (!renderer->screenCoordsPipelineState) return AFFERENT_ERROR_PIPELINE_FAILED;
+
     // Create stroke rendering pipeline (screen-space extrusion)
     id<MTLLibrary> strokeLibrary = [renderer->device newLibraryWithSource:strokeShaderSource
                                                                   options:nil

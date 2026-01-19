@@ -36,6 +36,96 @@ void afferent_renderer_draw_triangles(
                                   indexBufferOffset:0];
 }
 
+// =============================================================================
+// SCREEN COORDINATES TRIANGLE RENDERING
+// Vertices in screen/pixel coordinates, GPU converts to NDC
+// vertex_data: [x, y, r, g, b, a] per vertex (6 floats)
+// =============================================================================
+
+typedef struct {
+    float viewport[2];
+} ScreenCoordsUniforms;
+
+void afferent_renderer_draw_triangles_screen_coords(
+    AfferentRendererRef renderer,
+    const float* vertex_data,
+    const uint32_t* indices,
+    uint32_t vertex_count,
+    uint32_t index_count,
+    float canvas_width,
+    float canvas_height
+) {
+    if (!renderer || !renderer->currentEncoder || !vertex_data || !indices ||
+        vertex_count == 0 || index_count == 0) {
+        return;
+    }
+
+    if (!renderer->screenCoordsPipelineState) {
+        NSLog(@"ScreenCoords pipeline not available");
+        return;
+    }
+
+    @autoreleasepool {
+        // Create vertex buffer (6 floats per vertex)
+        size_t vertex_data_size = vertex_count * 6 * sizeof(float);
+        id<MTLBuffer> vertexBuffer = pool_acquire_buffer(
+            renderer->device,
+            g_buffer_pool.vertex_pool,
+            &g_buffer_pool.vertex_pool_count,
+            vertex_data_size
+        );
+
+        if (!vertexBuffer) {
+            vertexBuffer = [renderer->device newBufferWithLength:vertex_data_size options:MTLResourceStorageModeShared];
+        }
+
+        if (!vertexBuffer) {
+            NSLog(@"Failed to create screen coords vertex buffer");
+            return;
+        }
+
+        memcpy([vertexBuffer contents], vertex_data, vertex_data_size);
+
+        // Create index buffer
+        size_t index_data_size = index_count * sizeof(uint32_t);
+        id<MTLBuffer> indexBuffer = pool_acquire_buffer(
+            renderer->device,
+            g_buffer_pool.index_pool,
+            &g_buffer_pool.index_pool_count,
+            index_data_size
+        );
+
+        if (!indexBuffer) {
+            indexBuffer = [renderer->device newBufferWithLength:index_data_size options:MTLResourceStorageModeShared];
+        }
+
+        if (!indexBuffer) {
+            NSLog(@"Failed to create screen coords index buffer");
+            return;
+        }
+
+        memcpy([indexBuffer contents], indices, index_data_size);
+
+        // Set up uniforms
+        ScreenCoordsUniforms uniforms;
+        uniforms.viewport[0] = canvas_width;
+        uniforms.viewport[1] = canvas_height;
+
+        [renderer->currentEncoder setRenderPipelineState:renderer->screenCoordsPipelineState];
+        [renderer->currentEncoder setDepthStencilState:renderer->depthStateDisabled];
+        [renderer->currentEncoder setVertexBuffer:vertexBuffer offset:0 atIndex:0];
+        [renderer->currentEncoder setVertexBytes:&uniforms length:sizeof(ScreenCoordsUniforms) atIndex:1];
+
+        [renderer->currentEncoder drawIndexedPrimitives:MTLPrimitiveTypeTriangle
+                                             indexCount:index_count
+                                              indexType:MTLIndexTypeUInt32
+                                            indexBuffer:indexBuffer
+                                      indexBufferOffset:0];
+
+        [renderer->currentEncoder setRenderPipelineState:renderer->pipelineState];
+    }
+}
+
 void afferent_renderer_draw_stroke(
     AfferentRendererRef renderer,
     AfferentBufferRef vertex_buffer,
