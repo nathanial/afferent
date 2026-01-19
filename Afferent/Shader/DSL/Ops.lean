@@ -145,6 +145,9 @@ def fract (e : ShaderExpr .float) : ShaderExpr .float := .fract e
 /-- Absolute value (float). -/
 def absF (e : ShaderExpr .float) : ShaderExpr .float := .absF e
 
+/-- Absolute value (float). Alias for absF. -/
+def abs (e : ShaderExpr .float) : ShaderExpr .float := .absF e
+
 /-- Sign function. -/
 def signF (e : ShaderExpr .float) : ShaderExpr .float := .signF e
 
