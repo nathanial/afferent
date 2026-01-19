@@ -136,4 +136,35 @@ def time : ShaderExpr .float := param "time" .float
 /-- Common parameter: base color (float4). -/
 def color : ShaderExpr .float4 := param "color" .float4
 
+/-! ## Pixel Coordinates (for QuadShader) -/
+
+/-- Normalized UV coordinates within the quad (0-1).
+    Available only in QuadShader pixel expressions. -/
+def pixelUV : ShaderExpr .float2 := .pixelUV
+
+/-- Screen-space pixel position.
+    Available only in QuadShader pixel expressions. -/
+def pixelPos : ShaderExpr .float2 := .pixelPos
+
+/-! ## Radial Gradient Helpers (for QuadShader) -/
+
+/-- Compute distance from center of quad (0 at center, 1 at corners).
+    For use in QuadShader pixel expressions. -/
+def radialDistance : ShaderExpr .float :=
+  length (scale 2.0 (pixelUV - vec2 half half))
+
+/-- Smooth radial falloff from center (1 at center, 0 at edge).
+    Uses smoothstep for anti-aliased edges. -/
+def radialFalloff : ShaderExpr .float :=
+  1.0 - smoothstep zero one radialDistance
+
+/-- Compute radial gradient with configurable inner/outer radii.
+    Returns 1 inside innerRadius, 0 outside outerRadius, smooth blend between. -/
+def radialGradient (innerRadius outerRadius : ShaderExpr .float) : ShaderExpr .float :=
+  1.0 - smoothstep innerRadius outerRadius radialDistance
+
+/-- Create a circular mask (1 inside radius, 0 outside, smooth edge). -/
+def circleMask (radius : ShaderExpr .float) : ShaderExpr .float :=
+  1.0 - smoothstep (radius - 0.02) radius radialDistance
+
 end Afferent.Shader.DSL

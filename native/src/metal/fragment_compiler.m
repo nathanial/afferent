@@ -194,6 +194,90 @@ static const char* fragment_rect_template =
     "    return float4(in.color.rgb, in.color.a * alpha);\n"
     "}\n";
 
+// Template shader for quad fragments with per-pixel shading
+// The fragment shader receives interpolated UVs and evaluates user's pixel DSL code
+static const char* fragment_quad_template =
+    "#include <metal_stdlib>\n"
+    "using namespace metal;\n"
+    "\n"
+    "// Result type for quad vertex shader (computes quad bounds)\n"
+    "struct QuadVertexResult {\n"
+    "    float2 position;  // Top-left corner\n"
+    "    float2 size;      // Width, height\n"
+    "};\n"
+    "\n"
+    "// === USER PARAMS STRUCT ===\n"
+    "%s\n"  // PARAMS_STRUCT
+    "\n"
+    "// === USER VERTEX FUNCTION (computes quad bounds) ===\n"
+    "static inline QuadVertexResult %s_vertex(uint idx, constant %s& p) {\n"  // FRAGMENT_NAME, PARAMS_TYPE
+    "    %s\n"  // VERTEX_BODY
+    "}\n"
+    "\n"
+    "// Uniforms for quad shader\n"
+    "struct FragmentQuadUniforms {\n"
+    "    float2 viewport;\n"
+    "    uint primitivesPerInstance;\n"
+    "    uint totalInstances;\n"
+    "};\n"
+    "\n"
+    "// Vertex output - passes UV and params to fragment shader\n"
+    "struct FragmentQuadVertexOut {\n"
+    "    float4 position [[position]];\n"
+    "    float2 uv;  // 0-1 normalized within quad\n"
+    "    uint paramIndex;  // Which param struct to use\n"
+    "};\n"
+    "\n"
+    "// Unit quad vertices\n"
+    "constant float2 unitQuad[4] = {\n"
+    "    float2(0, 0),\n"
+    "    float2(1, 0),\n"
+    "    float2(0, 1),\n"
+    "    float2(1, 1)\n"
+    "};\n"
+    "\n"
+    "vertex FragmentQuadVertexOut fragment_quad_vertex(\n"
+    "    uint vid [[vertex_id]],\n"
+    "    uint iid [[instance_id]],\n"
+    "    constant %s* params [[buffer(0)]],\n"  // PARAMS_TYPE
+    "    constant FragmentQuadUniforms& uniforms [[buffer(1)]]\n"
+    ") {\n"
+    "    uint paramIndex = iid / uniforms.primitivesPerInstance;\n"
+    "    uint localIdx = iid %% uniforms.primitivesPerInstance;\n"
+    "\n"
+    "    // Call user's vertex function to compute quad bounds\n"
+    "    QuadVertexResult q = %s_vertex(localIdx, params[paramIndex]);\n"  // FRAGMENT_NAME
+    "\n"
+    "    // Generate quad vertex\n"
+    "    float2 uv = unitQuad[vid];\n"
+    "    float2 pos = q.position + uv * q.size;\n"
+    "\n"
+    "    // Convert to NDC\n"
+    "    float2 ndc;\n"
+    "    ndc.x = (pos.x / uniforms.viewport.x) * 2.0 - 1.0;\n"
+    "    ndc.y = 1.0 - (pos.y / uniforms.viewport.y) * 2.0;\n"
+    "\n"
+    "    FragmentQuadVertexOut out;\n"
+    "    out.position = float4(ndc, 0.0, 1.0);\n"
+    "    out.uv = uv;\n"
+    "    out.paramIndex = paramIndex;\n"
+    "    return out;\n"
+    "}\n"
+    "\n"
+    "// === USER PIXEL FUNCTION (computes per-pixel color) ===\n"
+    "static inline float4 %s_pixel(FragmentQuadVertexOut in, constant %s& p) {\n"  // FRAGMENT_NAME, PARAMS_TYPE
+    "    %s\n"  // PIXEL_BODY
+    "}\n"
+    "\n"
+    "fragment float4 fragment_quad_fragment(\n"
+    "    FragmentQuadVertexOut in [[stage_in]],\n"
+    "    constant %s* params [[buffer(0)]]\n"  // PARAMS_TYPE
+    ") {\n"
+    "    float4 color = %s_pixel(in, params[in.paramIndex]);\n"  // FRAGMENT_NAME
+    "    if (color.a < 0.01) discard_fragment();\n"
+    "    return color;\n"
+    "}\n";
+
 // Extract struct name from struct definition code
 // e.g., "struct HelixParams { ... };" -> "HelixParams"
 static NSString* extractStructName(const char* paramsStructCode) {
@@ -239,6 +323,7 @@ AfferentFragmentPipelineRef afferent_fragment_compile(
     const char* shaderTemplate = NULL;
     NSString* vertexFuncName = nil;
     NSString* fragmentFuncName = nil;
+    BOOL isQuadShader = NO;
 
     switch (primitiveType) {
         case AFFERENT_FRAGMENT_CIRCLE:
@@ -251,22 +336,61 @@ AfferentFragmentPipelineRef afferent_fragment_compile(
             vertexFuncName = @"fragment_rect_vertex";
             fragmentFuncName = @"fragment_rect_fragment";
             break;
+        case AFFERENT_FRAGMENT_QUAD:
+            shaderTemplate = fragment_quad_template;
+            vertexFuncName = @"fragment_quad_vertex";
+            fragmentFuncName = @"fragment_quad_fragment";
+            isQuadShader = YES;
+            break;
         default:
             NSLog(@"[FragmentCompiler] Unsupported primitive type: %u", primitiveType);
             return NULL;
     }
 
     // Build shader source by substituting placeholders
-    // Template has 6 format specifiers: paramsStruct, name, type, body, type (params ptr), name (call)
-    NSString* shaderSource = [NSString stringWithFormat:
-        [NSString stringWithUTF8String:shaderTemplate],
-        paramsStructCode,        // %s - PARAMS_STRUCT
-        fragmentName,            // %s - FRAGMENT_NAME (function definition)
-        [paramsType UTF8String], // %s - PARAMS_TYPE (in function signature)
-        fragmentCode,            // %s - FRAGMENT_BODY
-        [paramsType UTF8String], // %s - PARAMS_TYPE (params pointer type in vertex)
-        fragmentName             // %s - FRAGMENT_NAME (call in vertex shader)
-    ];
+    NSString* shaderSource = nil;
+
+    if (isQuadShader) {
+        // Quad shader has vertex and pixel code separated by "|||"
+        NSString* fullCode = [NSString stringWithUTF8String:fragmentCode];
+        NSArray* parts = [fullCode componentsSeparatedByString:@"|||"];
+        if (parts.count != 2) {
+            NSLog(@"[FragmentCompiler] Quad shader code must have vertex|||pixel format");
+            return NULL;
+        }
+        NSString* vertexBody = parts[0];
+        NSString* pixelBody = parts[1];
+
+        // Quad template has 11 format specifiers:
+        // paramsStruct, name_vertex, type, vertexBody, type (vertex params ptr), name_vertex (call),
+        // name_pixel, type, pixelBody, type (fragment params ptr), name_pixel (call)
+        shaderSource = [NSString stringWithFormat:
+            [NSString stringWithUTF8String:shaderTemplate],
+            paramsStructCode,            // %s - PARAMS_STRUCT
+            fragmentName,                // %s - FRAGMENT_NAME (vertex function def)
+            [paramsType UTF8String],     // %s - PARAMS_TYPE (vertex function signature)
+            [vertexBody UTF8String],     // %s - VERTEX_BODY
+            [paramsType UTF8String],     // %s - PARAMS_TYPE (vertex params pointer)
+            fragmentName,                // %s - FRAGMENT_NAME (vertex call)
+            fragmentName,                // %s - FRAGMENT_NAME (pixel function def)
+            [paramsType UTF8String],     // %s - PARAMS_TYPE (pixel function signature)
+            [pixelBody UTF8String],      // %s - PIXEL_BODY
+            [paramsType UTF8String],     // %s - PARAMS_TYPE (fragment params pointer)
+            fragmentName                 // %s - FRAGMENT_NAME (pixel call)
+        ];
+    } else {
+        // Circle/Rect templates have 6 format specifiers:
+        // paramsStruct, name, type, body, type (params ptr), name (call)
+        shaderSource = [NSString stringWithFormat:
+            [NSString stringWithUTF8String:shaderTemplate],
+            paramsStructCode,        // %s - PARAMS_STRUCT
+            fragmentName,            // %s - FRAGMENT_NAME (function definition)
+            [paramsType UTF8String], // %s - PARAMS_TYPE (in function signature)
+            fragmentCode,            // %s - FRAGMENT_BODY
+            [paramsType UTF8String], // %s - PARAMS_TYPE (params pointer type in vertex)
+            fragmentName             // %s - FRAGMENT_NAME (call in vertex shader)
+        ];
+    }
 
     // Compile shader
     NSError* compileError = nil;
@@ -381,6 +505,9 @@ void afferent_fragment_draw(
     // Set buffers
     [encoder setVertexBuffer:paramsBuffer offset:0 atIndex:0];
     [encoder setVertexBytes:&uniforms length:sizeof(uniforms) atIndex:1];
+    // Quad fragment shaders read params in the fragment stage (buffer(0)).
+    // Binding for all fragment types is safe and keeps quad pipelines working.
+    [encoder setFragmentBuffer:paramsBuffer offset:0 atIndex:0];
 
     // Draw instanced quads (4 vertices per quad, triangle strip)
     // Each instance is one circle, draw all circles from all batched params

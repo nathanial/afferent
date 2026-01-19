@@ -469,6 +469,130 @@ test "hsvToRgb generates correct structure" := do
   shouldContainSubstr code "clamp("
   shouldContainSubstr code "mix("
 
+/-! ## Pixel Coordinate Tests (QuadShader) -/
+
+test "pixelUV renders to in.uv" := do
+  let e : ShaderExpr .float2 := .pixelUV
+  shouldBe e.toMetal "in.uv"
+
+test "pixelPos renders to in.position.xy" := do
+  let e : ShaderExpr .float2 := .pixelPos
+  shouldBe e.toMetal "in.position.xy"
+
+test "pixelUV prelude helper works" := do
+  shouldBe pixelUV.toMetal "in.uv"
+
+test "pixelPos prelude helper works" := do
+  shouldBe pixelPos.toMetal "in.position.xy"
+
+test "radialDistance uses pixelUV" := do
+  let code := radialDistance.toMetal
+  shouldContainSubstr code "in.uv"
+  shouldContainSubstr code "length("
+
+test "radialFalloff uses radialDistance" := do
+  let code := radialFalloff.toMetal
+  shouldContainSubstr code "smoothstep("
+  shouldContainSubstr code "in.uv"
+
+/-! ## QuadInstanceExpr Tests -/
+
+test "QuadInstanceExpr.toMetal generates correct code" := do
+  let result : QuadInstanceExpr := {
+    position := .litFloat2 100.0 200.0
+    size := .litFloat2 50.0 60.0
+  }
+  let code := result.toMetal
+  shouldContainSubstr code "QuadVertexResult result;"
+  shouldContainSubstr code "result.position = float2(100.000000, 200.000000);"
+  shouldContainSubstr code "result.size = float2(50.000000, 60.000000);"
+  shouldContainSubstr code "return result;"
+
+/-! ## QuadPixelExpr Tests -/
+
+test "QuadPixelExpr.toMetal generates return statement" := do
+  let result : QuadPixelExpr := {
+    color := .litFloat4 1.0 0.0 0.0 1.0
+  }
+  let code := result.toMetal
+  shouldBe code "return float4(1.000000, 0.000000, 0.000000, 1.000000);"
+
+test "QuadPixelExpr with pixelUV expression" := do
+  -- Color based on UV coordinates
+  let result : QuadPixelExpr := {
+    color := vec4 pixelUV.x pixelUV.y 0.0 1.0
+  }
+  let code := result.toMetal
+  shouldContainSubstr code "in.uv.x"
+  shouldContainSubstr code "in.uv.y"
+
+/-! ## QuadShader Tests -/
+
+test "QuadShader.paramsTypeName capitalizes first letter" := do
+  let shader : QuadShader := {
+    name := "radialStar"
+    instanceCount := 1
+    params := []
+    vertex := {
+      position := .litFloat2 0.0 0.0
+      size := .litFloat2 100.0 100.0
+    }
+    pixel := {
+      color := .litFloat4 1.0 1.0 1.0 1.0
+    }
+  }
+  shouldBe shader.paramsTypeName "RadialStarParams"
+
+test "QuadShader.compile produces ShaderFragment with quad primitive" := do
+  let shader : QuadShader := {
+    name := "gradient"
+    instanceCount := 1
+    params := [
+      ⟨"center", .float2⟩,
+      ⟨"size", .float⟩,
+      ⟨"color", .float4⟩
+    ]
+    vertex := {
+      position := param "center" .float2 - vec2 (param "size" .float) (param "size" .float)
+      size := vec2 (param "size" .float * 2.0) (param "size" .float * 2.0)
+    }
+    pixel := {
+      color := param "color" .float4 * vec4 1.0 1.0 1.0 radialFalloff
+    }
+  }
+  let fragment := shader.compile
+  shouldBe fragment.name "gradient"
+  shouldBe fragment.instanceCount 1
+  shouldBe fragment.primitive .quad
+  shouldContainSubstr fragment.paramsStructCode "struct GradientParams"
+  shouldContainSubstr fragment.paramsStructCode "float2 center;"
+  shouldContainSubstr fragment.paramsStructCode "float size;"
+  shouldContainSubstr fragment.paramsStructCode "float4 color;"
+  -- functionCode contains vertex|||pixel separator
+  shouldContainSubstr fragment.functionCode "|||"
+
+test "QuadShader functionCode contains vertex and pixel code" := do
+  let shader : QuadShader := {
+    name := "test"
+    instanceCount := 1
+    params := []
+    vertex := {
+      position := .litFloat2 10.0 20.0
+      size := .litFloat2 100.0 100.0
+    }
+    pixel := {
+      color := vec4 pixelUV.x pixelUV.y 0.5 1.0
+    }
+  }
+  let fragment := shader.compile
+  let parts := fragment.functionCode.splitOn "|||"
+  shouldBe parts.length 2
+  -- Vertex part contains position and size
+  shouldContainSubstr parts[0]! "result.position"
+  shouldContainSubstr parts[0]! "result.size"
+  -- Pixel part contains UV access
+  shouldContainSubstr parts[1]! "in.uv"
+
 #generate_tests
 
 end Afferent.Tests.ShaderDSLTests

@@ -11,8 +11,9 @@ open Std
 /-- Primitive types that fragments can generate. -/
 inductive FragmentPrimitive where
   | circle    -- Returns CircleResult(center, radius, color)
-  | rect      -- Future
+  | rect      -- Returns RectResult(position, size, cornerRadius, color)
   | arc       -- Future
+  | quad      -- Per-pixel shading: runs DSL code in fragment shader
 deriving Repr, BEq, Hashable, Inhabited
 
 namespace FragmentPrimitive
@@ -22,6 +23,7 @@ def toUInt32 : FragmentPrimitive → UInt32
   | .circle => 0
   | .rect => 1
   | .arc => 2
+  | .quad => 3
 
 end FragmentPrimitive
 
@@ -149,6 +151,34 @@ def fragmentRectPacked (name : String) (instanceCount : Nat) (paramsFloatCount :
     paramsPackOffsets
     paramsStructCode := paramsStruct
     functionCode := functionBody
+    instanceCount }
+
+/-- Define a quad fragment for per-pixel shading.
+    The function body runs in the fragment shader with access to pixelUV. -/
+def fragmentQuad (name : String) (instanceCount : Nat) (paramsFloatCount : Nat)
+    (paramsStruct : String) (vertexBody : String) (pixelBody : String) : ShaderFragment :=
+  { name
+    primitive := .quad
+    paramsFloatCount
+    paramsPackedFloatCount := paramsFloatCount
+    paramsPackOffsets := identityOffsets paramsFloatCount
+    paramsStructCode := paramsStruct
+    -- Combine vertex and pixel code with a separator
+    functionCode := s!"{vertexBody}|||{pixelBody}"
+    instanceCount }
+
+/-- Define a quad fragment for per-pixel shading with explicit packing layout. -/
+def fragmentQuadPacked (name : String) (instanceCount : Nat) (paramsFloatCount : Nat)
+    (paramsPackedFloatCount : Nat) (paramsPackOffsets : Array Nat)
+    (paramsStruct : String) (vertexBody : String) (pixelBody : String) : ShaderFragment :=
+  { name
+    primitive := .quad
+    paramsFloatCount
+    paramsPackedFloatCount
+    paramsPackOffsets
+    paramsStructCode := paramsStruct
+    -- Combine vertex and pixel code with a separator
+    functionCode := s!"{vertexBody}|||{pixelBody}"
     instanceCount }
 
 /-! ## Global Fragment Registry -/

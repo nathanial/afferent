@@ -8,7 +8,8 @@
 typedef enum {
     AFFERENT_FRAGMENT_CIRCLE = 0,
     AFFERENT_FRAGMENT_RECT = 1,
-    AFFERENT_FRAGMENT_ARC = 2
+    AFFERENT_FRAGMENT_ARC = 2,
+    AFFERENT_FRAGMENT_QUAD = 3
 } AfferentFragmentPrimitiveType;
 
 // Compiled fragment pipeline handle

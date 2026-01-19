@@ -26,6 +26,10 @@ partial def ShaderExpr.toMetal : ShaderExpr t → String
   -- Instance index
   | .idx => "idx"
 
+  -- Pixel coordinates (for QuadShader)
+  | .pixelUV  => "in.uv"
+  | .pixelPos => "in.position.xy"
+
   -- Variable access
   | .param field _ => s!"p.{field}"
   | .var name _ => name

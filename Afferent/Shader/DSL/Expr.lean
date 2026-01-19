@@ -20,6 +20,10 @@ inductive ShaderExpr : ShaderType → Type where
   -- Instance index (uint idx parameter in fragment function)
   | idx        : ShaderExpr .uint
 
+  -- Pixel coordinates (for QuadShader fragment functions)
+  | pixelUV    : ShaderExpr .float2   -- Normalized 0-1 coords within quad
+  | pixelPos   : ShaderExpr .float2   -- Screen-space pixel position
+
   -- Parameter field access (p.fieldName)
   | param      : (field : String) → (ty : ShaderType) → ShaderExpr ty
 
