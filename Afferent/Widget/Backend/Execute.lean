@@ -241,9 +241,30 @@ def executeCommand (reg : FontRegistry) (cmd : Afferent.Arbor.RenderCommand) : C
     if vertexCount == 0 || indices.size == 0 then
       pure ()
     else
-      -- Create vertex and index buffers from pre-computed NDC data
+      -- Get screen dimensions for NDC conversion
       let canvas ← CanvasM.getCanvas
-      let vertexBuffer ← FFI.Buffer.createVertex canvas.ctx.renderer vertices
+      let (screenWidth, screenHeight) ← canvas.ctx.getCurrentSize
+
+      -- Convert screen coordinates to NDC
+      -- vertices layout: [x, y, r, g, b, a, ...] (6 floats per vertex)
+      let ndcVertices := Id.run do
+        let mut ndc : Array Float := Array.mkEmpty vertices.size
+        for i in [:vertexCount] do
+          let base := i * 6
+          let x := vertices[base]!
+          let y := vertices[base + 1]!
+          let r := vertices[base + 2]!
+          let g := vertices[base + 3]!
+          let b := vertices[base + 4]!
+          let a := vertices[base + 5]!
+          -- Convert pixel coords to NDC
+          let ndcX := (x / screenWidth) * 2.0 - 1.0
+          let ndcY := 1.0 - (y / screenHeight) * 2.0
+          ndc := ndc.push ndcX |>.push ndcY |>.push r |>.push g |>.push b |>.push a
+        ndc
+
+      -- Create vertex and index buffers from NDC data
+      let vertexBuffer ← FFI.Buffer.createVertex canvas.ctx.renderer ndcVertices
       let indexBuffer ← FFI.Buffer.createIndex canvas.ctx.renderer indices
       -- Draw the tessellated triangles
       canvas.ctx.renderer.drawTriangles vertexBuffer indexBuffer indices.size.toUInt32

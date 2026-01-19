@@ -42,10 +42,11 @@ def isEmpty (poly : TessellatedPolygon) : Bool := poly.vertexCount == 0
 
 end TessellatedPolygon
 
-/-- Batch accumulator with transformed, colored vertices in NDC.
-    Accumulates geometry from multiple TessellatedPolygons for a single draw call. -/
+/-- Batch accumulator with transformed, colored vertices in screen coordinates.
+    Accumulates geometry from multiple TessellatedPolygons for a single draw call.
+    NDC conversion is done at execute time when screen dimensions are available. -/
 structure TessellatedBatch where
-  /-- Vertex data: [x, y, r, g, b, a, ...] in NDC. -/
+  /-- Vertex data: [x, y, r, g, b, a, ...] in screen coordinates (pixels). -/
   vertices : Array Float
   /-- Triangle indices. -/
   indices : Array UInt32
@@ -70,23 +71,17 @@ def withCapacity (polygonCount : Nat) (avgVerticesPerPolygon : Nat := 50) : Tess
     indices := Array.mkEmpty totalIndices
     vertexCount := 0 }
 
-/-- Convert pixel coordinates to NDC (Normalized Device Coordinates).
-    NDC range is -1 to 1, with (0,0) at center.
-    Pixel coordinates have (0,0) at top-left. -/
-@[inline]
-private def pixelToNDC (x y : Float) (width height : Float) : Float × Float :=
-  ((x / width) * 2.0 - 1.0, 1.0 - (y / height) * 2.0)
-
 /-- Add a pre-tessellated polygon to the batch with transformation and color.
+    Outputs screen coordinates (not NDC) - conversion happens at execute time.
     - poly: Pre-tessellated polygon in normalized 0-1 coordinates
+    - rectX, rectY: Content rect offset in screen pixels
     - panX, panY: Pan offset in screen pixels
     - zoom: Zoom factor
-    - centerX, centerY: Screen center for zoom origin
-    - rectWidth, rectHeight: Screen rectangle dimensions
-    - screenWidth, screenHeight: Full screen dimensions for NDC conversion
+    - centerX, centerY: Screen center for zoom origin (relative to content rect)
+    - rectWidth, rectHeight: Content rectangle dimensions
     - color: Fill color (RGBA) -/
 def addPolygon (batch : TessellatedBatch) (poly : TessellatedPolygon)
-    (panX panY zoom centerX centerY rectWidth rectHeight screenWidth screenHeight : Float)
+    (rectX rectY panX panY zoom centerX centerY rectWidth rectHeight : Float)
     (color : Color) : TessellatedBatch :=
   if poly.isEmpty then batch
   else Id.run do
@@ -94,20 +89,21 @@ def addPolygon (batch : TessellatedBatch) (poly : TessellatedPolygon)
     let mut vertices := batch.vertices
     let mut indices := batch.indices
 
-    -- Transform each vertex from normalized coords to screen coords, then to NDC
+    -- Transform each vertex from normalized coords to screen coords
     let posCount := poly.positions.size / 2
     for i in [:posCount] do
       let normX := poly.positions[i * 2]!
       let normY := poly.positions[i * 2 + 1]!
-      -- Transform: normalized -> base screen -> zoomed -> panned
+      -- Transform: normalized -> base screen -> zoomed -> panned -> offset by rect position
       let baseX := normX * rectWidth
       let baseY := normY * rectHeight
-      let screenX := centerX + (baseX - centerX) * zoom + panX
-      let screenY := centerY + (baseY - centerY) * zoom + panY
-      -- Convert to NDC
-      let (ndcX, ndcY) := pixelToNDC screenX screenY screenWidth screenHeight
-      -- Push vertex with color
-      vertices := vertices.push ndcX |>.push ndcY
+      let localX := centerX + (baseX - centerX) * zoom + panX
+      let localY := centerY + (baseY - centerY) * zoom + panY
+      -- Add rect offset to get final screen position
+      let screenX := rectX + localX
+      let screenY := rectY + localY
+      -- Push vertex with color (screen coordinates, not NDC)
+      vertices := vertices.push screenX |>.push screenY
         |>.push color.r |>.push color.g |>.push color.b |>.push color.a
 
     -- Remap indices
@@ -147,26 +143,28 @@ def withCapacity (polygonCount : Nat) (avgEdgesPerPolygon : Nat := 50) : StrokeB
 
 /-- Add a polygon's border to the stroke batch.
     - poly: Pre-tessellated polygon (we use positions for edges)
+    - rectX, rectY: Content rect offset in screen pixels
     - panX, panY: Pan offset in screen pixels
     - zoom: Zoom factor
-    - centerX, centerY: Screen center for zoom origin
-    - rectWidth, rectHeight: Screen rectangle dimensions
+    - centerX, centerY: Screen center for zoom origin (relative to content rect)
+    - rectWidth, rectHeight: Content rectangle dimensions
     - color: Stroke color (RGBA) -/
 def addPolygonBorder (batch : StrokeBatch) (poly : TessellatedPolygon)
-    (panX panY zoom centerX centerY rectWidth rectHeight : Float)
+    (rectX rectY panX panY zoom centerX centerY rectWidth rectHeight : Float)
     (color : Color) : StrokeBatch :=
   if poly.vertexCount < 3 then batch
   else Id.run do
     let mut data := batch.data
     let mut lineCount := batch.lineCount
 
-    -- Transform function for normalized -> screen coords
+    -- Transform function for normalized -> screen coords (with rect offset)
     let transform (normX normY : Float) : Float × Float :=
       let baseX := normX * rectWidth
       let baseY := normY * rectHeight
-      let screenX := centerX + (baseX - centerX) * zoom + panX
-      let screenY := centerY + (baseY - centerY) * zoom + panY
-      (screenX, screenY)
+      let localX := centerX + (baseX - centerX) * zoom + panX
+      let localY := centerY + (baseY - centerY) * zoom + panY
+      -- Add rect offset to get final screen position
+      (rectX + localX, rectY + localY)
 
     -- Add edges (connect consecutive vertices, close the polygon)
     let numVerts := poly.vertexCount
