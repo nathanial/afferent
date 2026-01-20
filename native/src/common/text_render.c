@@ -245,12 +245,47 @@ static GlyphInfo* cache_glyph(AfferentFontRef font, uint32_t codepoint) {
         return NULL;
     }
 
-    // Copy bitmap to atlas
+    // Copy bitmap to atlas (handle mono and grayscale pixel modes)
+    int pitch = bitmap->pitch;
     for (uint32_t y = 0; y < bitmap->rows; y++) {
+        const uint8_t* row = bitmap->buffer +
+            (pitch >= 0 ? (int)y * pitch : (int)(bitmap->rows - 1 - y) * -pitch);
         for (uint32_t x = 0; x < bitmap->width; x++) {
+            uint8_t value = 0;
+            switch (bitmap->pixel_mode) {
+                case FT_PIXEL_MODE_GRAY:
+                    value = row[x];
+                    break;
+                case FT_PIXEL_MODE_MONO: {
+                    uint8_t byte = row[x >> 3];
+                    uint8_t mask = (uint8_t)(0x80 >> (x & 7));
+                    value = (byte & mask) ? 0xFF : 0x00;
+                    break;
+                }
+                case FT_PIXEL_MODE_GRAY2: {
+                    uint8_t byte = row[x >> 2];
+                    uint8_t shift = (uint8_t)(6 - 2 * (x & 3));
+                    uint8_t level = (byte >> shift) & 0x3;
+                    value = (uint8_t)(level * 85);  // 255 / 3
+                    break;
+                }
+                case FT_PIXEL_MODE_GRAY4: {
+                    uint8_t byte = row[x >> 1];
+                    uint8_t shift = (uint8_t)((x & 1) ? 0 : 4);
+                    uint8_t level = (byte >> shift) & 0xF;
+                    value = (uint8_t)(level * 17);  // 255 / 15
+                    break;
+                }
+                case FT_PIXEL_MODE_BGRA:
+                    value = row[x * 4 + 3];
+                    break;
+                default:
+                    value = 0;
+                    break;
+            }
             uint32_t atlas_idx = (font->atlas_cursor_y + y) * font->atlas_width +
                                  (font->atlas_cursor_x + x);
-            font->atlas_data[atlas_idx] = bitmap->buffer[y * bitmap->pitch + x];
+            font->atlas_data[atlas_idx] = value;
         }
     }
 
