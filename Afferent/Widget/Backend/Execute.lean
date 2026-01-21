@@ -16,6 +16,17 @@ namespace Afferent.Widget
 open Afferent
 open Afferent.Arbor
 
+/-- Snap text positions to device pixels for axis-aligned transforms (scale + translate only). -/
+private def snapTextPosition (x y : Float) (transform : Transform) : (Float × Float) :=
+  let eps : Float := 1.0e-4
+  let axisAligned := Float.abs transform.b <= eps && Float.abs transform.c <= eps
+  if axisAligned && transform.a != 0.0 && transform.d != 0.0 then
+    let snappedX := (Float.round (transform.a * x + transform.tx) - transform.tx) / transform.a
+    let snappedY := (Float.round (transform.d * y + transform.ty) - transform.ty) / transform.d
+    (snappedX, snappedY)
+  else
+    (x, y)
+
 /-- Execute a single RenderCommand using CanvasM.
     Requires a FontRegistry to resolve FontIds to Font handles. -/
 def executeCommand (reg : FontRegistry) (cmd : Afferent.Arbor.RenderCommand) : CanvasM Unit := do
@@ -104,7 +115,9 @@ def executeCommand (reg : FontRegistry) (cmd : Afferent.Arbor.RenderCommand) : C
   | .fillText text x y fontId color =>
     match reg.get fontId with
     | some font =>
-      CanvasM.fillTextColor text ⟨x, y⟩ font (toAfferentColor color)
+      let canvas ← CanvasM.getCanvas
+      let (sx, sy) := snapTextPosition x y canvas.state.transform
+      CanvasM.fillTextColor text ⟨sx, sy⟩ font (toAfferentColor color)
     | none =>
       -- Font not found, skip rendering
       pure ()
@@ -122,7 +135,9 @@ def executeCommand (reg : FontRegistry) (cmd : Afferent.Arbor.RenderCommand) : C
         | .top => rect.origin.y + font.ascender
         | .middle => rect.origin.y + (rect.size.height - textHeight) / 2 + font.ascender
         | .bottom => rect.origin.y + rect.size.height - font.descender
-      CanvasM.fillTextColor text ⟨x, y⟩ font (toAfferentColor color)
+      let canvas ← CanvasM.getCanvas
+      let (sx, sy) := snapTextPosition x y canvas.state.transform
+      CanvasM.fillTextColor text ⟨sx, sy⟩ font (toAfferentColor color)
     | none =>
       pure ()
 

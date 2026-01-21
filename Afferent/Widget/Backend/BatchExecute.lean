@@ -15,6 +15,17 @@ namespace Afferent.Widget
 open Afferent
 open Afferent.Arbor
 
+/-- Snap text positions to device pixels for axis-aligned transforms (scale + translate only). -/
+private def snapTextPosition (x y : Float) (transform : Transform) : (Float × Float) :=
+  let eps : Float := 1.0e-4
+  let axisAligned := Float.abs transform.b <= eps && Float.abs transform.c <= eps
+  if axisAligned && transform.a != 0.0 && transform.d != 0.0 then
+    let snappedX := (Float.round (transform.a * x + transform.tx) - transform.tx) / transform.a
+    let snappedY := (Float.round (transform.d * y + transform.ty) - transform.ty) / transform.d
+    (snappedX, snappedY)
+  else
+    (x, y)
+
 /-- Execute an array of RenderCommands using CanvasM with batching optimization.
     First coalesces commands within scopes to maximize batching opportunities, then
     groups consecutive fillRect commands (per-instance cornerRadius),
@@ -396,13 +407,15 @@ def executeCommandsBatchedWithStats (reg : FontRegistry) (cmds : Array Afferent.
         strokeCircleBatch := #[]
       -- Get current canvas transform for this text entry
       let canvas ← CanvasM.getCanvas
-      let transform := canvas.state.transform.toArray
+      let transform := canvas.state.transform
+      let transformArr := transform.toArray
+      let (sx, sy) := snapTextPosition x y transform
       -- Check if we can add to current text batch (same font)
       if textBatch.isEmpty || currentTextFontId == some fontId then
         let entry : TextBatchEntry := {
-          text, x, y
+          text, x := sx, y := sy
           r := color.r, g := color.g, b := color.b, a := color.a
-          transform
+          transform := transformArr
         }
         textBatch := textBatch.push entry
         currentTextFontId := some fontId
@@ -411,9 +424,9 @@ def executeCommandsBatchedWithStats (reg : FontRegistry) (cmds : Array Afferent.
         let (s, dt) ← flushTexts textBatch currentTextFontId stats
         stats := s; drawCallTimeNs := drawCallTimeNs + dt
         let entry : TextBatchEntry := {
-          text, x, y
+          text, x := sx, y := sy
           r := color.r, g := color.g, b := color.b, a := color.a
-          transform
+          transform := transformArr
         }
         textBatch := #[entry]
         currentTextFontId := some fontId
