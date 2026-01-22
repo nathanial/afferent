@@ -4,42 +4,32 @@
 // Texture/Sprite Rendering FFI
 // ============================================================================
 
-// Load texture from file
-LEAN_EXPORT lean_obj_res lean_afferent_texture_load(
-    lean_obj_arg path_obj,
+// Create texture from decoded RGBA pixel data
+// Takes ByteArray of RGBA data, width, and height
+LEAN_EXPORT lean_obj_res lean_afferent_texture_create_from_rgba(
+    lean_obj_arg data_obj,
+    uint32_t width,
+    uint32_t height,
     lean_obj_arg world
 ) {
     afferent_ensure_initialized();
-    const char* path = lean_string_cstr(path_obj);
-    AfferentTextureRef texture = NULL;
-    AfferentResult result = afferent_texture_load(path, &texture);
 
-    if (result != AFFERENT_OK) {
+    // Get ByteArray data (should be width * height * 4 bytes)
+    size_t size = lean_sarray_size(data_obj);
+    size_t expected = (size_t)width * height * 4;
+    if (size < expected) {
         return lean_io_result_mk_error(lean_mk_io_user_error(
-            lean_mk_string("Failed to load texture")));
+            lean_mk_string("Texture data too small for specified dimensions")));
     }
 
-    lean_object* obj = lean_alloc_external(g_texture_class, texture);
-    return lean_io_result_mk_ok(obj);
-}
-
-// Load texture from memory (ByteArray of PNG/JPG data)
-LEAN_EXPORT lean_obj_res lean_afferent_texture_load_from_memory(
-    lean_obj_arg data_obj,
-    lean_obj_arg world
-) {
-    afferent_ensure_initialized();
-
-    // Get ByteArray data
-    size_t size = lean_sarray_size(data_obj);
     const uint8_t* data = lean_sarray_cptr(data_obj);
 
     AfferentTextureRef texture = NULL;
-    AfferentResult result = afferent_texture_load_from_memory(data, size, &texture);
+    AfferentResult result = afferent_texture_create_from_rgba(data, width, height, &texture);
 
     if (result != AFFERENT_OK) {
         return lean_io_result_mk_error(lean_mk_io_user_error(
-            lean_mk_string("Failed to load texture from memory")));
+            lean_mk_string("Failed to create texture from RGBA data")));
     }
 
     lean_object* obj = lean_alloc_external(g_texture_class, texture);

@@ -358,19 +358,15 @@ void afferent_float_buffer_update_sprites(AfferentFloatBufferRef buf, uint32_t c
     float dt, float halfSize, float screenWidth, float screenHeight);
 
 // ============================================================================
-// Texture/Sprite rendering - Load textures and render textured sprites
+// Texture/Sprite rendering - Create textures and render textured sprites
 // ============================================================================
 
-// Load a texture from a file path (supports PNG, JPG, etc via stb_image)
-AfferentResult afferent_texture_load(
-    const char* path,
-    AfferentTextureRef* out_texture
-);
-
-// Load a texture from memory (PNG/JPG data in buffer)
-AfferentResult afferent_texture_load_from_memory(
-    const uint8_t* buffer,
-    size_t buffer_size,
+// Create a texture from already-decoded RGBA pixel data
+// Image decoding is done at the Lean level using the raster library
+AfferentResult afferent_texture_create_from_rgba(
+    const uint8_t* rgba_data,
+    uint32_t width,
+    uint32_t height,
     AfferentTextureRef* out_texture
 );
 

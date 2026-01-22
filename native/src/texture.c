@@ -1,76 +1,50 @@
 /*
  * Afferent Texture Loading
- * Uses stb_image for PNG/image loading
+ * Creates GPU textures from decoded RGBA pixel data.
+ * Image decoding is handled by the raster library at the Lean level.
  */
 
-#define STB_IMAGE_IMPLEMENTATION
-#include "stb_image.h"
 #include "../include/afferent.h"
 #include <stdlib.h>
 #include <string.h>
 
 // Texture structure
 struct AfferentTexture {
-    uint8_t* data;          // RGBA pixel data
+    uint8_t* data;          // RGBA pixel data (owned copy)
     uint32_t width;
     uint32_t height;
     void* metal_texture;    // id<MTLTexture>, managed by metal_render.m
 };
 
-// Load a texture from a file path
-AfferentResult afferent_texture_load(const char* path, AfferentTextureRef* out_texture) {
-    if (!path || !out_texture) {
-        return AFFERENT_ERROR_INIT_FAILED;
-    }
-
-    // Load image with stb_image (force RGBA)
-    int width, height, channels;
-    uint8_t* data = stbi_load(path, &width, &height, &channels, 4);  // Force 4 channels (RGBA)
-
-    if (!data) {
-        return AFFERENT_ERROR_INIT_FAILED;
-    }
-
-    // Allocate texture structure
-    AfferentTextureRef texture = (AfferentTextureRef)malloc(sizeof(struct AfferentTexture));
-    if (!texture) {
-        stbi_image_free(data);
-        return AFFERENT_ERROR_INIT_FAILED;
-    }
-
-    texture->data = data;
-    texture->width = (uint32_t)width;
-    texture->height = (uint32_t)height;
-    texture->metal_texture = NULL;  // Created lazily by renderer
-
-    *out_texture = texture;
-    return AFFERENT_OK;
-}
-
-// Load a texture from memory (PNG/JPG data in buffer)
-AfferentResult afferent_texture_load_from_memory(const uint8_t* buffer, size_t buffer_size, AfferentTextureRef* out_texture) {
-    if (!buffer || buffer_size == 0 || !out_texture) {
-        return AFFERENT_ERROR_INIT_FAILED;
-    }
-
-    // Load image from memory with stb_image (force RGBA)
-    int width, height, channels;
-    uint8_t* data = stbi_load_from_memory(buffer, (int)buffer_size, &width, &height, &channels, 4);
-
-    if (!data) {
+// Create a texture from already-decoded RGBA pixel data
+// This is the primary constructor - decoding is done by raster library
+AfferentResult afferent_texture_create_from_rgba(
+    const uint8_t* rgba_data,
+    uint32_t width,
+    uint32_t height,
+    AfferentTextureRef* out_texture
+) {
+    if (!rgba_data || width == 0 || height == 0 || !out_texture) {
         return AFFERENT_ERROR_INIT_FAILED;
     }
 
     // Allocate texture structure
     AfferentTextureRef texture = (AfferentTextureRef)malloc(sizeof(struct AfferentTexture));
     if (!texture) {
-        stbi_image_free(data);
         return AFFERENT_ERROR_INIT_FAILED;
     }
 
-    texture->data = data;
-    texture->width = (uint32_t)width;
-    texture->height = (uint32_t)height;
+    // Copy the pixel data (we need to own it)
+    size_t data_size = (size_t)width * height * 4;
+    texture->data = (uint8_t*)malloc(data_size);
+    if (!texture->data) {
+        free(texture);
+        return AFFERENT_ERROR_INIT_FAILED;
+    }
+    memcpy(texture->data, rgba_data, data_size);
+
+    texture->width = width;
+    texture->height = height;
     texture->metal_texture = NULL;  // Created lazily by renderer
 
     *out_texture = texture;
@@ -88,7 +62,7 @@ void afferent_texture_destroy(AfferentTextureRef texture) {
     afferent_release_sprite_metal_texture(texture);
 
     if (texture->data) {
-        stbi_image_free(texture->data);
+        free(texture->data);
         texture->data = NULL;
     }
 

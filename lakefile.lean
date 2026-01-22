@@ -12,6 +12,7 @@ require assimptor from git "https://github.com/nathanial/assimptor" @ "v0.0.2"
 require staple from git "https://github.com/nathanial/staple" @ "v0.0.2"
 require linalg from git "https://github.com/nathanial/linalg" @ "v0.0.3"
 require reactive from git "https://github.com/nathanial/reactive" @ "v0.1.8"
+require raster from git "https://github.com/nathanial/raster" @ "v0.0.5"
 
 
 -- Common link arguments for all executables
@@ -261,10 +262,8 @@ target texture_o pkg : FilePath := do
   let oFile := pkg.buildDir / "native" / "texture.o"
   let srcFile := pkg.dir / "native" / "src" / "texture.c"
   let includeDir := pkg.dir / "native" / "include"
-  let srcDir := pkg.dir / "native" / "src"
   buildO oFile (← inputTextFile srcFile) #[
     "-I", includeDir.toString,
-    "-I", srcDir.toString,  -- For stb_image.h
     "-fPIC",
     "-O2"
   ] #[] "cc"
