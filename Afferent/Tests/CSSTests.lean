@@ -247,6 +247,6 @@ test "css! with float border-width" := do
   }
   ensure (style.borderWidth == 0.5) s!"Expected borderWidth = 0.5, got {style.borderWidth}"
 
-#generate_tests
+
 
 end Afferent.Tests.CSSTests

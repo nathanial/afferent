@@ -121,6 +121,6 @@ test "single cell table" := do
   ensure (rows.size == 1) "Should have 1 row"
   ensure (rows[0]![0]! == "42") "Cell value should be '42'"
 
-#generate_tests
+
 
 end Afferent.Tests.TableTests

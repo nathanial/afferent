@@ -1066,6 +1066,4 @@ test "perf: WaterfallChart 2000 bars" := do
 
   IO.println s!"  [WaterfallChart 2000 bars x3: {elapsed}]"
 
-#generate_tests
-
 end Afferent.Tests.ChartPerformanceTests

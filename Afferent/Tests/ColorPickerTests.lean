@@ -278,6 +278,6 @@ test "clamp01 above range" := do
   shouldBeNear (ColorPicker.clamp01 1.5) 1.0
   shouldBeNear (ColorPicker.clamp01 100.0) 1.0
 
-#generate_tests
+
 
 end Afferent.Tests.ColorPickerTests

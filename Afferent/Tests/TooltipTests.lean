@@ -112,6 +112,6 @@ test "TooltipPosition enumeration" := do
   ensure (positions[2]! == .left) "Third should be .left"
   ensure (positions[3]! == .right) "Fourth should be .right"
 
-#generate_tests
+
 
 end Afferent.Tests.TooltipTests

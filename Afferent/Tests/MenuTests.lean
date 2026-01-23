@@ -264,6 +264,6 @@ test "calculateHeightAtPath" := do
   let expected := config.itemHeight * 2 + config.separatorHeight
   ensure (height == expected) s!"Expected height {expected}, got {height}"
 
-#generate_tests
+
 
 end Afferent.Tests.MenuTests

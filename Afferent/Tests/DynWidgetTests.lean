@@ -748,6 +748,6 @@ test "dynWidget disposes child scope on rebuild" := do
   ).run spiderEnv
   pure ()
 
-#generate_tests
+
 
 end Afferent.Tests.DynWidgetTests

@@ -330,6 +330,6 @@ test "listBox items reach scrollbar track in scroll container" := do
   | none =>
     ensure false "Expected to find a scroll container in listBox widget"
 
-#generate_tests
+
 
 end Afferent.Tests.ListBoxTests

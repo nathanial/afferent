@@ -127,6 +127,6 @@ test "sprite buffer writer packs layout" := do
   shouldBeNear alpha0 0.25
   FFI.FloatBuffer.destroy buf
 
-#generate_tests
+
 
 end Afferent.Tests.RenderSmokeTests

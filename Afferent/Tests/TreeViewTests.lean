@@ -309,6 +309,6 @@ test "typical file tree structure" := do
   -- All 6 visible
   ensure (flat2.size == 6) s!"With both expanded, should have 6 visible, got {flat2.size}"
 
-#generate_tests
+
 
 end Afferent.Tests.TreeViewTests

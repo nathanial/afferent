@@ -444,6 +444,4 @@ test "isStateChanging returns false for fillCircle" := do
 test "isStateChanging returns false for strokeCircle" := do
   ensure (!isStateChanging (mkStrokeCircle 50 50 10)) "strokeCircle should not be state-changing"
 
-#generate_tests
-
 end Afferent.Tests.CoalescingTests

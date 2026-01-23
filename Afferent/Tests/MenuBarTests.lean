@@ -116,6 +116,6 @@ test "menu bar with disabled menu" := do
   ensure (!menus[1]!.enabled) "Edit should be disabled"
   ensure menus[2]!.enabled "View should be enabled"
 
-#generate_tests
+
 
 end Afferent.Tests.MenuBarTests

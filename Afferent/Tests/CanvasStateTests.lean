@@ -191,6 +191,4 @@ test "StateStack restore with empty stack is no-op" := do
   shouldBeNear result.x 100.0
   shouldBeNear result.y 200.0
 
-#generate_tests
-
 end Afferent.Tests.CanvasStateTests

@@ -812,6 +812,6 @@ test "debug scrollbar geometry" := do
   | none =>
     ensure false s!"Expected hit at ({mouseX}, {mouseY}), track at x={expectedTrackX}"
 
-#generate_tests
+
 
 end Afferent.Tests.ScrollContainerTests

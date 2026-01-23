@@ -593,6 +593,6 @@ test "QuadShader functionCode contains vertex and pixel code" := do
   -- Pixel part contains UV access
   shouldContainSubstr parts[1]! "in.uv"
 
-#generate_tests
+
 
 end Afferent.Tests.ShaderDSLTests

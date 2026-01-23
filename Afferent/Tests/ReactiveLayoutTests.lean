@@ -311,6 +311,6 @@ test "measureWidget sets ItemKind.flexChild on child layout nodes" := do
   | _ =>
       ensure false s!"Footer should have ItemKind.flexChild, got {repr footerNode.item}"
 
-#generate_tests
+
 
 end Afferent.Tests.ReactiveLayoutTests

@@ -71,6 +71,6 @@ test "measureText larger font size produces larger dimensions" := do
   smallFont.destroy
   largeFont.destroy
 
-#generate_tests
+
 
 end Afferent.Tests.FontTests

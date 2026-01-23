@@ -35,6 +35,4 @@ test "loadAsset rejects missing file" := do
       pure true
   ensure ok "expected loadAsset to throw on missing file"
 
-#generate_tests
-
 end Afferent.Tests.AssetLoadingTests

@@ -608,6 +608,6 @@ test "rounded rectangle tessellation produces valid triangles" := do
   let expectedTriangles := points.size - 2
   ensure (indices.size / 3 == expectedTriangles) s!"Expected {expectedTriangles} triangles, got {indices.size / 3}"
 
-#generate_tests
+
 
 end Afferent.Tests.TessellationTests

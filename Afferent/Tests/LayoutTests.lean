@@ -329,6 +329,6 @@ test "demo chain: card column fills inner grid cell" := do
   shouldBeNear cardLabel.height 15.0     -- fixed label
   shouldBeNear shapeArea.height 185.0    -- fills remaining via flex-grow
 
-#generate_tests
+
 
 end Afferent.Tests.LayoutTests
