@@ -11,7 +11,7 @@ require trellis from git "https://github.com/nathanial/trellis" @ "v0.0.14"
 require assimptor from git "https://github.com/nathanial/assimptor" @ "v0.0.2"
 require staple from git "https://github.com/nathanial/staple" @ "v0.0.2"
 require linalg from git "https://github.com/nathanial/linalg" @ "v0.0.3"
-require reactive from git "https://github.com/nathanial/reactive" @ "v0.1.8"
+require reactive from git "https://github.com/nathanial/reactive" @ "v0.2.0"
 require raster from git "https://github.com/nathanial/raster" @ "v0.0.5"
 
 
