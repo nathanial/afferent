@@ -29,7 +29,7 @@ test "column' produces widget with flexItem in style" := do
   -- Create a SpiderEnv for running reactive code
   let spiderEnv ← SpiderEnv.new defaultErrorHandler
   let _result ← (do
-    let (events, _) ← createInputs
+    let (events, _) ← createInputs FontRegistry.empty
     let rootStyle : BoxStyle := {
       flexItem := some (FlexItem.growing 1)
       width := .percent 1.0
@@ -226,7 +226,7 @@ test "full measure+layout: content with flexItem fills remaining space" := do
 test "reactive column' through measure+layout fills viewport" := do
   let spiderEnv ← SpiderEnv.new defaultErrorHandler
   let contentWidget ← (do
-    let (events, _) ← createInputs
+    let (events, _) ← createInputs FontRegistry.empty
     let contentStyle : BoxStyle := {
       flexItem := some (FlexItem.growing 1)
       width := .percent 1.0

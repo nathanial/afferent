@@ -6,7 +6,7 @@ import Reactive
 import Oracle.Reactive.Conversation
 import Afferent.Arbor
 import Afferent.Arbor.Widget.Measure
-import Afferent.Arbor.Text.Renderer -- for TextMeasurer Id instance
+import Afferent.Text.Measurer
 import Afferent.Canopy.Core
 import Afferent.Canopy.Theme
 import Afferent.Canopy.Reactive.Component
@@ -432,6 +432,9 @@ def messageList (messages : Reactive.Dynamic Spider (Array ChatMessage)) (config
       countChanges
     performEvent_ scrollToBottomAction
 
+  -- Get font registry for real text measurement
+  let fontRegistry ← getFontRegistry
+
   -- Render using dynWidget
   let renderState ← Dynamic.zipWithM (fun msgs scroll => (msgs, scroll)) messages justScroll
   let _ ← dynWidget renderState fun (msgs, scroll) => do
@@ -445,8 +448,8 @@ def messageList (messages : Reactive.Dynamic Spider (Array ChatMessage)) (config
     let contentBuilder := column (gap := config.messageGap) (style := contentStyle) msgWidgets
     let (contentWidget, _) := contentBuilder.run {}
 
-    -- Measure actual content height using existing TextMeasurer Id instance
-    let measureResult := measureWidget (M := Id) contentWidget config.width config.height
+    -- Measure actual content height using real font measurement
+    let measureResult ← SpiderM.liftIO (runWithFonts fontRegistry (measureWidget contentWidget config.width config.height))
     let (_, measuredH) := nodeContentSize measureResult.node
 
     -- Use measured height (minimum of viewport height for empty content)

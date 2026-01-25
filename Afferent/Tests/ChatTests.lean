@@ -510,7 +510,7 @@ test "ScrollState.scrollBy clamps to zero at top" := do
 
 test "FRP: messageList returns MessageListResult with scrollState" := do
   let result ← runSpider do
-    let (events, _) ← createInputs
+    let (events, _) ← createInputs FontRegistry.empty
     let messagesDyn ← Dynamic.pureM #[ChatMessage.user 0 "Test message"]
     let config := MessageListConfig.default
 
@@ -526,7 +526,7 @@ test "FRP: messageList returns MessageListResult with scrollState" := do
 
 test "FRP: messageList scrollState starts at zero" := do
   let result ← runSpider do
-    let (events, _) ← createInputs
+    let (events, _) ← createInputs FontRegistry.empty
     let messages := #[
       ChatMessage.user 0 "Hello",
       ChatMessage.assistant 1 "Hi there",
@@ -547,7 +547,7 @@ test "FRP: messageList scrollState starts at zero" := do
 test "FRP: useScroll filters events by widget name" := do
   -- Test that useScroll properly filters scroll events by name
   let result ← runSpider do
-    let (events, inputs) ← createInputs
+    let (events, inputs) ← createInputs FontRegistry.empty
 
     -- Register a component with a known name
     let name ← (registerComponent "test-scroll" false true).run events
@@ -580,7 +580,7 @@ test "FRP: useScroll filters events by widget name" := do
 test "FRP DEBUG: trace scroll event flow through messageList pipeline (SpiderM)" := do
   -- This debug test traces the event flow step by step to identify where events are lost
   let result ← runSpider do
-    let (events, inputs) ← createInputs
+    let (events, inputs) ← createInputs FontRegistry.empty
 
     -- Step 1: Register component and check name
     let name ← (registerComponent "chat-message-list" false true).run events
@@ -635,7 +635,7 @@ test "FRP DEBUG: trace scroll event flow through messageList pipeline (SpiderM)"
 test "FRP DEBUG: trace scroll event flow in WidgetM" := do
   -- Test that the event pipeline works when run inside WidgetM (like messageList does)
   let result ← runSpider do
-    let (events, inputs) ← createInputs
+    let (events, inputs) ← createInputs FontRegistry.empty
 
     -- Run the pipeline inside WidgetM - this time with ALL events like messageList
     let (scrollDyn, _) ← (do
@@ -690,7 +690,7 @@ test "FRP DEBUG: trace scroll event flow in WidgetM" := do
 
 test "FRP: messageList responds to scroll wheel events" := do
   let result ← runSpider do
-    let (events, inputs) ← createInputs
+    let (events, inputs) ← createInputs FontRegistry.empty
     -- Need enough messages to exceed viewport height (300px)
     -- With ASCII measurement (~40px per message bubble), we need 8+ messages
     let messages := #[
@@ -748,7 +748,7 @@ test "FRP: messageList responds to scroll wheel events" := do
 
 test "FRP: multiple scroll events accumulate" := do
   let result ← runSpider do
-    let (events, inputs) ← createInputs
+    let (events, inputs) ← createInputs FontRegistry.empty
     -- Need enough messages to exceed viewport height and allow accumulating scroll
     let messages := #[
       ChatMessage.user 0 "Test message one",
@@ -796,7 +796,7 @@ test "FRP: multiple scroll events accumulate" := do
 
 test "FRP: messageList scroll events are filtered by widget name" := do
   let result ← runSpider do
-    let (events, inputs) ← createInputs
+    let (events, inputs) ← createInputs FontRegistry.empty
     let messagesDyn ← Dynamic.pureM #[ChatMessage.user 0 "Test"]
     let config := MessageListConfig.default
 
@@ -822,7 +822,7 @@ test "FRP: messageList scroll events are filtered by widget name" := do
 
 test "FRP: scroll events ignored when not in hitPath" := do
   let result ← runSpider do
-    let (events, inputs) ← createInputs
+    let (events, inputs) ← createInputs FontRegistry.empty
     let messagesDyn ← Dynamic.pureM #[ChatMessage.user 0 "Test"]
     let config := MessageListConfig.default
 

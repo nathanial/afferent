@@ -63,6 +63,11 @@ def ReactiveM.run (events : ReactiveEvents) (m : ReactiveM α) : SpiderM α :=
 /-- Get the events from the implicit context. -/
 def getEvents : ReactiveM ReactiveEvents := read
 
+/-- Get the font registry from the implicit context. -/
+def getFontRegistry : ReactiveM Afferent.FontRegistry := do
+  let events ← getEvents
+  pure events.fontRegistry
+
 /-- Register a component and get an auto-generated name.
     This is the preferred way to register components in ReactiveM context. -/
 def registerComponent (namePrefix : String) (isInput : Bool := false)
