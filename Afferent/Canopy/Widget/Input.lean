@@ -16,3 +16,4 @@ import Afferent.Canopy.Widget.Input.RangeSlider
 import Afferent.Canopy.Widget.Input.Stepper
 import Afferent.Canopy.Widget.Input.ColorPicker
 import Afferent.Canopy.Widget.Input.DatePicker
+import Afferent.Canopy.Widget.Input.TimePicker
