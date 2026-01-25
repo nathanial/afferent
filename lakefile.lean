@@ -30,7 +30,8 @@ def commonLinkArgs : Array String := #[
   "-lfreetype",
   "-lassimp",
   "-lz",
-  "-lc++"
+  "-lc++",
+  "-lcurl"                   -- Required by Wisp (HTTP client via Oracle)
 ]
 
 -- Native library compilation

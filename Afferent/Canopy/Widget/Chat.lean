@@ -23,22 +23,18 @@ inductive ChatRole where
   | system
 deriving Repr, BEq, Inhabited
 
-namespace ChatRole
-
-def toString : ChatRole → String
+def ChatRole.toString : ChatRole → String
   | .user => "user"
   | .assistant => "assistant"
   | .system => "system"
 
-def isUser : ChatRole → Bool
+def ChatRole.isUser : ChatRole → Bool
   | .user => true
   | _ => false
 
-def isAssistant : ChatRole → Bool
+def ChatRole.isAssistant : ChatRole → Bool
   | .assistant => true
   | _ => false
-
-end ChatRole
 
 /-- A single message in the chat history. -/
 structure ChatMessage where
@@ -54,29 +50,25 @@ structure ChatMessage where
   isStreaming : Bool := false
 deriving Repr, BEq, Inhabited
 
-namespace ChatMessage
-
 /-- Create a user message. -/
-def user (id : Nat) (content : String) : ChatMessage :=
+def ChatMessage.user (id : Nat) (content : String) : ChatMessage :=
   { id, role := .user, content }
 
 /-- Create an assistant message. -/
-def assistant (id : Nat) (content : String) (isStreaming : Bool := false) : ChatMessage :=
+def ChatMessage.assistant (id : Nat) (content : String) (isStreaming : Bool := false) : ChatMessage :=
   { id, role := .assistant, content, isStreaming }
 
 /-- Create a system message. -/
-def system (id : Nat) (content : String) : ChatMessage :=
+def ChatMessage.system (id : Nat) (content : String) : ChatMessage :=
   { id, role := .system, content }
 
 /-- Update the content of a streaming message. -/
-def updateContent (msg : ChatMessage) (newContent : String) : ChatMessage :=
+def ChatMessage.updateContent (msg : ChatMessage) (newContent : String) : ChatMessage :=
   { msg with content := newContent }
 
 /-- Mark a message as finished streaming. -/
-def finishStreaming (msg : ChatMessage) : ChatMessage :=
+def ChatMessage.finishStreaming (msg : ChatMessage) : ChatMessage :=
   { msg with isStreaming := false }
-
-end ChatMessage
 
 /-- Configuration for the chat widget. -/
 structure ChatWidgetConfig where
@@ -84,6 +76,10 @@ structure ChatWidgetConfig where
   width : Float := 600
   /-- Height of the chat widget in pixels. -/
   height : Float := 500
+  /-- Fill available width instead of using fixed width. -/
+  fillWidth : Bool := false
+  /-- Fill available height instead of using fixed height. -/
+  fillHeight : Bool := false
   /-- Maximum width for message bubbles (relative to chat width). -/
   maxMessageWidth : Float := 0.75
   /-- Placeholder text for the input field. -/
@@ -96,20 +92,16 @@ structure ChatWidgetConfig where
   autoScroll : Bool := true
 deriving Repr, Inhabited
 
-namespace ChatWidgetConfig
-
 /-- Default configuration. -/
-def default : ChatWidgetConfig := {}
+def ChatWidgetConfig.default : ChatWidgetConfig := {}
 
 /-- Create a configuration with custom dimensions. -/
-def withSize (width height : Float) : ChatWidgetConfig :=
+def ChatWidgetConfig.withSize (width height : Float) : ChatWidgetConfig :=
   { width, height }
 
 /-- Create a configuration with a system prompt. -/
-def withSystemPrompt (prompt : String) : ChatWidgetConfig :=
+def ChatWidgetConfig.withSystemPrompt (prompt : String) : ChatWidgetConfig :=
   { systemPrompt := some prompt }
-
-end ChatWidgetConfig
 
 /-- State of the chat widget. -/
 inductive ChatWidgetState where
@@ -123,8 +115,6 @@ inductive ChatWidgetState where
   | error (message : String)
 deriving Repr, Inhabited
 
-namespace ChatWidgetState
-
 instance : BEq ChatWidgetState where
   beq a b := match a, b with
     | .idle, .idle => true
@@ -133,24 +123,22 @@ instance : BEq ChatWidgetState where
     | .error m1, .error m2 => m1 == m2
     | _, _ => false
 
-def isIdle : ChatWidgetState → Bool
+def ChatWidgetState.isIdle : ChatWidgetState → Bool
   | .idle => true
   | _ => false
 
-def isBusy : ChatWidgetState → Bool
+def ChatWidgetState.isBusy : ChatWidgetState → Bool
   | .sending => true
   | .streaming => true
   | _ => false
 
-def isError : ChatWidgetState → Bool
+def ChatWidgetState.isError : ChatWidgetState → Bool
   | .error _ => true
   | _ => false
 
-def errorMessage : ChatWidgetState → Option String
+def ChatWidgetState.errorMessage : ChatWidgetState → Option String
   | .error msg => some msg
   | _ => none
-
-end ChatWidgetState
 
 /-- Colors for message bubbles. -/
 structure MessageBubbleColors where
@@ -164,10 +152,8 @@ structure MessageBubbleColors where
   assistantText : Color
 deriving Repr, Inhabited
 
-namespace MessageBubbleColors
-
 /-- Default colors for dark theme. -/
-def forDarkTheme : MessageBubbleColors := {
+def MessageBubbleColors.forDarkTheme : MessageBubbleColors := {
   userBackground := Color.fromRgb8 59 130 246      -- Blue-500
   assistantBackground := Color.gray 0.18
   userText := Color.white
@@ -175,7 +161,7 @@ def forDarkTheme : MessageBubbleColors := {
 }
 
 /-- Default colors for light theme. -/
-def forLightTheme : MessageBubbleColors := {
+def MessageBubbleColors.forLightTheme : MessageBubbleColors := {
   userBackground := Color.fromRgb8 59 130 246
   assistantBackground := Color.gray 0.92
   userText := Color.white
@@ -183,14 +169,12 @@ def forLightTheme : MessageBubbleColors := {
 }
 
 /-- Create colors from a theme. -/
-def fromTheme (theme : Theme) : MessageBubbleColors := {
+def MessageBubbleColors.fromTheme (theme : Theme) : MessageBubbleColors := {
   userBackground := theme.primary.background
   assistantBackground := theme.panel.background
   userText := theme.primary.foreground
   assistantText := theme.text
 }
-
-end MessageBubbleColors
 
 /-- Configuration for rendering a message bubble. -/
 structure MessageBubbleConfig where
@@ -208,20 +192,16 @@ structure MessageBubbleConfig where
   colors : MessageBubbleColors := MessageBubbleColors.forDarkTheme
 deriving Repr, Inhabited
 
-namespace MessageBubbleConfig
-
 /-- Default configuration. -/
-def default : MessageBubbleConfig := {}
+def MessageBubbleConfig.default : MessageBubbleConfig := {}
 
 /-- Create a config from theme. -/
-def fromTheme (theme : Theme) : MessageBubbleConfig := {
+def MessageBubbleConfig.fromTheme (theme : Theme) : MessageBubbleConfig := {
   padding := theme.padding
   cornerRadius := theme.cornerRadius
   font := theme.font
   colors := MessageBubbleColors.fromTheme theme
 }
-
-end MessageBubbleConfig
 
 /-- Build a message bubble visual (pure WidgetBuilder).
 
@@ -310,6 +290,10 @@ structure MessageListConfig where
   width : Float := 600
   /-- Height of the message list in pixels. -/
   height : Float := 400
+  /-- Fill available width instead of using fixed width. -/
+  fillWidth : Bool := false
+  /-- Fill available height instead of using fixed height. -/
+  fillHeight : Bool := false
   /-- Gap between messages. -/
   messageGap : Float := 12
   /-- Padding around the message list. -/
@@ -318,20 +302,16 @@ structure MessageListConfig where
   bubbleConfig : MessageBubbleConfig := {}
 deriving Repr, Inhabited
 
-namespace MessageListConfig
-
 /-- Default configuration. -/
-def default : MessageListConfig := {}
+def MessageListConfig.default : MessageListConfig := {}
 
 /-- Create from theme with custom dimensions. -/
-def fromTheme (theme : Theme) (width height : Float) : MessageListConfig := {
+def MessageListConfig.fromTheme (theme : Theme) (width height : Float) : MessageListConfig := {
   width
   height
   padding := theme.padding
   bubbleConfig := MessageBubbleConfig.fromTheme theme
 }
-
-end MessageListConfig
 
 /-- Build visual representation of message list (pure WidgetBuilder). -/
 def messageListVisual (messages : Array ChatMessage) (config : MessageListConfig)
@@ -347,12 +327,17 @@ def messageListVisual (messages : Array ChatMessage) (config : MessageListConfig
   }
   let content := column (gap := config.messageGap) (style := contentStyle) msgBuilders
 
-  -- Scroll container style
+  -- Scroll container style (conditional based on fill options)
   let scrollStyle : BoxStyle := {
-    minWidth := some config.width
-    minHeight := some config.height
-    maxWidth := some config.width
-    maxHeight := some config.height
+    width := if config.fillWidth then .percent 1.0 else .auto
+    height := if config.fillHeight then .percent 1.0 else .auto
+    minWidth := if config.fillWidth then none else some config.width
+    minHeight := if config.fillHeight then none else some config.height
+    maxWidth := if config.fillWidth then none else some config.width
+    maxHeight := if config.fillHeight then none else some config.height
+    flexItem := if config.fillHeight || config.fillWidth
+                then some (Trellis.FlexItem.growing 1)
+                else none
   }
 
   let scrollbarConfig := buildScrollbarConfig
@@ -484,12 +469,8 @@ structure ChatInputConfig where
   padding : Float := 12
 deriving Repr, Inhabited
 
-namespace ChatInputConfig
-
 /-- Default configuration. -/
-def default : ChatInputConfig := {}
-
-end ChatInputConfig
+def ChatInputConfig.default : ChatInputConfig := {}
 
 /-- Create a reactive chat input widget.
 
@@ -502,8 +483,12 @@ end ChatInputConfig
     - `isLoading`: Dynamic indicating if a request is in progress (disables input) -/
 def chatInput (theme : Theme) (font : Afferent.Font) (config : ChatInputConfig)
     (isLoading : Reactive.Dynamic Spider Bool) : WidgetM ChatInputResult := do
-  -- Create the text input
-  let inputResult ← textInput theme font config.placeholder ""
+  -- Create the text input wrapped in a growing container so it fills available width
+  let inputResult ← column' (gap := 0) (style := {
+    flexItem := some (Trellis.FlexItem.growing 1)
+    width := .percent 1.0
+  }) do
+    textInput theme font config.placeholder ""
 
   -- Get keyboard events for Enter key detection
   let keyEvents ← useKeyboard
@@ -557,8 +542,12 @@ def chatInput (theme : Theme) (font : Afferent.Font) (config : ChatInputConfig)
 def chatInputRow (theme : Theme) (font : Afferent.Font) (config : ChatInputConfig)
     : WidgetM TextInputResult := do
   row' (gap := config.gap) (style := { width := .percent 1.0 }) do
-    -- Text input takes up remaining space
-    let inputResult ← textInput theme font config.placeholder ""
+    -- Text input takes up remaining space with growing flex item
+    let inputResult ← column' (gap := 0) (style := {
+      flexItem := some (Trellis.FlexItem.growing 1)
+      width := .percent 1.0
+    }) do
+      textInput theme font config.placeholder ""
 
     -- Send button
     let _ ← button config.sendButtonLabel theme .primary
@@ -663,6 +652,8 @@ def chatWidget (client : ReactiveClient) (theme : Theme) (font : Afferent.Font)
   let msgListConfig : MessageListConfig := {
     width := config.width
     height := config.height - 80  -- Reserve space for input
+    fillWidth := config.fillWidth
+    fillHeight := config.fillHeight
     messageGap := 12
     padding := 16
     bubbleConfig := {
@@ -684,7 +675,16 @@ def chatWidget (client : ReactiveClient) (theme : Theme) (font : Afferent.Font)
   let isLoading ← Dynamic.mapM (fun s => s.isBusy) widgetState
 
   -- Main layout: column with message list + input area
-  column' (gap := 0) (style := { minWidth := some config.width, minHeight := some config.height }) do
+  let outerStyle : BoxStyle := {
+    width := if config.fillWidth then .percent 1.0 else .auto
+    height := if config.fillHeight then .percent 1.0 else .auto
+    minWidth := if config.fillWidth then none else some config.width
+    minHeight := if config.fillHeight then none else some config.height
+    flexItem := if config.fillHeight || config.fillWidth
+                then some (Trellis.FlexItem.growing 1)
+                else none
+  }
+  column' (gap := 0) (style := outerStyle) do
     -- Message list
     let _ ← messageList allMessages msgListConfig theme config.autoScroll
 
