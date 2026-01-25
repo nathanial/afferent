@@ -5,6 +5,8 @@
 import Reactive
 import Oracle.Reactive.Conversation
 import Afferent.Arbor
+import Afferent.Arbor.Widget.Measure
+import Afferent.Arbor.Text.Renderer -- for TextMeasurer Id instance
 import Afferent.Canopy.Core
 import Afferent.Canopy.Theme
 import Afferent.Canopy.Reactive.Component
@@ -433,9 +435,22 @@ def messageList (messages : Reactive.Dynamic Spider (Array ChatMessage)) (config
   -- Render using dynWidget
   let renderState ← Dynamic.zipWithM (fun msgs scroll => (msgs, scroll)) messages justScroll
   let _ ← dynWidget renderState fun (msgs, scroll) => do
-    -- Estimate content height: base padding + messages * average height
-    let avgMsgHeight := 60.0  -- Rough estimate
-    let contentH := config.padding * 2 + msgs.size.toFloat * (avgMsgHeight + config.messageGap)
+    -- Build content widget tree (same as messageListVisual's inner content)
+    let msgWidgets : Array WidgetBuilder := msgs.map fun msg =>
+      messageBubbleVisual msg config.bubbleConfig
+    let contentStyle : BoxStyle := {
+      width := .percent 1.0
+      padding := Trellis.EdgeInsets.uniform config.padding
+    }
+    let contentBuilder := column (gap := config.messageGap) (style := contentStyle) msgWidgets
+    let (contentWidget, _) := contentBuilder.run {}
+
+    -- Measure actual content height using existing TextMeasurer Id instance
+    let measureResult := measureWidget (M := Id) contentWidget config.width config.height
+    let (_, measuredH) := nodeContentSize measureResult.node
+
+    -- Use measured height (minimum of viewport height for empty content)
+    let contentH := max config.padding measuredH
     SpiderM.liftIO (contentHeightRef.set contentH)
 
     -- Auto-scroll: if at or near bottom, stay at bottom

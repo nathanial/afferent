@@ -5,6 +5,7 @@
 import Afferent.Tests.Framework
 import Afferent.Arbor
 import Afferent.Arbor.Widget.DSL
+import Afferent.Arbor.Render.Collect
 import Afferent.Canopy.Reactive.Component
 import Afferent.Canopy.Widget.Chat
 import Afferent.Canopy.Widget.Layout.Scroll
@@ -690,9 +691,19 @@ test "FRP DEBUG: trace scroll event flow in WidgetM" := do
 test "FRP: messageList responds to scroll wheel events" := do
   let result ← runSpider do
     let (events, inputs) ← createInputs
+    -- Need enough messages to exceed viewport height (300px)
+    -- With ASCII measurement (~40px per message bubble), we need 8+ messages
     let messages := #[
-      ChatMessage.user 0 "Hello",
-      ChatMessage.assistant 1 "Hi there"
+      ChatMessage.user 0 "Hello, this is message one",
+      ChatMessage.assistant 1 "Hi there, this is a response",
+      ChatMessage.user 2 "Another message here",
+      ChatMessage.assistant 3 "And another response",
+      ChatMessage.user 4 "Message five",
+      ChatMessage.assistant 5 "Response six",
+      ChatMessage.user 6 "Message seven",
+      ChatMessage.assistant 7 "Response eight",
+      ChatMessage.user 8 "Message nine",
+      ChatMessage.assistant 9 "Response ten"
     ]
     let messagesDyn ← Dynamic.pureM messages
     let config : MessageListConfig := { width := 400, height := 300 }
@@ -738,7 +749,25 @@ test "FRP: messageList responds to scroll wheel events" := do
 test "FRP: multiple scroll events accumulate" := do
   let result ← runSpider do
     let (events, inputs) ← createInputs
-    let messages := #[ChatMessage.user 0 "Test"]
+    -- Need enough messages to exceed viewport height and allow accumulating scroll
+    let messages := #[
+      ChatMessage.user 0 "Test message one",
+      ChatMessage.assistant 1 "Response one",
+      ChatMessage.user 2 "Test message two",
+      ChatMessage.assistant 3 "Response two",
+      ChatMessage.user 4 "Test message three",
+      ChatMessage.assistant 5 "Response three",
+      ChatMessage.user 6 "Test message four",
+      ChatMessage.assistant 7 "Response four",
+      ChatMessage.user 8 "Test message five",
+      ChatMessage.assistant 9 "Response five",
+      ChatMessage.user 10 "Test message six",
+      ChatMessage.assistant 11 "Response six",
+      ChatMessage.user 12 "Test message seven",
+      ChatMessage.assistant 13 "Response seven",
+      ChatMessage.user 14 "Test message eight",
+      ChatMessage.assistant 15 "Response eight"
+    ]
     let messagesDyn ← Dynamic.pureM messages
     let config : MessageListConfig := { width := 400, height := 300 }
 
@@ -816,5 +845,126 @@ test "FRP: scroll events ignored when not in hitPath" := do
 
   -- Scroll should be ignored, offset stays at 0
   shouldBeNear result 0.0
+
+/-! ## Scrollbar Rendering Tests
+
+These tests verify that the scrollbar is correctly rendered when the chat
+message list content exceeds the viewport. Tests inspect the Arbor render
+commands emitted by the widget.
+-/
+
+/-- Check if a fillRect command is in the vertical scrollbar track area.
+    Scrollbar is rendered at the right edge of the viewport.
+    We check if rect.origin.x is near viewportWidth - thickness. -/
+def isVerticalScrollbarRect (cmd : RenderCommand) (viewportWidth thickness : Float) : Bool :=
+  match cmd with
+  | .fillRect rect _ _ =>
+    -- Scrollbar is at right edge: x >= viewportWidth - thickness - 1 (1px tolerance)
+    rect.origin.x >= (viewportWidth - thickness - 1)
+  | _ => false
+
+/-- Count scrollbar-related fillRect commands (track + thumb = 2 for vertical). -/
+def countVerticalScrollbarRects (cmds : Array RenderCommand) (viewportW thickness : Float) : Nat :=
+  cmds.foldl (fun acc cmd =>
+    if isVerticalScrollbarRect cmd viewportW thickness then acc + 1 else acc
+  ) 0
+
+/-- Find the Y position of the scrollbar thumb.
+    The thumb is typically the smaller rect in the scrollbar area. -/
+def findScrollbarThumbY (cmds : Array RenderCommand) (viewportW thickness : Float) : Float :=
+  let scrollbarRects := cmds.filterMap fun cmd =>
+    match cmd with
+    | .fillRect rect _ _ =>
+      if rect.origin.x >= (viewportW - thickness - 1) then some rect else none
+    | _ => none
+  -- Thumb is typically smaller than track, so find the one with smaller height
+  match scrollbarRects.toList with
+  | r1 :: r2 :: _ => if r1.size.height < r2.size.height then r1.origin.y else r2.origin.y
+  | r :: _ => r.origin.y
+  | [] => 0.0
+
+test "messageListVisual renders scrollbar when content exceeds viewport" := do
+  -- Create enough messages to overflow the viewport
+  let messages := (Array.range 20).map fun i => ChatMessage.user i s!"Message {i}"
+  let config : MessageListConfig := { width := 400, height := 300 }
+  let scrollState := ScrollState.zero
+  let contentHeight := 1200.0  -- Much taller than viewport (300)
+
+  let builder := messageListVisual "test-scroll" messages config scrollState contentHeight testTheme
+  let (widget, _) ← builder.run {}
+
+  -- Measure and layout
+  let measureResult := measureWidget (M := Id) widget 400 300
+  let layouts := Trellis.layout measureResult.node 400 300
+
+  -- Collect render commands
+  let commands := collectCommands widget layouts
+
+  -- Default scrollbar thickness is 8.0 (from ScrollbarConfig.default)
+  let scrollbarRects := countVerticalScrollbarRects commands 400 8.0
+  -- Should have scrollbar rects (track + thumb = at least 2)
+  ensure (scrollbarRects >= 2) s!"Expected at least 2 scrollbar rects (track + thumb), got {scrollbarRects}"
+
+test "messageListVisual does not render scrollbar when content fits" := do
+  -- Single short message that fits in viewport
+  let messages := #[ChatMessage.user 0 "Short message"]
+  let config : MessageListConfig := { width := 400, height := 300 }
+  let scrollState := ScrollState.zero
+  let contentHeight := 100.0  -- Fits in viewport (300)
+
+  let builder := messageListVisual "test-no-scroll" messages config scrollState contentHeight testTheme
+  let (widget, _) ← builder.run {}
+
+  let measureResult := measureWidget (M := Id) widget 400 300
+  let layouts := Trellis.layout measureResult.node 400 300
+  let commands := collectCommands widget layouts
+
+  -- Should have no scrollbar rects when content fits
+  let scrollbarRects := countVerticalScrollbarRects commands 400 8.0
+  ensure (scrollbarRects == 0) s!"Expected 0 scrollbar rects when content fits, got {scrollbarRects}"
+
+test "messageListVisual scrollbar thumb moves with scroll offset" := do
+  let messages := (Array.range 20).map fun i => ChatMessage.user i s!"Message {i}"
+  let config : MessageListConfig := { width := 400, height := 300 }
+  let contentHeight := 1200.0
+
+  -- Widget at top (scroll offset = 0)
+  let builderTop := messageListVisual "test-scroll-top" messages config ScrollState.zero contentHeight testTheme
+  let (widgetTop, _) ← builderTop.run {}
+  let measureTop := measureWidget (M := Id) widgetTop 400 300
+  let layoutsTop := Trellis.layout measureTop.node 400 300
+  let commandsTop := collectCommands widgetTop layoutsTop
+
+  -- Widget scrolled down (scroll offset = 450)
+  let scrolledState : ScrollState := { offsetX := 0, offsetY := 450.0 }
+  let builderScrolled := messageListVisual "test-scroll-down" messages config scrolledState contentHeight testTheme
+  let (widgetScrolled, _) ← builderScrolled.run {}
+  let measureScrolled := measureWidget (M := Id) widgetScrolled 400 300
+  let layoutsScrolled := Trellis.layout measureScrolled.node 400 300
+  let commandsScrolled := collectCommands widgetScrolled layoutsScrolled
+
+  -- Extract thumb positions and verify they differ
+  let thumbTopY := findScrollbarThumbY commandsTop 400 8.0
+  let thumbScrolledY := findScrollbarThumbY commandsScrolled 400 8.0
+  -- When scrolled down, the thumb should be at a higher Y position (further down the screen)
+  ensure (thumbScrolledY > thumbTopY) s!"Thumb should move down when scrolled: top={thumbTopY}, scrolled={thumbScrolledY}"
+
+test "messageListVisual scrollbar with custom thickness" := do
+  let messages := (Array.range 20).map fun i => ChatMessage.user i s!"Message {i}"
+  -- Use fill options to test that scrollbar renders correctly with different viewport
+  let config : MessageListConfig := { width := 500, height := 400 }
+  let scrollState := ScrollState.zero
+  let contentHeight := 1500.0  -- Much taller than viewport
+
+  let builder := messageListVisual "test-scroll-custom" messages config scrollState contentHeight testTheme
+  let (widget, _) ← builder.run {}
+
+  let measureResult := measureWidget (M := Id) widget 500 400
+  let layouts := Trellis.layout measureResult.node 500 400
+  let commands := collectCommands widget layouts
+
+  -- Verify scrollbar renders at different viewport width
+  let scrollbarRects := countVerticalScrollbarRects commands 500 8.0
+  ensure (scrollbarRects >= 2) s!"Expected at least 2 scrollbar rects with 500px viewport, got {scrollbarRects}"
 
 end Afferent.Tests.ChatTests
