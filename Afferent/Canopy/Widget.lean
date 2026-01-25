@@ -8,3 +8,4 @@ import Afferent.Canopy.Widget.Layout
 import Afferent.Canopy.Widget.Navigation
 import Afferent.Canopy.Widget.Data
 import Afferent.Canopy.Widget.Charts
+import Afferent.Canopy.Widget.Chat
