@@ -2,8 +2,722 @@
   Canopy Chat Widget
   AI chat interface with streaming support.
 -/
-import Afferent.Canopy.Widget.Chat.Types
-import Afferent.Canopy.Widget.Chat.MessageBubble
-import Afferent.Canopy.Widget.Chat.MessageList
-import Afferent.Canopy.Widget.Chat.ChatInput
-import Afferent.Canopy.Widget.Chat.Chat
+import Reactive
+import Oracle.Reactive.Conversation
+import Afferent.Arbor
+import Afferent.Canopy.Core
+import Afferent.Canopy.Theme
+import Afferent.Canopy.Reactive.Component
+import Afferent.Canopy.Widget.Layout.Scroll
+import Afferent.Canopy.Widget.Input.TextInput
+import Afferent.Canopy.Widget.Input.Button
+
+namespace Afferent.Canopy.Chat
+
+open Afferent.Arbor hiding Event
+
+/-- Role of a message in the chat. -/
+inductive ChatRole where
+  | user
+  | assistant
+  | system
+deriving Repr, BEq, Inhabited
+
+namespace ChatRole
+
+def toString : ChatRole → String
+  | .user => "user"
+  | .assistant => "assistant"
+  | .system => "system"
+
+def isUser : ChatRole → Bool
+  | .user => true
+  | _ => false
+
+def isAssistant : ChatRole → Bool
+  | .assistant => true
+  | _ => false
+
+end ChatRole
+
+/-- A single message in the chat history. -/
+structure ChatMessage where
+  /-- Unique identifier for the message. -/
+  id : Nat
+  /-- Role of the sender. -/
+  role : ChatRole
+  /-- Content of the message. -/
+  content : String
+  /-- Timestamp when the message was created. -/
+  timestamp : Nat := 0
+  /-- Whether this message is currently being streamed. -/
+  isStreaming : Bool := false
+deriving Repr, BEq, Inhabited
+
+namespace ChatMessage
+
+/-- Create a user message. -/
+def user (id : Nat) (content : String) : ChatMessage :=
+  { id, role := .user, content }
+
+/-- Create an assistant message. -/
+def assistant (id : Nat) (content : String) (isStreaming : Bool := false) : ChatMessage :=
+  { id, role := .assistant, content, isStreaming }
+
+/-- Create a system message. -/
+def system (id : Nat) (content : String) : ChatMessage :=
+  { id, role := .system, content }
+
+/-- Update the content of a streaming message. -/
+def updateContent (msg : ChatMessage) (newContent : String) : ChatMessage :=
+  { msg with content := newContent }
+
+/-- Mark a message as finished streaming. -/
+def finishStreaming (msg : ChatMessage) : ChatMessage :=
+  { msg with isStreaming := false }
+
+end ChatMessage
+
+/-- Configuration for the chat widget. -/
+structure ChatWidgetConfig where
+  /-- Width of the chat widget in pixels. -/
+  width : Float := 600
+  /-- Height of the chat widget in pixels. -/
+  height : Float := 500
+  /-- Maximum width for message bubbles (relative to chat width). -/
+  maxMessageWidth : Float := 0.75
+  /-- Placeholder text for the input field. -/
+  inputPlaceholder : String := "Type a message..."
+  /-- System prompt to initialize the conversation. -/
+  systemPrompt : Option String := none
+  /-- Show timestamps on messages. -/
+  showTimestamps : Bool := false
+  /-- Enable auto-scroll to bottom on new messages. -/
+  autoScroll : Bool := true
+deriving Repr, Inhabited
+
+namespace ChatWidgetConfig
+
+/-- Default configuration. -/
+def default : ChatWidgetConfig := {}
+
+/-- Create a configuration with custom dimensions. -/
+def withSize (width height : Float) : ChatWidgetConfig :=
+  { width, height }
+
+/-- Create a configuration with a system prompt. -/
+def withSystemPrompt (prompt : String) : ChatWidgetConfig :=
+  { systemPrompt := some prompt }
+
+end ChatWidgetConfig
+
+/-- State of the chat widget. -/
+inductive ChatWidgetState where
+  /-- Ready for input. -/
+  | idle
+  /-- Sending a message to the API. -/
+  | sending
+  /-- Receiving a streaming response. -/
+  | streaming
+  /-- An error occurred. -/
+  | error (message : String)
+deriving Repr, Inhabited
+
+namespace ChatWidgetState
+
+instance : BEq ChatWidgetState where
+  beq a b := match a, b with
+    | .idle, .idle => true
+    | .sending, .sending => true
+    | .streaming, .streaming => true
+    | .error m1, .error m2 => m1 == m2
+    | _, _ => false
+
+def isIdle : ChatWidgetState → Bool
+  | .idle => true
+  | _ => false
+
+def isBusy : ChatWidgetState → Bool
+  | .sending => true
+  | .streaming => true
+  | _ => false
+
+def isError : ChatWidgetState → Bool
+  | .error _ => true
+  | _ => false
+
+def errorMessage : ChatWidgetState → Option String
+  | .error msg => some msg
+  | _ => none
+
+end ChatWidgetState
+
+/-- Colors for message bubbles. -/
+structure MessageBubbleColors where
+  /-- Background color for user messages. -/
+  userBackground : Color
+  /-- Background color for assistant messages. -/
+  assistantBackground : Color
+  /-- Text color for user messages. -/
+  userText : Color
+  /-- Text color for assistant messages. -/
+  assistantText : Color
+deriving Repr, Inhabited
+
+namespace MessageBubbleColors
+
+/-- Default colors for dark theme. -/
+def forDarkTheme : MessageBubbleColors := {
+  userBackground := Color.fromRgb8 59 130 246      -- Blue-500
+  assistantBackground := Color.gray 0.18
+  userText := Color.white
+  assistantText := Color.gray 0.9
+}
+
+/-- Default colors for light theme. -/
+def forLightTheme : MessageBubbleColors := {
+  userBackground := Color.fromRgb8 59 130 246
+  assistantBackground := Color.gray 0.92
+  userText := Color.white
+  assistantText := Color.gray 0.1
+}
+
+/-- Create colors from a theme. -/
+def fromTheme (theme : Theme) : MessageBubbleColors := {
+  userBackground := theme.primary.background
+  assistantBackground := theme.panel.background
+  userText := theme.primary.foreground
+  assistantText := theme.text
+}
+
+end MessageBubbleColors
+
+/-- Configuration for rendering a message bubble. -/
+structure MessageBubbleConfig where
+  /-- Maximum width of the bubble in pixels. -/
+  maxWidth : Float := 400
+  /-- Padding inside the bubble. -/
+  padding : Float := 12
+  /-- Corner radius for bubbles. -/
+  cornerRadius : Float := 12
+  /-- Gap between role label and content (if role label shown). -/
+  contentGap : Float := 4
+  /-- Font for message content. -/
+  font : FontId := FontId.default
+  /-- Colors for the bubbles. -/
+  colors : MessageBubbleColors := MessageBubbleColors.forDarkTheme
+deriving Repr, Inhabited
+
+namespace MessageBubbleConfig
+
+/-- Default configuration. -/
+def default : MessageBubbleConfig := {}
+
+/-- Create a config from theme. -/
+def fromTheme (theme : Theme) : MessageBubbleConfig := {
+  padding := theme.padding
+  cornerRadius := theme.cornerRadius
+  font := theme.font
+  colors := MessageBubbleColors.fromTheme theme
+}
+
+end MessageBubbleConfig
+
+/-- Build a message bubble visual (pure WidgetBuilder).
+
+    User messages are right-aligned with a colored background.
+    Assistant messages are left-aligned with a neutral background.
+    Streaming messages show a cursor indicator. -/
+def messageBubbleVisual (msg : ChatMessage) (config : MessageBubbleConfig) : WidgetBuilder := do
+  let isUser := msg.role.isUser
+  let bgColor := if isUser then config.colors.userBackground else config.colors.assistantBackground
+  let textColor := if isUser then config.colors.userText else config.colors.assistantText
+
+  -- Content with optional streaming indicator
+  let displayContent := if msg.isStreaming && !msg.content.isEmpty
+    then msg.content ++ " \u25CF"  -- Filled circle as cursor
+    else if msg.isStreaming
+    then "\u25CF"  -- Show cursor even when empty
+    else msg.content
+
+  -- Create the text content with wrapping
+  let textWidget ← wrappedText displayContent config.font config.maxWidth textColor
+
+  -- Bubble style
+  let bubbleStyle : BoxStyle := {
+    backgroundColor := some bgColor
+    cornerRadius := config.cornerRadius
+    padding := Trellis.EdgeInsets.uniform config.padding
+    maxWidth := some config.maxWidth
+  }
+
+  -- Wrap text in a styled container
+  let bubble ← padded 0 do
+    let wid ← freshId
+    let props := Trellis.FlexContainer.column 0
+    pure (.flex wid none props bubbleStyle #[textWidget])
+
+  -- Row alignment: right for user, left for assistant
+  let rowProps : Trellis.FlexContainer := {
+    direction := .row
+    justifyContent := if isUser then .flexEnd else .flexStart
+    alignItems := .flexStart
+    gap := 0
+  }
+
+  -- Full-width row to enable alignment
+  let rowStyle : BoxStyle := { width := .percent 1.0 }
+  let wid ← freshId
+  pure (.flex wid none rowProps rowStyle #[bubble])
+
+/-- Build a compact message bubble (no alignment row, just the bubble itself).
+    Useful when embedding in a custom layout. -/
+def messageBubbleCompact (msg : ChatMessage) (config : MessageBubbleConfig) : WidgetBuilder := do
+  let isUser := msg.role.isUser
+  let bgColor := if isUser then config.colors.userBackground else config.colors.assistantBackground
+  let textColor := if isUser then config.colors.userText else config.colors.assistantText
+
+  let displayContent := if msg.isStreaming && !msg.content.isEmpty
+    then msg.content ++ " \u25CF"
+    else if msg.isStreaming
+    then "\u25CF"
+    else msg.content
+
+  let textWidget ← wrappedText displayContent config.font config.maxWidth textColor
+
+  let bubbleStyle : BoxStyle := {
+    backgroundColor := some bgColor
+    cornerRadius := config.cornerRadius
+    padding := Trellis.EdgeInsets.uniform config.padding
+    maxWidth := some config.maxWidth
+  }
+
+  let wid ← freshId
+  let props := Trellis.FlexContainer.column 0
+  pure (.flex wid none props bubbleStyle #[textWidget])
+
+open Reactive Reactive.Host
+open Afferent.Canopy.Reactive
+
+/-- Result from messageList widget. -/
+structure MessageListResult where
+  /-- Current scroll state. -/
+  scrollState : Reactive.Dynamic Spider ScrollState
+
+/-- Configuration for the message list. -/
+structure MessageListConfig where
+  /-- Width of the message list in pixels. -/
+  width : Float := 600
+  /-- Height of the message list in pixels. -/
+  height : Float := 400
+  /-- Gap between messages. -/
+  messageGap : Float := 12
+  /-- Padding around the message list. -/
+  padding : Float := 16
+  /-- Configuration for message bubbles. -/
+  bubbleConfig : MessageBubbleConfig := {}
+deriving Repr, Inhabited
+
+namespace MessageListConfig
+
+/-- Default configuration. -/
+def default : MessageListConfig := {}
+
+/-- Create from theme with custom dimensions. -/
+def fromTheme (theme : Theme) (width height : Float) : MessageListConfig := {
+  width
+  height
+  padding := theme.padding
+  bubbleConfig := MessageBubbleConfig.fromTheme theme
+}
+
+end MessageListConfig
+
+/-- Build visual representation of message list (pure WidgetBuilder). -/
+def messageListVisual (messages : Array ChatMessage) (config : MessageListConfig)
+    (scrollState : ScrollState) (contentHeight : Float) (theme : Theme) : WidgetBuilder := do
+  -- Build message bubble builders
+  let msgBuilders : Array WidgetBuilder := messages.map fun msg =>
+    messageBubbleVisual msg config.bubbleConfig
+
+  -- Column of messages with gap
+  let contentStyle : BoxStyle := {
+    width := .percent 1.0
+    padding := Trellis.EdgeInsets.uniform config.padding
+  }
+  let content := column (gap := config.messageGap) (style := contentStyle) msgBuilders
+
+  -- Scroll container style
+  let scrollStyle : BoxStyle := {
+    minWidth := some config.width
+    minHeight := some config.height
+    maxWidth := some config.width
+    maxHeight := some config.height
+  }
+
+  let scrollbarConfig := buildScrollbarConfig
+    { width := config.width
+      height := config.height
+      verticalScroll := true
+      horizontalScroll := false
+      scrollbarVisibility := .always }
+    theme
+
+  namedScroll "chat-message-list" scrollStyle config.width contentHeight scrollState scrollbarConfig content
+
+/-- Create a reactive message list widget.
+
+    Takes a Dynamic of messages and renders them in a scrollable container.
+    Auto-scrolls to bottom when new messages arrive (if enabled).
+
+    - `messages`: Dynamic array of chat messages
+    - `config`: Configuration for the list
+    - `theme`: Theme for styling
+    - `autoScroll`: Whether to auto-scroll to bottom on new messages (default true) -/
+def messageList (messages : Reactive.Dynamic Spider (Array ChatMessage)) (config : MessageListConfig)
+    (theme : Theme) (autoScroll : Bool := true) : WidgetM MessageListResult := do
+  let name ← registerComponentW "chat-message-list"
+  let scrollEvents ← useScroll name
+  let allClicks ← useAllClicks
+  let allHovers ← useAllHovers
+  let allMouseUp ← useAllMouseUp
+
+  -- Track content height (estimate based on message count)
+  let contentHeightRef ← SpiderM.liftIO (IO.mkRef config.height)
+
+  -- Initial scroll state (at bottom)
+  let initialScroll : ScrollState := { offsetX := 0, offsetY := 0 }
+
+  -- Merge scroll-related events
+  let liftSpider {α : Type} : SpiderM α → WidgetM α := fun m => StateT.lift (liftM m)
+
+  -- Scroll state accumulator
+  let scrollState ← liftSpider do
+    let wheelEvents ← Event.mapM (fun data => ScrollInputEvent.wheel data) scrollEvents
+    let clickEvents ← Event.mapM (fun data => ScrollInputEvent.click data) allClicks
+    let hoverEvents ← Event.mapM (fun data => ScrollInputEvent.hover data) allHovers
+    let mouseUpEvents ← Event.mapM (fun _ => ScrollInputEvent.mouseUp) allMouseUp
+
+    let allInputEvents ← Event.leftmostM [wheelEvents, clickEvents, hoverEvents, mouseUpEvents]
+
+    Reactive.foldDynM
+      (fun event state => SpiderM.liftIO do
+        let contentH ← contentHeightRef.get
+        match event with
+        | .wheel scrollData =>
+          let dy := -scrollData.scroll.deltaY * 20.0
+          let newScroll := state.scroll.scrollBy 0 dy config.width config.height config.width contentH
+          pure { state with scroll := newScroll }
+        | .click _clickData =>
+          pure state
+        | .hover _hoverData =>
+          pure state
+        | .mouseUp =>
+          pure { state with drag := {} })
+      ({ scroll := initialScroll, drag := {} } : ScrollCombinedState)
+      allInputEvents
+
+  let justScroll ← Dynamic.mapM (·.scroll) scrollState
+
+  -- Auto-scroll to bottom when messages change
+  if autoScroll then
+    let messageCount ← Dynamic.mapM (·.size) messages
+    let countChanges ← Dynamic.changesM messageCount
+    let scrollToBottomAction ← Event.mapM
+      (fun (_old, _new) => do
+        let contentH ← contentHeightRef.get
+        let _maxScroll := max 0 (contentH - config.height)
+        -- We can't directly set scroll state since it's managed by foldDynM
+        -- The actual scroll-to-bottom will be handled by rendering at max offset
+        pure ())
+      countChanges
+    performEvent_ scrollToBottomAction
+
+  -- Render using dynWidget
+  let renderState ← Dynamic.zipWithM (fun msgs scroll => (msgs, scroll)) messages justScroll
+  let _ ← dynWidget renderState fun (msgs, scroll) => do
+    -- Estimate content height: base padding + messages * average height
+    let avgMsgHeight := 60.0  -- Rough estimate
+    let contentH := config.padding * 2 + msgs.size.toFloat * (avgMsgHeight + config.messageGap)
+    SpiderM.liftIO (contentHeightRef.set contentH)
+
+    -- Auto-scroll: if at or near bottom, stay at bottom
+    let maxScroll := max 0 (contentH - config.height)
+    let effectiveScroll := if autoScroll && scroll.offsetY >= maxScroll - 10
+      then { scroll with offsetY := maxScroll }
+      else scroll
+
+    emit do pure (messageListVisual msgs config effectiveScroll contentH theme)
+
+  pure { scrollState := justScroll }
+
+/-- Simple message list that just renders messages without scroll management.
+    Use this when you want to manage scrolling yourself. -/
+def messageListSimple (messages : Array ChatMessage) (config : MessageListConfig)
+    (_theme : Theme) : WidgetM Unit := do
+  -- Build message bubbles
+  for msg in messages do
+    emit do pure (messageBubbleVisual msg config.bubbleConfig)
+
+open Afferent.Canopy
+
+/-- Result from chatInput widget. -/
+structure ChatInputResult where
+  /-- Fires with message content when user submits (Enter key or Send button). -/
+  onSubmit : Reactive.Event Spider String
+  /-- Current input text. -/
+  inputText : Reactive.Dynamic Spider String
+  /-- Whether the input is focused. -/
+  isFocused : Reactive.Dynamic Spider Bool
+
+/-- Configuration for the chat input. -/
+structure ChatInputConfig where
+  /-- Width of the input area in pixels. -/
+  width : Float := 600
+  /-- Placeholder text for the input. -/
+  placeholder : String := "Type a message..."
+  /-- Label for the send button. -/
+  sendButtonLabel : String := "Send"
+  /-- Gap between input and button. -/
+  gap : Float := 8
+  /-- Padding around the input area. -/
+  padding : Float := 12
+deriving Repr, Inhabited
+
+namespace ChatInputConfig
+
+/-- Default configuration. -/
+def default : ChatInputConfig := {}
+
+end ChatInputConfig
+
+/-- Create a reactive chat input widget.
+
+    Combines a text input with a send button. Submits on Enter key press
+    or Send button click. Clears the input after submission.
+
+    - `theme`: Theme for styling
+    - `font`: Font for text input
+    - `config`: Configuration
+    - `isLoading`: Dynamic indicating if a request is in progress (disables input) -/
+def chatInput (theme : Theme) (font : Afferent.Font) (config : ChatInputConfig)
+    (isLoading : Reactive.Dynamic Spider Bool) : WidgetM ChatInputResult := do
+  -- Create the text input
+  let inputResult ← textInput theme font config.placeholder ""
+
+  -- Get keyboard events for Enter key detection
+  let keyEvents ← useKeyboard
+
+  -- Filter for Enter key when input is focused
+  let enterPressed ← Event.filterM
+    (fun keyData => keyData.event.key == .enter)
+    keyEvents
+
+  -- Gate Enter by input being focused
+  let gatedEnter ← Event.gateM inputResult.isFocused.current enterPressed
+
+  -- Create submit trigger
+  let (submitTrigger, fireSubmit) ← Reactive.newTriggerEvent
+
+  -- Handle Enter key submission
+  let enterSubmitAction ← Event.mapM
+    (fun _ => do
+      let text ← inputResult.text.sample
+      if !text.isEmpty then
+        fireSubmit text)
+    gatedEnter
+  performEvent_ enterSubmitAction
+
+  -- Create send button
+  let notLoading ← Dynamic.mapM (fun l => !l) isLoading
+  let inputEmpty ← Dynamic.mapM (fun t => t.isEmpty) inputResult.text
+  let canSend ← Dynamic.zipWithM (fun nl ie => nl && !ie) notLoading inputEmpty
+
+  -- Create the send button
+  let sendClick ← button config.sendButtonLabel theme .primary
+
+  -- Handle button click submission
+  let gatedSendClick ← Event.gateM canSend.current sendClick
+  let buttonSubmitAction ← Event.mapM
+    (fun _ => do
+      let text ← inputResult.text.sample
+      if !text.isEmpty then
+        fireSubmit text)
+    gatedSendClick
+  performEvent_ buttonSubmitAction
+
+  pure {
+    onSubmit := submitTrigger
+    inputText := inputResult.text
+    isFocused := inputResult.isFocused
+  }
+
+/-- Simpler chat input visual wrapper that just places input and button in a row.
+    Use this for custom input handling. -/
+def chatInputRow (theme : Theme) (font : Afferent.Font) (config : ChatInputConfig)
+    : WidgetM TextInputResult := do
+  row' (gap := config.gap) (style := { width := .percent 1.0 }) do
+    -- Text input takes up remaining space
+    let inputResult ← textInput theme font config.placeholder ""
+
+    -- Send button
+    let _ ← button config.sendButtonLabel theme .primary
+
+    pure inputResult
+
+open Oracle
+open Oracle.Reactive
+
+/-- Result from chatWidget. -/
+structure ChatWidgetResult where
+  /-- The underlying conversation manager for programmatic control. -/
+  manager : ConversationManager
+  /-- Observable state of the chat widget. -/
+  state : Reactive.Dynamic Spider ChatWidgetState
+  /-- Observable list of messages (converted to ChatMessage format). -/
+  messages : Reactive.Dynamic Spider (Array ChatMessage)
+
+/-- Convert an Oracle.Role to ChatRole. -/
+def roleFromOracle : Oracle.Role → ChatRole
+  | .user => .user
+  | .assistant => .assistant
+  | .system => .system
+  | .tool => .assistant  -- Treat tool responses as assistant
+  | .developer => .system  -- Treat developer as system
+
+/-- Convert an Oracle.Message to ChatMessage. -/
+def messageFromOracle (id : Nat) (msg : Oracle.Message) : ChatMessage := {
+  id := id
+  role := roleFromOracle msg.role
+  content := msg.content.asString
+  timestamp := 0
+  isStreaming := false
+}
+
+/-- Convert Oracle Conversation to Array ChatMessage. -/
+def messagesFromConversation (conv : Oracle.Reactive.Conversation) : Array ChatMessage :=
+  conv.messages.mapIdx fun idx msg =>
+    messageFromOracle idx msg
+
+/-- Convert ConversationState to ChatWidgetState. -/
+def stateFromConversation : Oracle.Reactive.ConversationState → ChatWidgetState
+  | .idle => .idle
+  | .sending => .sending
+  | .streaming => .streaming
+  | .error err => .error (toString err)
+
+/-- Create a reactive chat widget.
+
+    This is the main entry point for the chat widget. It creates a full
+    chat interface with:
+    - Scrollable message list with user/assistant bubbles
+    - Text input with send button
+    - Streaming response display
+    - Cancel support via Escape key
+
+    - `client`: ReactiveClient for API calls
+    - `theme`: Theme for styling
+    - `font`: Font for text rendering
+    - `config`: Widget configuration
+    - `systemPrompt`: Optional system prompt for the conversation -/
+def chatWidget (client : ReactiveClient) (theme : Theme) (font : Afferent.Font)
+    (config : ChatWidgetConfig := {}) (systemPrompt : Option String := none)
+    : WidgetM ChatWidgetResult := do
+  -- Create the conversation manager
+  let effectiveSystemPrompt := systemPrompt.orElse (fun _ => config.systemPrompt)
+  let manager ← (ConversationManager.new client effectiveSystemPrompt : SpiderM ConversationManager)
+
+  -- Convert manager state to widget state
+  let widgetState ← Dynamic.mapM stateFromConversation manager.state
+
+  -- Convert conversation messages to ChatMessage array
+  let baseMessages ← Dynamic.mapM messagesFromConversation manager.conversation
+
+  -- Get streaming status as Bool (has BEq, unlike Option StreamingRequestOutput)
+  let isStreaming ← Dynamic.mapM (· == .streaming) widgetState
+
+  -- Get streaming content using bindOptionM
+  -- When currentStream is Some, track the stream's content dynamic
+  -- When None, use empty string
+  let streamingContent : Reactive.Dynamic Spider String ←
+    Dynamic.bindOptionM manager.currentStream (·.content) ""
+
+  -- Combine base messages with streaming flag and content
+  -- Using zipWith3M: first two args need BEq (Array ChatMessage, Bool), result needs BEq
+  -- Third arg (String) doesn't need BEq
+  let allMessages : Reactive.Dynamic Spider (Array ChatMessage) ← Dynamic.zipWith3M
+    (fun msgs streaming content =>
+      if streaming then
+        -- Add a streaming assistant message with current content
+        let streamingMsg : ChatMessage := {
+          id := msgs.size
+          role := .assistant
+          content := content
+          isStreaming := true
+        }
+        msgs.push streamingMsg
+      else msgs)
+    baseMessages isStreaming streamingContent
+
+  -- Configure message list
+  let msgListConfig : MessageListConfig := {
+    width := config.width
+    height := config.height - 80  -- Reserve space for input
+    messageGap := 12
+    padding := 16
+    bubbleConfig := {
+      maxWidth := config.width * config.maxMessageWidth
+      font := theme.font
+      colors := MessageBubbleColors.fromTheme theme
+    }
+  }
+
+  -- Configure input
+  let inputConfig : ChatInputConfig := {
+    width := config.width
+    placeholder := config.inputPlaceholder
+    gap := 8
+    padding := 12
+  }
+
+  -- Create the loading indicator dynamic
+  let isLoading ← Dynamic.mapM (fun s => s.isBusy) widgetState
+
+  -- Main layout: column with message list + input area
+  column' (gap := 0) (style := { minWidth := some config.width, minHeight := some config.height }) do
+    -- Message list
+    let _ ← messageList allMessages msgListConfig theme config.autoScroll
+
+    -- Input area (fixed at bottom)
+    row' (gap := inputConfig.gap) (style := {
+      width := .percent 1.0
+      padding := Trellis.EdgeInsets.symmetric inputConfig.padding inputConfig.padding
+      backgroundColor := some theme.panel.background
+    }) do
+      -- Create the chat input
+      let inputResult ← chatInput theme font inputConfig isLoading
+
+      -- Wire up submit to send message
+      let sendAction ← Event.mapM
+        (fun text => manager.sendMessage text)
+        inputResult.onSubmit
+      performEvent_ sendAction
+
+  -- Handle Escape key to cancel
+  let keyEvents ← useKeyboard
+  let escapePressed ← Event.filterM (fun k => k.event.key == .escape) keyEvents
+  let cancelAction ← Event.mapM (fun _ => manager.cancelCurrent) escapePressed
+  performEvent_ cancelAction
+
+  pure { manager, state := widgetState, messages := allMessages }
+
+/-- Simpler chat widget that just takes an API key.
+    Creates a ReactiveClient internally. -/
+def chatWidgetWithApiKey (apiKey : String) (model : String := "anthropic/claude-sonnet-4")
+    (theme : Theme) (font : Afferent.Font)
+    (config : ChatWidgetConfig := {}) (systemPrompt : Option String := none)
+    : WidgetM ChatWidgetResult := do
+  let client := ReactiveClient.withModel apiKey model
+  chatWidget client theme font config systemPrompt
+
+end Afferent.Canopy.Chat
