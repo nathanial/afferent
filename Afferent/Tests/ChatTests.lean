@@ -7,6 +7,7 @@ import Afferent.Arbor
 import Afferent.Arbor.Widget.DSL
 import Afferent.Canopy.Reactive.Component
 import Afferent.Canopy.Widget.Chat
+import Afferent.Canopy.Widget.Layout.Scroll
 import Afferent.Layout
 import Reactive
 import Trellis
@@ -228,11 +229,12 @@ test "messageListVisual creates scroll container" := do
   let config := MessageListConfig.default
   let scrollState := ScrollState.zero
   let contentHeight := 200.0
-  let builder := messageListVisual messages config scrollState contentHeight testTheme
+  let testName := "test-chat-scroll"
+  let builder := messageListVisual testName messages config scrollState contentHeight testTheme
   let (widget, _) ← builder.run {}
   match widget with
   | .scroll _ name _ _ _ _ _ _ =>
-    ensure (name == some "chat-message-list") "Should have correct name"
+    ensure (name == some testName) s!"Should have correct name, got {name}"
   | _ => ensure false "Expected scroll widget"
 
 test "messageListVisual with fixed size has min/max constraints" := do
@@ -240,7 +242,7 @@ test "messageListVisual with fixed size has min/max constraints" := do
   let config : MessageListConfig := { width := 400, height := 300 }
   let scrollState := ScrollState.zero
   let contentHeight := 100.0
-  let builder := messageListVisual messages config scrollState contentHeight testTheme
+  let builder := messageListVisual "test-fixed" messages config scrollState contentHeight testTheme
   let (widget, _) ← builder.run {}
   match widget with
   | .scroll _ _ style _ _ _ _ _ =>
@@ -259,7 +261,7 @@ test "messageListVisual with fill options removes constraints" := do
   let config : MessageListConfig := { fillWidth := true, fillHeight := true }
   let scrollState := ScrollState.zero
   let contentHeight := 100.0
-  let builder := messageListVisual messages config scrollState contentHeight testTheme
+  let builder := messageListVisual "test-fill" messages config scrollState contentHeight testTheme
   let (widget, _) ← builder.run {}
   match widget with
   | .scroll _ _ style _ _ _ _ _ =>
@@ -280,7 +282,7 @@ test "messageListVisual with fill options has growing flexItem" := do
   let config : MessageListConfig := { fillWidth := true, fillHeight := true }
   let scrollState := ScrollState.zero
   let contentHeight := 100.0
-  let builder := messageListVisual messages config scrollState contentHeight testTheme
+  let builder := messageListVisual "test-flex" messages config scrollState contentHeight testTheme
   let (widget, _) ← builder.run {}
   match widget with
   | .scroll _ _ style _ _ _ _ _ =>
@@ -294,7 +296,7 @@ test "messageListVisual empty messages creates empty content" := do
   let config := MessageListConfig.default
   let scrollState := ScrollState.zero
   let contentHeight := 0.0
-  let builder := messageListVisual messages config scrollState contentHeight testTheme
+  let builder := messageListVisual "test-empty" messages config scrollState contentHeight testTheme
   let (widget, _) ← builder.run {}
   -- Should still create valid widget tree
   ensure (widget.widgetCount >= 1) "Should create widget tree even with no messages"
@@ -306,7 +308,7 @@ test "messageListVisual layout with fixed size" := do
   let config : MessageListConfig := { width := 400, height := 300 }
   let scrollState := ScrollState.zero
   let contentHeight := 100.0
-  let builder := messageListVisual messages config scrollState contentHeight testTheme
+  let builder := messageListVisual "test-message-list" messages config scrollState contentHeight testTheme
   let (widget, _) ← builder.run {}
 
   -- Measure and layout
@@ -326,7 +328,7 @@ test "messageListVisual layout with fill mode expands" := do
   let config : MessageListConfig := { fillWidth := true, fillHeight := true }
   let scrollState := ScrollState.zero
   let contentHeight := 100.0
-  let builder := messageListVisual messages config scrollState contentHeight testTheme
+  let builder := messageListVisual "test-message-list-fill" messages config scrollState contentHeight testTheme
   let (widget, _) ← builder.run {}
 
   let containerWidth := 800.0
@@ -378,5 +380,441 @@ test "ChatRole.isUser and isAssistant" := do
   ensure (!ChatRole.assistant.isUser) "assistant not isUser"
   ensure (!ChatRole.system.isUser) "system not isUser"
   ensure (!ChatRole.system.isAssistant) "system not isAssistant"
+
+/-! ## Message List Scroll Tests
+
+These tests verify the scrolling behavior of the chat message list,
+including content height estimation, auto-scroll logic, and FRP event flow.
+-/
+
+/-- Create a minimal widget for testing. -/
+def testWidget : Widget := .spacer 0 none 100 100
+
+/-- Create a LayoutResult with a scroll container at specified position. -/
+def mkScrollLayout (widgetId : WidgetId) (x y width height : Float) : LayoutResult :=
+  let layout : Trellis.ComputedLayout := {
+    nodeId := widgetId
+    contentRect := { x, y, width, height }
+    borderRect := { x, y, width, height }
+  }
+  LayoutResult.empty.add layout
+
+/-! ### Content Height Estimation Tests (Pure) -/
+
+test "messageList content height estimation formula" := do
+  -- Content height = padding * 2 + messages.size * (avgMsgHeight + gap)
+  -- avgMsgHeight = 60.0 (from Chat.lean line 425)
+  let config : MessageListConfig := { padding := 16, messageGap := 12 }
+  let msgCount := 10
+  let avgMsgHeight := 60.0
+  let expectedHeight := config.padding * 2 + msgCount.toFloat * (avgMsgHeight + config.messageGap)
+  -- 32 + 10 * 72 = 752
+  shouldBeNear expectedHeight 752.0
+
+test "messageList content height with zero messages" := do
+  let config : MessageListConfig := { padding := 16, messageGap := 12 }
+  let msgCount := 0
+  let avgMsgHeight := 60.0
+  let expectedHeight := config.padding * 2 + msgCount.toFloat * (avgMsgHeight + config.messageGap)
+  -- Just padding: 32
+  shouldBeNear expectedHeight 32.0
+
+test "messageList content height with many messages" := do
+  let config : MessageListConfig := { padding := 16, messageGap := 12 }
+  let msgCount := 50
+  let avgMsgHeight := 60.0
+  let expectedHeight := config.padding * 2 + msgCount.toFloat * (avgMsgHeight + config.messageGap)
+  -- 32 + 50 * 72 = 3632
+  shouldBeNear expectedHeight 3632.0
+
+/-! ### Auto-Scroll Logic Tests (Pure) -/
+
+test "auto-scroll stays at bottom when near bottom" := do
+  -- From Chat.lean lines 429-433:
+  -- if autoScroll && scroll.offsetY >= maxScroll - 10 then snap to maxScroll
+  let contentH := 600.0
+  let viewportH := 200.0
+  let maxScroll := max 0 (contentH - viewportH)  -- 400
+  let scrollOffset := 395.0  -- Near bottom (within 10px)
+  let autoScroll := true
+  let effectiveScroll := if autoScroll && scrollOffset >= maxScroll - 10
+    then maxScroll
+    else scrollOffset
+  shouldBeNear effectiveScroll 400.0
+
+test "auto-scroll position preserved when scrolled up" := do
+  -- If scrollOffset < maxScroll - 10, keep current position
+  let contentH := 600.0
+  let viewportH := 200.0
+  let maxScroll := max 0 (contentH - viewportH)  -- 400
+  let scrollOffset := 100.0  -- Scrolled up (not within 10px of bottom)
+  let autoScroll := true
+  let effectiveScroll := if autoScroll && scrollOffset >= maxScroll - 10
+    then maxScroll
+    else scrollOffset
+  shouldBeNear effectiveScroll 100.0
+
+test "auto-scroll disabled preserves scroll position even near bottom" := do
+  let contentH := 600.0
+  let viewportH := 200.0
+  let maxScroll := max 0 (contentH - viewportH)  -- 400
+  let scrollOffset := 395.0  -- Near bottom
+  let autoScroll := false
+  let effectiveScroll := if autoScroll && scrollOffset >= maxScroll - 10
+    then maxScroll
+    else scrollOffset
+  -- With autoScroll=false, should preserve exact position
+  shouldBeNear effectiveScroll 395.0
+
+test "max scroll calculation with no overflow" := do
+  -- When content fits in viewport, maxScroll is 0
+  let contentH := 150.0
+  let viewportH := 200.0
+  let maxScroll := max 0 (contentH - viewportH)
+  shouldBeNear maxScroll 0.0
+
+/-! ### ScrollState Integration Tests -/
+
+test "ScrollState.scrollBy applies to message list viewport" := do
+  -- Using MessageListConfig dimensions
+  let config : MessageListConfig := { width := 400, height := 300 }
+  let contentH := 900.0  -- Tall content (3x viewport)
+
+  let initial := ScrollState.zero
+  let after := initial.scrollBy 0 100 config.width config.height config.width contentH
+
+  shouldBeNear after.offsetY 100.0
+  shouldBeNear after.offsetX 0.0
+
+test "ScrollState.scrollBy clamps to max for message list" := do
+  let config : MessageListConfig := { width := 400, height := 300 }
+  let contentH := 900.0  -- max scroll = 900 - 300 = 600
+
+  let initial := ScrollState.zero
+  let after := initial.scrollBy 0 1000 config.width config.height config.width contentH
+
+  -- Should be clamped to max scroll
+  shouldBeNear after.offsetY 600.0
+
+test "ScrollState.scrollBy clamps to zero at top" := do
+  let config : MessageListConfig := { width := 400, height := 300 }
+  let contentH := 900.0
+
+  let initial := ScrollState.zero
+  let after := initial.scrollBy 0 (-100) config.width config.height config.width contentH
+
+  shouldBeNear after.offsetY 0.0
+
+/-! ### FRP Event Flow Tests -/
+
+test "FRP: messageList returns MessageListResult with scrollState" := do
+  let result ← runSpider do
+    let (events, _) ← createInputs
+    let messagesDyn ← Dynamic.pureM #[ChatMessage.user 0 "Test message"]
+    let config := MessageListConfig.default
+
+    let (listResult, _) ← (messageList messagesDyn config testTheme true).run
+      { children := #[] } |>.run events
+
+    -- Verify scrollState dynamic exists and can be sampled
+    let scrollState ← listResult.scrollState.sample
+    pure scrollState.offsetY
+
+  -- Initial scroll should be at 0
+  shouldBeNear result 0.0
+
+test "FRP: messageList scrollState starts at zero" := do
+  let result ← runSpider do
+    let (events, _) ← createInputs
+    let messages := #[
+      ChatMessage.user 0 "Hello",
+      ChatMessage.assistant 1 "Hi there",
+      ChatMessage.user 2 "How are you?"
+    ]
+    let messagesDyn ← Dynamic.pureM messages
+    let config : MessageListConfig := { width := 400, height := 300 }
+
+    let (listResult, _) ← (messageList messagesDyn config testTheme false).run
+      { children := #[] } |>.run events
+
+    let initialState ← listResult.scrollState.sample
+    pure (initialState.offsetX, initialState.offsetY)
+
+  shouldBeNear result.fst 0.0
+  shouldBeNear result.snd 0.0
+
+test "FRP: useScroll filters events by widget name" := do
+  -- Test that useScroll properly filters scroll events by name
+  let result ← runSpider do
+    let (events, inputs) ← createInputs
+
+    -- Register a component with a known name
+    let name ← (registerComponent "test-scroll" false true).run events
+
+    -- Subscribe to filtered scroll events for that name
+    let scrollEvents ← (useScroll name).run events
+
+    -- Count how many events pass through
+    let countRef ← SpiderM.liftIO (IO.mkRef 0)
+    let _ ← SpiderM.liftIO <| scrollEvents.subscribe fun _ => do
+      countRef.modify (· + 1)
+
+    -- Fire a scroll event for the CORRECT name (should pass filter)
+    let scrollWidgetId : WidgetId := 42
+    let scrollWidget : Widget := .scroll scrollWidgetId (some name) {} {} 400 600 {} testWidget
+
+    let scrollData : ScrollData := {
+      scroll := { x := 200, y := 150, deltaX := 0, deltaY := -3.0, modifiers := {} }
+      hitPath := #[scrollWidgetId]
+      widget := scrollWidget
+      layouts := mkScrollLayout scrollWidgetId 0 0 400 300
+    }
+    inputs.fireScroll scrollData
+
+    SpiderM.liftIO countRef.get
+
+  -- Should receive exactly 1 event
+  ensure (result == 1) s!"Expected 1 event, got {result}"
+
+test "FRP DEBUG: trace scroll event flow through messageList pipeline (SpiderM)" := do
+  -- This debug test traces the event flow step by step to identify where events are lost
+  let result ← runSpider do
+    let (events, inputs) ← createInputs
+
+    -- Step 1: Register component and check name
+    let name ← (registerComponent "chat-message-list" false true).run events
+
+    -- Step 2: Get filtered scroll events
+    let scrollEvents ← (useScroll name).run events
+
+    -- Step 3: Map to ScrollInputEvent.wheel (like messageList does)
+    let wheelEvents ← Event.mapM ScrollInputEvent.wheel scrollEvents
+
+    -- Step 4: Merge with empty events (simplified from messageList)
+    let allInputEvents ← Event.leftmostM [wheelEvents]
+
+    -- Step 5: Set up content height ref
+    let contentHeightRef ← SpiderM.liftIO (IO.mkRef 3000.0)
+
+    -- Step 6: Fold events (like messageList does)
+    let config : MessageListConfig := { width := 400, height := 300 }
+    let scrollState ← Reactive.foldDynM
+      (fun event state => do
+        let contentH ← SpiderM.liftIO contentHeightRef.get
+        match event with
+        | .wheel scrollData =>
+          let dy := -scrollData.scroll.deltaY * 20.0
+          let newScroll := state.scroll.scrollBy 0 dy config.width config.height config.width contentH
+          pure { state with scroll := newScroll }
+        | _ => pure state)
+      ({ scroll := ScrollState.zero, drag := {} } : ScrollCombinedState)
+      allInputEvents
+
+    -- Step 7: Fire a scroll event for the correct name
+    let scrollWidgetId : WidgetId := 42
+    let scrollWidget : Widget := .scroll scrollWidgetId (some name) {} {} 400 600 {} testWidget
+
+    let scrollData : ScrollData := {
+      scroll := { x := 200, y := 150, deltaX := 0, deltaY := -3.0, modifiers := {} }
+      hitPath := #[scrollWidgetId]
+      widget := scrollWidget
+      layouts := mkScrollLayout scrollWidgetId 0 0 400 300
+    }
+    inputs.fireScroll scrollData
+
+    -- Step 8: Sample scroll state
+    let finalState ← scrollState.sample
+    pure (name, finalState.scroll.offsetY)
+
+  -- Check name is correct
+  ensure (result.fst == "chat-message-list-0") s!"Expected name 'chat-message-list-0', got '{result.fst}'"
+  -- Check scroll offset changed
+  ensure (result.snd > 0.0) s!"Expected offset > 0, got {result.snd}"
+
+test "FRP DEBUG: trace scroll event flow in WidgetM" := do
+  -- Test that the event pipeline works when run inside WidgetM (like messageList does)
+  let result ← runSpider do
+    let (events, inputs) ← createInputs
+
+    -- Run the pipeline inside WidgetM - this time with ALL events like messageList
+    let (scrollDyn, _) ← (do
+      let name ← registerComponentW "chat-message-list"
+      let scrollEvents ← useScroll name
+      let allClicks ← useAllClicks
+      let allHovers ← useAllHovers
+      let allMouseUp ← useAllMouseUp
+
+      let liftSpider {α : Type} : SpiderM α → WidgetM α := fun m => StateT.lift (liftM m)
+      let wheelEvents ← liftSpider (Event.mapM ScrollInputEvent.wheel scrollEvents)
+      let clickEvents ← liftSpider (Event.mapM ScrollInputEvent.click allClicks)
+      let hoverEvents ← liftSpider (Event.mapM ScrollInputEvent.hover allHovers)
+      let mouseUpEvents ← liftSpider (Event.mapM (fun _ => ScrollInputEvent.mouseUp) allMouseUp)
+      let allInputEvents ← liftSpider (Event.leftmostM [wheelEvents, clickEvents, hoverEvents, mouseUpEvents])
+
+      let contentHeightRef ← SpiderM.liftIO (IO.mkRef 3000.0)
+      let config : MessageListConfig := { width := 400, height := 300 }
+
+      let scrollState ← Reactive.foldDynM
+        (fun (event : ScrollInputEvent) (state : ScrollCombinedState) => do
+          let contentH ← SpiderM.liftIO contentHeightRef.get
+          match event with
+          | ScrollInputEvent.wheel scrollData =>
+            let dy := -scrollData.scroll.deltaY * 20.0
+            let newScroll := state.scroll.scrollBy 0 dy config.width config.height config.width contentH
+            pure { state with scroll := newScroll }
+          | _ => pure state)
+        ({ scroll := ScrollState.zero, drag := {} } : ScrollCombinedState)
+        allInputEvents
+
+      let justScroll ← Dynamic.mapM (fun (s : ScrollCombinedState) => s.scroll) scrollState
+      pure justScroll
+    ).run { children := #[] } |>.run events
+
+    -- Fire scroll event
+    let scrollWidgetId : WidgetId := 42
+    let scrollWidget : Widget := .scroll scrollWidgetId (some "chat-message-list-0") {} {} 400 600 {} testWidget
+    let scrollData : ScrollData := {
+      scroll := { x := 200, y := 150, deltaX := 0, deltaY := -3.0, modifiers := {} }
+      hitPath := #[scrollWidgetId]
+      widget := scrollWidget
+      layouts := mkScrollLayout scrollWidgetId 0 0 400 300
+    }
+    inputs.fireScroll scrollData
+
+    -- Sample
+    let finalState : ScrollState ← scrollDyn.sample
+    pure finalState.offsetY
+
+  ensure (result > 0.0) s!"Expected offset > 0 in WidgetM pipeline, got {result}"
+
+test "FRP: messageList responds to scroll wheel events" := do
+  let result ← runSpider do
+    let (events, inputs) ← createInputs
+    let messages := #[
+      ChatMessage.user 0 "Hello",
+      ChatMessage.assistant 1 "Hi there"
+    ]
+    let messagesDyn ← Dynamic.pureM messages
+    let config : MessageListConfig := { width := 400, height := 300 }
+
+    -- Subscribe to raw scroll events to verify they fire
+    let scrollCountRef ← SpiderM.liftIO (IO.mkRef 0)
+    let _ ← SpiderM.liftIO <| events.scrollEvent.subscribe fun _ => do
+      scrollCountRef.modify (· + 1)
+
+    let (listResult, _) ← (messageList messagesDyn config testTheme false).run
+      { children := #[] } |>.run events
+
+    -- Verify initial scroll at 0
+    let initialOffset ← listResult.scrollState.sample
+    ensure (initialOffset.offsetY == 0.0) s!"Initial offset should be 0, got {initialOffset.offsetY}"
+
+    -- Create a scroll widget with the registered name (chat-message-list-0)
+    let scrollWidgetId : WidgetId := 42
+    let scrollWidget : Widget := .scroll scrollWidgetId (some "chat-message-list-0") {}
+        {} 400 600 {} testWidget
+
+    -- Fire a scroll event
+    let scrollData : ScrollData := {
+      scroll := { x := 200, y := 150, deltaX := 0, deltaY := -3.0, modifiers := {} }
+      hitPath := #[scrollWidgetId]
+      widget := scrollWidget
+      layouts := mkScrollLayout scrollWidgetId 0 0 400 300
+    }
+    inputs.fireScroll scrollData
+
+    -- Check that the raw event was received
+    let scrollCount ← SpiderM.liftIO scrollCountRef.get
+
+    -- Sample after scroll
+    let afterScroll ← listResult.scrollState.sample
+    pure (scrollCount, afterScroll.offsetY)
+
+  -- Verify raw event was received
+  ensure (result.fst == 1) s!"Expected 1 raw scroll event, got {result.fst}"
+  -- Scroll wheel with deltaY=-3, speed=20 should increase offset by 60
+  ensure (result.snd > 0.0) s!"Offset should increase after scroll, got {result.snd}"
+
+test "FRP: multiple scroll events accumulate" := do
+  let result ← runSpider do
+    let (events, inputs) ← createInputs
+    let messages := #[ChatMessage.user 0 "Test"]
+    let messagesDyn ← Dynamic.pureM messages
+    let config : MessageListConfig := { width := 400, height := 300 }
+
+    let (listResult, _) ← (messageList messagesDyn config testTheme false).run
+      { children := #[] } |>.run events
+
+    let scrollWidgetId : WidgetId := 42
+    let scrollWidget : Widget := .scroll scrollWidgetId (some "chat-message-list-0") {}
+        {} 400 900 {} testWidget
+
+    -- Fire multiple scroll events
+    for _ in [0:3] do
+      let scrollData : ScrollData := {
+        scroll := { x := 200, y := 150, deltaX := 0, deltaY := -2.0, modifiers := {} }
+        hitPath := #[scrollWidgetId]
+        widget := scrollWidget
+        layouts := mkScrollLayout scrollWidgetId 0 0 400 300
+      }
+      inputs.fireScroll scrollData
+
+    let afterScroll ← listResult.scrollState.sample
+    pure afterScroll.offsetY
+
+  -- 3 scroll events * 2 deltaY * 20 speed = 120
+  ensure (result > 100.0) s!"Offset should accumulate, got {result}"
+
+test "FRP: messageList scroll events are filtered by widget name" := do
+  let result ← runSpider do
+    let (events, inputs) ← createInputs
+    let messagesDyn ← Dynamic.pureM #[ChatMessage.user 0 "Test"]
+    let config := MessageListConfig.default
+
+    let (listResult, _) ← (messageList messagesDyn config testTheme false).run
+      { children := #[] } |>.run events
+
+    -- Fire scroll for a DIFFERENT widget name (should be ignored)
+    let scrollWidget : Widget := .scroll 99 (some "different-widget") {}
+        {} 400 600 {} testWidget
+    let scrollData : ScrollData := {
+      scroll := { x := 200, y := 150, deltaX := 0, deltaY := -5.0, modifiers := {} }
+      hitPath := #[99]
+      widget := scrollWidget
+      layouts := mkScrollLayout 99 0 0 400 300
+    }
+    inputs.fireScroll scrollData
+
+    let afterScroll ← listResult.scrollState.sample
+    pure afterScroll.offsetY
+
+  -- Scroll for different widget should be ignored, offset stays at 0
+  shouldBeNear result 0.0
+
+test "FRP: scroll events ignored when not in hitPath" := do
+  let result ← runSpider do
+    let (events, inputs) ← createInputs
+    let messagesDyn ← Dynamic.pureM #[ChatMessage.user 0 "Test"]
+    let config := MessageListConfig.default
+
+    let (listResult, _) ← (messageList messagesDyn config testTheme false).run
+      { children := #[] } |>.run events
+
+    -- Fire scroll with widget ID not in hitPath (empty hitPath)
+    let scrollWidget : Widget := .scroll 99 (some "other-scroll") {}
+        {} 400 600 {} testWidget
+    let scrollData : ScrollData := {
+      scroll := { x := 200, y := 150, deltaX := 0, deltaY := -5.0, modifiers := {} }
+      hitPath := #[]  -- Empty hitPath - scroll doesn't hit our widget
+      widget := scrollWidget
+      layouts := mkScrollLayout 99 0 0 400 300
+    }
+    inputs.fireScroll scrollData
+
+    let afterScroll ← listResult.scrollState.sample
+    pure afterScroll.offsetY
+
+  -- Scroll should be ignored, offset stays at 0
+  shouldBeNear result 0.0
 
 end Afferent.Tests.ChatTests

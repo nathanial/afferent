@@ -246,7 +246,11 @@ def messageBubbleVisual (msg : ChatMessage) (config : MessageBubbleConfig) : Wid
   }
 
   -- Full-width row to enable alignment
-  let rowStyle : BoxStyle := { width := .percent 1.0 }
+  -- shrink := 0 prevents message from being compressed in scroll container
+  let rowStyle : BoxStyle := {
+    width := .percent 1.0
+    flexItem := some { Trellis.FlexItem.default with shrink := 0 }
+  }
   let wid ← freshId
   pure (.flex wid none rowProps rowStyle #[bubble])
 
@@ -314,16 +318,18 @@ def MessageListConfig.fromTheme (theme : Theme) (width height : Float) : Message
 }
 
 /-- Build visual representation of message list (pure WidgetBuilder). -/
-def messageListVisual (messages : Array ChatMessage) (config : MessageListConfig)
+def messageListVisual (name : String) (messages : Array ChatMessage) (config : MessageListConfig)
     (scrollState : ScrollState) (contentHeight : Float) (theme : Theme) : WidgetBuilder := do
   -- Build message bubble builders
   let msgBuilders : Array WidgetBuilder := messages.map fun msg =>
     messageBubbleVisual msg config.bubbleConfig
 
   -- Column of messages with gap
+  -- IMPORTANT: shrink := 0 prevents content from being compressed inside the scroll viewport
   let contentStyle : BoxStyle := {
     width := .percent 1.0
     padding := Trellis.EdgeInsets.uniform config.padding
+    flexItem := some { Trellis.FlexItem.default with shrink := 0 }
   }
   let content := column (gap := config.messageGap) (style := contentStyle) msgBuilders
 
@@ -348,7 +354,7 @@ def messageListVisual (messages : Array ChatMessage) (config : MessageListConfig
       scrollbarVisibility := .always }
     theme
 
-  namedScroll "chat-message-list" scrollStyle config.width contentHeight scrollState scrollbarConfig content
+  namedScroll name scrollStyle config.width contentHeight scrollState scrollbarConfig content
 
 /-- Create a reactive message list widget.
 
@@ -368,39 +374,45 @@ def messageList (messages : Reactive.Dynamic Spider (Array ChatMessage)) (config
   let allMouseUp ← useAllMouseUp
 
   -- Track content height (estimate based on message count)
-  let contentHeightRef ← SpiderM.liftIO (IO.mkRef config.height)
+  -- Initialize with large content height to allow scrolling before first render
+  let contentHeightRef ← SpiderM.liftIO (IO.mkRef (config.height * 10.0))
 
   -- Initial scroll state (at bottom)
   let initialScroll : ScrollState := { offsetX := 0, offsetY := 0 }
 
   -- Merge scroll-related events
+  -- All Event functions return SpiderM, so we lift to WidgetM via StateT.lift ∘ liftM.
   let liftSpider {α : Type} : SpiderM α → WidgetM α := fun m => StateT.lift (liftM m)
+  let wheelEvents : Reactive.Event Spider ScrollInputEvent ←
+    liftSpider (Event.mapM ScrollInputEvent.wheel scrollEvents)
+  let clickEvents : Reactive.Event Spider ScrollInputEvent ←
+    liftSpider (Event.mapM ScrollInputEvent.click allClicks)
+  let hoverEvents : Reactive.Event Spider ScrollInputEvent ←
+    liftSpider (Event.mapM ScrollInputEvent.hover allHovers)
+  let mouseUpEvents : Reactive.Event Spider ScrollInputEvent ←
+    liftSpider (Event.mapM (fun _ => ScrollInputEvent.mouseUp) allMouseUp)
 
-  -- Scroll state accumulator
-  let scrollState ← liftSpider do
-    let wheelEvents ← Event.mapM (fun data => ScrollInputEvent.wheel data) scrollEvents
-    let clickEvents ← Event.mapM (fun data => ScrollInputEvent.click data) allClicks
-    let hoverEvents ← Event.mapM (fun data => ScrollInputEvent.hover data) allHovers
-    let mouseUpEvents ← Event.mapM (fun _ => ScrollInputEvent.mouseUp) allMouseUp
+  -- Merge all events
+  let allInputEvents : Reactive.Event Spider ScrollInputEvent ←
+    liftSpider (Event.leftmostM [wheelEvents, clickEvents, hoverEvents, mouseUpEvents])
 
-    let allInputEvents ← Event.leftmostM [wheelEvents, clickEvents, hoverEvents, mouseUpEvents]
-
-    Reactive.foldDynM
-      (fun event state => SpiderM.liftIO do
-        let contentH ← contentHeightRef.get
-        match event with
-        | .wheel scrollData =>
-          let dy := -scrollData.scroll.deltaY * 20.0
-          let newScroll := state.scroll.scrollBy 0 dy config.width config.height config.width contentH
-          pure { state with scroll := newScroll }
-        | .click _clickData =>
-          pure state
-        | .hover _hoverData =>
-          pure state
-        | .mouseUp =>
-          pure { state with drag := {} })
-      ({ scroll := initialScroll, drag := {} } : ScrollCombinedState)
-      allInputEvents
+  -- Scroll state accumulator (call foldDynM directly in WidgetM, not wrapped in liftSpider)
+  let scrollState ← Reactive.foldDynM
+    (fun event state => do
+      let contentH ← SpiderM.liftIO contentHeightRef.get
+      match event with
+      | .wheel scrollData =>
+        let dy := -scrollData.scroll.deltaY * 20.0
+        let newScroll := state.scroll.scrollBy 0 dy config.width config.height config.width contentH
+        pure { state with scroll := newScroll }
+      | .click _clickData =>
+        pure state
+      | .hover _hoverData =>
+        pure state
+      | .mouseUp =>
+        pure { state with drag := {} })
+    ({ scroll := initialScroll, drag := {} } : ScrollCombinedState)
+    allInputEvents
 
   let justScroll ← Dynamic.mapM (·.scroll) scrollState
 
@@ -432,7 +444,7 @@ def messageList (messages : Reactive.Dynamic Spider (Array ChatMessage)) (config
       then { scroll with offsetY := maxScroll }
       else scroll
 
-    emit do pure (messageListVisual msgs config effectiveScroll contentH theme)
+    emit do pure (messageListVisual name msgs config effectiveScroll contentH theme)
 
   pure { scrollState := justScroll }
 
