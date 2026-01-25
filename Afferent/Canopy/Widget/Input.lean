@@ -9,6 +9,7 @@ import Afferent.Canopy.Widget.Input.Switch
 import Afferent.Canopy.Widget.Input.TextInput
 import Afferent.Canopy.Widget.Input.TextArea
 import Afferent.Canopy.Widget.Input.PasswordInput
+import Afferent.Canopy.Widget.Input.SearchInput
 import Afferent.Canopy.Widget.Input.Dropdown
 import Afferent.Canopy.Widget.Input.Slider
 import Afferent.Canopy.Widget.Input.RangeSlider
