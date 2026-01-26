@@ -66,6 +66,14 @@ def moveCursorStart (s : TextInputState) : TextInputState :=
 def moveCursorEnd (s : TextInputState) : TextInputState :=
   { s with cursor := s.value.length }
 
+/-- Delete all text from cursor to end. -/
+def deleteToEnd (s : TextInputState) : TextInputState :=
+  { s with value := s.value.take s.cursor }
+
+/-- Delete all text from start to cursor. -/
+def deleteToStart (s : TextInputState) : TextInputState :=
+  { s with value := s.value.drop s.cursor, cursor := 0 }
+
 end TextInputState
 
 namespace TextInput
@@ -105,6 +113,13 @@ def handleKeyPress (e : KeyEvent) (state : TextInputState) (maxLen : Option Nat)
     match e.key with
     | .left => state.moveCursorStart
     | .right => state.moveCursorEnd
+    | .delete => state.deleteToEnd
+    | .backspace => state.deleteToStart
+    | _ => state
+  else if e.modifiers.ctrl then
+    match e.key with
+    | .delete => state.deleteToEnd
+    | .backspace => state.deleteToStart
     | _ => state
   else
     match e.key with

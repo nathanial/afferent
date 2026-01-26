@@ -67,6 +67,44 @@ test "deleteForward at end does nothing" := do
   ensure (result.value == "hello") s!"Expected 'hello', got '{result.value}'"
   ensure (result.cursor == 5) s!"Expected cursor 5, got {result.cursor}"
 
+/-! ## Bulk Delete Operations -/
+
+test "deleteToEnd removes text after cursor" := do
+  let state : TextInputState := { value := "hello world", cursor := 5 }
+  let result := state.deleteToEnd
+  ensure (result.value == "hello") s!"Expected 'hello', got '{result.value}'"
+  ensure (result.cursor == 5) s!"Expected cursor 5, got {result.cursor}"
+
+test "deleteToEnd at end does nothing" := do
+  let state : TextInputState := { value := "hello", cursor := 5 }
+  let result := state.deleteToEnd
+  ensure (result.value == "hello") s!"Expected 'hello', got '{result.value}'"
+  ensure (result.cursor == 5) s!"Expected cursor 5, got {result.cursor}"
+
+test "deleteToEnd at start clears all" := do
+  let state : TextInputState := { value := "hello", cursor := 0 }
+  let result := state.deleteToEnd
+  ensure (result.value == "") s!"Expected '', got '{result.value}'"
+  ensure (result.cursor == 0) s!"Expected cursor 0, got {result.cursor}"
+
+test "deleteToStart removes text before cursor" := do
+  let state : TextInputState := { value := "hello world", cursor := 6 }
+  let result := state.deleteToStart
+  ensure (result.value == "world") s!"Expected 'world', got '{result.value}'"
+  ensure (result.cursor == 0) s!"Expected cursor 0, got {result.cursor}"
+
+test "deleteToStart at start does nothing" := do
+  let state : TextInputState := { value := "hello", cursor := 0 }
+  let result := state.deleteToStart
+  ensure (result.value == "hello") s!"Expected 'hello', got '{result.value}'"
+  ensure (result.cursor == 0) s!"Expected cursor 0, got {result.cursor}"
+
+test "deleteToStart at end clears all" := do
+  let state : TextInputState := { value := "hello", cursor := 5 }
+  let result := state.deleteToStart
+  ensure (result.value == "") s!"Expected '', got '{result.value}'"
+  ensure (result.cursor == 0) s!"Expected cursor 0, got {result.cursor}"
+
 /-! ## Cursor Movement -/
 
 test "moveCursorLeft decrements cursor" := do
@@ -234,6 +272,50 @@ test "handleKeyPress cmd+right jumps to end" := do
   let event : KeyEvent := { key := .right, modifiers := { cmd := true } }
   let result := TextInput.handleKeyPress event state none
   ensure (result.cursor == 11) s!"Expected cursor 11, got {result.cursor}"
+
+test "handleKeyPress cmd+delete deletes to end" := do
+  let state : TextInputState := { value := "hello world", cursor := 5 }
+  let event : KeyEvent := { key := .delete, modifiers := { cmd := true } }
+  let result := TextInput.handleKeyPress event state none
+  ensure (result.value == "hello") s!"Expected 'hello', got '{result.value}'"
+  ensure (result.cursor == 5) s!"Expected cursor 5, got {result.cursor}"
+
+test "handleKeyPress cmd+backspace deletes to start" := do
+  let state : TextInputState := { value := "hello world", cursor := 6 }
+  let event : KeyEvent := { key := .backspace, modifiers := { cmd := true } }
+  let result := TextInput.handleKeyPress event state none
+  ensure (result.value == "world") s!"Expected 'world', got '{result.value}'"
+  ensure (result.cursor == 0) s!"Expected cursor 0, got {result.cursor}"
+
+/-! ## handleKeyPress Ctrl Key Chords -/
+
+test "handleKeyPress ctrl+delete deletes to end" := do
+  let state : TextInputState := { value := "hello world", cursor := 5 }
+  let event : KeyEvent := { key := .delete, modifiers := { ctrl := true } }
+  let result := TextInput.handleKeyPress event state none
+  ensure (result.value == "hello") s!"Expected 'hello', got '{result.value}'"
+  ensure (result.cursor == 5) s!"Expected cursor 5, got {result.cursor}"
+
+test "handleKeyPress ctrl+backspace deletes to start" := do
+  let state : TextInputState := { value := "hello world", cursor := 6 }
+  let event : KeyEvent := { key := .backspace, modifiers := { ctrl := true } }
+  let result := TextInput.handleKeyPress event state none
+  ensure (result.value == "world") s!"Expected 'world', got '{result.value}'"
+  ensure (result.cursor == 0) s!"Expected cursor 0, got {result.cursor}"
+
+test "handleKeyPress ctrl+delete at end does nothing" := do
+  let state : TextInputState := { value := "hello", cursor := 5 }
+  let event : KeyEvent := { key := .delete, modifiers := { ctrl := true } }
+  let result := TextInput.handleKeyPress event state none
+  ensure (result.value == "hello") s!"Expected 'hello', got '{result.value}'"
+  ensure (result.cursor == 5) s!"Expected cursor 5, got {result.cursor}"
+
+test "handleKeyPress ctrl+backspace at start does nothing" := do
+  let state : TextInputState := { value := "hello", cursor := 0 }
+  let event : KeyEvent := { key := .backspace, modifiers := { ctrl := true } }
+  let result := TextInput.handleKeyPress event state none
+  ensure (result.value == "hello") s!"Expected 'hello', got '{result.value}'"
+  ensure (result.cursor == 0) s!"Expected cursor 0, got {result.cursor}"
 
 /-! ## handleKeyPress maxLen Enforcement -/
 
