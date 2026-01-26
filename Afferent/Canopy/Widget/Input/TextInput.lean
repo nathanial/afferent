@@ -109,9 +109,10 @@ def handleKeyPress (e : KeyEvent) (state : TextInputState) (maxLen : Option Nat)
   else
     match e.key with
     | .char c =>
+        let charToInsert := if e.modifiers.shift then c.toUpper else c
         match maxLen with
-        | some max => if state.value.length >= max then state else state.insertChar c
-        | none => state.insertChar c
+        | some max => if state.value.length >= max then state else state.insertChar charToInsert
+        | none => state.insertChar charToInsert
     | .space =>
         match maxLen with
         | some max => if state.value.length >= max then state else state.insertChar ' '

@@ -23,6 +23,7 @@ import Afferent.Tests.ChartPerformanceTests
 import Afferent.Tests.CoalescingTests
 import Afferent.Tests.ShaderDSLTests
 import Afferent.Tests.ChatTests
+import Afferent.Tests.TextInputTests
 import Crucible
 
 open Crucible
