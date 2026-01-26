@@ -365,10 +365,10 @@ def messageListVisual (name : String) (messages : Array ChatMessage) (config : M
 
     - `messages`: Dynamic array of chat messages
     - `config`: Configuration for the list
-    - `theme`: Theme for styling
     - `autoScroll`: Whether to auto-scroll to bottom on new messages (default true) -/
 def messageList (messages : Reactive.Dynamic Spider (Array ChatMessage)) (config : MessageListConfig)
-    (theme : Theme) (autoScroll : Bool := true) : WidgetM MessageListResult := do
+    (autoScroll : Bool := true) : WidgetM MessageListResult := do
+  let theme ← getThemeW
   let name ← registerComponentW "chat-message-list"
   let scrollEvents ← useScroll name
   let allClicks ← useAllClicks
@@ -507,18 +507,17 @@ def ChatInputConfig.default : ChatInputConfig := {}
     Combines a text input with a send button. Submits on Enter key press
     or Send button click. Clears the input after submission.
 
-    - `theme`: Theme for styling
     - `font`: Font for text input
     - `config`: Configuration
     - `isLoading`: Dynamic indicating if a request is in progress (disables input) -/
-def chatInput (theme : Theme) (font : Afferent.Font) (config : ChatInputConfig)
+def chatInput (font : Afferent.Font) (config : ChatInputConfig)
     (isLoading : Reactive.Dynamic Spider Bool) : WidgetM ChatInputResult := do
   -- Create the text input wrapped in a growing container so it fills available width
   let inputResult ← column' (gap := 0) (style := {
     flexItem := some (Trellis.FlexItem.growing 1)
     width := .percent 1.0
   }) do
-    textInput theme font config.placeholder ""
+    textInput font config.placeholder ""
 
   -- Get keyboard events for Enter key detection
   let keyEvents ← useKeyboard
@@ -549,7 +548,7 @@ def chatInput (theme : Theme) (font : Afferent.Font) (config : ChatInputConfig)
   let canSend ← Dynamic.zipWithM (fun nl ie => nl && !ie) notLoading inputEmpty
 
   -- Create the send button
-  let sendClick ← button config.sendButtonLabel theme .primary
+  let sendClick ← button config.sendButtonLabel .primary
 
   -- Handle button click submission
   let gatedSendClick ← Event.gateM canSend.current sendClick
@@ -569,7 +568,7 @@ def chatInput (theme : Theme) (font : Afferent.Font) (config : ChatInputConfig)
 
 /-- Simpler chat input visual wrapper that just places input and button in a row.
     Use this for custom input handling. -/
-def chatInputRow (theme : Theme) (font : Afferent.Font) (config : ChatInputConfig)
+def chatInputRow (font : Afferent.Font) (config : ChatInputConfig)
     : WidgetM TextInputResult := do
   row' (gap := config.gap) (style := { width := .percent 1.0 }) do
     -- Text input takes up remaining space with growing flex item
@@ -577,10 +576,10 @@ def chatInputRow (theme : Theme) (font : Afferent.Font) (config : ChatInputConfi
       flexItem := some (Trellis.FlexItem.growing 1)
       width := .percent 1.0
     }) do
-      textInput theme font config.placeholder ""
+      textInput font config.placeholder ""
 
     -- Send button
-    let _ ← button config.sendButtonLabel theme .primary
+    let _ ← button config.sendButtonLabel .primary
 
     pure inputResult
 
@@ -635,13 +634,13 @@ def stateFromConversation : Oracle.Reactive.ConversationState → ChatWidgetStat
     - Cancel support via Escape key
 
     - `client`: ReactiveClient for API calls
-    - `theme`: Theme for styling
     - `font`: Font for text rendering
     - `config`: Widget configuration
     - `systemPrompt`: Optional system prompt for the conversation -/
-def chatWidget (client : ReactiveClient) (theme : Theme) (font : Afferent.Font)
+def chatWidget (client : ReactiveClient) (font : Afferent.Font)
     (config : ChatWidgetConfig := {}) (systemPrompt : Option String := none)
     : WidgetM ChatWidgetResult := do
+  let theme ← getThemeW
   -- Create the conversation manager
   let effectiveSystemPrompt := systemPrompt.orElse (fun _ => config.systemPrompt)
   let manager ← (ConversationManager.new client effectiveSystemPrompt : SpiderM ConversationManager)
@@ -716,7 +715,7 @@ def chatWidget (client : ReactiveClient) (theme : Theme) (font : Afferent.Font)
   }
   column' (gap := 0) (style := outerStyle) do
     -- Message list
-    let _ ← messageList allMessages msgListConfig theme config.autoScroll
+    let _ ← messageList allMessages msgListConfig config.autoScroll
 
     -- Input area (fixed at bottom)
     row' (gap := inputConfig.gap) (style := {
@@ -725,7 +724,7 @@ def chatWidget (client : ReactiveClient) (theme : Theme) (font : Afferent.Font)
       backgroundColor := some theme.panel.background
     }) do
       -- Create the chat input
-      let inputResult ← chatInput theme font inputConfig isLoading
+      let inputResult ← chatInput font inputConfig isLoading
 
       -- Wire up submit to send message
       let sendAction ← Event.mapM
@@ -744,10 +743,9 @@ def chatWidget (client : ReactiveClient) (theme : Theme) (font : Afferent.Font)
 /-- Simpler chat widget that just takes an API key.
     Creates a ReactiveClient internally. -/
 def chatWidgetWithApiKey (apiKey : String) (model : String := "anthropic/claude-sonnet-4")
-    (theme : Theme) (font : Afferent.Font)
-    (config : ChatWidgetConfig := {}) (systemPrompt : Option String := none)
+    (font : Afferent.Font) (config : ChatWidgetConfig := {}) (systemPrompt : Option String := none)
     : WidgetM ChatWidgetResult := do
   let client := ReactiveClient.withModel apiKey model
-  chatWidget client theme font config systemPrompt
+  chatWidget client font config systemPrompt
 
 end Afferent.Canopy.Chat

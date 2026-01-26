@@ -101,12 +101,12 @@ def listBoxItemsVisual (itemNameFn : Nat → String) (items : Array String)
 
 /-- Create a reactive list box widget.
     - `items`: Array of item labels to display
-    - `theme`: Theme for styling
     - `config`: List box configuration
 -/
-def listBox (items : Array String) (theme : Theme)
+def listBox (items : Array String)
     (config : ListBoxConfig := ListBox.defaultConfig)
     : WidgetM ListBoxResult := do
+  let theme ← getThemeW
   -- Register item names for hit testing
   let mut itemNames : Array String := #[]
   for i in [:items.size] do
@@ -154,7 +154,7 @@ def listBox (items : Array String) (theme : Theme)
   let hoveredItem ← Reactive.holdDyn (none : Option Nat) hoverChanges
 
   -- Use scroll container for scrolling - items are emitted INSIDE
-  let (_, _) ← scrollContainer scrollConfig theme do
+  let (_, _) ← scrollContainer scrollConfig do
     -- Use dynWidget for efficient change-driven rebuilds
     let renderState ← Dynamic.zipWithM (fun s h => (s, h)) selectedItems hoveredItem
     let _ ← dynWidget renderState fun (selected, hovered) => do
@@ -166,12 +166,12 @@ def listBox (items : Array String) (theme : Theme)
 /-- Create a list box with initial selection.
     - `items`: Array of item labels to display
     - `initialSelection`: Initially selected item indices
-    - `theme`: Theme for styling
     - `config`: List box configuration
 -/
 def listBoxWithSelection (items : Array String) (initialSelection : Array Nat)
-    (theme : Theme) (config : ListBoxConfig := ListBox.defaultConfig)
+    (config : ListBoxConfig := ListBox.defaultConfig)
     : WidgetM ListBoxResult := do
+  let theme ← getThemeW
   -- Register item names for hit testing
   let mut itemNames : Array String := #[]
   for i in [:items.size] do
@@ -219,7 +219,7 @@ def listBoxWithSelection (items : Array String) (initialSelection : Array Nat)
   let hoveredItem ← Reactive.holdDyn (none : Option Nat) hoverChanges
 
   -- Use scroll container for scrolling - items are emitted INSIDE
-  let (_, _) ← scrollContainer scrollConfig theme do
+  let (_, _) ← scrollContainer scrollConfig do
     -- Use dynWidget for efficient change-driven rebuilds
     let renderState ← Dynamic.zipWithM (fun s h => (s, h)) selectedItems hoveredItem
     let _ ← dynWidget renderState fun (selected, hovered) => do

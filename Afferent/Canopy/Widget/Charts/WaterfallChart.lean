@@ -279,9 +279,10 @@ structure WaterfallChartResult where
     - `dims`: Chart dimensions
 -/
 def waterfallChart (data : Dyn WaterfallChart.Data)
-    (theme : Theme) (colors : WaterfallChart.ChartColors := WaterfallChart.defaultColors)
+    (colors : WaterfallChart.ChartColors := WaterfallChart.defaultColors)
     (dims : WaterfallChart.Dimensions := WaterfallChart.defaultDimensions)
     : WidgetM WaterfallChartResult := do
+  let theme ← getThemeW
   let _ ← dynWidget data fun currentData => do
     let name ← registerComponentW "waterfall-chart" (isInteractive := false)
     emit do pure (waterfallChartVisual name currentData theme colors dims)
@@ -298,7 +299,7 @@ def waterfallChart (data : Dyn WaterfallChart.Data)
 -/
 def waterfallChartFromArrays (labels : Array String) (values : Dyn (Array Float))
     (barTypes : Array WaterfallChart.BarType)
-    (theme : Theme) (colors : WaterfallChart.ChartColors := WaterfallChart.defaultColors)
+    (colors : WaterfallChart.ChartColors := WaterfallChart.defaultColors)
     (dims : WaterfallChart.Dimensions := WaterfallChart.defaultDimensions)
     : WidgetM WaterfallChartResult := do
   let dataDyn ← Dynamic.mapM (fun currentValues => Id.run do
@@ -312,6 +313,6 @@ def waterfallChartFromArrays (labels : Array String) (values : Dyn (Array Float)
       }
     ({ bars := result } : WaterfallChart.Data)
   ) values
-  waterfallChart dataDyn theme colors dims
+  waterfallChart dataDyn colors dims
 
 end Afferent.Canopy

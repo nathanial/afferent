@@ -305,8 +305,9 @@ structure RadarChartResult where
     - `dims`: Chart dimensions
 -/
 def radarChart (data : Dyn RadarChart.Data)
-    (theme : Theme) (dims : RadarChart.Dimensions := RadarChart.defaultDimensions)
+    (dims : RadarChart.Dimensions := RadarChart.defaultDimensions)
     : WidgetM RadarChartResult := do
+  let theme ← getThemeW
   let _ ← dynWidget data fun currentData => do
     let name ← registerComponentW "radar-chart" (isInteractive := false)
     emit do pure (radarChartVisual name currentData theme dims)
@@ -324,7 +325,7 @@ def radarChart (data : Dyn RadarChart.Data)
 def radarChartFromArrays (axisLabels : Array String)
     (seriesNames : Array String) (seriesData : Dyn (Array (Array Float)))
     (colors : Array Color := #[])
-    (theme : Theme) (dims : RadarChart.Dimensions := RadarChart.defaultDimensions)
+    (dims : RadarChart.Dimensions := RadarChart.defaultDimensions)
     : WidgetM RadarChartResult := do
   let dataDyn ← Dynamic.mapM (fun currentSeriesData => Id.run do
     let mut result : Array RadarChart.Series := #[]
@@ -335,7 +336,7 @@ def radarChartFromArrays (axisLabels : Array String)
       result := result.push { name, values, color }
     ({ axisLabels, series := result } : RadarChart.Data)
   ) seriesData
-  radarChart dataDyn theme dims
+  radarChart dataDyn dims
 
 /-- Create a single-series radar chart with dynamic values.
     - `axisLabels`: Labels for each axis
@@ -347,11 +348,11 @@ def radarChartFromArrays (axisLabels : Array String)
 -/
 def radarChartSingle (axisLabels : Array String) (values : Dyn (Array Float))
     (seriesName : String := "Data") (color : Option Color := none)
-    (theme : Theme) (dims : RadarChart.Dimensions := RadarChart.defaultDimensions)
+    (dims : RadarChart.Dimensions := RadarChart.defaultDimensions)
     : WidgetM RadarChartResult := do
   let dataDyn ← Dynamic.mapM (fun currentValues =>
     ({ axisLabels, series := #[{ name := seriesName, values := currentValues, color }] } : RadarChart.Data)
   ) values
-  radarChart dataDyn theme dims
+  radarChart dataDyn dims
 
 end Afferent.Canopy

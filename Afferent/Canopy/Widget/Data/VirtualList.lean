@@ -108,12 +108,12 @@ def virtualListItemRow (name : String) (config : VirtualListConfig)
 
     - `itemCount`: Total number of items in the list
     - `itemBuilder`: Builder for a given item index
-    - `theme`: Theme for scrollbar styling
     - `config`: Virtual list configuration
 -/
-def virtualList (itemCount : Nat) (itemBuilder : Nat → WidgetBuilder) (theme : Theme)
+def virtualList (itemCount : Nat) (itemBuilder : Nat → WidgetBuilder)
     (config : VirtualListConfig := VirtualList.defaultConfig)
     : WidgetM VirtualListResult := do
+  let theme ← getThemeW
   let name ← registerComponentW "virtual-list"
 
   -- Register item names for hit testing.

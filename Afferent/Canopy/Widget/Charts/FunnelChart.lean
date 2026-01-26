@@ -219,8 +219,9 @@ structure FunnelChartResult where
     - `dims`: Chart dimensions
 -/
 def funnelChart (data : Dyn FunnelChart.Data)
-    (theme : Theme) (dims : FunnelChart.Dimensions := FunnelChart.defaultDimensions)
+    (dims : FunnelChart.Dimensions := FunnelChart.defaultDimensions)
     : WidgetM FunnelChartResult := do
+  let theme ← getThemeW
   let _ ← dynWidget data fun currentData => do
     let name ← registerComponentW "funnel-chart" (isInteractive := false)
     emit do pure (funnelChartVisual name currentData theme dims)
@@ -236,7 +237,7 @@ def funnelChart (data : Dyn FunnelChart.Data)
 -/
 def funnelChartFromArrays (labels : Array String) (values : Dyn (Array Float))
     (colors : Array Color := #[])
-    (theme : Theme) (dims : FunnelChart.Dimensions := FunnelChart.defaultDimensions)
+    (dims : FunnelChart.Dimensions := FunnelChart.defaultDimensions)
     : WidgetM FunnelChartResult := do
   let dataDyn ← Dynamic.mapM (fun currentValues => Id.run do
     let numStages := min labels.size currentValues.size
@@ -250,6 +251,6 @@ def funnelChartFromArrays (labels : Array String) (values : Dyn (Array Float))
       }
     ({ stages := result } : FunnelChart.Data)
   ) values
-  funnelChart dataDyn theme dims
+  funnelChart dataDyn dims
 
 end Afferent.Canopy

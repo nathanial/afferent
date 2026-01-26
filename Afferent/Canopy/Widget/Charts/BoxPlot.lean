@@ -428,8 +428,9 @@ structure BoxPlotResult where
     - `dims`: Chart dimensions
 -/
 def boxPlot (summaries : Dyn (Array BoxPlot.Summary))
-    (theme : Theme) (dims : BoxPlot.Dimensions := BoxPlot.defaultDimensions)
+    (dims : BoxPlot.Dimensions := BoxPlot.defaultDimensions)
     : WidgetM BoxPlotResult := do
+  let theme ← getThemeW
   let _ ← dynWidget summaries fun currentSummaries => do
     let name ← registerComponentW "box-plot" (isInteractive := false)
     emit do pure (boxPlotVisual name currentSummaries theme dims)
@@ -444,7 +445,7 @@ def boxPlot (summaries : Dyn (Array BoxPlot.Summary))
     - `dims`: Chart dimensions
 -/
 def boxPlotFromData (dataArrays : Dyn (Array (Array Float))) (labels : Array String := #[])
-    (theme : Theme) (dims : BoxPlot.Dimensions := BoxPlot.defaultDimensions)
+    (dims : BoxPlot.Dimensions := BoxPlot.defaultDimensions)
     : WidgetM BoxPlotResult := do
   let summariesDyn ← Dynamic.mapM (fun currentDataArrays => Id.run do
     let mut result : Array BoxPlot.Summary := #[]
@@ -454,7 +455,7 @@ def boxPlotFromData (dataArrays : Dyn (Array (Array Float))) (labels : Array Str
       result := result.push (BoxPlot.computeSummary data label dims.outlierThreshold)
     result
   ) dataArrays
-  boxPlot summariesDyn theme dims
+  boxPlot summariesDyn dims
 
 /-- Create a horizontal box plot component with dynamic data.
     The chart automatically rebuilds when the summaries Dynamic changes.
@@ -463,8 +464,9 @@ def boxPlotFromData (dataArrays : Dyn (Array (Array Float))) (labels : Array Str
     - `dims`: Chart dimensions
 -/
 def horizontalBoxPlot (summaries : Dyn (Array BoxPlot.Summary))
-    (theme : Theme) (dims : BoxPlot.Dimensions := BoxPlot.defaultDimensions)
+    (dims : BoxPlot.Dimensions := BoxPlot.defaultDimensions)
     : WidgetM BoxPlotResult := do
+  let theme ← getThemeW
   let _ ← dynWidget summaries fun currentSummaries => do
     let name ← registerComponentW "box-plot" (isInteractive := false)
     emit do pure (horizontalBoxPlotVisual name currentSummaries theme dims)
@@ -478,7 +480,7 @@ def horizontalBoxPlot (summaries : Dyn (Array BoxPlot.Summary))
     - `dims`: Chart dimensions
 -/
 def horizontalBoxPlotFromData (dataArrays : Dyn (Array (Array Float))) (labels : Array String := #[])
-    (theme : Theme) (dims : BoxPlot.Dimensions := BoxPlot.defaultDimensions)
+    (dims : BoxPlot.Dimensions := BoxPlot.defaultDimensions)
     : WidgetM BoxPlotResult := do
   let summariesDyn ← Dynamic.mapM (fun currentDataArrays => Id.run do
     let mut result : Array BoxPlot.Summary := #[]
@@ -488,6 +490,6 @@ def horizontalBoxPlotFromData (dataArrays : Dyn (Array (Array Float))) (labels :
       result := result.push (BoxPlot.computeSummary data label dims.outlierThreshold)
     result
   ) dataArrays
-  horizontalBoxPlot summariesDyn theme dims
+  horizontalBoxPlot summariesDyn dims
 
 end Afferent.Canopy

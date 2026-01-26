@@ -458,16 +458,16 @@ structure TextAreaResult where
 
 /-- Create a reactive text area component using WidgetM.
     Emits the text area widget and returns text state.
-    - `theme`: Theme for styling
     - `placeholder`: Placeholder text when empty
     - `initialState`: Initial text area state
     - `font`: Font for text measurement
     - `width`: Width of the text area
     - `height`: Height of the text area
 -/
-def textArea (theme : Theme) (placeholder : String) (initialState : TextAreaState)
+def textArea (placeholder : String) (initialState : TextAreaState)
     (font : Afferent.Font) (width : Float := 280) (height : Float := 120)
     : WidgetM TextAreaResult := do
+  let theme ← getThemeW
   let name ← registerComponentW "text-area" (isInput := true)
   let events ← getEventsW
   let focusedInput := events.registry.focusedInput

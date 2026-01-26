@@ -303,9 +303,10 @@ structure LineChartResult where
     - `dims`: Chart dimensions
 -/
 def lineChart (data : Dyn (Array Float)) (labels : Array String := #[])
-    (theme : Theme) (variant : LineChartVariant := .primary)
+    (variant : LineChartVariant := .primary)
     (dims : LineChart.Dimensions := LineChart.defaultDimensions)
     : WidgetM LineChartResult := do
+  let theme ← getThemeW
   let _ ← dynWidget data fun currentData => do
     let name ← registerComponentW "line-chart" (isInteractive := false)
     emit do pure (lineChartVisual name currentData labels variant theme dims)
@@ -324,9 +325,10 @@ structure MultiSeriesLineChartResult where
     - `dims`: Chart dimensions
 -/
 def multiSeriesLineChart (series : Dyn (Array LineChart.Series))
-    (labels : Array String := #[]) (theme : Theme)
+    (labels : Array String := #[])
     (dims : LineChart.Dimensions := LineChart.defaultDimensions)
     : WidgetM MultiSeriesLineChartResult := do
+  let theme ← getThemeW
   let _ ← dynWidget series fun currentSeries => do
     let name ← registerComponentW "line-chart" (isInteractive := false)
     emit do pure (multiSeriesLineChartVisual name currentSeries labels theme dims)

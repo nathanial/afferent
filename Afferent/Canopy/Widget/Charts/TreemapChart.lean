@@ -314,8 +314,9 @@ structure TreemapChartResult where
     - `dims`: Chart dimensions
 -/
 def treemapChart (data : Dyn TreemapChart.Data)
-    (theme : Theme) (dims : TreemapChart.Dimensions := TreemapChart.defaultDimensions)
+    (dims : TreemapChart.Dimensions := TreemapChart.defaultDimensions)
     : WidgetM TreemapChartResult := do
+  let theme ← getThemeW
   let _ ← dynWidget data fun currentData => do
     let name ← registerComponentW "treemap-chart" (isInteractive := false)
     emit do pure (treemapChartVisual name currentData theme dims)
@@ -331,7 +332,7 @@ def treemapChart (data : Dyn TreemapChart.Data)
 -/
 def treemapChartFromArrays (labels : Array String) (values : Dyn (Array Float))
     (colors : Array Color := #[])
-    (theme : Theme) (dims : TreemapChart.Dimensions := TreemapChart.defaultDimensions)
+    (dims : TreemapChart.Dimensions := TreemapChart.defaultDimensions)
     : WidgetM TreemapChartResult := do
   let dataDyn ← Dynamic.mapM (fun currentValues => Id.run do
     let numNodes := min labels.size currentValues.size
@@ -345,6 +346,6 @@ def treemapChartFromArrays (labels : Array String) (values : Dyn (Array Float))
       }
     ({ nodes := result } : TreemapChart.Data)
   ) values
-  treemapChart dataDyn theme dims
+  treemapChart dataDyn dims
 
 end Afferent.Canopy

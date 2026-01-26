@@ -116,12 +116,12 @@ structure StepperResult where
   value : Reactive.Dynamic Spider Int
 
 /-- Create a reactive stepper component using WidgetM.
-    - `theme`: Theme for styling
     - `initialValue`: Initial value
     - `config`: Optional configuration
 -/
-def stepper (theme : Theme) (initialValue : Int := 0)
-    (config : StepperConfig := {}) : WidgetM StepperResult := do
+def stepper (initialValue : Int := 0) (config : StepperConfig := {})
+    : WidgetM StepperResult := do
+  let theme ← getThemeW
   let name ← registerComponentW "stepper"
   let decName ← registerComponentW "stepper-dec"
   let incName ← registerComponentW "stepper-inc"

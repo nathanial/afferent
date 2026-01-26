@@ -82,14 +82,14 @@ def badgeCount (count : Nat) (theme : Theme)
   badge displayText theme variant
 
 /-- WidgetM wrapper for badge. -/
-def badge' (content : String) (theme : Theme)
-    (variant : BadgeVariant := .primary) : WidgetM Unit := do
+def badge' (content : String) (variant : BadgeVariant := .primary) : WidgetM Unit := do
+  let theme ← getThemeW
   emit (pure (badge content theme variant))
 
 /-- WidgetM wrapper for badgeCount. -/
-def badgeCount' (count : Nat) (theme : Theme)
-    (variant : BadgeVariant := .primary)
+def badgeCount' (count : Nat) (variant : BadgeVariant := .primary)
     (maxDisplay : Nat := 99) : WidgetM Unit := do
+  let theme ← getThemeW
   emit (pure (badgeCount count theme variant maxDisplay))
 
 end Afferent.Canopy

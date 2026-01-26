@@ -196,11 +196,10 @@ structure TabViewResult where
 /-- Create a reactive tab view component using WidgetM.
     Emits the tab view widget and returns tab state.
     - `tabs`: Array of tab definitions (label and content)
-    - `theme`: Theme for styling
     - `initialTab`: Initial active tab index
 -/
-def tabView (tabs : Array TabDef) (theme : Theme) (initialTab : Nat := 0)
-    : WidgetM TabViewResult := do
+def tabView (tabs : Array TabDef) (initialTab : Nat := 0) : WidgetM TabViewResult := do
+  let theme ← getThemeW
   let containerName ← registerComponentW "tabview" (isInteractive := false)
 
   let mut headerNames : Array String := #[]

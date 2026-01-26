@@ -279,12 +279,12 @@ partial def registerToggleNames (nodes : Array TreeNode) (parentPath : TreePath 
 
 /-- Create a reactive tree view widget.
     - `nodes`: Array of root-level tree nodes
-    - `theme`: Theme for styling
     - `config`: Tree view configuration
 -/
-def treeView (nodes : Array TreeNode) (theme : Theme)
+def treeView (nodes : Array TreeNode)
     (config : TreeViewConfig := TreeView.defaultConfig)
     : WidgetM TreeViewResult := do
+  let theme ← getThemeW
   -- Register names for all nodes and toggles
   let itemNames ← registerTreeNodeNames nodes
   let toggleNames ← registerToggleNames nodes
@@ -356,7 +356,7 @@ def treeView (nodes : Array TreeNode) (theme : Theme)
   }
 
   -- Use scroll container for scrolling
-  let (_, _) ← scrollContainer scrollConfig theme do
+  let (_, _) ← scrollContainer scrollConfig do
     -- Use dynWidget for efficient change-driven rebuilds
     -- Chain zipWithM for 3 dynamics
     let renderState ← Dynamic.zipWithM (fun e s => (e, s)) expandedNodes selectedNode
@@ -371,12 +371,12 @@ def treeView (nodes : Array TreeNode) (theme : Theme)
 /-- Create a tree view with initially expanded nodes.
     - `nodes`: Array of root-level tree nodes
     - `initialExpanded`: Initially expanded branch paths
-    - `theme`: Theme for styling
     - `config`: Tree view configuration
 -/
 def treeViewWithExpanded (nodes : Array TreeNode) (initialExpanded : Array TreePath)
-    (theme : Theme) (config : TreeViewConfig := TreeView.defaultConfig)
+    (config : TreeViewConfig := TreeView.defaultConfig)
     : WidgetM TreeViewResult := do
+  let theme ← getThemeW
   -- Register names for all nodes and toggles
   let itemNames ← registerTreeNodeNames nodes
   let toggleNames ← registerToggleNames nodes
@@ -449,7 +449,7 @@ def treeViewWithExpanded (nodes : Array TreeNode) (initialExpanded : Array TreeP
   }
 
   -- Use scroll container for scrolling
-  let (_, _) ← scrollContainer scrollConfig theme do
+  let (_, _) ← scrollContainer scrollConfig do
     -- Use dynWidget for efficient change-driven rebuilds
     -- Chain zipWithM for 3 dynamics
     let renderState ← Dynamic.zipWithM (fun e s => (e, s)) expandedNodes selectedNode

@@ -36,7 +36,7 @@ def testTheme : Theme := { Theme.dark with font := testFont, smallFont := testFo
 test "initial build uses current dynamic value" := do
   let spiderEnv ← SpiderEnv.new defaultErrorHandler
   let _ ← (do
-    let (events, _) ← createInputs FontRegistry.empty
+    let (events, _) ← createInputs FontRegistry.empty testTheme
     let valueDyn ← Dynamic.pureM 42
     let capturedValue ← SpiderM.liftIO (IO.mkRef 0)
 
@@ -56,7 +56,7 @@ test "initial build uses current dynamic value" := do
 test "rebuilds on dynamic update" := do
   let spiderEnv ← SpiderEnv.new defaultErrorHandler
   let _ ← (do
-    let (events, _) ← createInputs FontRegistry.empty
+    let (events, _) ← createInputs FontRegistry.empty testTheme
     let (trigger, fire) ← newTriggerEvent (t := Spider) (a := Nat)
     let valueDyn ← holdDyn 0 trigger
     let rebuildCount ← SpiderM.liftIO (IO.mkRef 0)
@@ -83,7 +83,7 @@ test "rebuilds on dynamic update" := do
 test "rebuild count matches update count" := do
   let spiderEnv ← SpiderEnv.new defaultErrorHandler
   let _ ← (do
-    let (events, _) ← createInputs FontRegistry.empty
+    let (events, _) ← createInputs FontRegistry.empty testTheme
     let (trigger, fire) ← newTriggerEvent (t := Spider) (a := Nat)
     let valueDyn ← holdDyn 0 trigger
     let rebuildCount ← SpiderM.liftIO (IO.mkRef 0)
@@ -108,7 +108,7 @@ test "rebuild count matches update count" := do
 test "result dynamic tracks builder output" := do
   let spiderEnv ← SpiderEnv.new defaultErrorHandler
   let _ ← (do
-    let (events, _) ← createInputs FontRegistry.empty
+    let (events, _) ← createInputs FontRegistry.empty testTheme
     let (trigger, fire) ← newTriggerEvent (t := Spider) (a := Nat)
     let valueDyn ← holdDyn 10 trigger
 
@@ -135,7 +135,7 @@ test "result dynamic tracks builder output" := do
 test "constant dynamic never rebuilds after initial" := do
   let spiderEnv ← SpiderEnv.new defaultErrorHandler
   let _ ← (do
-    let (events, _) ← createInputs FontRegistry.empty
+    let (events, _) ← createInputs FontRegistry.empty testTheme
     let valueDyn ← Dynamic.pureM 100
     let rebuildCount ← SpiderM.liftIO (IO.mkRef 0)
 
@@ -161,7 +161,7 @@ test "duplicate values still trigger rebuild" := do
   -- dynWidget doesn't dedupe - that's the upstream Dynamic's responsibility
   let spiderEnv ← SpiderEnv.new defaultErrorHandler
   let _ ← (do
-    let (events, _) ← createInputs FontRegistry.empty
+    let (events, _) ← createInputs FontRegistry.empty testTheme
     let (trigger, fire) ← newTriggerEvent (t := Spider) (a := Nat)
     let valueDyn ← holdDyn 5 trigger
     let rebuildCount ← SpiderM.liftIO (IO.mkRef 0)
@@ -187,7 +187,7 @@ test "duplicate values still trigger rebuild" := do
 test "multiple renders without update don't rebuild" := do
   let spiderEnv ← SpiderEnv.new defaultErrorHandler
   let _ ← (do
-    let (events, _) ← createInputs FontRegistry.empty
+    let (events, _) ← createInputs FontRegistry.empty testTheme
     let (trigger, _) ← newTriggerEvent (t := Spider) (a := Nat)
     let valueDyn ← holdDyn 0 trigger
     let rebuildCount ← SpiderM.liftIO (IO.mkRef 0)
@@ -213,7 +213,7 @@ test "multiple renders without update don't rebuild" := do
 test "nested dynWidget: inner change doesn't rebuild outer" := do
   let spiderEnv ← SpiderEnv.new defaultErrorHandler
   let _ ← (do
-    let (events, _) ← createInputs FontRegistry.empty
+    let (events, _) ← createInputs FontRegistry.empty testTheme
     let (outerTrigger, fireOuter) ← newTriggerEvent (t := Spider) (a := Nat)
     let (innerTrigger, fireInner) ← newTriggerEvent (t := Spider) (a := Nat)
     let outerDyn ← holdDyn 0 outerTrigger
@@ -249,7 +249,7 @@ test "nested dynWidget: inner change doesn't rebuild outer" := do
 test "nested dynWidget: outer change rebuilds both" := do
   let spiderEnv ← SpiderEnv.new defaultErrorHandler
   let _ ← (do
-    let (events, _) ← createInputs FontRegistry.empty
+    let (events, _) ← createInputs FontRegistry.empty testTheme
     let (outerTrigger, fireOuter) ← newTriggerEvent (t := Spider) (a := Nat)
     let (innerTrigger, _) ← newTriggerEvent (t := Spider) (a := Nat)
     let outerDyn ← holdDyn 0 outerTrigger
@@ -281,7 +281,7 @@ test "nested dynWidget: outer change rebuilds both" := do
 test "deeply nested dynWidget (5 levels)" := do
   let spiderEnv ← SpiderEnv.new defaultErrorHandler
   let _ ← (do
-    let (events, _) ← createInputs FontRegistry.empty
+    let (events, _) ← createInputs FontRegistry.empty testTheme
     let (trigger, _) ← newTriggerEvent (t := Spider) (a := Nat)
     let dyn ← holdDyn 0 trigger
     let counts ← SpiderM.liftIO (IO.mkRef #[0, 0, 0, 0, 0])
@@ -316,7 +316,7 @@ test "deeply nested dynWidget (5 levels)" := do
 test "sibling dynWidgets are independent" := do
   let spiderEnv ← SpiderEnv.new defaultErrorHandler
   let _ ← (do
-    let (events, _) ← createInputs FontRegistry.empty
+    let (events, _) ← createInputs FontRegistry.empty testTheme
     let (triggerA, fireA) ← newTriggerEvent (t := Spider) (a := Nat)
     let (triggerB, fireB) ← newTriggerEvent (t := Spider) (a := Nat)
     let dynA ← holdDyn 0 triggerA
@@ -356,7 +356,7 @@ test "sibling dynWidgets are independent" := do
 test "zipWithM triggers rebuild when either changes" := do
   let spiderEnv ← SpiderEnv.new defaultErrorHandler
   let _ ← (do
-    let (events, _) ← createInputs FontRegistry.empty
+    let (events, _) ← createInputs FontRegistry.empty testTheme
     let (triggerA, fireA) ← newTriggerEvent (t := Spider) (a := Nat)
     let (triggerB, fireB) ← newTriggerEvent (t := Spider) (a := Nat)
     let dynA ← holdDyn 0 triggerA
@@ -388,7 +388,7 @@ test "zipWithM triggers rebuild when either changes" := do
 test "zipWith3M triggers on any of three" := do
   let spiderEnv ← SpiderEnv.new defaultErrorHandler
   let _ ← (do
-    let (events, _) ← createInputs FontRegistry.empty
+    let (events, _) ← createInputs FontRegistry.empty testTheme
     let (triggerA, fireA) ← newTriggerEvent (t := Spider) (a := Nat)
     let (triggerB, fireB) ← newTriggerEvent (t := Spider) (a := Nat)
     let (triggerC, fireC) ← newTriggerEvent (t := Spider) (a := Nat)
@@ -418,7 +418,7 @@ test "zipWith3M triggers on any of three" := do
 test "chained dynamics through dynWidget result" := do
   let spiderEnv ← SpiderEnv.new defaultErrorHandler
   let _ ← (do
-    let (events, _) ← createInputs FontRegistry.empty
+    let (events, _) ← createInputs FontRegistry.empty testTheme
     let (trigger, fire) ← newTriggerEvent (t := Spider) (a := Nat)
     let sourceDyn ← holdDyn 1 trigger
     let chainedCount ← SpiderM.liftIO (IO.mkRef 0)
@@ -450,7 +450,7 @@ test "chained dynamics through dynWidget result" := do
 test "empty builder emits spacer" := do
   let spiderEnv ← SpiderEnv.new defaultErrorHandler
   let _ ← (do
-    let (events, _) ← createInputs FontRegistry.empty
+    let (events, _) ← createInputs FontRegistry.empty testTheme
     let valueDyn ← Dynamic.pureM 0
 
     let (_, render) ← ReactiveM.run events do
@@ -473,7 +473,7 @@ test "empty builder emits spacer" := do
 test "single child emits directly without wrapper" := do
   let spiderEnv ← SpiderEnv.new defaultErrorHandler
   let _ ← (do
-    let (events, _) ← createInputs FontRegistry.empty
+    let (events, _) ← createInputs FontRegistry.empty testTheme
     let valueDyn ← Dynamic.pureM 0
 
     let (_, render) ← ReactiveM.run events do
@@ -495,7 +495,7 @@ test "single child emits directly without wrapper" := do
 test "multiple children wrapped in column" := do
   let spiderEnv ← SpiderEnv.new defaultErrorHandler
   let _ ← (do
-    let (events, _) ← createInputs FontRegistry.empty
+    let (events, _) ← createInputs FontRegistry.empty testTheme
     let valueDyn ← Dynamic.pureM 0
 
     let (_, render) ← ReactiveM.run events do
@@ -521,7 +521,7 @@ test "multiple children wrapped in column" := do
 test "dynamic that never fires works correctly" := do
   let spiderEnv ← SpiderEnv.new defaultErrorHandler
   let _ ← (do
-    let (events, _) ← createInputs FontRegistry.empty
+    let (events, _) ← createInputs FontRegistry.empty testTheme
     let (trigger, _) ← newTriggerEvent (t := Spider) (a := Nat)
     let valueDyn ← holdDyn 42 trigger
     let capturedValue ← SpiderM.liftIO (IO.mkRef 0)
@@ -543,7 +543,7 @@ test "dynamic that never fires works correctly" := do
 test "rapid sequential fires handled correctly" := do
   let spiderEnv ← SpiderEnv.new defaultErrorHandler
   let _ ← (do
-    let (events, _) ← createInputs FontRegistry.empty
+    let (events, _) ← createInputs FontRegistry.empty testTheme
     let (trigger, fire) ← newTriggerEvent (t := Spider) (a := Nat)
     let valueDyn ← holdDyn 0 trigger
     let rebuildCount ← SpiderM.liftIO (IO.mkRef 0)
@@ -572,7 +572,7 @@ test "rapid sequential fires handled correctly" := do
 test "builder accesses outer scope correctly" := do
   let spiderEnv ← SpiderEnv.new defaultErrorHandler
   let _ ← (do
-    let (events, _) ← createInputs FontRegistry.empty
+    let (events, _) ← createInputs FontRegistry.empty testTheme
     let (trigger, fire) ← newTriggerEvent (t := Spider) (a := Nat)
     let valueDyn ← holdDyn 0 trigger
     let outerValue := 100  -- Captured from outer scope
@@ -603,7 +603,7 @@ test "inner dynWidget update produces correct tree text" := do
   -- the rendered tree contains the updated text content
   let spiderEnv ← SpiderEnv.new defaultErrorHandler
   let _ ← (do
-    let (events, _) ← createInputs FontRegistry.empty
+    let (events, _) ← createInputs FontRegistry.empty testTheme
     let outerDyn ← Dynamic.pureM 0  -- Outer never changes
     let (innerTrigger, fireInner) ← newTriggerEvent (t := Spider) (a := Nat)
     let innerDyn ← holdDyn 0 innerTrigger
@@ -648,7 +648,7 @@ test "nested tree preserves structure with updated inner text" := do
   -- Verifies that outer structure stays intact while inner text updates
   let spiderEnv ← SpiderEnv.new defaultErrorHandler
   let _ ← (do
-    let (events, _) ← createInputs FontRegistry.empty
+    let (events, _) ← createInputs FontRegistry.empty testTheme
     let outerDyn ← Dynamic.pureM 0
     let (innerTrigger, fireInner) ← newTriggerEvent (t := Spider) (a := Nat)
     let innerDyn ← holdDyn 1 innerTrigger
@@ -708,7 +708,7 @@ test "dynWidget disposes child scope on rebuild" := do
   -- We track this by having the builder register a cleanup action in the child scope.
   let spiderEnv ← SpiderEnv.new defaultErrorHandler
   let _ ← (do
-    let (events, _) ← createInputs FontRegistry.empty
+    let (events, _) ← createInputs FontRegistry.empty testTheme
     let (trigger, fire) ← newTriggerEvent (t := Spider) (a := Nat)
     let valueDyn ← holdDyn 0 trigger
     let cleanupCount ← SpiderM.liftIO (IO.mkRef 0)

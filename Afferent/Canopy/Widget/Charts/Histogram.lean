@@ -408,10 +408,11 @@ structure HistogramResult where
     - `showDensity`: Whether to show density instead of counts
 -/
 def histogramFromBins (bins : Dyn (Array Histogram.Bin))
-    (theme : Theme) (variant : HistogramVariant := .primary)
+    (variant : HistogramVariant := .primary)
     (dims : Histogram.Dimensions := Histogram.defaultDimensions)
     (showDensity : Bool := false)
     : WidgetM HistogramResult := do
+  let theme ← getThemeW
   let _ ← dynWidget bins fun currentBins => do
     let name ← registerComponentW "histogram" (isInteractive := false)
     emit do pure (histogramFromBinsVisual name currentBins variant theme dims showDensity)
@@ -427,14 +428,14 @@ def histogramFromBins (bins : Dyn (Array Histogram.Bin))
     - `binConfig`: Configuration for binning
 -/
 def histogram (data : Dyn (Array Float))
-    (theme : Theme) (variant : HistogramVariant := .primary)
+    (variant : HistogramVariant := .primary)
     (dims : Histogram.Dimensions := Histogram.defaultDimensions)
     (binConfig : Histogram.BinConfig := Histogram.defaultBinConfig)
     : WidgetM HistogramResult := do
   let binsDyn ← Dynamic.mapM (fun currentData =>
     Histogram.computeBins currentData binConfig
   ) data
-  histogramFromBins binsDyn theme variant dims binConfig.normalize
+  histogramFromBins binsDyn variant dims binConfig.normalize
 
 /-- Histogram from counts result. -/
 structure HistogramFromCountsResult where
@@ -449,9 +450,10 @@ structure HistogramFromCountsResult where
     - `dims`: Chart dimensions
 -/
 def histogramFromCounts (labels : Array String) (counts : Dyn (Array Nat))
-    (theme : Theme) (variant : HistogramVariant := .primary)
+    (variant : HistogramVariant := .primary)
     (dims : Histogram.Dimensions := Histogram.defaultDimensions)
     : WidgetM HistogramFromCountsResult := do
+  let theme ← getThemeW
   let _ ← dynWidget counts fun currentCounts => do
     let name ← registerComponentW "histogram" (isInteractive := false)
     emit do pure (histogramFromCountsVisual name labels currentCounts variant theme dims)

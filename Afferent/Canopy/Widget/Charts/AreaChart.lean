@@ -317,9 +317,10 @@ structure AreaChartResult where
     - `dims`: Chart dimensions
 -/
 def areaChart (data : Dyn (Array Float)) (labels : Array String := #[])
-    (theme : Theme) (variant : AreaChartVariant := .primary)
+    (variant : AreaChartVariant := .primary)
     (dims : AreaChart.Dimensions := AreaChart.defaultDimensions)
     : WidgetM AreaChartResult := do
+  let theme ← getThemeW
   let _ ← dynWidget data fun currentData => do
     let name ← registerComponentW "area-chart" (isInteractive := false)
     emit do pure (areaChartVisual name currentData labels variant theme dims)
@@ -338,9 +339,10 @@ structure MultiSeriesAreaChartResult where
     - `dims`: Chart dimensions
 -/
 def multiSeriesAreaChart (series : Dyn (Array AreaChart.Series))
-    (labels : Array String := #[]) (theme : Theme)
+    (labels : Array String := #[])
     (dims : AreaChart.Dimensions := AreaChart.defaultDimensions)
     : WidgetM MultiSeriesAreaChartResult := do
+  let theme ← getThemeW
   let _ ← dynWidget series fun currentSeries => do
     let name ← registerComponentW "area-chart" (isInteractive := false)
     emit do pure (multiSeriesAreaChartVisual name currentSeries labels theme dims)

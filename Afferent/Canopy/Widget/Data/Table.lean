@@ -177,12 +177,12 @@ def tableVisual (containerName : String) (headerRowName : String)
 /-- Create a reactive table widget.
     - `columns`: Column definitions (headers and optional widths)
     - `rows`: Array of row data (each row is an array of cell strings)
-    - `theme`: Theme for styling
     - `config`: Table configuration
 -/
 def table (columns : Array TableColumn) (rows : Array (Array String))
-    (theme : Theme) (config : TableConfig := Table.defaultConfig)
+    (config : TableConfig := Table.defaultConfig)
     : WidgetM TableResult := do
+  let theme ← getThemeW
   -- Register container name
   let containerName ← registerComponentW "table"
   let headerRowName ← registerComponentW "table-header" (isInteractive := false)

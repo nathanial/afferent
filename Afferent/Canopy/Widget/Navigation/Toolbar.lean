@@ -58,11 +58,11 @@ private def toolbarButtonVisual (name : String) (action : ToolbarAction)
 /-- Create a reactive toolbar component using WidgetM.
     Emits buttons and returns event that fires with action ID on click.
     - `actions`: Array of action definitions
-    - `theme`: Theme for styling
     - `variant`: Toolbar visual variant
 -/
-def toolbar (actions : Array ToolbarAction) (theme : Theme)
+def toolbar (actions : Array ToolbarAction)
     (variant : ToolbarVariant := .filled) : WidgetM ToolbarResult := do
+  let theme ← getThemeW
   let colors := theme.panel
 
   let containerStyle : BoxStyle := match variant with
@@ -129,11 +129,10 @@ def toolbar (actions : Array ToolbarAction) (theme : Theme)
 /-- Create a simple toolbar with just string labels.
     Action IDs are the same as labels.
     - `labels`: Array of button labels
-    - `theme`: Theme for styling
 -/
-def simpleToolbar (labels : Array String) (theme : Theme)
+def simpleToolbar (labels : Array String)
     (variant : ToolbarVariant := .filled) : WidgetM ToolbarResult := do
   let actions := labels.map fun label => { id := label, label := label }
-  toolbar actions theme variant
+  toolbar actions variant
 
 end Afferent.Canopy

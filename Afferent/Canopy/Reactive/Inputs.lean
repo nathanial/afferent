@@ -5,6 +5,7 @@
 import Reactive
 import Std.Data.HashMap
 import Afferent.Canopy.Reactive.Types
+import Afferent.Canopy.Theme
 import Afferent.Text.Measurer
 
 open Reactive Reactive.Host
@@ -101,6 +102,8 @@ structure ReactiveEvents where
   registry : ComponentRegistry
   /-- Font registry for text measurement. -/
   fontRegistry : Afferent.FontRegistry
+  /-- Theme for widget styling. -/
+  theme : Canopy.Theme
 
 private def hoverChangedByName (data : HoverData) (name : String) : Bool :=
   match data.nameMap.get? name with
@@ -144,7 +147,8 @@ def ReactiveEvents.getRegistryStats (events : ReactiveEvents) : IO (Nat × Nat �
 
 /-- Create the reactive input infrastructure.
     Returns both the event streams (for subscriptions) and triggers (for firing). -/
-def createInputs (fontRegistry : Afferent.FontRegistry) : SpiderM (ReactiveEvents × ReactiveInputs) := do
+def createInputs (fontRegistry : Afferent.FontRegistry) (theme : Canopy.Theme := Canopy.Theme.dark)
+    : SpiderM (ReactiveEvents × ReactiveInputs) := do
   let (clickEvent, fireClick) ← newTriggerEvent (t := Spider) (a := ClickData)
   let (mouseUpEvent, fireMouseUp) ← newTriggerEvent (t := Spider) (a := MouseButtonData)
   let (hoverEvent, fireHover) ← newTriggerEvent (t := Spider) (a := HoverData)
@@ -169,6 +173,7 @@ def createInputs (fontRegistry : Afferent.FontRegistry) : SpiderM (ReactiveEvent
     scrollEvent := scrollEvent
     registry := registry
     fontRegistry := fontRegistry
+    theme := theme
   }
   let inputs : ReactiveInputs := {
     fireClick := fireClick

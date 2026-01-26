@@ -358,13 +358,13 @@ partial def collectAllPaths (items : Array MenuItem) (parentPath : MenuPath := #
 /-- Create a reactive menu component using WidgetM.
     The menu appears when clicking the trigger widget.
     - `items`: Array of menu items (can include submenus)
-    - `theme`: Theme for styling
     - `config`: Menu configuration
     - `trigger`: The widget(s) that trigger the menu on click
 -/
-def menu (items : Array MenuItem) (theme : Theme)
+def menu (items : Array MenuItem)
     (config : MenuConfig := Menu.defaultConfig)
     (trigger : WidgetM α) : WidgetM (α × MenuResult) := do
+  let theme ← getThemeW
   let triggerName ← registerComponentW "menu-trigger"
 
   -- Register names for all items and containers recursively

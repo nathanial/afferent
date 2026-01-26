@@ -196,12 +196,12 @@ inductive SplitPaneInputEvent where
 /-- Create a reactive split pane component using WidgetM.
     Emits the split pane widget and returns ratio state.
     - `config`: Split pane configuration
-    - `theme`: Theme for styling
     - `first`: Left/top pane contents
     - `second`: Right/bottom pane contents
 -/
-def splitPane (config : SplitPaneConfig) (theme : Theme)
-    (first : WidgetM α) (second : WidgetM β) : WidgetM ((α × β) × SplitPaneResult) := do
+def splitPane (config : SplitPaneConfig) (first : WidgetM α) (second : WidgetM β)
+    : WidgetM ((α × β) × SplitPaneResult) := do
+  let theme ← getThemeW
   let containerName ← registerComponentW "split-pane" (isInteractive := false)
   let handleName ← registerComponentW "split-pane-handle"
 

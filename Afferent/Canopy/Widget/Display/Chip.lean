@@ -82,14 +82,14 @@ def chipVisual (name : String) (label : String) (theme : Theme)
 
 /-- Create a chip with optional removal.
     - `label`: Text to display in the chip
-    - `theme`: Theme for styling
     - `variant`: Visual variant (filled or outlined)
     - `removable`: Whether to show a remove button
     Returns ChipResult with optional onRemove event.
 -/
-def chip (label : String) (theme : Theme)
+def chip (label : String)
     (variant : ChipVariant := .filled)
     (removable : Bool := false) : WidgetM ChipResult := do
+  let theme ← getThemeW
   let name ← registerComponentW "chip"
 
   if removable then
@@ -106,19 +106,19 @@ def chip (label : String) (theme : Theme)
     pure { onRemove := none }
 
 /-- Create a simple non-removable chip. -/
-def simpleChip (label : String) (theme : Theme)
+def simpleChip (label : String)
     (variant : ChipVariant := .filled) : WidgetM Unit := do
-  let _ ← chip label theme variant false
+  let _ ← chip label variant false
   pure ()
 
 /-- Create a row of chips from labels. -/
-def chipGroup (labels : Array String) (theme : Theme)
+def chipGroup (labels : Array String)
     (variant : ChipVariant := .filled)
     (removable : Bool := false) : WidgetM (Array ChipResult) := do
   row' (gap := 8) (style := {}) do
     let mut results := #[]
     for label in labels do
-      let result ← chip label theme variant removable
+      let result ← chip label variant removable
       results := results.push result
     pure results
 

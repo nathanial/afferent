@@ -326,8 +326,9 @@ structure DonutChartResult where
     - `dims`: Chart dimensions
 -/
 def donutChart (slices : Dyn (Array DonutChart.Slice))
-    (theme : Theme) (dims : DonutChart.Dimensions := DonutChart.defaultDimensions)
+    (dims : DonutChart.Dimensions := DonutChart.defaultDimensions)
     : WidgetM DonutChartResult := do
+  let theme ← getThemeW
   let _ ← dynWidget slices fun currentSlices => do
     let name ← registerComponentW "donut-chart" (isInteractive := false)
     emit do pure (donutChartVisual name currentSlices theme dims)
@@ -341,8 +342,9 @@ def donutChart (slices : Dyn (Array DonutChart.Slice))
     - `dims`: Chart dimensions
 -/
 def donutChartWithLegend (slices : Dyn (Array DonutChart.Slice))
-    (theme : Theme) (dims : DonutChart.Dimensions := DonutChart.defaultDimensions)
+    (dims : DonutChart.Dimensions := DonutChart.defaultDimensions)
     : WidgetM DonutChartResult := do
+  let theme ← getThemeW
   let _ ← dynWidget slices fun currentSlices => do
     let name ← registerComponentW "donut-chart" (isInteractive := false)
     emit do pure (donutChartWithLegendVisual name currentSlices theme dims)

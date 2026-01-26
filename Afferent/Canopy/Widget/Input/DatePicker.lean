@@ -301,12 +301,12 @@ inductive DatePickerInputEvent where
   | hover (cell : Option Nat)
 
 /-- Create a reactive date picker component using WidgetM.
-    - `theme`: Theme for styling
     - `initialDate`: Initial selected date (also sets initial view month)
     - `config`: Optional configuration
 -/
-def datePicker (theme : Theme) (initialDate : DatePickerDate)
-    (config : DatePickerConfig := {}) : WidgetM DatePickerResult := do
+def datePicker (initialDate : DatePickerDate) (config : DatePickerConfig := {})
+    : WidgetM DatePickerResult := do
+  let theme ← getThemeW
   let containerName ← registerComponentW "date-picker" (isInteractive := false)
   let prevName ← registerComponentW "date-picker-prev"
   let nextName ← registerComponentW "date-picker-next"

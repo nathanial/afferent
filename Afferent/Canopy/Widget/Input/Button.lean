@@ -78,11 +78,11 @@ def buttonVisual (name : String) (labelText : String) (theme : Theme)
 /-- Create a reactive button component using WidgetM.
     Emits the button widget and returns the onClick event.
     - `label`: Button text
-    - `theme`: Theme for styling
     - `variant`: Visual variant (primary, secondary, outline, ghost)
 -/
-def button (label : String) (theme : Theme) (variant : ButtonVariant := .primary)
+def button (label : String) (variant : ButtonVariant := .primary)
     : WidgetM (Reactive.Event Spider Unit) := do
+  let theme ← getThemeW
   let name ← registerComponentW "button"
   let isHovered ← useHover name
   let onClick ← useClick name

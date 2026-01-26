@@ -260,11 +260,10 @@ structure ModalResult where
 /-- Create a reactive modal component using WidgetM.
     Emits the modal widget and returns control functions.
     - `title`: Modal title text
-    - `theme`: Theme for styling
     - `content`: Content widget builder
 -/
-def modal (title : String) (theme : Theme) (content : WidgetM Unit)
-    : WidgetM ModalResult := do
+def modal (title : String) (content : WidgetM Unit) : WidgetM ModalResult := do
+  let theme ← getThemeW
   let containerName ← registerComponentW "modal" (isInteractive := false)
   let backdropName ← registerComponentW "modal-backdrop" (isInteractive := false)
   let closeName ← registerComponentW "modal-close"

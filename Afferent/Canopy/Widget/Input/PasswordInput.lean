@@ -107,14 +107,13 @@ inductive PasswordInputEvent where
 
 /-- Create a reactive password input component using WidgetM.
     Emits the password input widget and returns text state.
-    - `theme`: Theme for styling
     - `font`: Font for text measurement (cursor positioning)
     - `placeholder`: Placeholder text when empty
     - `initialValue`: Initial text value
 -/
-def passwordInput (theme : Theme) (font : Afferent.Font)
-    (placeholder : String) (initialValue : String := "")
+def passwordInput (font : Afferent.Font) (placeholder : String) (initialValue : String := "")
     : WidgetM TextInputResult := do
+  let theme ← getThemeW
   let name ← registerComponentW "password-input" (isInput := true)
   let toggleName ← registerComponentW "password-toggle"
   let events ← getEventsW

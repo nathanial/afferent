@@ -27,12 +27,12 @@ def linkVisual (name : String) (linkText : String) (theme : Theme)
 
 /-- Create a clickable link.
     - `linkText`: Link text to display
-    - `theme`: Theme for styling
     - `color`: Override link color (uses primary color by default)
     Returns the click event for handling navigation.
 -/
-def link (linkText : String) (theme : Theme)
-    (color : Option Color := none) : WidgetM (Reactive.Event Spider Unit) := do
+def link (linkText : String) (color : Option Color := none)
+    : WidgetM (Reactive.Event Spider Unit) := do
+  let theme ← getThemeW
   let name ← registerComponentW "link"
   let isHovered ← useHover name
   let onClick ← useClick name
@@ -46,11 +46,12 @@ def link (linkText : String) (theme : Theme)
 /-- Create a link with an icon prefix.
     - `linkText`: Link text to display
     - `icon`: Icon character/emoji to show before text
-    - `theme`: Theme for styling
+    - `color`: Override link color (uses primary color by default)
     Returns the click event for handling navigation.
 -/
-def linkWithIcon (linkText : String) (icon : String) (theme : Theme)
+def linkWithIcon (linkText : String) (icon : String)
     (color : Option Color := none) : WidgetM (Reactive.Event Spider Unit) := do
+  let theme ← getThemeW
   let name ← registerComponentW "link-with-icon"
   let isHovered ← useHover name
   let onClick ← useClick name

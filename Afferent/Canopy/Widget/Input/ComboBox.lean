@@ -340,16 +340,16 @@ private inductive ComboBoxEvent
 
 /-- Create a reactive combo box component using WidgetM.
     - `options`: Array of option strings to filter/select from
-    - `theme`: Theme for styling
     - `font`: Font for text measurement (cursor positioning)
     - `placeholder`: Placeholder text when empty
     - `initialValue`: Initial text value
     - `config`: ComboBox configuration
 -/
-def comboBox (options : Array String) (theme : Theme) (font : Afferent.Font)
+def comboBox (options : Array String) (font : Afferent.Font)
     (placeholder : String := "Type to search...")
     (initialValue : String := "")
     (config : ComboBoxConfig := {}) : WidgetM ComboBoxResult := do
+  let theme ← getThemeW
   let containerName ← registerComponentW "combobox" (isInteractive := false)
   let inputName ← registerComponentW "combobox-input" (isInput := true)
 

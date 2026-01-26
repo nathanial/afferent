@@ -289,9 +289,10 @@ structure BarChartResult where
     - `dims`: Chart dimensions
 -/
 def barChart (data : Dyn (Array Float)) (labels : Array String := #[])
-    (theme : Theme) (variant : BarChartVariant := .primary)
+    (variant : BarChartVariant := .primary)
     (dims : BarChart.Dimensions := BarChart.defaultDimensions)
     : WidgetM BarChartResult := do
+  let theme ← getThemeW
   let _ ← dynWidget data fun currentData => do
     let name ← registerComponentW "bar-chart" (isInteractive := false)
     emit do pure (barChartVisual name currentData labels variant theme dims)
@@ -309,8 +310,9 @@ structure MultiColorBarChartResult where
     - `dims`: Chart dimensions
 -/
 def multiColorBarChart (data : Dyn (Array BarChart.DataPoint))
-    (theme : Theme) (dims : BarChart.Dimensions := BarChart.defaultDimensions)
+    (dims : BarChart.Dimensions := BarChart.defaultDimensions)
     : WidgetM MultiColorBarChartResult := do
+  let theme ← getThemeW
   let _ ← dynWidget data fun currentData => do
     let name ← registerComponentW "bar-chart" (isInteractive := false)
     emit do pure (multiColorBarChartVisual name currentData theme dims)

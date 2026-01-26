@@ -302,9 +302,10 @@ structure HorizontalBarChartResult where
     - `dims`: Chart dimensions
 -/
 def horizontalBarChart (data : Dyn (Array Float)) (labels : Array String := #[])
-    (theme : Theme) (variant : HorizontalBarChartVariant := .primary)
+    (variant : HorizontalBarChartVariant := .primary)
     (dims : HorizontalBarChart.Dimensions := HorizontalBarChart.defaultDimensions)
     : WidgetM HorizontalBarChartResult := do
+  let theme ← getThemeW
   let _ ← dynWidget data fun currentData => do
     let name ← registerComponentW "horizontal-bar-chart" (isInteractive := false)
     emit do pure (horizontalBarChartVisual name currentData labels variant theme dims)
@@ -322,8 +323,9 @@ structure MultiColorHorizontalBarChartResult where
     - `dims`: Chart dimensions
 -/
 def multiColorHorizontalBarChart (data : Dyn (Array HorizontalBarChart.DataPoint))
-    (theme : Theme) (dims : HorizontalBarChart.Dimensions := HorizontalBarChart.defaultDimensions)
+    (dims : HorizontalBarChart.Dimensions := HorizontalBarChart.defaultDimensions)
     : WidgetM MultiColorHorizontalBarChartResult := do
+  let theme ← getThemeW
   let _ ← dynWidget data fun currentData => do
     let name ← registerComponentW "horizontal-bar-chart" (isInteractive := false)
     emit do pure (multiColorHorizontalBarChartVisual name currentData theme dims)

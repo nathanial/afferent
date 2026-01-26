@@ -274,8 +274,9 @@ structure HeatmapResult where
     - `dims`: Chart dimensions
 -/
 def heatmap (data : Dyn Heatmap.Data) (scale : Heatmap.ColorScale := .viridis)
-    (theme : Theme) (dims : Heatmap.Dimensions := Heatmap.defaultDimensions)
+    (dims : Heatmap.Dimensions := Heatmap.defaultDimensions)
     : WidgetM HeatmapResult := do
+  let theme ← getThemeW
   let _ ← dynWidget data fun currentData => do
     let name ← registerComponentW "heatmap" (isInteractive := false)
     emit do pure (heatmapVisual name currentData scale theme dims)
@@ -293,12 +294,12 @@ def heatmap (data : Dyn Heatmap.Data) (scale : Heatmap.ColorScale := .viridis)
 def heatmapFromValues (values : Dyn (Array (Array Float)))
     (rowLabels : Array String := #[]) (columnLabels : Array String := #[])
     (scale : Heatmap.ColorScale := .viridis)
-    (theme : Theme) (dims : Heatmap.Dimensions := Heatmap.defaultDimensions)
+    (dims : Heatmap.Dimensions := Heatmap.defaultDimensions)
     : WidgetM HeatmapResult := do
   let dataDyn ← Dynamic.mapM (fun currentValues =>
     ({ values := currentValues, rowLabels, columnLabels } : Heatmap.Data)
   ) values
-  heatmap dataDyn scale theme dims
+  heatmap dataDyn scale dims
 
 /-- Create a correlation matrix heatmap with dynamic values (uses blue-white-red scale centered at 0).
     - `values`: Dynamic 2D array of correlation values (-1 to 1)
@@ -307,12 +308,12 @@ def heatmapFromValues (values : Dyn (Array (Array Float)))
     - `dims`: Chart dimensions
 -/
 def correlationMatrix (values : Dyn (Array (Array Float))) (labels : Array String := #[])
-    (theme : Theme) (dims : Heatmap.Dimensions := Heatmap.defaultDimensions)
+    (dims : Heatmap.Dimensions := Heatmap.defaultDimensions)
     : WidgetM HeatmapResult := do
   let dataDyn ← Dynamic.mapM (fun currentValues =>
     ({ values := currentValues, rowLabels := labels, columnLabels := labels,
        minValue := some (-1.0), maxValue := some 1.0 } : Heatmap.Data)
   ) values
-  heatmap dataDyn .blueWhiteRed theme dims
+  heatmap dataDyn .blueWhiteRed dims
 
 end Afferent.Canopy

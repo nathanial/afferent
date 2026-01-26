@@ -289,8 +289,9 @@ structure ScatterPlotResult where
     - `dims`: Chart dimensions
 -/
 def scatterPlot (points : Dyn (Array ScatterPlot.DataPoint))
-    (theme : Theme) (dims : ScatterPlot.Dimensions := ScatterPlot.defaultDimensions)
+    (dims : ScatterPlot.Dimensions := ScatterPlot.defaultDimensions)
     : WidgetM ScatterPlotResult := do
+  let theme ← getThemeW
   let _ ← dynWidget points fun currentPoints => do
     let name ← registerComponentW "scatter-plot" (isInteractive := false)
     emit do pure (scatterPlotVisual name currentPoints theme dims)
@@ -308,8 +309,9 @@ structure MultiSeriesScatterPlotResult where
     - `dims`: Chart dimensions
 -/
 def multiSeriesScatterPlot (series : Dyn (Array ScatterPlot.Series))
-    (theme : Theme) (dims : ScatterPlot.Dimensions := ScatterPlot.defaultDimensions)
+    (dims : ScatterPlot.Dimensions := ScatterPlot.defaultDimensions)
     : WidgetM MultiSeriesScatterPlotResult := do
+  let theme ← getThemeW
   let _ ← dynWidget series fun currentSeries => do
     let name ← registerComponentW "scatter-plot" (isInteractive := false)
     emit do pure (multiSeriesScatterPlotVisual name currentSeries theme dims)

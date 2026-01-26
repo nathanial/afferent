@@ -494,8 +494,9 @@ structure BubbleChartResult where
     - `dims`: Chart dimensions
 -/
 def bubbleChart (points : Dyn (Array BubbleChart.DataPoint))
-    (theme : Theme) (dims : BubbleChart.Dimensions := BubbleChart.defaultDimensions)
+    (dims : BubbleChart.Dimensions := BubbleChart.defaultDimensions)
     : WidgetM BubbleChartResult := do
+  let theme ← getThemeW
   let _ ← dynWidget points fun currentPoints => do
     let name ← registerComponentW "bubble-chart" (isInteractive := false)
     emit do pure (bubbleChartVisual name currentPoints theme dims)
@@ -513,8 +514,9 @@ structure MultiSeriesBubbleChartResult where
     - `dims`: Chart dimensions
 -/
 def multiSeriesBubbleChart (series : Dyn (Array BubbleChart.Series))
-    (theme : Theme) (dims : BubbleChart.Dimensions := BubbleChart.defaultDimensions)
+    (dims : BubbleChart.Dimensions := BubbleChart.defaultDimensions)
     : WidgetM MultiSeriesBubbleChartResult := do
+  let theme ← getThemeW
   let _ ← dynWidget series fun currentSeries => do
     let name ← registerComponentW "bubble-chart" (isInteractive := false)
     emit do pure (multiSeriesBubbleChartVisual name currentSeries theme dims)
@@ -528,8 +530,9 @@ def multiSeriesBubbleChart (series : Dyn (Array BubbleChart.Series))
     - `dims`: Chart dimensions
 -/
 def bubbleChartWithLegend (series : Dyn (Array BubbleChart.Series))
-    (theme : Theme) (dims : BubbleChart.Dimensions := BubbleChart.defaultDimensions)
+    (dims : BubbleChart.Dimensions := BubbleChart.defaultDimensions)
     : WidgetM MultiSeriesBubbleChartResult := do
+  let theme ← getThemeW
   let _ ← dynWidget series fun currentSeries => do
     let name ← registerComponentW "bubble-chart" (isInteractive := false)
     emit do pure (bubbleChartWithLegendVisual name currentSeries theme dims)

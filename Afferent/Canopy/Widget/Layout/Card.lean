@@ -185,8 +185,8 @@ open Reactive Reactive.Host
 open Afferent.Canopy.Reactive
 
 /-- Create an elevated card container. -/
-def elevatedCard' (theme : Theme) (padding : Float := 16.0)
-    (children : WidgetM α) : WidgetM α := do
+def elevatedCard' (padding : Float := 16.0) (children : WidgetM α) : WidgetM α := do
+  let theme ← getThemeW
   let (result, childRenders) ← runWidgetChildren children
   emit do
     let widgets ← childRenders.mapM id
@@ -195,8 +195,8 @@ def elevatedCard' (theme : Theme) (padding : Float := 16.0)
   pure result
 
 /-- Create an outlined card container. -/
-def outlinedCard' (theme : Theme) (padding : Float := 16.0)
-    (children : WidgetM α) : WidgetM α := do
+def outlinedCard' (padding : Float := 16.0) (children : WidgetM α) : WidgetM α := do
+  let theme ← getThemeW
   let (result, childRenders) ← runWidgetChildren children
   emit do
     let widgets ← childRenders.mapM id
@@ -205,8 +205,8 @@ def outlinedCard' (theme : Theme) (padding : Float := 16.0)
   pure result
 
 /-- Create a filled card container. -/
-def filledCard' (theme : Theme) (padding : Float := 16.0)
-    (children : WidgetM α) : WidgetM α := do
+def filledCard' (padding : Float := 16.0) (children : WidgetM α) : WidgetM α := do
+  let theme ← getThemeW
   let (result, childRenders) ← runWidgetChildren children
   emit do
     let widgets ← childRenders.mapM id
@@ -216,7 +216,8 @@ def filledCard' (theme : Theme) (padding : Float := 16.0)
 
 /-- Create a card with header. -/
 def cardWithHeader' (title : String) (variant : CardVariant := .elevated)
-    (theme : Theme) (children : WidgetM α) : WidgetM α := do
+    (children : WidgetM α) : WidgetM α := do
+  let theme ← getThemeW
   let (result, childRenders) ← runWidgetChildren children
   emit do
     let widgets ← childRenders.mapM id

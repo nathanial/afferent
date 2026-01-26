@@ -336,12 +336,12 @@ def colorPickerVisual (pickerName svName hueName alphaName : String)
   namedRow pickerName (gap := config.gap) (style := {}) #[pure svSquare, pure rightColumn]
 
 /-- Create a reactive color picker component.
-    - `theme`: Theme for styling
     - `initialColor`: Initial color value
     - `config`: Optional configuration
 -/
-def colorPicker (theme : Theme) (initialColor : Color := Color.red)
-    (config : ColorPickerConfig := {}) : WidgetM ColorPickerResult := do
+def colorPicker (initialColor : Color := Color.red) (config : ColorPickerConfig := {})
+    : WidgetM ColorPickerResult := do
+  let theme ← getThemeW
   -- Register component names
   let pickerName ← registerComponentW "colorpicker"
   let svName ← registerComponentW "colorpicker-sv"

@@ -259,8 +259,9 @@ structure PieChartResult where
     - `dims`: Chart dimensions
 -/
 def pieChart (slices : Dyn (Array PieChart.Slice))
-    (theme : Theme) (dims : PieChart.Dimensions := PieChart.defaultDimensions)
+    (dims : PieChart.Dimensions := PieChart.defaultDimensions)
     : WidgetM PieChartResult := do
+  let theme ← getThemeW
   let _ ← dynWidget slices fun currentSlices => do
     let name ← registerComponentW "pie-chart" (isInteractive := false)
     emit do pure (pieChartVisual name currentSlices theme dims)
@@ -274,8 +275,9 @@ def pieChart (slices : Dyn (Array PieChart.Slice))
     - `dims`: Chart dimensions
 -/
 def pieChartWithLegend (slices : Dyn (Array PieChart.Slice))
-    (theme : Theme) (dims : PieChart.Dimensions := PieChart.defaultDimensions)
+    (dims : PieChart.Dimensions := PieChart.defaultDimensions)
     : WidgetM PieChartResult := do
+  let theme ← getThemeW
   let _ ← dynWidget slices fun currentSlices => do
     let name ← registerComponentW "pie-chart" (isInteractive := false)
     emit do pure (pieChartWithLegendVisual name currentSlices theme dims)

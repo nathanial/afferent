@@ -68,6 +68,11 @@ def getFontRegistry : ReactiveM Afferent.FontRegistry := do
   let events ← getEvents
   pure events.fontRegistry
 
+/-- Get the theme from the implicit context. -/
+def getTheme : ReactiveM Theme := do
+  let events ← getEvents
+  pure events.theme
+
 /-- Register a component and get an auto-generated name.
     This is the preferred way to register components in ReactiveM context. -/
 def registerComponent (namePrefix : String) (isInput : Bool := false)
@@ -253,6 +258,19 @@ instance : MonadHold Spider WidgetM where
 instance : TriggerEvent Spider WidgetM where
   newTriggerEvent := StateT.lift TriggerEvent.newTriggerEvent
   newEventWithTrigger callback := StateT.lift (TriggerEvent.newEventWithTrigger callback)
+
+/-! ## WidgetM Theme Access -/
+
+/-- Get the theme from WidgetM context. -/
+def getThemeW : WidgetM Theme := StateT.lift getTheme
+
+/-- Run a WidgetM computation with a different theme (for subtree overrides). -/
+def withTheme (theme : Theme) (m : WidgetM α) : WidgetM α := do
+  let s ← get
+  let modifyEvents := fun events => { events with theme := theme }
+  let (result, newState) ← StateT.lift (withReader modifyEvents (m.run s))
+  set newState
+  pure result
 
 /-! ## WidgetM Core Helpers -/
 
@@ -554,8 +572,9 @@ def flexColumn' (props : Trellis.FlexContainer) (style : Afferent.Arbor.BoxStyle
   pure result
 
 /-- Create a titled panel container. -/
-def titledPanel' (title : String) (variant : PanelVariant) (theme : Theme)
+def titledPanel' (title : String) (variant : PanelVariant)
     (children : WidgetM α) : WidgetM α := do
+  let theme ← getThemeW
   let (result, childRenders) ← runWidgetChildren children
   emit do
     let widgets ← childRenders.mapM id
@@ -564,8 +583,9 @@ def titledPanel' (title : String) (variant : PanelVariant) (theme : Theme)
   pure result
 
 /-- Create an elevated panel container. -/
-def elevatedPanel' (theme : Theme) (padding : Float := 16)
+def elevatedPanel' (padding : Float := 16)
     (children : WidgetM α) : WidgetM α := do
+  let theme ← getThemeW
   let (result, childRenders) ← runWidgetChildren children
   emit do
     let widgets ← childRenders.mapM id
@@ -574,8 +594,9 @@ def elevatedPanel' (theme : Theme) (padding : Float := 16)
   pure result
 
 /-- Create an outlined panel container. -/
-def outlinedPanel' (theme : Theme) (padding : Float := 16)
+def outlinedPanel' (padding : Float := 16)
     (children : WidgetM α) : WidgetM α := do
+  let theme ← getThemeW
   let (result, childRenders) ← runWidgetChildren children
   emit do
     let widgets ← childRenders.mapM id
@@ -584,8 +605,9 @@ def outlinedPanel' (theme : Theme) (padding : Float := 16)
   pure result
 
 /-- Create a filled panel container. -/
-def filledPanel' (theme : Theme) (padding : Float := 16)
+def filledPanel' (padding : Float := 16)
     (children : WidgetM α) : WidgetM α := do
+  let theme ← getThemeW
   let (result, childRenders) ← runWidgetChildren children
   emit do
     let widgets ← childRenders.mapM id
@@ -599,23 +621,28 @@ These emit visual-only widgets without returning events or dynamics.
 -/
 
 /-- Emit a heading1 label. -/
-def heading1' (text : String) (theme : Theme) : WidgetM Unit := do
+def heading1' (text : String) : WidgetM Unit := do
+  let theme ← getThemeW
   emit (pure (heading1 text theme))
 
 /-- Emit a heading2 label. -/
-def heading2' (text : String) (theme : Theme) : WidgetM Unit := do
+def heading2' (text : String) : WidgetM Unit := do
+  let theme ← getThemeW
   emit (pure (heading2 text theme))
 
 /-- Emit a heading3 label. -/
-def heading3' (text : String) (theme : Theme) : WidgetM Unit := do
+def heading3' (text : String) : WidgetM Unit := do
+  let theme ← getThemeW
   emit (pure (heading3 text theme))
 
 /-- Emit body text. -/
-def bodyText' (text : String) (theme : Theme) : WidgetM Unit := do
+def bodyText' (text : String) : WidgetM Unit := do
+  let theme ← getThemeW
   emit (pure (bodyText text theme))
 
 /-- Emit caption text. -/
-def caption' (text : String) (theme : Theme) : WidgetM Unit := do
+def caption' (text : String) : WidgetM Unit := do
+  let theme ← getThemeW
   emit (pure (caption text theme))
 
 /-- Emit a spacer. -/

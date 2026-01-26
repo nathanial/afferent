@@ -294,12 +294,12 @@ inductive TimePickerInputEvent where
   | toggleAmPm
 
 /-- Create a reactive time picker component using WidgetM.
-    - `theme`: Theme for styling
     - `initialValue`: Initial time value (default: 00:00:00)
     - `config`: Optional configuration
 -/
-def timePicker (theme : Theme) (initialValue : TimeValue := {})
-    (config : TimePickerConfig := {}) : WidgetM TimePickerResult := do
+def timePicker (initialValue : TimeValue := {}) (config : TimePickerConfig := {})
+    : WidgetM TimePickerResult := do
+  let theme ← getThemeW
   let containerName ← registerComponentW "time-picker" (isInteractive := false)
   let hoursUpName ← registerComponentW "time-picker-hours-up"
   let hoursDownName ← registerComponentW "time-picker-hours-down"

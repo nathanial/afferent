@@ -213,12 +213,12 @@ structure PaginationResult where
 
 /-- Create a reactive pagination component using WidgetM.
     - `totalPages`: Total number of pages
-    - `theme`: Theme for styling
     - `initialPage`: Initial page index (0-based)
     - `config`: Optional configuration
 -/
-def pagination (totalPages : Nat) (theme : Theme) (initialPage : Nat := 0)
+def pagination (totalPages : Nat) (initialPage : Nat := 0)
     (config : PaginationConfig := {}) : WidgetM PaginationResult := do
+  let theme ← getThemeW
   if totalPages == 0 then
     -- Empty pagination - no pages to navigate
     let ctx ← SpiderM.getTimelineCtx

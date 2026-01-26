@@ -230,8 +230,9 @@ structure StackedBarChartResult where
     - `dims`: Chart dimensions
 -/
 def stackedBarChart (data : Dyn StackedBarChart.Data)
-    (theme : Theme) (dims : StackedBarChart.Dimensions := StackedBarChart.defaultDimensions)
+    (dims : StackedBarChart.Dimensions := StackedBarChart.defaultDimensions)
     : WidgetM StackedBarChartResult := do
+  let theme ← getThemeW
   let _ ← dynWidget data fun currentData => do
     let name ← registerComponentW "stacked-bar-chart" (isInteractive := false)
     emit do pure (stackedBarChartVisual name currentData theme dims)
@@ -249,7 +250,7 @@ def stackedBarChart (data : Dyn StackedBarChart.Data)
 def stackedBarChartFromArrays (categories : Array String)
     (seriesNames : Array String) (seriesData : Dyn (Array (Array Float)))
     (colors : Array Color := #[])
-    (theme : Theme) (dims : StackedBarChart.Dimensions := StackedBarChart.defaultDimensions)
+    (dims : StackedBarChart.Dimensions := StackedBarChart.defaultDimensions)
     : WidgetM StackedBarChartResult := do
   let dataDyn ← Dynamic.mapM (fun currentSeriesData => Id.run do
     let mut result : Array StackedBarChart.Series := #[]
@@ -260,6 +261,6 @@ def stackedBarChartFromArrays (categories : Array String)
       result := result.push { name, values, color }
     ({ categories, series := result } : StackedBarChart.Data)
   ) seriesData
-  stackedBarChart dataDyn theme dims
+  stackedBarChart dataDyn dims
 
 end Afferent.Canopy

@@ -164,11 +164,11 @@ structure SwitchResult where
 /-- Create a reactive switch component using WidgetM with animation.
     Emits the switch widget and returns toggle state.
     - `label`: Optional label text displayed next to switch
-    - `theme`: Theme for styling
     - `initialOn`: Initial on/off state
 -/
-def switch (label : Option String) (theme : Theme) (initialOn : Bool := false)
+def switch (label : Option String) (initialOn : Bool := false)
     : WidgetM SwitchResult := do
+  let theme ← getThemeW
   let name ← registerComponentW "switch"
   let isHovered ← useHover name
   let clicks ← useClick name

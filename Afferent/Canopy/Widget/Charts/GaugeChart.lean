@@ -266,9 +266,10 @@ structure GaugeChartResult where
     - `dims`: Chart dimensions
 -/
 def gaugeChart (data : Dyn GaugeChart.Data)
-    (theme : Theme) (colors : GaugeChart.ChartColors := GaugeChart.defaultColors)
+    (colors : GaugeChart.ChartColors := GaugeChart.defaultColors)
     (dims : GaugeChart.Dimensions := GaugeChart.defaultDimensions)
     : WidgetM GaugeChartResult := do
+  let theme ← getThemeW
   let _ ← dynWidget data fun currentData => do
     let name ← registerComponentW "gauge-chart" (isInteractive := false)
     emit do pure (gaugeChartVisual name currentData theme colors dims)
@@ -287,11 +288,11 @@ def gaugeChart (data : Dyn GaugeChart.Data)
 def gaugeChartSimple (value : Dyn Float)
     (minValue : Float := 0.0) (maxValue : Float := 100.0)
     (label : Option String := none) (unit : Option String := none)
-    (theme : Theme) (dims : GaugeChart.Dimensions := GaugeChart.defaultDimensions)
+    (dims : GaugeChart.Dimensions := GaugeChart.defaultDimensions)
     : WidgetM GaugeChartResult := do
   let dataDyn ← Dynamic.mapM (fun v =>
     ({ value := v, minValue, maxValue, label, unit } : GaugeChart.Data)
   ) value
-  gaugeChart dataDyn theme GaugeChart.defaultColors dims
+  gaugeChart dataDyn GaugeChart.defaultColors dims
 
 end Afferent.Canopy

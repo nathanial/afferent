@@ -236,8 +236,9 @@ structure GroupedBarChartResult where
     - `dims`: Chart dimensions
 -/
 def groupedBarChart (data : Dyn GroupedBarChart.Data)
-    (theme : Theme) (dims : GroupedBarChart.Dimensions := GroupedBarChart.defaultDimensions)
+    (dims : GroupedBarChart.Dimensions := GroupedBarChart.defaultDimensions)
     : WidgetM GroupedBarChartResult := do
+  let theme ← getThemeW
   let _ ← dynWidget data fun currentData => do
     let name ← registerComponentW "grouped-bar-chart" (isInteractive := false)
     emit do pure (groupedBarChartVisual name currentData theme dims)
@@ -255,7 +256,7 @@ def groupedBarChart (data : Dyn GroupedBarChart.Data)
 def groupedBarChartFromArrays (categories : Array String)
     (seriesNames : Array String) (seriesData : Dyn (Array (Array Float)))
     (colors : Array Color := #[])
-    (theme : Theme) (dims : GroupedBarChart.Dimensions := GroupedBarChart.defaultDimensions)
+    (dims : GroupedBarChart.Dimensions := GroupedBarChart.defaultDimensions)
     : WidgetM GroupedBarChartResult := do
   let dataDyn ← Dynamic.mapM (fun currentSeriesData => Id.run do
     let mut result : Array GroupedBarChart.Series := #[]
@@ -266,6 +267,6 @@ def groupedBarChartFromArrays (categories : Array String)
       result := result.push { name, values, color }
     ({ categories, series := result } : GroupedBarChart.Data)
   ) seriesData
-  groupedBarChart dataDyn theme dims
+  groupedBarChart dataDyn dims
 
 end Afferent.Canopy

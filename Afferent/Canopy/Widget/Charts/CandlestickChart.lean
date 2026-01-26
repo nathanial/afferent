@@ -270,9 +270,10 @@ structure CandlestickChartResult where
     - `dims`: Chart dimensions
 -/
 def candlestickChart (data : Dyn CandlestickChart.Data)
-    (theme : Theme) (colors : CandlestickChart.CandleColors := CandlestickChart.defaultColors)
+    (colors : CandlestickChart.CandleColors := CandlestickChart.defaultColors)
     (dims : CandlestickChart.Dimensions := CandlestickChart.defaultDimensions)
     : WidgetM CandlestickChartResult := do
+  let theme ← getThemeW
   let _ ← dynWidget data fun currentData => do
     let name ← registerComponentW "candlestick-chart" (isInteractive := false)
     emit do pure (candlestickChartVisual name currentData theme colors dims)
@@ -296,7 +297,7 @@ deriving Repr, Inhabited, BEq
 -/
 def candlestickChartFromArrays (ohlc : Dyn OHLCArrays)
     (labels : Array String := #[])
-    (theme : Theme) (colors : CandlestickChart.CandleColors := CandlestickChart.defaultColors)
+    (colors : CandlestickChart.CandleColors := CandlestickChart.defaultColors)
     (dims : CandlestickChart.Dimensions := CandlestickChart.defaultDimensions)
     : WidgetM CandlestickChartResult := do
   let dataDyn ← Dynamic.mapM (fun currentOhlc => Id.run do
@@ -313,6 +314,6 @@ def candlestickChartFromArrays (ohlc : Dyn OHLCArrays)
       }
     ({ candles := result } : CandlestickChart.Data)
   ) ohlc
-  candlestickChart dataDyn theme colors dims
+  candlestickChart dataDyn colors dims
 
 end Afferent.Canopy

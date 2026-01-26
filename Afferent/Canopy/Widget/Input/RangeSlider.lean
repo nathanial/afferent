@@ -131,12 +131,12 @@ inductive RangeSliderInputEvent where
 
 /-- Create a reactive range slider component using WidgetM.
     Emits the range slider widget and returns range state.
-    - `theme`: Theme for styling
     - `initialLow`: Initial low value (0.0-1.0)
     - `initialHigh`: Initial high value (0.0-1.0)
 -/
-def rangeSlider (theme : Theme) (initialLow : Float := 0.25) (initialHigh : Float := 0.75)
+def rangeSlider (initialLow : Float := 0.25) (initialHigh : Float := 0.75)
     : WidgetM RangeSliderResult := do
+  let theme ← getThemeW
   let name ← registerComponentW "range-slider"
   let isHovered ← useHover name
   let allClicks ← useAllClicks

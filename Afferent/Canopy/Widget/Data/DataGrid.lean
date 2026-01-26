@@ -190,13 +190,13 @@ inductive DataGridInputEvent where
 /-- Create a reactive data grid component using WidgetM.
     - `columns`: Column definitions
     - `rows`: Initial row data
-    - `theme`: Theme for styling
     - `font`: Font for cursor measurement
     - `config`: Optional configuration
 -/
 def dataGrid (columns : Array DataGridColumn) (rows : Array (Array String))
-    (theme : Theme) (font : Afferent.Font)
+    (font : Afferent.Font)
     (config : DataGridConfig := {}) : WidgetM DataGridResult := do
+  let theme ← getThemeW
   let gridName ← registerComponentW "datagrid" (isInput := true)
   let events ← getEventsW
   let focusedInput := events.registry.focusedInput

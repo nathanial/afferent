@@ -175,13 +175,13 @@ inductive ScrollInputEvent where
     and supports scrollbar dragging.
 
     - `config`: Scroll container configuration (dimensions, directions)
-    - `theme`: Theme for styling (scrollbar colors)
     - `children`: Child widgets to render inside the scrollable area
 
     Returns a tuple of the children's result and scroll container result.
 -/
-def scrollContainer (config : ScrollContainerConfig) (theme : Theme)
-    (children : WidgetM α) : WidgetM (α × ScrollContainerResult) := do
+def scrollContainer (config : ScrollContainerConfig) (children : WidgetM α)
+    : WidgetM (α × ScrollContainerResult) := do
+  let theme ← getThemeW
   let name ← registerComponentW "scroll-container"
   let scrollEvents ← useScroll name
   let allClicks ← useAllClicks
@@ -303,61 +303,56 @@ def scrollContainer (config : ScrollContainerConfig) (theme : Theme)
 
 /-- Vertical-only scroll container (convenience wrapper).
     - `height`: Viewport height in pixels
-    - `theme`: Theme for styling
     - `children`: Child widgets
 -/
-def vscrollContainer (height : Float) (theme : Theme)
-    (children : WidgetM α) : WidgetM (α × ScrollContainerResult) :=
-  scrollContainer (ScrollContainerConfig.vertical height) theme children
+def vscrollContainer (height : Float) (children : WidgetM α)
+    : WidgetM (α × ScrollContainerResult) :=
+  scrollContainer (ScrollContainerConfig.vertical height) children
 
 /-- Horizontal-only scroll container (convenience wrapper).
     - `width`: Viewport width in pixels
-    - `theme`: Theme for styling
     - `children`: Child widgets
 -/
-def hscrollContainer (width : Float) (theme : Theme)
-    (children : WidgetM α) : WidgetM (α × ScrollContainerResult) :=
-  scrollContainer (ScrollContainerConfig.horizontal width) theme children
+def hscrollContainer (width : Float) (children : WidgetM α)
+    : WidgetM (α × ScrollContainerResult) :=
+  scrollContainer (ScrollContainerConfig.horizontal width) children
 
 /-- ScrollView - a scrollable content area with visible scrollbars.
     This is the enhanced version of vscrollContainer with always-visible scrollbars.
 
     - `width`: Viewport width in pixels
     - `height`: Viewport height in pixels
-    - `theme`: Theme for styling (provides scrollbar colors)
     - `children`: Child widgets to render inside the scrollable area
 
     Returns a tuple of the children's result and scroll container result.
 
     Example:
     ```
-    let (_, scrollResult) ← scrollView 300 200 theme do
+    let (_, scrollResult) ← scrollView 300 200 do
       column' (gap := 4) (style := {}) do
         for i in [1:21] do
-          bodyText' s!"Item {i}" theme
+          bodyText' s!"Item {i}"
         pure ()
     ```
 -/
-def scrollView (width height : Float) (theme : Theme)
-    (children : WidgetM α) : WidgetM (α × ScrollContainerResult) :=
-  scrollContainer { width, height, scrollbarVisibility := .always } theme children
+def scrollView (width height : Float) (children : WidgetM α)
+    : WidgetM (α × ScrollContainerResult) :=
+  scrollContainer { width, height, scrollbarVisibility := .always } children
 
 /-- Vertical scroll view (scrolls only vertically with visible scrollbar).
     - `height`: Viewport height in pixels
-    - `theme`: Theme for styling
     - `children`: Child widgets
 -/
-def vscrollView (height : Float) (theme : Theme)
-    (children : WidgetM α) : WidgetM (α × ScrollContainerResult) :=
-  scrollContainer (ScrollContainerConfig.vertical height) theme children
+def vscrollView (height : Float) (children : WidgetM α)
+    : WidgetM (α × ScrollContainerResult) :=
+  scrollContainer (ScrollContainerConfig.vertical height) children
 
 /-- Horizontal scroll view (scrolls only horizontally with visible scrollbar).
     - `width`: Viewport width in pixels
-    - `theme`: Theme for styling
     - `children`: Child widgets
 -/
-def hscrollView (width : Float) (theme : Theme)
-    (children : WidgetM α) : WidgetM (α × ScrollContainerResult) :=
-  scrollContainer (ScrollContainerConfig.horizontal width) theme children
+def hscrollView (width : Float) (children : WidgetM α)
+    : WidgetM (α × ScrollContainerResult) :=
+  scrollContainer (ScrollContainerConfig.horizontal width) children
 
 end Afferent.Canopy

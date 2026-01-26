@@ -112,7 +112,6 @@ deriving Repr, BEq, Inhabited
     The tooltip appears after a delay when hovering over the target.
 
     - `config`: Tooltip configuration (text, position, delay)
-    - `theme`: Theme for styling
     - `font`: Font for measuring tooltip text width
     - `target`: The widget(s) to wrap with a tooltip
 
@@ -120,13 +119,14 @@ deriving Repr, BEq, Inhabited
 
     Example:
     ```
-    let ((), tooltipResult) ← tooltip { text := "Click to submit" } theme font do
-      let _ ← button "Submit" theme .primary
+    let ((), tooltipResult) ← tooltip { text := "Click to submit" } font do
+      let _ ← button "Submit" .primary
       pure ()
     ```
 -/
-def tooltip (config : TooltipConfig) (theme : Theme) (font : Afferent.Font)
+def tooltip (config : TooltipConfig) (font : Afferent.Font)
     (target : WidgetM α) : WidgetM (α × TooltipResult) := do
+  let theme ← getThemeW
   let name ← registerComponentW "tooltip-target"
 
   -- Run target widget to get its renders
@@ -205,23 +205,23 @@ def tooltip (config : TooltipConfig) (theme : Theme) (font : Afferent.Font)
   pure (result, { isVisible })
 
 /-- Convenience: tooltip above target. -/
-def tooltipTop {α : Type} (text : String) (theme : Theme) (font : Afferent.Font)
+def tooltipTop {α : Type} (text : String) (font : Afferent.Font)
     (delay : Float := 0.3) (target : WidgetM α) : WidgetM (α × TooltipResult) :=
-  tooltip { text, position := .top, delay } theme font target
+  tooltip { text, position := .top, delay } font target
 
 /-- Convenience: tooltip below target. -/
-def tooltipBottom {α : Type} (text : String) (theme : Theme) (font : Afferent.Font)
+def tooltipBottom {α : Type} (text : String) (font : Afferent.Font)
     (delay : Float := 0.3) (target : WidgetM α) : WidgetM (α × TooltipResult) :=
-  tooltip { text, position := .bottom, delay } theme font target
+  tooltip { text, position := .bottom, delay } font target
 
 /-- Convenience: tooltip left of target. -/
-def tooltipLeft {α : Type} (text : String) (theme : Theme) (font : Afferent.Font)
+def tooltipLeft {α : Type} (text : String) (font : Afferent.Font)
     (delay : Float := 0.3) (target : WidgetM α) : WidgetM (α × TooltipResult) :=
-  tooltip { text, position := .left, delay } theme font target
+  tooltip { text, position := .left, delay } font target
 
 /-- Convenience: tooltip right of target. -/
-def tooltipRight {α : Type} (text : String) (theme : Theme) (font : Afferent.Font)
+def tooltipRight {α : Type} (text : String) (font : Afferent.Font)
     (delay : Float := 0.3) (target : WidgetM α) : WidgetM (α × TooltipResult) :=
-  tooltip { text, position := .right, delay } theme font target
+  tooltip { text, position := .right, delay } font target
 
 end Afferent.Canopy

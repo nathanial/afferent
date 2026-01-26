@@ -126,11 +126,11 @@ inductive SliderInputEvent where
 /-- Create a reactive slider component using WidgetM.
     Emits the slider widget and returns value state.
     - `label`: Optional label text displayed next to slider
-    - `theme`: Theme for styling
     - `initialValue`: Initial value (0.0-1.0)
 -/
-def slider (label : Option String) (theme : Theme) (initialValue : Float := 0.5)
+def slider (label : Option String) (initialValue : Float := 0.5)
     : WidgetM SliderResult := do
+  let theme ← getThemeW
   let name ← registerComponentW "slider"
   let isHovered ← useHover name
   let allClicks ← useAllClicks

@@ -398,8 +398,9 @@ structure SankeyDiagramResult where
     - `dims`: Diagram dimensions
 -/
 def sankeyDiagram (data : Dyn SankeyDiagram.Data)
-    (theme : Theme) (dims : SankeyDiagram.Dimensions := SankeyDiagram.defaultDimensions)
+    (dims : SankeyDiagram.Dimensions := SankeyDiagram.defaultDimensions)
     : WidgetM SankeyDiagramResult := do
+  let theme ← getThemeW
   -- Pre-compute layout (cached via Dynamic.mapM - only recomputes if data changes)
   let layoutDyn ← Dynamic.mapM (fun d => SankeyDiagram.computeLayout d dims) data
 

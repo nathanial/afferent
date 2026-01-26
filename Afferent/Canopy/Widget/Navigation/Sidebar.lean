@@ -56,13 +56,13 @@ private def toggleButtonVisual (name : String) (theme : Theme)
 /-- Create a reactive sidebar component.
     Returns the combined result of sidebar and main content, plus sidebar controls.
     - `config`: Sidebar configuration
-    - `theme`: Theme for styling
     - `sidebarContent`: Content for the sidebar (receives collapsed state)
     - `mainContent`: Main content area
 -/
-def sidebar (config : SidebarConfig) (theme : Theme)
+def sidebar (config : SidebarConfig)
     (sidebarContent : Bool → WidgetM α) (mainContent : WidgetM β)
     : WidgetM ((α × β) × SidebarResult) := do
+  let theme ← getThemeW
   let colors := theme.panel
 
   -- Toggle button registration
@@ -111,7 +111,7 @@ def sidebar (config : SidebarConfig) (theme : Theme)
               (style := { padding := Trellis.EdgeInsets.uniform 8 }) do
             emit do pure (toggleButtonVisual toggleName theme collapsed hovered)
 
-          hseparator' theme 1 0
+          hseparator' 1 0
 
         -- Sidebar content
         let sidebarInnerStyle : BoxStyle := {
@@ -123,7 +123,7 @@ def sidebar (config : SidebarConfig) (theme : Theme)
         SpiderM.liftIO (sidebarResultRef.set (some result))
 
       -- Vertical separator
-      vseparator' theme 1 0
+      vseparator' 1 0
 
       -- Main content area
       column' (gap := 0) (style := mainStyle) do
@@ -140,13 +140,12 @@ def sidebar (config : SidebarConfig) (theme : Theme)
 
 /-- Create a simple sidebar with static content.
     - `config`: Sidebar configuration
-    - `theme`: Theme for styling
     - `sidebarContent`: Static sidebar content (ignores collapsed state)
     - `mainContent`: Main content area
 -/
-def simpleSidebar (config : SidebarConfig) (theme : Theme)
+def simpleSidebar (config : SidebarConfig)
     (sidebarContent : WidgetM α) (mainContent : WidgetM β)
     : WidgetM ((α × β) × SidebarResult) := do
-  sidebar config theme (fun _ => sidebarContent) mainContent
+  sidebar config (fun _ => sidebarContent) mainContent
 
 end Afferent.Canopy

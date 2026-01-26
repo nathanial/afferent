@@ -266,11 +266,11 @@ structure DropdownResult where
 /-- Create a reactive dropdown component using WidgetM.
     Emits the dropdown widget and returns selection state.
     - `options`: Array of option strings
-    - `theme`: Theme for styling
     - `initialSelection`: Initial selected index
 -/
-def dropdown (options : Array String) (theme : Theme) (initialSelection : Nat := 0)
+def dropdown (options : Array String) (initialSelection : Nat := 0)
     : WidgetM DropdownResult := do
+  let theme ← getThemeW
   let containerName ← registerComponentW "dropdown" (isInteractive := false)
   let triggerName ← registerComponentW "dropdown-trigger"
 

@@ -313,8 +313,9 @@ structure StackedAreaChartResult where
     - `dims`: Chart dimensions
 -/
 def stackedAreaChart (data : Dyn StackedAreaChart.Data)
-    (theme : Theme) (dims : StackedAreaChart.Dimensions := StackedAreaChart.defaultDimensions)
+    (dims : StackedAreaChart.Dimensions := StackedAreaChart.defaultDimensions)
     : WidgetM StackedAreaChartResult := do
+  let theme ← getThemeW
   -- Use dynWidget to rebuild the chart when data changes
   let _ ← dynWidget data fun currentData => do
     let name ← registerComponentW "stacked-area-chart" (isInteractive := false)
@@ -334,7 +335,7 @@ def stackedAreaChart (data : Dyn StackedAreaChart.Data)
 def stackedAreaChartFromArrays (labels : Array String)
     (seriesNames : Array String) (seriesData : Dyn (Array (Array Float)))
     (colors : Array Color := #[])
-    (theme : Theme) (dims : StackedAreaChart.Dimensions := StackedAreaChart.defaultDimensions)
+    (dims : StackedAreaChart.Dimensions := StackedAreaChart.defaultDimensions)
     : WidgetM StackedAreaChartResult := do
   let dataDyn ← Dynamic.mapM (fun currentSeriesData => Id.run do
     let mut result : Array StackedAreaChart.Series := #[]
@@ -345,6 +346,6 @@ def stackedAreaChartFromArrays (labels : Array String)
       result := result.push { name, values, color }
     ({ labels, series := result } : StackedAreaChart.Data)
   ) seriesData
-  stackedAreaChart dataDyn theme dims
+  stackedAreaChart dataDyn dims
 
 end Afferent.Canopy

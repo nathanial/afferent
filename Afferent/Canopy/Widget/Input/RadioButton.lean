@@ -84,11 +84,11 @@ structure RadioGroupResult where
 /-- Create a reactive radio group component using WidgetM.
     Emits the radio group widget and returns selection state.
     - `options`: Array of radio options (label and value)
-    - `theme`: Theme for styling
     - `initialSelection`: Initial selected value
 -/
-def radioGroup (options : Array RadioOption) (theme : Theme) (initialSelection : String)
+def radioGroup (options : Array RadioOption) (initialSelection : String)
     : WidgetM RadioGroupResult := do
+  let theme ← getThemeW
   let mut optionNames : Array String := #[]
   for _ in options do
     let name ← registerComponentW "radio"

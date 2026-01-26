@@ -189,11 +189,10 @@ structure ToastManagerResult where
 /-- Create a toast manager component using WidgetM.
     Manages a stack of toast notifications with auto-dismiss.
     Emits toast visuals and provides functions to show new toasts.
-    - `theme`: Theme for styling
     - `defaultDuration`: How long toasts are shown (in seconds)
 -/
-def toastManager (theme : Theme) (defaultDuration : Float := 3.0)
-    : WidgetM ToastManagerResult := do
+def toastManager (defaultDuration : Float := 3.0) : WidgetM ToastManagerResult := do
+  let theme ← getThemeW
   let containerName ← registerComponentW "toast-container" (isInteractive := false)
 
   -- Animation frames for timing

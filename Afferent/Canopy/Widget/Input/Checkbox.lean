@@ -97,11 +97,11 @@ def checkboxVisual (name : String) (labelText : String) (theme : Theme)
 /-- Create a reactive checkbox component using WidgetM.
     Emits the checkbox widget and returns toggle state.
     - `label`: Label text displayed next to checkbox
-    - `theme`: Theme for styling
     - `initialChecked`: Initial checked state
 -/
-def checkbox (label : String) (theme : Theme) (initialChecked : Bool := false)
+def checkbox (label : String) (initialChecked : Bool := false)
     : WidgetM CheckboxResult := do
+  let theme ← getThemeW
   let name ← registerComponentW "checkbox"
   let isHovered ← useHover name
   let clicks ← useClick name

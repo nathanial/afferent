@@ -226,7 +226,7 @@ nested WidgetM combinators like column' inside vscrollContainer.
 test "runWidgetChildren collects emitted children" := do
   -- Run in Spider context
   let result ← runSpider do
-    let (events, _) ← createInputs FontRegistry.empty
+    let (events, _) ← createInputs FontRegistry.empty testTheme
     let ((_, childRenders), _) ← (runWidgetChildren do
       emit (pure (text' "Item 1" testFont))
       emit (pure (text' "Item 2" testFont))
@@ -238,7 +238,7 @@ test "runWidgetChildren collects emitted children" := do
 
 test "runWidgetChildren collects children from for loop" := do
   let result ← runSpider do
-    let (events, _) ← createInputs FontRegistry.empty
+    let (events, _) ← createInputs FontRegistry.empty testTheme
     let ((_, childRenders), _) ← (runWidgetChildren do
       for i in [1:11] do
         emit (pure (text' s!"Item {i}" testFont))
@@ -249,7 +249,7 @@ test "runWidgetChildren collects children from for loop" := do
 
 test "column' collects children and emits single render" := do
   let result ← runSpider do
-    let (events, _) ← createInputs FontRegistry.empty
+    let (events, _) ← createInputs FontRegistry.empty testTheme
     let (_, state) ← (do
       column' (gap := 4) (style := {}) do
         emit (pure (text' "Item 1" testFont))
@@ -263,7 +263,7 @@ test "column' collects children and emits single render" := do
 
 test "column' render produces widget with correct child count" := do
   let result ← runSpider do
-    let (events, _) ← createInputs FontRegistry.empty
+    let (events, _) ← createInputs FontRegistry.empty testTheme
     let (_, state) ← (do
       column' (gap := 4) (style := {}) do
         emit (pure (text' "Item 1" testFont))
@@ -281,7 +281,7 @@ test "column' render produces widget with correct child count" := do
 
 test "nested column' in runWidgetChildren preserves children" := do
   let result ← runSpider do
-    let (events, _) ← createInputs FontRegistry.empty
+    let (events, _) ← createInputs FontRegistry.empty testTheme
     -- Simulate what scrollContainer does
     let ((_, outerChildRenders), _) ← (runWidgetChildren do
       column' (gap := 4) (style := {}) do
@@ -301,7 +301,7 @@ test "nested column' in runWidgetChildren preserves children" := do
 test "scroll container child collection - simulated" := do
   -- This simulates exactly what scrollContainer does
   let result ← runSpider do
-    let (events, _) ← createInputs FontRegistry.empty
+    let (events, _) ← createInputs FontRegistry.empty testTheme
     -- Step 1: runWidgetChildren on the children (a column' with items)
     let ((_, childRenders), _) ← (runWidgetChildren do
       column' (gap := 4) (style := {}) do
@@ -632,7 +632,7 @@ def mkScrollLayout (widgetId : WidgetId) (x y width height : Float) : LayoutResu
 
 test "FRP: scrollContainer responds to scroll wheel events" := do
   let result ← runSpider do
-    let (events, inputs) ← createInputs FontRegistry.empty
+    let (events, inputs) ← createInputs FontRegistry.empty testTheme
     let config : ScrollContainerConfig := {
       width := 300
       height := 200
@@ -641,7 +641,7 @@ test "FRP: scrollContainer responds to scroll wheel events" := do
 
     -- Run scrollContainer to set up FRP network
     let ((_, scrollResult), _) ← (do
-      scrollContainer config testTheme do
+      scrollContainer config do
         emit (pure (text' "Item 1" testFont))
         emit (pure (text' "Item 2" testFont))
         pure ()
@@ -680,7 +680,7 @@ test "FRP: scrollContainer responds to scroll wheel events" := do
 
 test "FRP: click events are received by scrollContainer" := do
   let result ← runSpider do
-    let (events, inputs) ← createInputs FontRegistry.empty
+    let (events, inputs) ← createInputs FontRegistry.empty testTheme
 
     -- Track if click event was received
     let clickReceivedRef ← SpiderM.liftIO (IO.mkRef false)
@@ -700,7 +700,7 @@ test "FRP: click events are received by scrollContainer" := do
 
 test "FRP: hover events are received by scrollContainer" := do
   let result ← runSpider do
-    let (events, inputs) ← createInputs FontRegistry.empty
+    let (events, inputs) ← createInputs FontRegistry.empty testTheme
 
     -- Track if hover event was received
     let hoverReceivedRef ← SpiderM.liftIO (IO.mkRef false)
@@ -720,7 +720,7 @@ test "FRP: hover events are received by scrollContainer" := do
 
 test "FRP: mouseUp events are received" := do
   let result ← runSpider do
-    let (events, inputs) ← createInputs FontRegistry.empty
+    let (events, inputs) ← createInputs FontRegistry.empty testTheme
 
     -- Track if mouseUp event was received
     let mouseUpReceivedRef ← SpiderM.liftIO (IO.mkRef false)

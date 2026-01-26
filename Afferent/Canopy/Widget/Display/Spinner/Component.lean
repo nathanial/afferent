@@ -83,10 +83,10 @@ private def floatMod (x y : Float) : Float :=
 
 /-- Create a spinner component using WidgetM.
     Emits an animated spinner that cycles continuously.
-    - `theme`: Theme for styling
     - `config`: Spinner configuration (variant, color, speed, dimensions)
 -/
-def spinner (theme : Theme) (config : Spinner.Config := {}) : WidgetM Unit := do
+def spinner (config : Spinner.Config := {}) : WidgetM Unit := do
+  let theme ← getThemeW
   let name ← registerComponentW "spinner" (isInteractive := false)
 
   -- Generate a random time offset so multiple spinners don't animate in sync
@@ -111,18 +111,15 @@ def spinner (theme : Theme) (config : Spinner.Config := {}) : WidgetM Unit := do
     emit do pure (spinnerVisual name animTime config theme)
 
 /-- Convenience function: Create a default ring spinner. -/
-def spinnerRing (theme : Theme) (color : Option Color := none)
-    (size : Float := 40.0) : WidgetM Unit :=
-  spinner theme { variant := .ring, color, dims := { size } }
+def spinnerRing (color : Option Color := none) (size : Float := 40.0) : WidgetM Unit :=
+  spinner { variant := .ring, color, dims := { size } }
 
 /-- Convenience function: Create a circle dots spinner. -/
-def spinnerCircleDots (theme : Theme) (color : Option Color := none)
-    (size : Float := 40.0) : WidgetM Unit :=
-  spinner theme { variant := .circleDots, color, dims := { size } }
+def spinnerCircleDots (color : Option Color := none) (size : Float := 40.0) : WidgetM Unit :=
+  spinner { variant := .circleDots, color, dims := { size } }
 
 /-- Convenience function: Create a bouncing dots spinner. -/
-def spinnerBouncingDots (theme : Theme) (color : Option Color := none)
-    (size : Float := 40.0) : WidgetM Unit :=
-  spinner theme { variant := .bouncingDots, color, dims := { size } }
+def spinnerBouncingDots (color : Option Color := none) (size : Float := 40.0) : WidgetM Unit :=
+  spinner { variant := .bouncingDots, color, dims := { size } }
 
 end Afferent.Canopy

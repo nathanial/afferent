@@ -187,16 +187,15 @@ structure ProgressBarResult where
 
 /-- Create a determinate progress bar component using WidgetM.
     Displays a static progress value.
-    - `theme`: Theme for styling
     - `initialValue`: Initial progress value (0.0 to 1.0)
     - `variant`: Color variant
     - `label`: Optional label text
     - `showPercentage`: Whether to show percentage text
 -/
-def progressBar (theme : Theme) (initialValue : Float := 0.0)
-    (variant : ProgressVariant := .primary)
+def progressBar (initialValue : Float := 0.0) (variant : ProgressVariant := .primary)
     (label : Option String := none) (showPercentage : Bool := false)
     : WidgetM ProgressBarResult := do
+  let theme ← getThemeW
   let name ← registerComponentW "progress-bar" (isInteractive := false)
 
   -- Create a constant dynamic
@@ -209,14 +208,12 @@ def progressBar (theme : Theme) (initialValue : Float := 0.0)
 
 /-- Create an indeterminate progress bar component using WidgetM.
     Emits an animated progress bar that cycles continuously.
-    - `theme`: Theme for styling
     - `variant`: Color variant
     - `label`: Optional label text
 -/
-def progressBarIndeterminate (theme : Theme)
-    (variant : ProgressVariant := .primary)
-    (label : Option String := none)
-    : WidgetM Unit := do
+def progressBarIndeterminate (variant : ProgressVariant := .primary)
+    (label : Option String := none) : WidgetM Unit := do
+  let theme ← getThemeW
   let name ← registerComponentW "progress-bar-indeterminate" (isInteractive := false)
 
   -- Use shared elapsed time (all widgets share ONE Dynamic, no per-widget foldDyn)
@@ -231,18 +228,17 @@ def progressBarIndeterminate (theme : Theme)
 
 /-- Create a progress bar that updates based on an external event stream.
     Useful for showing download progress, file processing, etc.
-    - `theme`: Theme for styling
     - `valueUpdates`: Event stream of progress values
     - `initialValue`: Initial progress value
     - `variant`: Color variant
     - `label`: Optional label text
     - `showPercentage`: Whether to show percentage text
 -/
-def progressBarWithEvents (theme : Theme) (valueUpdates : Reactive.Event Spider Float)
-    (initialValue : Float := 0.0)
-    (variant : ProgressVariant := .primary)
+def progressBarWithEvents (valueUpdates : Reactive.Event Spider Float)
+    (initialValue : Float := 0.0) (variant : ProgressVariant := .primary)
     (label : Option String := none) (showPercentage : Bool := true)
     : WidgetM ProgressBarResult := do
+  let theme ← getThemeW
   let name ← registerComponentW "progress-bar" (isInteractive := false)
 
   let value ← Reactive.holdDyn initialValue valueUpdates

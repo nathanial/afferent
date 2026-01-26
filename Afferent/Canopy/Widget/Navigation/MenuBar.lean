@@ -134,11 +134,11 @@ def menuBarVisual (triggerNames : Array String)
 
 /-- Create a reactive menu bar widget.
     - `menus`: Array of menu configurations
-    - `theme`: Theme for styling
     - `config`: Menu bar configuration
 -/
-def menuBar (menus : Array MenuBarMenu) (theme : Theme)
+def menuBar (menus : Array MenuBarMenu)
     (config : MenuBarConfig := MenuBar.defaultConfig) : WidgetM MenuBarResult := do
+  let theme ← getThemeW
   -- Register trigger names
   let mut triggerNames : Array String := #[]
   for i in [:menus.size] do
