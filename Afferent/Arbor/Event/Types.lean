@@ -188,7 +188,32 @@ def fromKeyCode (code : UInt16) : Key :=
   | 26  => .char '7'
   | 28  => .char '8'
   | 25  => .char '9'
+  -- Punctuation keys (US keyboard layout)
+  | 27  => .char '-'   -- minus/underscore
+  | 24  => .char '='   -- equals/plus
+  | 33  => .char '['   -- left bracket/brace
+  | 30  => .char ']'   -- right bracket/brace
+  | 42  => .char '\\'  -- backslash/pipe
+  | 41  => .char ';'   -- semicolon/colon
+  | 39  => .char '\''  -- quote/double-quote
+  | 43  => .char ','   -- comma/less-than
+  | 47  => .char '.'   -- period/greater-than
+  | 44  => .char '/'   -- slash/question
+  | 50  => .char '`'   -- backtick/tilde
   | _ => .unknown code
+
+/-- Map a character to its shifted variant (US keyboard layout). -/
+def shiftChar (c : Char) : Char :=
+  match c with
+  -- Numbers to symbols
+  | '1' => '!' | '2' => '@' | '3' => '#' | '4' => '$' | '5' => '%'
+  | '6' => '^' | '7' => '&' | '8' => '*' | '9' => '(' | '0' => ')'
+  -- Punctuation to shifted symbols
+  | '-' => '_' | '=' => '+' | '[' => '{' | ']' => '}'
+  | '\\' => '|' | ';' => ':' | '\'' => '"'
+  | ',' => '<' | '.' => '>' | '/' => '?' | '`' => '~'
+  -- Letters use toUpper
+  | c => c.toUpper
 
 end Key
 

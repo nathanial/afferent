@@ -119,6 +119,79 @@ test "handleKeyPress space key inserts space" := do
   let result := TextInput.handleKeyPress event state none
   ensure (result.value == "hi ") s!"Expected 'hi ', got '{result.value}'"
 
+/-! ## handleKeyPress Punctuation and Symbols -/
+
+test "handleKeyPress inserts comma" := do
+  let state : TextInputState := { value := "hi", cursor := 2 }
+  let event : KeyEvent := { key := .char ',', modifiers := {} }
+  let result := TextInput.handleKeyPress event state none
+  ensure (result.value == "hi,") s!"Expected 'hi,', got '{result.value}'"
+
+test "handleKeyPress shift+comma inserts less-than" := do
+  let state : TextInputState := { value := "a", cursor := 1 }
+  let event : KeyEvent := { key := .char ',', modifiers := { shift := true } }
+  let result := TextInput.handleKeyPress event state none
+  ensure (result.value == "a<") s!"Expected 'a<', got '{result.value}'"
+
+test "handleKeyPress inserts period" := do
+  let state : TextInputState := { value := "hi", cursor := 2 }
+  let event : KeyEvent := { key := .char '.', modifiers := {} }
+  let result := TextInput.handleKeyPress event state none
+  ensure (result.value == "hi.") s!"Expected 'hi.', got '{result.value}'"
+
+test "handleKeyPress shift+period inserts greater-than" := do
+  let state : TextInputState := { value := "a", cursor := 1 }
+  let event : KeyEvent := { key := .char '.', modifiers := { shift := true } }
+  let result := TextInput.handleKeyPress event state none
+  ensure (result.value == "a>") s!"Expected 'a>', got '{result.value}'"
+
+test "handleKeyPress inserts brackets" := do
+  let state : TextInputState := { value := "", cursor := 0 }
+  let event1 : KeyEvent := { key := .char '[', modifiers := {} }
+  let event2 : KeyEvent := { key := .char ']', modifiers := {} }
+  let result1 := TextInput.handleKeyPress event1 state none
+  let result2 := TextInput.handleKeyPress event2 result1 none
+  ensure (result2.value == "[]") s!"Expected '[]', got '{result2.value}'"
+
+test "handleKeyPress shift+brackets inserts braces" := do
+  let state : TextInputState := { value := "", cursor := 0 }
+  let event1 : KeyEvent := { key := .char '[', modifiers := { shift := true } }
+  let event2 : KeyEvent := { key := .char ']', modifiers := { shift := true } }
+  let result1 := TextInput.handleKeyPress event1 state none
+  let result2 := TextInput.handleKeyPress event2 result1 none
+  let expected := "{" ++ "}"
+  ensure (result2.value == expected) s!"Expected braces, got '{result2.value}'"
+
+test "handleKeyPress shift+3 inserts hash" := do
+  let state : TextInputState := { value := "", cursor := 0 }
+  let event : KeyEvent := { key := .char '3', modifiers := { shift := true } }
+  let result := TextInput.handleKeyPress event state none
+  ensure (result.value == "#") s!"Expected '#', got '{result.value}'"
+
+test "handleKeyPress shift+1 inserts exclamation" := do
+  let state : TextInputState := { value := "hi", cursor := 2 }
+  let event : KeyEvent := { key := .char '1', modifiers := { shift := true } }
+  let result := TextInput.handleKeyPress event state none
+  ensure (result.value == "hi!") s!"Expected 'hi!', got '{result.value}'"
+
+test "handleKeyPress inserts semicolon and colon" := do
+  let state : TextInputState := { value := "", cursor := 0 }
+  let event1 : KeyEvent := { key := .char ';', modifiers := {} }
+  let result1 := TextInput.handleKeyPress event1 state none
+  ensure (result1.value == ";") s!"Expected ';', got '{result1.value}'"
+  let event2 : KeyEvent := { key := .char ';', modifiers := { shift := true } }
+  let result2 := TextInput.handleKeyPress event2 result1 none
+  ensure (result2.value == ";:") s!"Expected ';:', got '{result2.value}'"
+
+test "handleKeyPress inserts minus and underscore" := do
+  let state : TextInputState := { value := "a", cursor := 1 }
+  let event1 : KeyEvent := { key := .char '-', modifiers := {} }
+  let result1 := TextInput.handleKeyPress event1 state none
+  ensure (result1.value == "a-") s!"Expected 'a-', got '{result1.value}'"
+  let event2 : KeyEvent := { key := .char '-', modifiers := { shift := true } }
+  let result2 := TextInput.handleKeyPress event2 result1 none
+  ensure (result2.value == "a-_") s!"Expected 'a-_', got '{result2.value}'"
+
 /-! ## handleKeyPress Delete Keys -/
 
 test "handleKeyPress backspace deletes backward" := do
