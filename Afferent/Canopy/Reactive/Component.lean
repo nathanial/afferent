@@ -73,6 +73,15 @@ def getTheme : ReactiveM Theme := do
   let events ← getEvents
   pure events.theme
 
+/-- Get the default font from the implicit context.
+    Throws an error if font was not provided to createInputs. -/
+def getFont : ReactiveM Afferent.Font := do
+  let events ← getEvents
+  match events.font with
+  | some f => pure f
+  | none => SpiderM.liftIO (IO.throwServerError
+      "Font not provided in ReactiveEvents. Pass a font to createInputs.")
+
 /-- Register a component and get an auto-generated name.
     This is the preferred way to register components in ReactiveM context. -/
 def registerComponent (namePrefix : String) (isInput : Bool := false)
@@ -259,10 +268,14 @@ instance : TriggerEvent Spider WidgetM where
   newTriggerEvent := StateT.lift TriggerEvent.newTriggerEvent
   newEventWithTrigger callback := StateT.lift (TriggerEvent.newEventWithTrigger callback)
 
-/-! ## WidgetM Theme Access -/
+/-! ## WidgetM Theme and Font Access -/
 
 /-- Get the theme from WidgetM context. -/
 def getThemeW : WidgetM Theme := StateT.lift getTheme
+
+/-- Get the default font from WidgetM context.
+    Throws if font was not provided to createInputs. -/
+def getFontW : WidgetM Afferent.Font := StateT.lift getFont
 
 /-- Run a WidgetM computation with a different theme (for subtree overrides). -/
 def withTheme (theme : Theme) (m : WidgetM α) : WidgetM α := do

@@ -195,13 +195,14 @@ private inductive SearchInputEvent
   | clear
 
 /-- Create a reactive search input component using WidgetM.
-    - `font`: Font for text measurement
+    Uses the default font from WidgetM context (set via createInputs).
     - `placeholder`: Placeholder text when empty
     - `initialValue`: Initial text value
 -/
-def searchInput (font : Afferent.Font) (placeholder : String := "Search...")
-    (initialValue : String := "") : WidgetM SearchInputResult := do
+def searchInput (placeholder : String := "Search...") (initialValue : String := "")
+    : WidgetM SearchInputResult := do
   let theme ← getThemeW
+  let font ← getFontW
   let name ← registerComponentW "search-input" (isInput := true)
   let clearName ← registerComponentW "search-clear"
   let events ← getEventsW

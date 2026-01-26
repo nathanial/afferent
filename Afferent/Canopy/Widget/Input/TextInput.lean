@@ -190,13 +190,13 @@ structure TextInputResult where
 
 /-- Create a reactive text input component using WidgetM.
     Emits the text input widget and returns text state.
-    - `font`: Font for text measurement (cursor positioning)
+    Uses the default font from WidgetM context (set via createInputs).
     - `placeholder`: Placeholder text when empty
     - `initialValue`: Initial text value
 -/
-def textInput (font : Afferent.Font) (placeholder : String) (initialValue : String := "")
-    : WidgetM TextInputResult := do
+def textInput (placeholder : String) (initialValue : String := "") : WidgetM TextInputResult := do
   let theme ← getThemeW
+  let font ← getFontW
   let name ← registerComponentW "text-input" (isInput := true)
   let events ← getEventsW
   let focusedInput := events.registry.focusedInput

@@ -506,18 +506,18 @@ def ChatInputConfig.default : ChatInputConfig := {}
 
     Combines a text input with a send button. Submits on Enter key press
     or Send button click. Clears the input after submission.
+    Uses the default font from WidgetM context (set via createInputs).
 
-    - `font`: Font for text input
     - `config`: Configuration
     - `isLoading`: Dynamic indicating if a request is in progress (disables input) -/
-def chatInput (font : Afferent.Font) (config : ChatInputConfig)
+def chatInput (config : ChatInputConfig)
     (isLoading : Reactive.Dynamic Spider Bool) : WidgetM ChatInputResult := do
   -- Create the text input wrapped in a growing container so it fills available width
   let inputResult ← column' (gap := 0) (style := {
     flexItem := some (Trellis.FlexItem.growing 1)
     width := .percent 1.0
   }) do
-    textInput font config.placeholder ""
+    textInput config.placeholder ""
 
   -- Get keyboard events for Enter key detection
   let keyEvents ← useKeyboard
@@ -568,15 +568,14 @@ def chatInput (font : Afferent.Font) (config : ChatInputConfig)
 
 /-- Simpler chat input visual wrapper that just places input and button in a row.
     Use this for custom input handling. -/
-def chatInputRow (font : Afferent.Font) (config : ChatInputConfig)
-    : WidgetM TextInputResult := do
+def chatInputRow (config : ChatInputConfig) : WidgetM TextInputResult := do
   row' (gap := config.gap) (style := { width := .percent 1.0 }) do
     -- Text input takes up remaining space with growing flex item
     let inputResult ← column' (gap := 0) (style := {
       flexItem := some (Trellis.FlexItem.growing 1)
       width := .percent 1.0
     }) do
-      textInput font config.placeholder ""
+      textInput config.placeholder ""
 
     -- Send button
     let _ ← button config.sendButtonLabel .primary
@@ -632,14 +631,13 @@ def stateFromConversation : Oracle.Reactive.ConversationState → ChatWidgetStat
     - Text input with send button
     - Streaming response display
     - Cancel support via Escape key
+    Uses the default font from WidgetM context (set via createInputs).
 
     - `client`: ReactiveClient for API calls
-    - `font`: Font for text rendering
     - `config`: Widget configuration
     - `systemPrompt`: Optional system prompt for the conversation -/
-def chatWidget (client : ReactiveClient) (font : Afferent.Font)
-    (config : ChatWidgetConfig := {}) (systemPrompt : Option String := none)
-    : WidgetM ChatWidgetResult := do
+def chatWidget (client : ReactiveClient) (config : ChatWidgetConfig := {})
+    (systemPrompt : Option String := none) : WidgetM ChatWidgetResult := do
   let theme ← getThemeW
   -- Create the conversation manager
   let effectiveSystemPrompt := systemPrompt.orElse (fun _ => config.systemPrompt)
@@ -724,7 +722,7 @@ def chatWidget (client : ReactiveClient) (font : Afferent.Font)
       backgroundColor := some theme.panel.background
     }) do
       -- Create the chat input
-      let inputResult ← chatInput font inputConfig isLoading
+      let inputResult ← chatInput inputConfig isLoading
 
       -- Wire up submit to send message
       let sendAction ← Event.mapM
@@ -742,10 +740,10 @@ def chatWidget (client : ReactiveClient) (font : Afferent.Font)
 
 /-- Simpler chat widget that just takes an API key.
     Creates a ReactiveClient internally. -/
-def chatWidgetWithApiKey (apiKey : String) (model : String := "anthropic/claude-sonnet-4")
-    (font : Afferent.Font) (config : ChatWidgetConfig := {}) (systemPrompt : Option String := none)
+def chatWidgetWithApiKey (apiKey : String) (model : String := Oracle.Models.geminiFlash)
+    (config : ChatWidgetConfig := {}) (systemPrompt : Option String := none)
     : WidgetM ChatWidgetResult := do
   let client := ReactiveClient.withModel apiKey model
-  chatWidget client font config systemPrompt
+  chatWidget client config systemPrompt
 
 end Afferent.Canopy.Chat

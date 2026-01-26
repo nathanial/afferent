@@ -339,17 +339,16 @@ private inductive ComboBoxEvent
   | setHover (idx : Option Nat)
 
 /-- Create a reactive combo box component using WidgetM.
+    Uses the default font from WidgetM context (set via createInputs).
     - `options`: Array of option strings to filter/select from
-    - `font`: Font for text measurement (cursor positioning)
     - `placeholder`: Placeholder text when empty
     - `initialValue`: Initial text value
     - `config`: ComboBox configuration
 -/
-def comboBox (options : Array String) (font : Afferent.Font)
-    (placeholder : String := "Type to search...")
-    (initialValue : String := "")
-    (config : ComboBoxConfig := {}) : WidgetM ComboBoxResult := do
+def comboBox (options : Array String) (placeholder : String := "Type to search...")
+    (initialValue : String := "") (config : ComboBoxConfig := {}) : WidgetM ComboBoxResult := do
   let theme ← getThemeW
+  let font ← getFontW
   let containerName ← registerComponentW "combobox" (isInteractive := false)
   let inputName ← registerComponentW "combobox-input" (isInput := true)
 

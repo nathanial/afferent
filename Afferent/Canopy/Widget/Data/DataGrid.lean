@@ -188,15 +188,15 @@ inductive DataGridInputEvent where
   | key (data : KeyData)
 
 /-- Create a reactive data grid component using WidgetM.
+    Uses the default font from WidgetM context (set via createInputs).
     - `columns`: Column definitions
     - `rows`: Initial row data
-    - `font`: Font for cursor measurement
     - `config`: Optional configuration
 -/
 def dataGrid (columns : Array DataGridColumn) (rows : Array (Array String))
-    (font : Afferent.Font)
     (config : DataGridConfig := {}) : WidgetM DataGridResult := do
   let theme ← getThemeW
+  let font ← getFontW
   let gridName ← registerComponentW "datagrid" (isInput := true)
   let events ← getEventsW
   let focusedInput := events.registry.focusedInput
