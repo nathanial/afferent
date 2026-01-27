@@ -32,32 +32,29 @@ private def snapTextPosition (x y : Float) (transform : Transform) : (Float × F
 def executeCommand (reg : FontRegistry) (cmd : Afferent.Arbor.RenderCommand) : CanvasM Unit := do
   match cmd with
   | .fillRect rect color cornerRadius =>
-    let afferentRect := toAfferentRect rect
     if cornerRadius > 0 then
-      CanvasM.setFillColor (toAfferentColor color)
-      CanvasM.fillRoundedRect afferentRect cornerRadius
+      CanvasM.setFillColor color
+      CanvasM.fillRoundedRect rect cornerRadius
     else
-      CanvasM.setFillColor (toAfferentColor color)
-      CanvasM.fillRect afferentRect
+      CanvasM.setFillColor color
+      CanvasM.fillRect rect
 
   | .fillRectStyle rect style cornerRadius =>
-    let afferentRect := toAfferentRect rect
     CanvasM.save
     CanvasM.setFillStyle style
     if cornerRadius > 0 then
-      CanvasM.fillRoundedRect afferentRect cornerRadius
+      CanvasM.fillRoundedRect rect cornerRadius
     else
-      CanvasM.fillRect afferentRect
+      CanvasM.fillRect rect
     CanvasM.restore
 
   | .strokeRect rect color lineWidth cornerRadius =>
-    let afferentRect := toAfferentRect rect
-    CanvasM.setStrokeColor (toAfferentColor color)
+    CanvasM.setStrokeColor color
     CanvasM.setLineWidth lineWidth
     if cornerRadius > 0 then
-      CanvasM.strokeRoundedRect afferentRect cornerRadius
+      CanvasM.strokeRoundedRect rect cornerRadius
     else
-      CanvasM.strokeRect afferentRect
+      CanvasM.strokeRect rect
 
   | .fillCircle center radius color =>
     -- Draw a single filled circle via the batch function
@@ -69,8 +66,8 @@ def executeCommand (reg : FontRegistry) (cmd : Afferent.Arbor.RenderCommand) : C
   | .strokeCircle center radius color lineWidth =>
     -- Draw a stroked circle using path (no stroked circle batch yet)
     let twoPi := 6.283185307179586  -- 2 * pi
-    let path := Afferent.Path.empty.arc ⟨center.x, center.y⟩ radius 0 twoPi false
-    CanvasM.setStrokeColor (toAfferentColor color)
+    let path := Path.empty.arc center radius 0 twoPi false
+    CanvasM.setStrokeColor color
     CanvasM.setLineWidth lineWidth
     CanvasM.strokePath path
 
@@ -117,7 +114,7 @@ def executeCommand (reg : FontRegistry) (cmd : Afferent.Arbor.RenderCommand) : C
     | some font =>
       let canvas ← CanvasM.getCanvas
       let (sx, sy) := snapTextPosition x y canvas.state.transform
-      CanvasM.fillTextColor text ⟨sx, sy⟩ font (toAfferentColor color)
+      CanvasM.fillTextColor text ⟨sx, sy⟩ font color
     | none =>
       -- Font not found, skip rendering
       pure ()
@@ -137,14 +134,14 @@ def executeCommand (reg : FontRegistry) (cmd : Afferent.Arbor.RenderCommand) : C
         | .bottom => rect.origin.y + rect.size.height - font.descender
       let canvas ← CanvasM.getCanvas
       let (sx, sy) := snapTextPosition x y canvas.state.transform
-      CanvasM.fillTextColor text ⟨sx, sy⟩ font (toAfferentColor color)
+      CanvasM.fillTextColor text ⟨sx, sy⟩ font color
     | none =>
       pure ()
 
   | .fillPolygon points color =>
     if points.size >= 3 then
       let path := polygonToPath points
-      CanvasM.setFillColor (toAfferentColor color)
+      CanvasM.setFillColor color
       CanvasM.fillPath path
     else
       pure ()
@@ -152,29 +149,26 @@ def executeCommand (reg : FontRegistry) (cmd : Afferent.Arbor.RenderCommand) : C
   | .strokePolygon points color lineWidth =>
     if points.size >= 3 then
       let path := polygonToPath points
-      CanvasM.setStrokeColor (toAfferentColor color)
+      CanvasM.setStrokeColor color
       CanvasM.setLineWidth lineWidth
       CanvasM.strokePath path
     else
       pure ()
 
   | .fillPath path color =>
-    let afferentPath := toAfferentPath path
-    CanvasM.setFillColor (toAfferentColor color)
-    CanvasM.fillPath afferentPath
+    CanvasM.setFillColor color
+    CanvasM.fillPath path
 
   | .fillPathStyle path style =>
-    let afferentPath := toAfferentPath path
     CanvasM.save
     CanvasM.setFillStyle style
-    CanvasM.fillPath afferentPath
+    CanvasM.fillPath path
     CanvasM.restore
 
   | .strokePath path color lineWidth =>
-    let afferentPath := toAfferentPath path
-    CanvasM.setStrokeColor (toAfferentColor color)
+    CanvasM.setStrokeColor color
     CanvasM.setLineWidth lineWidth
-    CanvasM.strokePath afferentPath
+    CanvasM.strokePath path
 
   | .fillPolygonInstanced pathHash vertices indices instances centerX centerY =>
     if instances.size == 0 then
@@ -263,8 +257,7 @@ def executeCommand (reg : FontRegistry) (cmd : Afferent.Arbor.RenderCommand) : C
         vertices indices vertexCount.toUInt32 screenWidth screenHeight
 
   | .pushClip rect =>
-    let afferentRect := toAfferentRect rect
-    CanvasM.clip afferentRect
+    CanvasM.clip rect
 
   | .popClip =>
     CanvasM.unclip

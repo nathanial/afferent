@@ -82,44 +82,36 @@ def coalesceCommands (cmds : Array RenderCommand) : Array RenderCommand := Id.ru
 
 /-! ## Overlap-Aware Command Coalescing -/
 
-/-- Convert Arbor.Point to Afferent.Point for transform application. -/
-private def arborToAfferentPt (p : Afferent.Arbor.Point) : Afferent.Point :=
-  ⟨p.x, p.y⟩
-
-/-- Convert Afferent.Point to Arbor.Point after transform. -/
-private def afferentToArborPt (p : Afferent.Point) : Afferent.Arbor.Point :=
-  ⟨p.x, p.y⟩
-
 /-- Compute screen-space bounds for a render command.
     Returns None for state-changing commands that don't have spatial extent. -/
 def computeBounds (cmd : RenderCommand) (transform : Transform) : Option CommandBounds :=
   match cmd with
   | .fillRect rect _ _ =>
-      let p := transform.apply (arborToAfferentPt rect.origin)
+      let p := transform.apply rect.origin
       some (CommandBounds.fromRect p.x p.y rect.size.width rect.size.height)
   | .fillRectStyle rect _ _ =>
-      let p := transform.apply (arborToAfferentPt rect.origin)
+      let p := transform.apply rect.origin
       some (CommandBounds.fromRect p.x p.y rect.size.width rect.size.height)
   | .strokeRect rect _ _ _ =>
-      let p := transform.apply (arborToAfferentPt rect.origin)
+      let p := transform.apply rect.origin
       some (CommandBounds.fromRect p.x p.y rect.size.width rect.size.height)
   | .fillCircle center radius _ =>
-      let p := transform.apply (arborToAfferentPt center)
+      let p := transform.apply center
       some (CommandBounds.fromCircle p.x p.y radius)
   | .strokeCircle center radius _ _ =>
-      let p := transform.apply (arborToAfferentPt center)
+      let p := transform.apply center
       some (CommandBounds.fromCircle p.x p.y radius)
   | .fillText _ x y _ _ =>
       let p := transform.apply ⟨x, y⟩
       -- Approximate text bounds (conservative estimate)
       some { minX := p.x, minY := p.y - 20, maxX := p.x + 200, maxY := p.y + 5 }
   | .fillTextBlock _ rect _ _ _ _ =>
-      let p := transform.apply (arborToAfferentPt rect.origin)
+      let p := transform.apply rect.origin
       some (CommandBounds.fromRect p.x p.y rect.size.width rect.size.height)
   | .fillPolygon points _ =>
       if points.isEmpty then none
       else
-        let transformed := points.map (fun pt => transform.apply (arborToAfferentPt pt))
+        let transformed := points.map (fun pt => transform.apply pt)
         let minX := transformed.foldl (fun acc p => min acc p.x) transformed[0]!.x
         let maxX := transformed.foldl (fun acc p => max acc p.x) transformed[0]!.x
         let minY := transformed.foldl (fun acc p => min acc p.y) transformed[0]!.y
@@ -128,15 +120,15 @@ def computeBounds (cmd : RenderCommand) (transform : Transform) : Option Command
   | .strokePolygon points _ _ =>
       if points.isEmpty then none
       else
-        let transformed := points.map (fun pt => transform.apply (arborToAfferentPt pt))
+        let transformed := points.map (fun pt => transform.apply pt)
         let minX := transformed.foldl (fun acc p => min acc p.x) transformed[0]!.x
         let maxX := transformed.foldl (fun acc p => max acc p.x) transformed[0]!.x
         let minY := transformed.foldl (fun acc p => min acc p.y) transformed[0]!.y
         let maxY := transformed.foldl (fun acc p => max acc p.y) transformed[0]!.y
         some { minX, minY, maxX, maxY }
   | .strokeLine p1 p2 _ _ =>
-      let tp1 := transform.apply (arborToAfferentPt p1)
-      let tp2 := transform.apply (arborToAfferentPt p2)
+      let tp1 := transform.apply p1
+      let tp2 := transform.apply p2
       let minX := min tp1.x tp2.x
       let maxX := max tp1.x tp2.x
       let minY := min tp1.y tp2.y
@@ -146,10 +138,10 @@ def computeBounds (cmd : RenderCommand) (transform : Transform) : Option Command
 
 /-- Check if a path is a simple line (moveTo + lineTo only).
     Returns the two endpoints if so. -/
-def isSimpleLine (path : Afferent.Arbor.Path) : Option (Afferent.Arbor.Point × Afferent.Arbor.Point) :=
+def isSimpleLine (path : Path) : Option (Point × Point) :=
   if path.commands.size == 2 then
     match path.commands[0]?, path.commands[1]? with
-    | some (Afferent.Arbor.PathCommand.moveTo p1), some (Afferent.Arbor.PathCommand.lineTo p2) => some (p1, p2)
+    | some (PathCommand.moveTo p1), some (PathCommand.lineTo p2) => some (p1, p2)
     | _, _ => none
   else
     none
@@ -291,16 +283,14 @@ def flattenCommand (cmd : RenderCommand) (transform : Transform)
             let bounds := some { minX, minY, maxX, maxY : CommandBounds }
             (.strokeLine p1 p2 color lw, bounds)
           else
-            let absP1 := transform.apply (arborToAfferentPt p1)
-            let absP2 := transform.apply (arborToAfferentPt p2)
-            let arborP1 := afferentToArborPt absP1
-            let arborP2 := afferentToArborPt absP2
+            let absP1 := transform.apply p1
+            let absP2 := transform.apply p2
             let minX := min absP1.x absP2.x
             let minY := min absP1.y absP2.y
             let maxX := max absP1.x absP2.x
             let maxY := max absP1.y absP2.y
             let bounds := some { minX, minY, maxX, maxY : CommandBounds }
-            (.strokeLine arborP1 arborP2 color lw, bounds)
+            (.strokeLine absP1 absP2 color lw, bounds)
       | none =>
           (cmd, computeBounds cmd transform)
   | _ =>
@@ -310,37 +300,32 @@ def flattenCommand (cmd : RenderCommand) (transform : Transform)
   else
     match cmd with
     | .fillRect rect color cr =>
-        let topLeft := transform.apply (arborToAfferentPt rect.origin)
-        let arborTopLeft := afferentToArborPt topLeft
+        let topLeft := transform.apply rect.origin
         let size := rect.size
         -- For non-rotated transforms, we can flatten to absolute coords
-        let absRect : Afferent.Arbor.Rect := ⟨arborTopLeft, size⟩
+        let absRect : Rect := ⟨topLeft, size⟩
         let bounds := CommandBounds.fromRect topLeft.x topLeft.y size.width size.height
         (.fillRect absRect color cr, some bounds)
     | .fillRectStyle rect style cr =>
-        let topLeft := transform.apply (arborToAfferentPt rect.origin)
-        let arborTopLeft := afferentToArborPt topLeft
+        let topLeft := transform.apply rect.origin
         let size := rect.size
-        let absRect : Afferent.Arbor.Rect := ⟨arborTopLeft, size⟩
+        let absRect : Rect := ⟨topLeft, size⟩
         let bounds := CommandBounds.fromRect topLeft.x topLeft.y size.width size.height
         (.fillRectStyle absRect style cr, some bounds)
     | .strokeRect rect color lw cr =>
-        let topLeft := transform.apply (arborToAfferentPt rect.origin)
-        let arborTopLeft := afferentToArborPt topLeft
+        let topLeft := transform.apply rect.origin
         let size := rect.size
-        let absRect : Afferent.Arbor.Rect := ⟨arborTopLeft, size⟩
+        let absRect : Rect := ⟨topLeft, size⟩
         let bounds := CommandBounds.fromRect topLeft.x topLeft.y size.width size.height
         (.strokeRect absRect color lw cr, some bounds)
     | .fillCircle center radius color =>
-        let absCenter := transform.apply (arborToAfferentPt center)
-        let arborCenter := afferentToArborPt absCenter
+        let absCenter := transform.apply center
         let bounds := CommandBounds.fromCircle absCenter.x absCenter.y radius
-        (.fillCircle arborCenter radius color, some bounds)
+        (.fillCircle absCenter radius color, some bounds)
     | .strokeCircle center radius color lw =>
-        let absCenter := transform.apply (arborToAfferentPt center)
-        let arborCenter := afferentToArborPt absCenter
+        let absCenter := transform.apply center
         let bounds := CommandBounds.fromCircle absCenter.x absCenter.y radius
-        (.strokeCircle arborCenter radius color lw, some bounds)
+        (.strokeCircle absCenter radius color lw, some bounds)
     | _ =>
         -- For other commands (text, paths), keep as-is with computed bounds
         -- Text captures its transform during batch creation, so it works correctly

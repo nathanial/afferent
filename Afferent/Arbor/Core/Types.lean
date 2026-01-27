@@ -1,73 +1,25 @@
 /-
   Arbor Core Types
-  Basic types used throughout the widget system.
+  Re-exports types from Afferent.Core for use in the widget system.
 -/
-import Tincture
+import Afferent.Core.Types
 
 namespace Afferent.Arbor
 
--- Re-export Color from Tincture
-export Tincture (Color)
+-- Re-export core types from Afferent
+export Afferent (Color Point Size Rect)
 
-/-- A 2D point. -/
-structure Point where
-  x : Float
-  y : Float
-deriving Repr, BEq, Inhabited
-
+-- Re-export namespace members so Point.mk', Rect.mk', etc. work
 namespace Point
-
-def zero : Point := ⟨0, 0⟩
-def mk' (x y : Float) : Point := ⟨x, y⟩
-
-def add (p1 p2 : Point) : Point := ⟨p1.x + p2.x, p1.y + p2.y⟩
-def sub (p1 p2 : Point) : Point := ⟨p1.x - p2.x, p1.y - p2.y⟩
-
-instance : Add Point := ⟨add⟩
-instance : Sub Point := ⟨sub⟩
-
+  export Afferent.Point (zero mk' add sub scale negate distance midpoint lerp toVec2 fromVec2)
 end Point
 
-/-- A 2D size. -/
-structure Size where
-  width : Float
-  height : Float
-deriving Repr, BEq, Inhabited
-
 namespace Size
-
-def zero : Size := ⟨0, 0⟩
-def mk' (w h : Float) : Size := ⟨w, h⟩
-
+  export Afferent.Size (zero mk' scale area)
 end Size
 
-/-- A rectangle defined by origin and size. -/
-structure Rect where
-  origin : Point
-  size : Size
-deriving Repr, BEq, Inhabited
-
 namespace Rect
-
-def zero : Rect := ⟨Point.zero, Size.zero⟩
-
-def mk' (x y w h : Float) : Rect :=
-  ⟨⟨x, y⟩, ⟨w, h⟩⟩
-
-def x (r : Rect) : Float := r.origin.x
-def y (r : Rect) : Float := r.origin.y
-def width (r : Rect) : Float := r.size.width
-def height (r : Rect) : Float := r.size.height
-
-def right (r : Rect) : Float := r.x + r.width
-def bottom (r : Rect) : Float := r.y + r.height
-
-def contains (r : Rect) (px py : Float) : Bool :=
-  px >= r.x && px <= r.right && py >= r.y && py <= r.bottom
-
-def containsPoint (r : Rect) (p : Point) : Bool :=
-  r.contains p.x p.y
-
+  export Afferent.Rect (zero mk' x y width height minX minY maxX maxY center topLeft topRight bottomLeft bottomRight contains area)
 end Rect
 
 /-- Abstract font identifier with cached metrics.
