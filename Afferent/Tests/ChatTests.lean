@@ -10,6 +10,8 @@ import Afferent.Canopy.Reactive.Component
 import Afferent.Canopy.Widget.Chat
 import Afferent.Canopy.Widget.Layout.Scroll
 import Afferent.Layout
+import Afferent.Text.Font
+import Afferent.Text.Measurer
 import Reactive
 import Trellis
 
@@ -25,6 +27,14 @@ open Reactive Reactive.Host
 open Trellis
 
 testSuite "Chat Widget Tests"
+
+/-- Load a test font and create a FontRegistry with it registered at id 0.
+    Uses macOS system Helvetica font. -/
+def loadTestFontRegistry : IO (Afferent.FontRegistry × FontId) := do
+  let font ← Afferent.Font.load "/System/Library/Fonts/Helvetica.ttc" 14
+  let (reg, fontId) := Afferent.FontRegistry.empty.register font "test"
+  let reg := reg.setDefault font
+  pure (reg, fontId)
 
 /-- Test font ID for widget building tests. -/
 def testFont : FontId := { id := 0, name := "test", size := 14.0 }
@@ -509,8 +519,9 @@ test "ScrollState.scrollBy clamps to zero at top" := do
 /-! ### FRP Event Flow Tests -/
 
 test "FRP: messageList returns MessageListResult with scrollState" := do
+  let (fontReg, _) ← loadTestFontRegistry
   let result ← runSpider do
-    let (events, _) ← createInputs FontRegistry.empty testTheme
+    let (events, _) ← createInputs fontReg testTheme
     let messagesDyn ← Dynamic.pureM #[ChatMessage.user 0 "Test message"]
     let config := MessageListConfig.default
 
@@ -525,8 +536,9 @@ test "FRP: messageList returns MessageListResult with scrollState" := do
   shouldBeNear result 0.0
 
 test "FRP: messageList scrollState starts at zero" := do
+  let (fontReg, _) ← loadTestFontRegistry
   let result ← runSpider do
-    let (events, _) ← createInputs FontRegistry.empty testTheme
+    let (events, _) ← createInputs fontReg testTheme
     let messages := #[
       ChatMessage.user 0 "Hello",
       ChatMessage.assistant 1 "Hi there",
@@ -689,8 +701,9 @@ test "FRP DEBUG: trace scroll event flow in WidgetM" := do
   ensure (result > 0.0) s!"Expected offset > 0 in WidgetM pipeline, got {result}"
 
 test "FRP: messageList responds to scroll wheel events" := do
+  let (fontReg, _) ← loadTestFontRegistry
   let result ← runSpider do
-    let (events, inputs) ← createInputs FontRegistry.empty testTheme
+    let (events, inputs) ← createInputs fontReg testTheme
     -- Need enough messages to exceed viewport height (300px)
     -- With ASCII measurement (~40px per message bubble), we need 8+ messages
     let messages := #[
@@ -747,8 +760,9 @@ test "FRP: messageList responds to scroll wheel events" := do
   ensure (result.snd > 0.0) s!"Offset should increase after scroll, got {result.snd}"
 
 test "FRP: multiple scroll events accumulate" := do
+  let (fontReg, _) ← loadTestFontRegistry
   let result ← runSpider do
-    let (events, inputs) ← createInputs FontRegistry.empty testTheme
+    let (events, inputs) ← createInputs fontReg testTheme
     -- Need enough messages to exceed viewport height and allow accumulating scroll
     let messages := #[
       ChatMessage.user 0 "Test message one",
@@ -795,8 +809,9 @@ test "FRP: multiple scroll events accumulate" := do
   ensure (result > 100.0) s!"Offset should accumulate, got {result}"
 
 test "FRP: messageList scroll events are filtered by widget name" := do
+  let (fontReg, _) ← loadTestFontRegistry
   let result ← runSpider do
-    let (events, inputs) ← createInputs FontRegistry.empty testTheme
+    let (events, inputs) ← createInputs fontReg testTheme
     let messagesDyn ← Dynamic.pureM #[ChatMessage.user 0 "Test"]
     let config := MessageListConfig.default
 
@@ -821,8 +836,9 @@ test "FRP: messageList scroll events are filtered by widget name" := do
   shouldBeNear result 0.0
 
 test "FRP: scroll events ignored when not in hitPath" := do
+  let (fontReg, _) ← loadTestFontRegistry
   let result ← runSpider do
-    let (events, inputs) ← createInputs FontRegistry.empty testTheme
+    let (events, inputs) ← createInputs fontReg testTheme
     let messagesDyn ← Dynamic.pureM #[ChatMessage.user 0 "Test"]
     let config := MessageListConfig.default
 

@@ -57,10 +57,7 @@ instance : Afferent.Arbor.TextMeasurer (FontReaderT IO) where
       let (w, h) ← font.measureText text
       pure ⟨w, h, font.ascender, font.descender, font.lineHeight⟩
     | none =>
-      -- Fallback to fixed-width estimation
-      let charWidth := 8.0
-      let charHeight := 16.0
-      pure ⟨text.length.toFloat * charWidth, charHeight, charHeight * 0.75, charHeight * 0.25, charHeight⟩
+      panic! s!"FontId {fontId.id} ('{fontId.name}') not found in FontRegistry"
 
   measureChar c fontId := do
     let reg ← read
@@ -69,7 +66,7 @@ instance : Afferent.Arbor.TextMeasurer (FontReaderT IO) where
       let (w, _) ← font.measureText (String.singleton c)
       pure w
     | none =>
-      pure 8.0  -- Fallback
+      panic! s!"FontId {fontId.id} ('{fontId.name}') not found in FontRegistry"
 
   fontMetrics fontId := do
     let reg ← read
@@ -77,7 +74,7 @@ instance : Afferent.Arbor.TextMeasurer (FontReaderT IO) where
     | some font =>
       pure ⟨0, font.glyphHeight, font.ascender, font.descender, font.lineHeight⟩
     | none =>
-      pure ⟨0, 16.0, 12.0, 4.0, 16.0⟩  -- Fallback
+      panic! s!"FontId {fontId.id} ('{fontId.name}') not found in FontRegistry"
 
 /-- Run a FontReaderT computation with a registry. -/
 def runWithFonts {α : Type} (reg : FontRegistry) (m : FontReaderT IO α) : IO α :=
