@@ -135,7 +135,7 @@ def gaugeChartSpec (data : Data) (theme : Theme)
     let segments := if data.segments.isEmpty then defaultSegments else data.segments
 
     -- Draw background arc
-    let bgArcPath := Arbor.Path.arcPath
+    let bgArcPath := Afferent.Path.arcPath
       (Arbor.Point.mk' centerX centerY)
       radius
       (fractionToAngle 0.0 dims)
@@ -146,7 +146,7 @@ def gaugeChartSpec (data : Data) (theme : Theme)
     for seg in segments do
       let startAngle := fractionToAngle seg.startFrac dims
       let endAngle := fractionToAngle seg.endFrac dims
-      let segPath := Arbor.Path.arcPath
+      let segPath := Afferent.Path.arcPath
         (Arbor.Point.mk' centerX centerY)
         radius
         startAngle
@@ -166,7 +166,7 @@ def gaugeChartSpec (data : Data) (theme : Theme)
         let y1 := centerY + innerR * sinA
         let x2 := centerX + outerR * cosA
         let y2 := centerY + outerR * sinA
-        let tickPath := Arbor.Path.empty
+        let tickPath := Afferent.Path.empty
           |>.moveTo (Arbor.Point.mk' x1 y1)
           |>.lineTo (Arbor.Point.mk' x2 y2)
         RenderM.strokePath tickPath colors.tickMarks 1.5
@@ -176,7 +176,7 @@ def gaugeChartSpec (data : Data) (theme : Theme)
     let needleTipX := centerX + needleLength * Float.cos needleAngle
     let needleTipY := centerY + needleLength * Float.sin needleAngle
     -- Draw needle as a tapered line (triangle would be better but line works)
-    let needlePath := Arbor.Path.empty
+    let needlePath := Afferent.Path.empty
       |>.moveTo (Arbor.Point.mk' centerX centerY)
       |>.lineTo (Arbor.Point.mk' needleTipX needleTipY)
     RenderM.strokePath needlePath colors.needle needleWidth

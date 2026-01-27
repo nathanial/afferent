@@ -21,7 +21,7 @@ The `dynWidget` optimization only prevents widget tree rebuilding, not render co
 
 The expensive operations in `collect` are:
 
-1. **Path allocation**: Each shape creates a new `Arbor.Path` object
+1. **Path allocation**: Each shape creates a new `Afferent.Path` object
 2. **Array appends**: Pure functional arrays copy on each push
 3. **Color calculations**: Per-element color lookups
 4. **String formatting**: Label generation for each data point

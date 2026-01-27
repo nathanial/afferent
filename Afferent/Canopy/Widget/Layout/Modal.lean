@@ -34,13 +34,13 @@ deriving Repr, Inhabited
 def defaultDimensions : Dimensions := {}
 
 /-- Build an X close button path. -/
-def closeButtonPath (x y size : Float) : Arbor.Path :=
+def closeButtonPath (x y size : Float) : Afferent.Path :=
   let half := size / 2
   let p1 : Arbor.Point := ⟨x - half, y - half⟩
   let p2 : Arbor.Point := ⟨x + half, y + half⟩
   let p3 : Arbor.Point := ⟨x - half, y + half⟩
   let p4 : Arbor.Point := ⟨x + half, y - half⟩
-  Arbor.Path.empty
+  Afferent.Path.empty
     |>.moveTo p1
     |>.lineTo p2
     |>.moveTo p3

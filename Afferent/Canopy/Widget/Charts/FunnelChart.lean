@@ -141,7 +141,7 @@ def funnelChartSpec (data : Data) (theme : Theme)
       let bottomLeft := Arbor.Point.mk' (centerX - nextWidth / 2) (stageY + stageHeight)
 
       -- Draw trapezoid as path
-      let trapPath := Arbor.Path.empty
+      let trapPath := Afferent.Path.empty
         |>.moveTo topLeft
         |>.lineTo topRight
         |>.lineTo bottomRight

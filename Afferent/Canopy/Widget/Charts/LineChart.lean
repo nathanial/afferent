@@ -94,7 +94,7 @@ def lineChartSpec (data : Array Float) (labels : Array String)
       -- Build and stroke line path
       if pointCount > 0 then
         let path := Id.run do
-          let mut path := Arbor.Path.empty
+          let mut path := Afferent.Path.empty
           for i in [0:pointCount] do
             let value := data[i]!
             let x := chartX + i.toFloat * stepX
@@ -191,7 +191,7 @@ def multiSeriesSpec (series : Array Series) (labels : Array String)
         -- Draw line
         if pointCount > 0 then
           let path := Id.run do
-            let mut path := Arbor.Path.empty
+            let mut path := Afferent.Path.empty
             for i in [0:pointCount] do
               let value := s.values[i]!
               let x := chartX + i.toFloat * stepX

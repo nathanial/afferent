@@ -3,7 +3,7 @@
   Abstract rendering commands that can be interpreted by different backends.
 -/
 import Afferent.Arbor.Core.Types
-import Afferent.Arbor.Core.Path
+import Afferent.Core.Path
 import Afferent.Core.Paint
 
 namespace Afferent.Arbor

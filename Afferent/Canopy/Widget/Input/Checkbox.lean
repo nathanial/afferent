@@ -20,7 +20,7 @@ deriving Repr, BEq, Inhabited
 namespace Checkbox
 
 /-- Build a checkmark path centered in a box. -/
-def checkmarkPath (x y size : Float) : Arbor.Path :=
+def checkmarkPath (x y size : Float) : Afferent.Path :=
   let s := size * 0.6  -- Scale factor for checkmark within box
   let cx := x + size / 2
   let cy := y + size / 2
@@ -28,7 +28,7 @@ def checkmarkPath (x y size : Float) : Arbor.Path :=
   let p1 : Arbor.Point := ⟨cx - s * 0.35, cy⟩                -- Left arm start
   let p2 : Arbor.Point := ⟨cx - s * 0.1, cy + s * 0.35⟩     -- Bottom point
   let p3 : Arbor.Point := ⟨cx + s * 0.4, cy - s * 0.35⟩     -- Right arm end
-  Arbor.Path.empty
+  Afferent.Path.empty
     |>.moveTo p1
     |>.lineTo p2
     |>.lineTo p3

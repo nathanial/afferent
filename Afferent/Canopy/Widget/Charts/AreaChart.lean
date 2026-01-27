@@ -90,7 +90,7 @@ def areaChartSpec (data : Array Float) (labels : Array String)
       if pointCount > 0 then
         let baseY := chartY + chartHeight
         let areaPath := Id.run do
-          let mut path := Arbor.Path.empty
+          let mut path := Afferent.Path.empty
           path := path.moveTo (Arbor.Point.mk' chartX baseY)
           let firstY := chartY + chartHeight - (data[0]! / niceMaxVal) * chartHeight
           path := path.lineTo (Arbor.Point.mk' chartX firstY)
@@ -106,7 +106,7 @@ def areaChartSpec (data : Array Float) (labels : Array String)
       -- Line on top of fill
       if dims.showLine && pointCount > 0 then
         let linePath := Id.run do
-          let mut path := Arbor.Path.empty
+          let mut path := Afferent.Path.empty
           for i in [0:pointCount] do
             let x := chartX + i.toFloat * stepX
             let y := chartY + chartHeight - (data[i]! / niceMaxVal) * chartHeight
@@ -188,7 +188,7 @@ def multiSeriesSpec (series : Array Series) (labels : Array String)
         let pointCount := s.values.size
         if pointCount > 0 then
           let areaPath := Id.run do
-            let mut path := Arbor.Path.empty
+            let mut path := Afferent.Path.empty
             path := path.moveTo (Arbor.Point.mk' chartX baseY)
             let firstY := chartY + chartHeight - (s.values[0]! / niceMaxVal) * chartHeight
             path := path.lineTo (Arbor.Point.mk' chartX firstY)
@@ -209,7 +209,7 @@ def multiSeriesSpec (series : Array Series) (labels : Array String)
           let pointCount := s.values.size
           if pointCount > 0 then
             let linePath := Id.run do
-              let mut path := Arbor.Path.empty
+              let mut path := Afferent.Path.empty
               for i in [0:pointCount] do
                 let x := chartX + i.toFloat * stepX
                 let y := chartY + chartHeight - (s.values[i]! / niceMaxVal) * chartHeight

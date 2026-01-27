@@ -30,10 +30,10 @@ def mkFillText (text : String) : RenderCommand :=
   .fillText text 0 0 testFont ⟨1, 1, 1, 1⟩
 
 def mkFillPath : RenderCommand :=
-  .fillPath Arbor.Path.empty ⟨0, 0, 1, 1⟩
+  .fillPath Afferent.Path.empty ⟨0, 0, 1, 1⟩
 
 def mkStrokePath : RenderCommand :=
-  .strokePath Arbor.Path.empty ⟨1, 1, 0, 1⟩ 1.0
+  .strokePath Afferent.Path.empty ⟨1, 1, 0, 1⟩ 1.0
 
 def mkFillPolygon : RenderCommand :=
   .fillPolygon #[⟨0, 0⟩, ⟨10, 0⟩, ⟨5, 10⟩] ⟨1, 0, 1, 1⟩

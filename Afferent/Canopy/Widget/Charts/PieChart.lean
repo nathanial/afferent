@@ -84,7 +84,7 @@ def pieChartSpec (slices : Array Slice) (theme : Theme)
         let color := slice.color.getD (colors[i % colors.size]!)
 
         -- Create pie slice path
-        let slicePath := Arbor.Path.pie center radius startAngle endAngle
+        let slicePath := Afferent.Path.pie center radius startAngle endAngle
 
         -- Fill the slice
         RenderM.fillPath slicePath color
@@ -174,7 +174,7 @@ def pieChartWithLegendSpec (slices : Array Slice) (theme : Theme)
         let endAngle := startAngle + sweepAngle
 
         let color := slice.color.getD (colors[i % colors.size]!)
-        let slicePath := Arbor.Path.pie center radius startAngle endAngle
+        let slicePath := Afferent.Path.pie center radius startAngle endAngle
 
         RenderM.fillPath slicePath color
 

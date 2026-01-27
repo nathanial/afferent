@@ -245,14 +245,14 @@ def computeLayout (data : Data) (dims : Dimensions) : CachedLayout := Id.run do
   { nodeLayouts, linkLayouts, maxColumn }
 
 /-- Draw a curved link path (Bezier curve) with offset. -/
-private def linkPath (l : LinkLayout) (ox oy : Float) : Arbor.Path :=
+private def linkPath (l : LinkLayout) (ox oy : Float) : Afferent.Path :=
   let sx := l.sourceX + ox
   let sy := l.sourceY + oy
   let tx := l.targetX + ox
   let ty := l.targetY + oy
   let midX := (sx + tx) / 2
   -- Top edge of the link
-  Arbor.Path.empty
+  Afferent.Path.empty
     |>.moveTo (Arbor.Point.mk' sx sy)
     |>.bezierCurveTo
       (Arbor.Point.mk' midX sy)

@@ -6,10 +6,12 @@ import Reactive
 import Afferent.Canopy.Core
 import Afferent.Canopy.Theme
 import Afferent.Canopy.Reactive.Component
+import Linalg.Core
 
 namespace Afferent.Canopy
 
 open Afferent.Arbor hiding Event
+open Linalg
 
 /-- Progress bar variant for different visual styles. -/
 inductive ProgressVariant where
@@ -77,7 +79,7 @@ def indeterminateSpec (animationProgress : Float) (variant : ProgressVariant)
     -- Animated segment (slides back and forth)
     let segmentWidth := dims.width * 0.3
     -- Use sine wave for smooth back-and-forth motion
-    let t := animationProgress * 2.0 * Path.pi
+    let t := animationProgress * 2.0 * Float.pi
     let normalizedPos := (Float.sin t + 1.0) / 2.0  -- 0.0 to 1.0
     let segmentX := rect.x + normalizedPos * (dims.width - segmentWidth)
     let segmentRect := Arbor.Rect.mk' segmentX rect.y segmentWidth dims.height

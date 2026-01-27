@@ -139,7 +139,7 @@ def radarChartSpec (data : Data) (theme : Theme)
       if dims.showGridPolygons && dims.gridLevels > 0 then
         for level in [1:dims.gridLevels + 1] do
           let levelRadius := radius * (level.toFloat / dims.gridLevels.toFloat)
-          let mut gridPath := Arbor.Path.empty
+          let mut gridPath := Afferent.Path.empty
           for axisIdx in [0:numAxes] do
             let angle := axisAngle axisIdx numAxes
             let (x, y) := pointPosition centerX centerY angle levelRadius
@@ -158,7 +158,7 @@ def radarChartSpec (data : Data) (theme : Theme)
         for axisIdx in [0:numAxes] do
           let angle := axisAngle axisIdx numAxes
           let (outerX, outerY) := pointPosition centerX centerY angle radius
-          let mut axisPath := Arbor.Path.empty
+          let mut axisPath := Afferent.Path.empty
           axisPath := axisPath.moveTo (Arbor.Point.mk' centerX centerY)
           axisPath := axisPath.lineTo (Arbor.Point.mk' outerX outerY)
           RenderM.strokePath axisPath (Color.gray 0.4) 1.0
@@ -179,7 +179,7 @@ def radarChartSpec (data : Data) (theme : Theme)
         let color := getSeriesColor series seriesIdx
 
         if series.values.size >= numAxes then
-          let mut dataPath := Arbor.Path.empty
+          let mut dataPath := Afferent.Path.empty
           for axisIdx in [0:numAxes] do
             let value := series.values[axisIdx]!
             let normalizedValue := value / niceMaxVal
@@ -206,7 +206,7 @@ def radarChartSpec (data : Data) (theme : Theme)
         let color := getSeriesColor series seriesIdx
 
         if series.values.size >= numAxes then
-          let mut linePath := Arbor.Path.empty
+          let mut linePath := Afferent.Path.empty
           for axisIdx in [0:numAxes] do
             let value := series.values[axisIdx]!
             let normalizedValue := value / niceMaxVal

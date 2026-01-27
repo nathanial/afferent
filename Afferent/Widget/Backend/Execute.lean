@@ -7,7 +7,6 @@ import Afferent.Core.Transform
 import Afferent.Text.Font
 import Afferent.Text.Measurer
 import Afferent.Arbor
-import Afferent.Arbor.Core.Path
 import Afferent.Widget.Backend.Convert
 import Std.Data.HashMap
 

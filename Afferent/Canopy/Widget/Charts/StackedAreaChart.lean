@@ -183,7 +183,7 @@ def stackedAreaChartSpec (data : Data) (theme : Theme)
           Array.replicate maxPoints 0.0
 
         -- Build area path: trace top edge forward, then bottom edge backward
-        let mut areaPath := Arbor.Path.empty
+        let mut areaPath := Afferent.Path.empty
 
         -- Start at first point's bottom
         let startX := chartX
@@ -219,7 +219,7 @@ def stackedAreaChartSpec (data : Data) (theme : Theme)
           let color := getSeriesColor series seriesIdx
           let topValues := stackedValues[seriesIdx]!
 
-          let mut linePath := Arbor.Path.empty
+          let mut linePath := Afferent.Path.empty
           for i in [0:maxPoints] do
             let x := chartX + i.toFloat * stepX
             let y := valueToY topValues[i]!

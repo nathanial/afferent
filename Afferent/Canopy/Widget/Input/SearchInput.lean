@@ -25,9 +25,9 @@ deriving Repr, Inhabited
 def defaultDimensions : Dimensions := {}
 
 /-- Create a search icon path (magnifying glass). -/
-def searchIconPath (cx cy radius : Float) : Arbor.Path :=
+def searchIconPath (cx cy radius : Float) : Afferent.Path :=
   -- Use built-in circle helper for the lens
-  let circle := Arbor.Path.circle ⟨cx, cy⟩ radius
+  let circle := Afferent.Path.circle ⟨cx, cy⟩ radius
   -- Handle extends from bottom-right of circle at 45 degrees
   let handleStartX := cx + radius * 0.707  -- cos(45°)
   let handleStartY := cy + radius * 0.707  -- sin(45°)
@@ -39,12 +39,12 @@ def searchIconPath (cx cy radius : Float) : Arbor.Path :=
     |>.lineTo ⟨handleEndX, handleEndY⟩
 
 /-- Create a clear button path (X icon). -/
-def clearButtonPath (cx cy halfSize : Float) : Arbor.Path :=
+def clearButtonPath (cx cy halfSize : Float) : Afferent.Path :=
   let p1 : Arbor.Point := ⟨cx - halfSize, cy - halfSize⟩
   let p2 : Arbor.Point := ⟨cx + halfSize, cy + halfSize⟩
   let p3 : Arbor.Point := ⟨cx + halfSize, cy - halfSize⟩
   let p4 : Arbor.Point := ⟨cx - halfSize, cy + halfSize⟩
-  Arbor.Path.empty
+  Afferent.Path.empty
     |>.moveTo p1
     |>.lineTo p2
     |>.moveTo p3

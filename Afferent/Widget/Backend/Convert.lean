@@ -2,12 +2,11 @@
   Afferent Widget Backend Conversions
 
   Note: Most conversion functions have been removed since Arbor now
-  re-exports types from Afferent.Core (Point, Size, Rect, Path, etc.
+  re-exports types from Afferent.Core (Point, Size, Rect, etc.
   are the same type in both namespaces).
 -/
 import Afferent.Core.Path
 import Afferent.Arbor
-import Afferent.Arbor.Core.Path
 
 namespace Afferent.Widget
 

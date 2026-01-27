@@ -124,7 +124,7 @@ def arrowSpec (dir : ArrowDirection) (theme : Theme) (size : Float) : CustomSpec
           (⟨midX + half, midY - half⟩, ⟨midX - half, midY⟩, ⟨midX + half, midY + half⟩)
       | .right =>
           (⟨midX - half, midY - half⟩, ⟨midX + half, midY⟩, ⟨midX - half, midY + half⟩)
-    let path := Arbor.Path.empty
+    let path := Afferent.Path.empty
       |>.moveTo p1
       |>.lineTo p2
       |>.lineTo p3
