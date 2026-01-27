@@ -318,4 +318,115 @@ partial def intrinsicSize {M : Type → Type} [Monad M] [TextMeasurer M] (w : Wi
     let w := style.minWidth.getD contentW
     let h := style.minHeight.getD contentH
     pure (w + style.padding.horizontal, h + style.padding.vertical)
+
+/-- Compute the intrinsic (content-based) size of a widget tree AND return
+    the updated widget with computed TextLayouts.
+    This avoids double traversal: compute size AND cache text layouts in one pass.
+    Used for caching in centered layout mode. -/
+partial def intrinsicSizeWithWidget {M : Type → Type} [Monad M] [TextMeasurer M] (w : Widget)
+    : M (Float × Float × Widget) := do
+  match w with
+  | .text id name content font color align maxWidthOpt textLayoutOpt =>
+    -- Use existing TextLayout if available, otherwise compute
+    match textLayoutOpt with
+    | some tl => pure (tl.maxWidth, tl.totalHeight, w)
+    | none =>
+      let effectiveMaxWidth := maxWidthOpt.getD 10000  -- Large default
+      let textLayout ← if maxWidthOpt.isSome then
+        wrapText font content effectiveMaxWidth
+      else
+        measureSingleLine font content
+      let updatedWidget := Widget.text id name content font color align maxWidthOpt (some textLayout)
+      pure (textLayout.maxWidth, textLayout.totalHeight, updatedWidget)
+
+  | .rect _ _ style =>
+    let width := style.minWidth.getD 0
+    let height := style.minHeight.getD 0
+    pure (width, height, w)
+
+  | .spacer _ _ width height =>
+    pure (width, height, w)
+
+  | .custom _ _ style spec =>
+    let (measuredW, measuredH) := spec.measure 1000000000.0 1000000000.0
+    let contentW := max measuredW (style.minWidth.getD 0)
+    let contentH := max measuredH (style.minHeight.getD 0)
+    pure (contentW, contentH, w)
+
+  | .flex id name props style children =>
+    let padding := style.padding
+    let gap := props.gap
+    let isColumn := !props.direction.isHorizontal
+
+    -- Compute intrinsic sizes of all children AND get updated children
+    let mut childSizes : Array (Float × Float) := #[]
+    let mut updatedChildren : Array Widget := #[]
+    for child in children do
+      let (cw, ch, updatedChild) ← intrinsicSizeWithWidget child
+      childSizes := childSizes.push (cw, ch)
+      updatedChildren := updatedChildren.push updatedChild
+
+    let (rawW, rawH) := if isColumn then
+      -- Column: width = max of children, height = sum of children + gaps
+      let maxWidth := childSizes.foldl (fun acc (cw, _) => max acc cw) 0
+      let totalHeight := childSizes.foldl (fun acc (_, ch) => acc + ch) 0
+      let gaps := if children.size > 1 then gap * (children.size - 1).toFloat else 0
+      (maxWidth + padding.horizontal, totalHeight + gaps + padding.vertical)
+    else
+      -- Row: width = sum of children + gaps, height = max of children
+      let totalWidth := childSizes.foldl (fun acc (cw, _) => acc + cw) 0
+      let maxHeight := childSizes.foldl (fun acc (_, ch) => max acc ch) 0
+      let gaps := if children.size > 1 then gap * (children.size - 1).toFloat else 0
+      (totalWidth + gaps + padding.horizontal, maxHeight + padding.vertical)
+
+    -- Apply min constraints
+    let finalW := max rawW (style.minWidth.getD 0)
+    let finalH := max rawH (style.minHeight.getD 0)
+    let updatedWidget := Widget.flex id name props style updatedChildren
+    pure (finalW, finalH, updatedWidget)
+
+  | .grid id name props style children =>
+    let padding := style.padding
+    let numCols := props.templateColumns.tracks.size
+    let numCols := if numCols == 0 then 1 else numCols  -- Default to 1 column
+    let colGap := props.columnGap
+    let rowGap := props.rowGap
+
+    -- Compute intrinsic sizes of all children AND get updated children
+    let mut childSizes : Array (Float × Float) := #[]
+    let mut updatedChildren : Array Widget := #[]
+    for child in children do
+      let (cw, ch, updatedChild) ← intrinsicSizeWithWidget child
+      childSizes := childSizes.push (cw, ch)
+      updatedChildren := updatedChildren.push updatedChild
+
+    -- For grid, compute column widths and row heights
+    let numRows := (children.size + numCols - 1) / numCols
+    let mut maxColWidth : Float := 0
+    let mut maxRowHeight : Float := 0
+
+    for (cw, ch) in childSizes do
+      maxColWidth := max maxColWidth cw
+      maxRowHeight := max maxRowHeight ch
+
+    let totalWidth := maxColWidth * numCols.toFloat + colGap * (numCols - 1).toFloat
+    let totalHeight := maxRowHeight * numRows.toFloat + rowGap * (numRows - 1).toFloat
+    let rawW := totalWidth + padding.horizontal
+    let rawH := totalHeight + padding.vertical
+
+    -- Apply min constraints
+    let finalW := max rawW (style.minWidth.getD 0)
+    let finalH := max rawH (style.minHeight.getD 0)
+    let updatedWidget := Widget.grid id name props style updatedChildren
+    pure (finalW, finalH, updatedWidget)
+
+  | .scroll id name style scrollState contentW contentH scrollbarConfig child =>
+    -- Measure child to get updated child with TextLayouts
+    let (_, _, updatedChild) ← intrinsicSizeWithWidget child
+    -- Scroll containers use their viewport size (from style) or content size
+    let w := style.minWidth.getD contentW
+    let h := style.minHeight.getD contentH
+    let updatedWidget := Widget.scroll id name style scrollState contentW contentH scrollbarConfig updatedChild
+    pure (w + style.padding.horizontal, h + style.padding.vertical, updatedWidget)
+
 end Afferent.Arbor

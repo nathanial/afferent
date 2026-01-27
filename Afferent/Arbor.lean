@@ -31,6 +31,7 @@ import Afferent.Arbor.Widget.Core
 import Afferent.Arbor.Widget.DSL
 import Afferent.Arbor.Widget.TextLayout
 import Afferent.Arbor.Widget.Measure
+import Afferent.Arbor.Widget.MeasureCache
 
 -- Event system
 import Afferent.Arbor.Event.Types
