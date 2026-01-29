@@ -8,6 +8,8 @@ import Afferent.FFI.Fragment
 import Afferent.FFI.Renderer
 import Std.Data.HashMap
 
+open Shader
+
 namespace Afferent.Shader
 
 open Std

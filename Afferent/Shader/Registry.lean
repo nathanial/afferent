@@ -2,47 +2,16 @@
   Afferent Shader Registry
   Registry for shader fragments. Fragments are registered explicitly
   and the registry is passed to the backend for pipeline compilation.
+
+  This module re-exports from the standalone Shader library.
 -/
+import Shader.Registry
 import Afferent.Shader.Fragment
 import Std.Data.HashMap
 
 namespace Afferent.Shader
 
 open Std
-
-/-- Registry mapping fragment hashes to their definitions.
-    Used for looking up fragment definitions at draw time
-    to compile pipelines on first use. -/
-structure FragmentRegistry where
-  fragments : HashMap UInt64 ShaderFragment := {}
-deriving Inhabited
-
-namespace FragmentRegistry
-
-/-- Create an empty registry. -/
-def empty : FragmentRegistry := {}
-
-/-- Register a fragment in the registry. -/
-def register (reg : FragmentRegistry) (fragment : ShaderFragment) : FragmentRegistry :=
-  { fragments := reg.fragments.insert fragment.hash fragment }
-
-/-- Look up a fragment by its hash. -/
-def get? (reg : FragmentRegistry) (hash : UInt64) : Option ShaderFragment :=
-  reg.fragments.get? hash
-
-/-- Check if a fragment is registered. -/
-def contains (reg : FragmentRegistry) (hash : UInt64) : Bool :=
-  reg.fragments.contains hash
-
-/-- Get the number of registered fragments. -/
-def size (reg : FragmentRegistry) : Nat :=
-  reg.fragments.size
-
-/-- Register multiple fragments at once. -/
-def registerAll (reg : FragmentRegistry) (fragments : Array ShaderFragment) : FragmentRegistry :=
-  fragments.foldl (init := reg) fun r f => r.register f
-
-end FragmentRegistry
 
 /-! ## Fragment Constructors -/
 
@@ -67,7 +36,7 @@ end FragmentRegistry
     ```
 -/
 def makeCircleFragment (name : String) (instanceCount : Nat) (paramsFloatCount : Nat)
-    (paramsStruct : String) (functionBody : String) : ShaderFragment :=
-  fragmentCircle name instanceCount paramsFloatCount paramsStruct functionBody
+    (paramsStruct : String) (functionBody : String) : _root_.Shader.ShaderFragment :=
+  _root_.Shader.fragmentCircle name instanceCount paramsFloatCount paramsStruct functionBody
 
 end Afferent.Shader

@@ -8,7 +8,7 @@ import Afferent.Shader.DSL
 namespace Afferent.Tests.ShaderDSLTests
 
 open Crucible
-open Afferent.Shader.DSL
+open Shader
 
 testSuite "Shader DSL Tests"
 

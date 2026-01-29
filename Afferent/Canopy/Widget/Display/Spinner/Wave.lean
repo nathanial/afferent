@@ -10,7 +10,7 @@ namespace Afferent.Canopy.Spinner
 
 open Afferent.Arbor hiding Event
 open Afferent.Shader
-open Afferent.Shader.DSL hiding center size time color
+open _root_.Shader hiding center size time color
 open Linalg
 
 -- Local aliases for DSL parameter accessors (avoid Arbor name conflicts)

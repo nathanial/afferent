@@ -2,6 +2,9 @@
   Afferent Shader DSL
   A domain-specific language for writing GPU shaders in pure Lean.
 
+  This module re-exports the standalone Shader library for use within Afferent.
+  Import this module and use `open Shader` to access the DSL.
+
   This module provides:
   - Typed expression AST (`ShaderExpr`) that mirrors Metal types
   - Metal code generation via `toMetal`
@@ -14,7 +17,7 @@
   ```lean
   import Afferent.Shader.DSL
 
-  open Afferent.Shader.DSL in
+  open Shader in
   def myShader : CircleShader := {
     name := "myShader"
     instanceCount := 8
@@ -35,11 +38,6 @@
   ```
 -/
 
-import Afferent.Shader.DSL.Types
-import Afferent.Shader.DSL.Expr
-import Afferent.Shader.DSL.Render
-import Afferent.Shader.DSL.Ops
-import Afferent.Shader.DSL.Prelude
-import Afferent.Shader.DSL.Circle
-import Afferent.Shader.DSL.Rect
-import Afferent.Shader.DSL.Quad
+-- Import the standalone Shader library
+-- Consumers should use `open Shader` to access the DSL
+import Shader
