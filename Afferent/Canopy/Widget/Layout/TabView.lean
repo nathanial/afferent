@@ -150,6 +150,8 @@ def tabViewVisual (name : String) (headerNameFn : Nat → String)
     backgroundColor := some theme.panel.background
     padding := Trellis.EdgeInsets.uniform dims.contentPadding
     flexItem := some (Trellis.FlexItem.growing 1)
+    width := .percent 1.0
+    height := .percent 1.0
   }
   let contentPanelWid ← freshId
   let contentPanelProps : Trellis.FlexContainer := {
@@ -158,19 +160,20 @@ def tabViewVisual (name : String) (headerNameFn : Nat → String)
   }
   let contentPanel : Widget := .flex contentPanelWid none contentPanelProps contentPanelStyle #[contentWidget]
 
-  -- Outer container (column: tab bar + divider + content)
+  -- Outer container (grid: tab bar + divider + content row)
   let outerWid ← freshId
-  let outerProps : Trellis.FlexContainer := {
-    direction := .column
-    gap := 0
-  }
+  let outerProps : Trellis.GridContainer :=
+    Trellis.GridContainer.withTemplate #[.auto, .fixed (.length 1.0), .fr 1] #[.fr 1]
   let outerStyle : BoxStyle := {
     borderColor := some theme.panel.border
     borderWidth := 1
     cornerRadius := theme.cornerRadius
+    flexItem := some (Trellis.FlexItem.growing 1)
+    width := .percent 1.0
+    height := .percent 1.0
   }
 
-  pure (.flex outerWid (some name) outerProps outerStyle #[tabBar, divider, contentPanel])
+  pure (.grid outerWid (some name) outerProps outerStyle #[tabBar, divider, contentPanel])
 
 /-! ## Reactive TabView Components (FRP-based)
 
@@ -238,7 +241,12 @@ def tabView (tabs : Array TabDef) (initialTab : Nat := 0) : WidgetM TabViewResul
         let tab := tabsRef[i]!
         let renders := tabContentRenders[i]!
         let contentWidgets ← renders.mapM id
-        let content := column (gap := 0) (style := {}) contentWidgets
+        let contentStyle : BoxStyle := {
+          flexItem := some (Trellis.FlexItem.growing 1)
+          width := .percent 1.0
+          height := .percent 1.0
+        }
+        let content := column (gap := 0) (style := contentStyle) contentWidgets
         tabDefs := tabDefs.push (tab.label, content)
       pure (tabViewVisual containerName headerNameFn tabDefs active hovered theme)
 
