@@ -37,6 +37,12 @@ structure HoverData where
   /-- Optional name->id map for fast lookups (defaults to empty). -/
   nameMap : Std.HashMap String Afferent.Arbor.WidgetId := {}
 
+/-- Mouse delta event (relative movement since last frame). -/
+structure MouseDeltaData where
+  dx : Float
+  dy : Float
+deriving Repr, Inhabited
+
 /-- Key event wrapper with focus context. -/
 structure KeyData where
   /-- The keyboard event. -/

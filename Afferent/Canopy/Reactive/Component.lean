@@ -490,7 +490,17 @@ def useElapsedTime : ReactiveM (Dynamic Spider Float) := do
 /-- Subscribe to key events. Returns the raw key event stream. -/
 def useKeyboard : ReactiveM (Event Spider KeyData) := do
   let events ← getEvents
+  Event.filterM (fun data => data.event.isPress) events.keyEvent
+
+/-- Subscribe to all key events (press and release). -/
+def useKeyboardAll : ReactiveM (Event Spider KeyData) := do
+  let events ← getEvents
   pure events.keyEvent
+
+/-- Subscribe to mouse delta events (relative movement since last frame). -/
+def useMouseDelta : ReactiveM (Event Spider MouseDeltaData) := do
+  let events ← getEvents
+  pure events.mouseDeltaEvent
 
 /-- Create click event with full data (for sliders that need position). -/
 def useClickData (name : String) : ReactiveM (Event Spider ClickData) := do

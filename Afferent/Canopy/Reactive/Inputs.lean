@@ -20,6 +20,8 @@ structure ReactiveInputs where
   fireMouseUp : MouseButtonData → IO Unit
   /-- Fire when mouse position changes (hover). -/
   fireHover : HoverData → IO Unit
+  /-- Fire when mouse delta changes (relative movement since last frame). -/
+  fireMouseDelta : MouseDeltaData → IO Unit
   /-- Fire when a key is pressed. -/
   fireKey : KeyData → IO Unit
   /-- Fire each frame with delta time (for animations). -/
@@ -86,6 +88,8 @@ structure ReactiveEvents where
   mouseUpEvent : Event Spider MouseButtonData
   /-- Hover events with position and layout context. -/
   hoverEvent : Event Spider HoverData
+  /-- Mouse delta events (relative movement since last frame). -/
+  mouseDeltaEvent : Event Spider MouseDeltaData
   /-- Hover state changes by widget name (only changed keys fire). -/
   hoverFan : Event.Fan Spider String Bool
   /-- Keyboard events. -/
@@ -157,6 +161,7 @@ def createInputs (fontRegistry : Afferent.FontRegistry) (theme : Canopy.Theme :=
   let (clickEvent, fireClick) ← newTriggerEvent (t := Spider) (a := ClickData)
   let (mouseUpEvent, fireMouseUp) ← newTriggerEvent (t := Spider) (a := MouseButtonData)
   let (hoverEvent, fireHover) ← newTriggerEvent (t := Spider) (a := HoverData)
+  let (mouseDeltaEvent, fireMouseDelta) ← newTriggerEvent (t := Spider) (a := MouseDeltaData)
   let (keyEvent, fireKey) ← newTriggerEvent (t := Spider) (a := KeyData)
   let (animFrameEvent, fireAnimFrame) ← newTriggerEvent (t := Spider) (a := Float)
   let (scrollEvent, fireScroll) ← newTriggerEvent (t := Spider) (a := ScrollData)
@@ -171,6 +176,7 @@ def createInputs (fontRegistry : Afferent.FontRegistry) (theme : Canopy.Theme :=
     clickEvent := clickEvent
     mouseUpEvent := mouseUpEvent
     hoverEvent := hoverEvent
+    mouseDeltaEvent := mouseDeltaEvent
     hoverFan := hoverFan
     keyEvent := keyEvent
     animationFrame := animFrameEvent
@@ -185,6 +191,7 @@ def createInputs (fontRegistry : Afferent.FontRegistry) (theme : Canopy.Theme :=
     fireClick := fireClick
     fireMouseUp := fireMouseUp
     fireHover := fireHover
+    fireMouseDelta := fireMouseDelta
     fireKey := fireKey
     fireAnimationFrame := fireAnimFrame
     fireScroll := fireScroll

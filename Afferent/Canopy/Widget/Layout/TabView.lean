@@ -128,7 +128,9 @@ def tabViewVisual (name : String) (headerNameFn : Nat → String)
   let tabBarWid ← freshId
   let tabBarProps : Trellis.FlexContainer := {
     direction := .row
+    wrap := .wrap
     gap := dims.gap
+    rowGap := dims.gap
     alignItems := .stretch
   }
   let tabBar : Widget := .flex tabBarWid none tabBarProps tabBarStyle tabHeaders
