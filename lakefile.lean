@@ -5,13 +5,13 @@ open System (FilePath)
 package afferent where
   version := v!"0.1.0"
 
-require crucible from git "https://github.com/nathanial/crucible" @ "v0.0.9"
+require crucible from git "https://github.com/nathanial/crucible" @ "v0.0.10"
 require shader from git "https://github.com/nathanial/shader" @ "v0.1.0"
-require tincture from git "https://github.com/nathanial/tincture" @ "v0.0.1"
-require trellis from git "https://github.com/nathanial/trellis" @ "v0.0.17"
+require tincture from git "https://github.com/nathanial/tincture" @ "v0.0.2"
+require trellis from git "https://github.com/nathanial/trellis" @ "v0.0.18"
 require assimptor from git "https://github.com/nathanial/assimptor" @ "v0.0.2"
-require staple from git "https://github.com/nathanial/staple" @ "v0.0.2"
-require linalg from git "https://github.com/nathanial/linalg" @ "v0.0.3"
+require staple from git "https://github.com/nathanial/staple" @ "v0.0.4"
+require linalg from git "https://github.com/nathanial/linalg" @ "v0.0.5"
 require reactive from git "https://github.com/nathanial/reactive" @ "v0.2.2"
 require raster from git "https://github.com/nathanial/raster" @ "v0.0.5"
 require oracle from git "https://github.com/nathanial/oracle" @ "v0.2.0"
