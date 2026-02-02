@@ -187,6 +187,29 @@ def worldToScreen (view : View) (p : Vec3) : Option (Float × Float) :=
       some (sx, sy)
   | none => none
 
+def screenRay (view : View) (screen : Float × Float) : Vec3 × Vec3 :=
+  let halfW := view.width / 2.0
+  let halfH := view.height / 2.0
+  let ndcX := if halfW == 0.0 then 0.0 else (screen.1 - view.origin.x) / halfW
+  let ndcY := if halfH == 0.0 then 0.0 else -((screen.2 - view.origin.y) / halfH)
+  let f := 1.0 / Float.tan (view.fov * 0.5)
+  let dirCam := Vec3.mk (ndcX * view.aspect / f) (ndcY / f) 1.0
+  let dirWorld :=
+    (view.right.scale dirCam.x).add (view.up.scale dirCam.y)
+      |>.add (view.forward.scale dirCam.z)
+      |>.normalize
+  (view.cameraPos, dirWorld)
+
+def screenToWorldOnPlane (view : View) (screen : Float × Float)
+    (planePoint planeNormal : Vec3) : Option Vec3 :=
+  let (origin, dir) := screenRay view screen
+  let denom := planeNormal.dot dir
+  if Float.abs' denom < Float.epsilon then
+    none
+  else
+    let t := (planePoint.sub origin).dot planeNormal / denom
+    if t <= 0.0 then none else some (origin.add (dir.scale t))
+
 def drawLine3D (view : View) (a b : Vec3) (color : Color)
     (lineWidth : Float := 1.2) : CanvasM Unit := do
   match worldToScreen view a, worldToScreen view b with
