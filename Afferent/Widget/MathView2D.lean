@@ -26,6 +26,7 @@ structure Config where
   background : Option Color := none
   scale : Float := 60.0
   origin : Option (Float × Float) := none
+  originOffset : Float × Float := (0.0, 0.0)
   showGrid : Bool := true
   showAxes : Bool := true
   showLabels : Bool := true
@@ -79,7 +80,7 @@ private def formatTick (value : Float) (precision : Nat) : String :=
 private def buildView (config : Config) (w h : Float) : View :=
   let origin := match config.origin with
     | some o => Vec2.mk o.1 o.2
-    | none => Vec2.mk (w / 2) (h / 2)
+    | none => Vec2.mk (w / 2 + config.originOffset.1) (h / 2 + config.originOffset.2)
   let minX := (0.0 - origin.x) / config.scale
   let maxX := (w - origin.x) / config.scale
   let maxY := (origin.y - 0.0) / config.scale
@@ -88,6 +89,9 @@ private def buildView (config : Config) (w h : Float) : View :=
   let worldMax := Vec2.mk (Float.max minX maxX) (Float.max minY maxY)
   { origin := origin, scale := config.scale, width := w, height := h
     worldMin := worldMin, worldMax := worldMax }
+
+def viewForSize (config : Config) (w h : Float) : View :=
+  buildView config w h
 
 private def drawGrid (view : View) (config : Config) : CanvasM Unit := do
   let minorStep := if config.minorStep <= 0.0 then 1.0 else config.minorStep
