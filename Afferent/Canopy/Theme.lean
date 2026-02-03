@@ -38,6 +38,10 @@ structure Theme where
   primary : InteractiveColors
   /-- Secondary buttons (filled, less prominent). -/
   secondary : InteractiveColors
+  /-- Destructive action buttons. -/
+  danger : InteractiveColors
+  /-- Success/confirm action buttons. -/
+  success : InteractiveColors
   /-- Outline-style buttons (border only). -/
   outline : InteractiveColors
   /-- Text input fields. -/
@@ -85,6 +89,26 @@ def dark : Theme := {
     foregroundDisabled := Color.gray 0.5
     border := Color.gray 0.4
     borderFocused := Color.gray 0.6
+  }
+  danger := {
+    background := Color.fromRgb8 239 68 68          -- Red-500
+    backgroundHover := Color.fromRgb8 248 113 113   -- Red-400
+    backgroundPressed := Color.fromRgb8 220 38 38   -- Red-600
+    backgroundDisabled := Color.gray 0.3
+    foreground := Color.white
+    foregroundDisabled := Color.gray 0.5
+    border := Color.fromRgb8 239 68 68
+    borderFocused := Color.fromRgb8 252 165 165     -- Red-300
+  }
+  success := {
+    background := Color.fromRgb8 34 197 94          -- Green-500
+    backgroundHover := Color.fromRgb8 74 222 128    -- Green-400
+    backgroundPressed := Color.fromRgb8 22 163 74   -- Green-600
+    backgroundDisabled := Color.gray 0.3
+    foreground := Color.white
+    foregroundDisabled := Color.gray 0.5
+    border := Color.fromRgb8 34 197 94
+    borderFocused := Color.fromRgb8 134 239 172     -- Green-300
   }
   outline := {
     background := Color.transparent
@@ -150,6 +174,26 @@ def light : Theme := {
     foregroundDisabled := Color.gray 0.5
     border := Color.gray 0.7
     borderFocused := Color.gray 0.5
+  }
+  danger := {
+    background := Color.fromRgb8 239 68 68
+    backgroundHover := Color.fromRgb8 220 38 38
+    backgroundPressed := Color.fromRgb8 185 28 28
+    backgroundDisabled := Color.gray 0.8
+    foreground := Color.white
+    foregroundDisabled := Color.gray 0.5
+    border := Color.fromRgb8 239 68 68
+    borderFocused := Color.fromRgb8 220 38 38
+  }
+  success := {
+    background := Color.fromRgb8 34 197 94
+    backgroundHover := Color.fromRgb8 22 163 74
+    backgroundPressed := Color.fromRgb8 21 128 61
+    backgroundDisabled := Color.gray 0.85
+    foreground := Color.white
+    foregroundDisabled := Color.gray 0.5
+    border := Color.fromRgb8 34 197 94
+    borderFocused := Color.fromRgb8 22 163 74
   }
   outline := {
     background := Color.transparent
