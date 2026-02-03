@@ -93,6 +93,36 @@ private def buildView (config : Config) (w h : Float) : View :=
 def viewForSize (config : Config) (w h : Float) : View :=
   buildView config w h
 
+/-- Pan the view by a screen-space delta (pixels). -/
+def pan (config : Config) (dx dy : Float) : Config :=
+  match config.origin with
+  | some origin =>
+      { config with origin := some (origin.1 + dx, origin.2 + dy) }
+  | none =>
+      { config with originOffset := (config.originOffset.1 + dx, config.originOffset.2 + dy) }
+
+/-- Zoom the view around a screen-space point. Keeps the world point under the cursor stable. -/
+def zoomAt (config : Config) (w h : Float) (cursor : Float × Float) (factor : Float)
+    (minScale : Float := 5.0) (maxScale : Float := 500.0) : Config :=
+  let factor := if factor <= 0.0 then 1.0 else factor
+  let minS := if minScale <= 0.0 then 0.001 else minScale
+  let maxS := if maxScale < minS then minS else maxScale
+  let newScale := clamp (config.scale * factor) minS maxS
+  if newScale == config.scale then
+    config
+  else
+    let view := viewForSize config w h
+    let world := screenToWorld view cursor
+    let originX := cursor.1 - world.x * newScale
+    let originY := cursor.2 + world.y * newScale
+    match config.origin with
+    | some _ =>
+        { config with scale := newScale, origin := some (originX, originY) }
+    | none =>
+        let offsetX := originX - w / 2.0
+        let offsetY := originY - h / 2.0
+        { config with scale := newScale, originOffset := (offsetX, offsetY) }
+
 private def drawGrid (view : View) (config : Config) : CanvasM Unit := do
   let minorStep := if config.minorStep <= 0.0 then 1.0 else config.minorStep
   let majorStep := if config.majorStep <= 0.0 then minorStep else config.majorStep

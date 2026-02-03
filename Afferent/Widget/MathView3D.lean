@@ -112,6 +112,14 @@ def zoom (camera : Camera) (delta : Float) (config : Config := {}) : Camera :=
   let distance := clamp (camera.distance * scale) config.minDistance config.maxDistance
   { camera with distance := distance }
 
+/-- Orbit the camera in a config and return an updated config. -/
+def orbitConfig (config : Config) (dx dy : Float) : Config :=
+  { config with camera := orbit config.camera dx dy config }
+
+/-- Zoom the camera in a config and return an updated config. -/
+def zoomConfig (config : Config) (delta : Float) : Config :=
+  { config with camera := zoom config.camera delta config }
+
 private def cameraPosition (camera : Camera) : Vec3 :=
   let cy := Float.cos camera.yaw
   let sy := Float.sin camera.yaw
