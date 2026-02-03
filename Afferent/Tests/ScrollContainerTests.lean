@@ -718,6 +718,32 @@ test "FRP: hover events are received by scrollContainer" := do
 
   ensure result "Hover event should be received by useAllHovers"
 
+test "FRP: useHover updates via hover fan registry" := do
+  let result ← runSpider do
+    let (events, inputs) ← createInputs FontRegistry.empty testTheme
+
+    let name ← (registerComponent "hover-test").run events
+    let hoveredDyn ← (useHover name).run events
+
+    let wid : WidgetId := 0
+    let nameMap : Std.HashMap String WidgetId := (Std.HashMap.empty.insert name wid)
+    let hoverData : HoverData := {
+      x := 50
+      y := 50
+      hitPath := #[wid]
+      widget := testWidget
+      layouts := mkScrollLayout wid 0 0 100 100
+      nameMap := nameMap
+    }
+
+    let before ← hoveredDyn.sample
+    inputs.fireHover hoverData
+    let after ← hoveredDyn.sample
+    pure (before, after)
+
+  ensure (!result.1) "Hover should start as false"
+  ensure result.2 "Hover should become true when hitPath includes named widget"
+
 test "FRP: mouseUp events are received" := do
   let result ← runSpider do
     let (events, inputs) ← createInputs FontRegistry.empty testTheme

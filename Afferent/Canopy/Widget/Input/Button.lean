@@ -121,12 +121,9 @@ open Afferent.Canopy.Reactive
 
 /-! ## Button Hover/Press State -/
 
-/-- Track hover state for a widget name using raw hover events. -/
+/-- Track hover state for a widget name using the hover fan. -/
 private def buttonHoverState (name : String) : WidgetM (Reactive.Dynamic Spider Bool) := do
-  let allHovers ← useAllHovers
-  let hoverChanges ← Event.mapM (fun data => hitWidgetHover data name) allHovers
-  let baseDyn ← Reactive.holdDyn false hoverChanges
-  Dynamic.holdUniqDynM baseDyn
+  useHover name
 
 /-- Track pressed state for a widget name (left mouse button). -/
 private def buttonPressState (name : String) : WidgetM (Reactive.Dynamic Spider Bool) := do
