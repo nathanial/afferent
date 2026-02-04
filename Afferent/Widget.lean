@@ -35,9 +35,6 @@ import Afferent.Arbor
 -- Afferent-specific backend that renders Arbor widgets via CanvasM
 import Afferent.Widget.Backend
 import Afferent.Text.Measurer
-import Afferent.Widget.MathView2D
-import Afferent.Widget.MathView3D
-import Afferent.Widget.VectorField
 
 -- Note: After importing this module, you can use:
 -- - Afferent.Arbor.* for widget types and DSL (Widget, build, row, column, etc.)
