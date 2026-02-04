@@ -20,7 +20,6 @@ import Afferent.Tests.TreeViewTests
 import Afferent.Tests.ColorPickerTests
 import Afferent.Tests.ReactiveLayoutTests
 import Afferent.Tests.DynWidgetTests
-import Afferent.Tests.ChartPerformanceTests
 import Afferent.Tests.CoalescingTests
 import Afferent.Tests.ShaderDSLTests
 import Afferent.Tests.ChatTests
