@@ -17,6 +17,7 @@ import Afferent.Canopy.Widget.Charts.Heatmap
 import Afferent.Canopy.Widget.Charts.Histogram
 import Afferent.Canopy.Widget.Charts.HorizontalBarChart
 import Afferent.Canopy.Widget.Charts.LineChart
+import Afferent.Canopy.Widget.Charts.MathPlot
 import Afferent.Canopy.Widget.Charts.PieChart
 import Afferent.Canopy.Widget.Charts.RadarChart
 import Afferent.Canopy.Widget.Charts.SankeyDiagram
