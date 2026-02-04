@@ -7,4 +7,3 @@ import Afferent.Canopy.Widget.Display
 import Afferent.Canopy.Widget.Layout
 import Afferent.Canopy.Widget.Navigation
 import Afferent.Canopy.Widget.Data
-import Afferent.Canopy.Widget.Chat

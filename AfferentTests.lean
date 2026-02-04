@@ -22,7 +22,6 @@ import Afferent.Tests.ReactiveLayoutTests
 import Afferent.Tests.DynWidgetTests
 import Afferent.Tests.CoalescingTests
 import Afferent.Tests.ShaderDSLTests
-import Afferent.Tests.ChatTests
 import Afferent.Tests.TextInputTests
 import Crucible
 
