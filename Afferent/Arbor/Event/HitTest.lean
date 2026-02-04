@@ -66,6 +66,11 @@ def isAbsoluteWidgetForHit (w : Widget) : Bool :=
   | some style => style.position == .absolute
   | none => false
 
+def isOverlayWidgetForHit (w : Widget) : Bool :=
+  match w.style? with
+  | some style => style.position == .absolute && style.layer == .overlay
+  | none => false
+
 def orderChildrenForHit (children : Array Widget) : Array Widget := Id.run do
   let mut flow : Array Widget := #[]
   let mut abs : Array Widget := #[]
@@ -76,39 +81,38 @@ def orderChildrenForHit (children : Array Widget) : Array Widget := Id.run do
       flow := flow.push child
   flow ++ abs
 
-/-- Information about an absolute positioned widget for priority hit testing. -/
-structure AbsoluteWidgetInfo where
+/-- Information about an overlay widget for priority hit testing. -/
+structure OverlayWidgetInfo where
   widget : Widget
   path : Array WidgetId
   transform : HitTransform
 deriving Inhabited
 
-/-- Collect all absolute positioned widgets from the tree with their paths.
+/-- Collect all overlay widgets from the tree with their paths.
     Returns them in document order (later = rendered on top). -/
-partial def collectAbsoluteWidgets (widget : Widget) (layouts : Trellis.LayoutResult)
-    : Array AbsoluteWidgetInfo :=
+partial def collectOverlayWidgets (widget : Widget) (layouts : Trellis.LayoutResult)
+    : Array OverlayWidgetInfo :=
   collectHelper widget #[] HitTransform.zero
 where
   collectHelper (w : Widget) (path : Array WidgetId) (transform : HitTransform)
-      : Array AbsoluteWidgetInfo :=
+      : Array OverlayWidgetInfo :=
     let currentPath := path.push w.id
 
-    -- Compute child transform
-    let childTransform := match layouts.get w.id with
-      | some _layout =>
-        match w with
-        | .scroll _ _ _ scrollState _ _ _ _ =>
-          transform.addScroll scrollState.offsetX scrollState.offsetY
-        | _ => transform
-      | none => transform
-
-    -- Collect from children, keeping absolute widgets separate
+    -- Collect from children, keeping overlay widgets separate
     w.children.foldl (init := #[]) fun acc child =>
+      let childTransform := match layouts.get w.id with
+        | some _layout =>
+          match w with
+          | .scroll _ _ _ scrollState _ _ _ _ =>
+            if isOverlayWidgetForHit child then transform
+            else transform.addScroll scrollState.offsetX scrollState.offsetY
+          | _ => transform
+        | none => transform
       -- Recursively collect from child
-      let childAbsolutes := collectHelper child currentPath childTransform
-      let acc := acc ++ childAbsolutes
-      -- If this child is absolute, add it to the result (after its children for z-order)
-      if isAbsoluteWidgetForHit child then
+      let childOverlays := collectHelper child currentPath childTransform
+      let acc := acc ++ childOverlays
+      -- If this child is overlay, add it to the result (after its children for z-order)
+      if isOverlayWidgetForHit child then
         acc.push { widget := child, path := currentPath, transform := childTransform }
       else
         acc
@@ -119,40 +123,40 @@ where
     Z-order is determined by render order: children are rendered after parents,
     and later children are rendered after earlier children (thus appear on top).
 
-    Absolute positioned elements are rendered on top of flow siblings, so we
-    check all absolute elements first (in reverse document order for z-priority),
+    Overlay elements are rendered on top of normal content, so we
+    check all overlay elements first (in reverse document order for z-priority),
     then fall back to normal tree traversal. -/
 partial def hitTest (widget : Widget) (layouts : Trellis.LayoutResult)
     (x y : Float) : Option HitTestResult :=
-  -- First pass: check all absolute positioned widgets (they render on top)
-  let absolutes := collectAbsoluteWidgets widget layouts
+  -- First pass: check all overlay widgets (they render on top)
+  let overlays := collectOverlayWidgets widget layouts
   -- Check in reverse order (last in document = topmost)
-  let rec checkAbsolutes (i : Nat) : Option HitTestResult :=
-    if i >= absolutes.size then
+  let rec checkOverlays (i : Nat) : Option HitTestResult :=
+    if i >= overlays.size then
       none
     else
-      let idx := absolutes.size - 1 - i
-      match absolutes[idx]? with
+      let idx := overlays.size - 1 - i
+      match overlays[idx]? with
       | some info =>
-        match hitTestAbsolute info.widget layouts x y info.path info.transform with
+        match hitTestOverlay info.widget layouts x y info.path info.transform with
         | some result => some result
-        | none => checkAbsolutes (i + 1)
-      | none => checkAbsolutes (i + 1)
+        | none => checkOverlays (i + 1)
+      | none => checkOverlays (i + 1)
 
-  match checkAbsolutes 0 with
+  match checkOverlays 0 with
   | some result => some result
   | none =>
-    -- Second pass: normal tree traversal (excluding absolute widgets we already checked)
-    hitTestHelper widget layouts x y #[] HitTransform.zero false
+    -- Second pass: normal tree traversal (excluding overlay widgets we already checked)
+    hitTestHelper widget layouts x y #[] HitTransform.zero true
 where
-  /-- Hit test an absolute widget and its children. -/
-  hitTestAbsolute (w : Widget) (layouts : Trellis.LayoutResult)
+  /-- Hit test an overlay widget and its children. -/
+  hitTestOverlay (w : Widget) (layouts : Trellis.LayoutResult)
       (x y : Float) (parentPath : Array WidgetId) (transform : HitTransform)
       : Option HitTestResult := do
     let layout ← layouts.get w.id
     let (adjX, adjY) := transform.transformPoint x y
 
-    -- Check if point is inside this absolute widget's bounds
+    -- Check if point is inside this overlay widget's bounds
     let inside := match w with
       | .custom _ _ _ spec =>
           match spec.hitTest with
@@ -190,10 +194,10 @@ where
     | none => some { widgetId := w.id, path := currentPath, layout }
 
   /-- Normal tree traversal hit test.
-      skipAbsolute: if true, skip absolute widgets (they were already checked in first pass) -/
+      skipOverlay: if true, skip overlay widgets (they were already checked in first pass) -/
   hitTestHelper (w : Widget) (layouts : Trellis.LayoutResult)
       (x y : Float) (path : Array WidgetId) (transform : HitTransform)
-      (skipAbsolute : Bool) : Option HitTestResult := do
+      (skipOverlay : Bool) : Option HitTestResult := do
     -- Get this widget's layout
     let layout ← layouts.get w.id
 
@@ -221,9 +225,9 @@ where
       | _ => transform
 
     -- Check children in reverse order (last rendered = topmost)
-    -- Skip absolute children if we already checked them in the first pass
-    let children := if skipAbsolute then
-      w.children.filter (fun c => !isAbsoluteWidgetForHit c)
+    -- Skip overlay children if we already checked them in the first pass
+    let children := if skipOverlay then
+      w.children.filter (fun c => !isOverlayWidgetForHit c)
     else
       orderChildrenForHit w.children
 
@@ -234,7 +238,7 @@ where
         let childIdx := children.size - 1 - i
         match children[childIdx]? with
         | some child =>
-          match hitTestHelper child layouts x y currentPath childTransform skipAbsolute with
+          match hitTestHelper child layouts x y currentPath childTransform skipOverlay with
           | some result => some result
           | none => checkChildren (i + 1)
         | none => checkChildren (i + 1)
@@ -395,7 +399,7 @@ partial def buildHitTestIndex (root : Widget) (layouts : Trellis.LayoutResult) :
     match layouts.get w.id with
     | none => pure ()
     | some layout =>
-      let isAbs := isAbsoluteWidgetForHit w
+      let isAbs := isOverlayWidgetForHit w
       let hitRect := localHitRect layout
       let screenBounds := rectToScreenBounds transform hitRect
       let effectiveClip :=
@@ -428,14 +432,16 @@ partial def buildHitTestIndex (root : Widget) (layouts : Trellis.LayoutResult) :
 
       let nextClipped := clippedNonAbs || (!isAbs && effectiveClip.isNone)
       let childClip := if isAbs then some screenBounds else effectiveClip
-      let childTransform := childTransformFor w layout layouts transform
       let children := orderChildrenForHit w.children
       for child in children do
+        let childTransform :=
+          if isOverlayWidgetForHit child then transform
+          else childTransformFor w layout layouts transform
         go child (path.push w.id) childTransform childClip nextClipped
 
   let (_, state) := (go root #[] HitTransform.zero none false).run {}
 
-  -- Ensure absolute widgets sort above non-absolute widgets.
+  -- Ensure overlay widgets sort above non-overlay widgets.
   let maxNonAbs := state.items.foldl (init := 0) fun acc item =>
     if item.isAbsolute then acc else max acc item.zOrder
   let absBase := maxNonAbs + 1

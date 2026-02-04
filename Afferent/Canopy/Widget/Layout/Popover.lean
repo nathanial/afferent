@@ -82,7 +82,7 @@ namespace Popover
     Uses absolute positioning relative to the anchor container.
 -/
 def positionStyle (pos : PopoverPosition) (gap : Float) : BoxStyle :=
-  let base : BoxStyle := { position := .absolute }
+  let base : BoxStyle := { position := .absolute, layer := .overlay }
   match pos with
   | .top => { base with bottom := some gap, left := some 0 }
   | .topStart => { base with bottom := some gap, left := some 0 }

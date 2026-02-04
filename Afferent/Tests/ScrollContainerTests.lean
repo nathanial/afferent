@@ -726,7 +726,8 @@ test "FRP: useHover updates via hover fan registry" := do
     let hoveredDyn ← (useHover name).run events
 
     let wid : WidgetId := 0
-    let nameMap : Std.HashMap String WidgetId := (Std.HashMap.empty.insert name wid)
+    let nameMap : Std.HashMap String WidgetId :=
+      Std.HashMap.insert ({} : Std.HashMap String WidgetId) name wid
     let hoverData : HoverData := {
       x := 50
       y := 50
@@ -812,7 +813,6 @@ test "debug scrollbar geometry" := do
     scrollbarVisibility := .always
   }
   let layout := testScrollLayout 100 100 300 200  -- offset at 100,100
-  let contentH := 600.0
 
   -- The scrollbar track should be at:
   -- x: contentRect.x + contentRect.width - thickness = 100 + 300 - 8 = 392

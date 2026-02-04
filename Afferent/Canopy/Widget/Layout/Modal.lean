@@ -236,6 +236,7 @@ def modalVisual (name : String) (backdropName : String) (closeName : String)
       width := .percent 1.0
       height := .percent 1.0
       position := .absolute
+      layer := .overlay
       top := some 0
       left := some 0
     }

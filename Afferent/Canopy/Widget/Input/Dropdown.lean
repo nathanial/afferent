@@ -221,6 +221,7 @@ def dropdownVisual (name : String) (triggerName : String)
       width := .percent 1.0
       height := .length menuHeight
       position := .absolute
+      layer := .overlay
       top := some menuOffset
       left := some 0
       -- No padding - items handle their own padding

@@ -73,6 +73,11 @@ end ScrollbarRenderConfig
 /-- Widget identifier for layout-to-widget mapping. -/
 abbrev WidgetId := Nat
 
+inductive RenderLayer where
+  | normal
+  | overlay
+deriving Repr, BEq, Inhabited
+
 /-- Visual styling for widget boxes. -/
 structure BoxStyle where
   backgroundColor : Option Color := none
@@ -92,6 +97,8 @@ structure BoxStyle where
   right : Option Float := none
   bottom : Option Float := none
   left : Option Float := none
+  /-- Render layer: normal content or deferred overlay. -/
+  layer : RenderLayer := .normal
   /-- Flex item properties (grow, shrink, basis, alignSelf) when this widget is a flex child -/
   flexItem : Option Trellis.FlexItem := none
   /-- Grid item properties when this widget is a grid child. -/

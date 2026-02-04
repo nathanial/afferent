@@ -12,8 +12,8 @@ namespace Afferent.Arbor
 /-- Render command collector state. -/
 structure CollectState where
   commands : Array RenderCommand := #[]
-  /-- Deferred absolute-positioned widgets to render after normal flow. -/
-  deferredAbsolute : Array (Widget × Trellis.LayoutResult) := #[]
+  /-- Deferred overlay widgets to render after normal flow. -/
+  deferredOverlay : Array (Widget × Trellis.LayoutResult) := #[]
 deriving Inhabited
 
 /-- Collector monad for accumulating render commands. -/
@@ -35,9 +35,9 @@ def emitAll (cmds : Array RenderCommand) : CollectM Unit := do
       acc
     { s with commands := commands }
 
-/-- Defer an absolute-positioned widget to render after normal flow. -/
-def deferAbsolute (w : Widget) (layouts : Trellis.LayoutResult) : CollectM Unit := do
-  modify fun s => { s with deferredAbsolute := s.deferredAbsolute.push (w, layouts) }
+/-- Defer an overlay widget to render after normal flow. -/
+def deferOverlay (w : Widget) (layouts : Trellis.LayoutResult) : CollectM Unit := do
+  modify fun s => { s with deferredOverlay := s.deferredOverlay.push (w, layouts) }
 
 /-- Run the collector and return the commands. -/
 def execute {α : Type} (m : CollectM α) : Array RenderCommand :=
@@ -50,16 +50,25 @@ def isAbsoluteWidgetForRender (w : Widget) : Bool :=
   | some style => style.position == .absolute
   | none => false
 
-/-- Separate children into flow (normal) and absolute-positioned. -/
-def partitionChildren (children : Array Widget) : (Array Widget × Array Widget) := Id.run do
+def isOverlayWidgetForRender (w : Widget) : Bool :=
+  match w.style? with
+  | some style => style.position == .absolute && style.layer == .overlay
+  | none => false
+
+/-- Separate children into flow, absolute (in-flow), and overlay (deferred) buckets. -/
+def partitionChildren (children : Array Widget)
+    : (Array Widget × Array Widget × Array Widget) := Id.run do
   let mut flow : Array Widget := #[]
   let mut abs : Array Widget := #[]
+  let mut overlay : Array Widget := #[]
   for child in children do
-    if isAbsoluteWidgetForRender child then
+    if isOverlayWidgetForRender child then
+      overlay := overlay.push child
+    else if isAbsoluteWidgetForRender child then
       abs := abs.push child
     else
       flow := flow.push child
-  (flow, abs)
+  (flow, abs, overlay)
 
 /-- Collect box background and border render commands based on BoxStyle. -/
 def collectBoxStyle (rect : Trellis.LayoutRect) (style : BoxStyle) : CollectM Unit := do
@@ -143,21 +152,25 @@ partial def collectWidget (w : Widget) (layouts : Trellis.LayoutResult) : Collec
 
   | .flex _ _ _ style children =>
     collectBoxStyle borderRect style
-    -- Render flow children inline, defer absolute children
-    let (flowChildren, absChildren) := partitionChildren children
+    -- Render flow children inline, then absolute children, defer overlay children
+    let (flowChildren, absChildren, overlayChildren) := partitionChildren children
     for child in flowChildren do
       collectWidget child layouts
     for child in absChildren do
-      CollectM.deferAbsolute child layouts
+      collectWidget child layouts
+    for child in overlayChildren do
+      CollectM.deferOverlay child layouts
 
   | .grid _ _ _ style children =>
     collectBoxStyle borderRect style
-    -- Render flow children inline, defer absolute children
-    let (flowChildren, absChildren) := partitionChildren children
+    -- Render flow children inline, then absolute children, defer overlay children
+    let (flowChildren, absChildren, overlayChildren) := partitionChildren children
     for child in flowChildren do
       collectWidget child layouts
     for child in absChildren do
-      CollectM.deferAbsolute child layouts
+      collectWidget child layouts
+    for child in overlayChildren do
+      CollectM.deferOverlay child layouts
 
   | .scroll _ _ style scrollState contentWidth contentHeight scrollbarConfig child =>
     -- Render background
@@ -230,33 +243,33 @@ partial def collectWidget (w : Widget) (layouts : Trellis.LayoutResult) : Collec
       let thumbRect : Rect := ⟨⟨contentRect.x + thumbX, trackY⟩, ⟨thumbWidth, thickness⟩⟩
       CollectM.emit (.fillRect thumbRect scrollbarConfig.thumbColor radius)
 
-/-- Render all deferred absolute-positioned widgets.
+/-- Render all deferred overlay widgets.
     Called after the main tree traversal to ensure they render on top. -/
-partial def renderDeferredAbsolute : CollectM Unit := do
+partial def renderDeferredOverlay : CollectM Unit := do
   let state ← get
   -- Clear the deferred list before processing (in case rendering adds more)
-  set { state with deferredAbsolute := #[] }
-  for (widget, layouts) in state.deferredAbsolute do
+  set { state with deferredOverlay := #[] }
+  for (widget, layouts) in state.deferredOverlay do
     collectWidget widget layouts
-  -- Check if any new absolute elements were deferred during rendering
+  -- Check if any new overlay elements were deferred during rendering
   let newState ← get
-  if newState.deferredAbsolute.size > 0 then
-    renderDeferredAbsolute
+  if newState.deferredOverlay.size > 0 then
+    renderDeferredOverlay
 
 /-- Collect render commands for a widget tree.
     This is the main entry point for converting a widget tree to render commands.
-    Absolute-positioned elements are rendered after all normal flow content. -/
+    Overlay elements are rendered after all normal flow content. -/
 def collectCommands (w : Widget) (layouts : Trellis.LayoutResult) : Array RenderCommand :=
   CollectM.execute do
     collectWidget w layouts
-    renderDeferredAbsolute
+    renderDeferredOverlay
 
 /-- Collect render commands with an initial save/restore wrapper. -/
 def collectCommandsWithSave (w : Widget) (layouts : Trellis.LayoutResult) : Array RenderCommand :=
   CollectM.execute do
     CollectM.emit .save
     collectWidget w layouts
-    renderDeferredAbsolute
+    renderDeferredOverlay
     CollectM.emit .restore
 
 /-- Collect debug border commands for all layout cells.
@@ -279,7 +292,7 @@ def collectCommandsWithDebug (w : Widget) (layouts : Trellis.LayoutResult)
     (borderColor : Color := ⟨0.5, 1.0, 0.5, 0.5⟩) : Array RenderCommand :=
   CollectM.execute do
     collectWidget w layouts
-    renderDeferredAbsolute
+    renderDeferredOverlay
     collectDebugBorders w layouts borderColor
 
 /-! ## Cached Collection
@@ -374,8 +387,8 @@ def getCollectMetrics : IO (Option CollectMetrics) :=
 /-- Cached collector state with access to the render cache. -/
 structure CachedCollectState where
   commands : Array RenderCommand := #[]
-  /-- Deferred absolute-positioned widgets with their path keys for cache key generation. -/
-  deferredAbsolute : Array (Widget × Trellis.LayoutResult × CacheKey) := #[]
+  /-- Deferred overlay widgets with their path keys for cache key generation. -/
+  deferredOverlay : Array (Widget × Trellis.LayoutResult × CacheKey) := #[]
   cacheHits : Nat := 0
   cacheMisses : Nat := 0
   metrics : Option CollectMetrics := none
@@ -411,8 +424,8 @@ def emitAll (cmds : Array RenderCommand) : CachedCollectM Unit := do
       metrics.emitAllNanos.modify (· + (t1 - t0))
       metrics.emitAllCount.modify (· + 1)
 
-def deferAbsolute (w : Widget) (layouts : Trellis.LayoutResult) (pathKey : CacheKey) : CachedCollectM Unit := do
-  modify fun s => { s with deferredAbsolute := s.deferredAbsolute.push (w, layouts, pathKey) }
+def deferOverlay (w : Widget) (layouts : Trellis.LayoutResult) (pathKey : CacheKey) : CachedCollectM Unit := do
+  modify fun s => { s with deferredOverlay := s.deferredOverlay.push (w, layouts, pathKey) }
 
 def recordCacheHit : CachedCollectM Unit := do
   modify fun s => { s with cacheHits := s.cacheHits + 1 }
@@ -581,27 +594,35 @@ partial def collectWidgetCached (cache : IO.Ref RenderCache)
 
   | .flex _ _ _ style children =>
     collectBoxStyleCached borderRect style
-    let (flowChildren, absChildren) := partitionChildren children
+    let (flowChildren, absChildren, overlayChildren) := partitionChildren children
     let mut flowIdx := 0
     for child in flowChildren do
       collectWidgetCached cache child layouts (childPathKey pathKey flowIdx)
       flowIdx := flowIdx + 1
     let mut absIdx := flowIdx
     for child in absChildren do
-      CachedCollectM.deferAbsolute child layouts (childPathKey pathKey absIdx)
+      collectWidgetCached cache child layouts (childPathKey pathKey absIdx)
       absIdx := absIdx + 1
+    let mut overlayIdx := absIdx
+    for child in overlayChildren do
+      CachedCollectM.deferOverlay child layouts (childPathKey pathKey overlayIdx)
+      overlayIdx := overlayIdx + 1
 
   | .grid _ _ _ style children =>
     collectBoxStyleCached borderRect style
-    let (flowChildren, absChildren) := partitionChildren children
+    let (flowChildren, absChildren, overlayChildren) := partitionChildren children
     let mut flowIdx := 0
     for child in flowChildren do
       collectWidgetCached cache child layouts (childPathKey pathKey flowIdx)
       flowIdx := flowIdx + 1
     let mut absIdx := flowIdx
     for child in absChildren do
-      CachedCollectM.deferAbsolute child layouts (childPathKey pathKey absIdx)
+      collectWidgetCached cache child layouts (childPathKey pathKey absIdx)
       absIdx := absIdx + 1
+    let mut overlayIdx := absIdx
+    for child in overlayChildren do
+      CachedCollectM.deferOverlay child layouts (childPathKey pathKey overlayIdx)
+      overlayIdx := overlayIdx + 1
 
   | .scroll _ _ style scrollState contentWidth contentHeight scrollbarConfig child =>
     collectBoxStyleCached borderRect style
@@ -649,15 +670,15 @@ partial def collectWidgetCached (cache : IO.Ref RenderCache)
       let thumbRect : Rect := ⟨⟨contentRect.x + thumbX, trackY⟩, ⟨thumbWidth, thickness⟩⟩
       CachedCollectM.emit (.fillRect thumbRect scrollbarConfig.thumbColor radius)
 
-/-- Render all deferred absolute-positioned widgets (cached version). -/
-partial def renderDeferredAbsoluteCached (cache : IO.Ref RenderCache) : CachedCollectM Unit := do
+/-- Render all deferred overlay widgets (cached version). -/
+partial def renderDeferredOverlayCached (cache : IO.Ref RenderCache) : CachedCollectM Unit := do
   let state ← get
-  set { state with deferredAbsolute := #[] }
-  for (widget, layouts, widgetPathKey) in state.deferredAbsolute do
+  set { state with deferredOverlay := #[] }
+  for (widget, layouts, widgetPathKey) in state.deferredOverlay do
     collectWidgetCached cache widget layouts widgetPathKey
   let newState ← get
-  if newState.deferredAbsolute.size > 0 then
-    renderDeferredAbsoluteCached cache
+  if newState.deferredOverlay.size > 0 then
+    renderDeferredOverlayCached cache
 
 /-- Collect render commands with caching.
     This is the main entry point for cached render command collection.
@@ -668,7 +689,7 @@ def collectCommandsCached (cache : IO.Ref RenderCache) (w : Widget)
   let ((), state) ← StateT.run (do
     modify fun s => { s with metrics := metricsOpt }
     collectWidgetCached cache w layouts rootPathKey  -- Start with root path key
-    renderDeferredAbsoluteCached cache) {}
+    renderDeferredOverlayCached cache) {}
   pure state.commands
 
 /-- Collect render commands with caching and return statistics.
@@ -679,7 +700,7 @@ def collectCommandsCachedWithStats (cache : IO.Ref RenderCache) (w : Widget)
   let ((), state) ← StateT.run (do
     modify fun s => { s with metrics := metricsOpt }
     collectWidgetCached cache w layouts rootPathKey  -- Start with root path key
-    renderDeferredAbsoluteCached cache) {}
+    renderDeferredOverlayCached cache) {}
   pure (state.commands, state.cacheHits, state.cacheMisses)
 
 end Afferent.Arbor

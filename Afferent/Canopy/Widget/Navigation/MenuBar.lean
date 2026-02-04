@@ -121,6 +121,7 @@ def menuBarVisual (triggerNames : Array String)
 
     let menuContainerStyle : BoxStyle := {
       position := .absolute
+      layer := .overlay
       top := some (config.triggerHeight + config.menuGap)
       left := some menuOffsetX
     }

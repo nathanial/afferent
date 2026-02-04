@@ -87,6 +87,7 @@ def tooltipVisual (text : String) (theme : Theme) (font : Afferent.Font)
     cornerRadius := dims.cornerRadius
     padding := Trellis.EdgeInsets.uniform dims.padding
     position := .absolute
+    layer := .overlay
     top := some top
     left := some left
     borderColor := some (Color.gray 0.3)

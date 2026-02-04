@@ -137,6 +137,7 @@ def toastContainerVisual (name : String) (toasts : Array Widget)
 
   let containerStyle : BoxStyle := {
     position := .absolute
+    layer := .overlay
     bottom := some 16
     right := some 16
     padding := Trellis.EdgeInsets.uniform 0

@@ -293,6 +293,7 @@ def menuVisual (containerNameFn : MenuPath → String) (triggerName : String)
     -- Menu container - positioned below trigger with position:relative for absolute children
     let menuContainerStyle : BoxStyle := {
       position := .absolute
+      layer := .overlay
       top := some (triggerHeight + 4)
       left := some 0
     }
