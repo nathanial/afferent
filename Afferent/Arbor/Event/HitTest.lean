@@ -343,6 +343,7 @@ structure HitTestIndexItem where
   transform : HitTransform
   screenBounds : Linalg.AABB2D
   isAbsolute : Bool
+  inOverlay : Bool
   zOrder : Nat
 deriving Inhabited
 
@@ -395,11 +396,13 @@ deriving Inhabited
     This is a broad-phase accelerator; exact checks still use widget hit logic. -/
 partial def buildHitTestIndex (root : Widget) (layouts : Trellis.LayoutResult) : HitTestIndex :=
   let rec go (w : Widget) (path : Array WidgetId) (transform : HitTransform)
-      (parentClip : Option Linalg.AABB2D) (clippedNonAbs : Bool) : StateM HitTestBuildState Unit := do
+      (parentClip : Option Linalg.AABB2D) (clippedNonAbs : Bool) (inOverlay : Bool)
+      : StateM HitTestBuildState Unit := do
     match layouts.get w.id with
     | none => pure ()
     | some layout =>
       let isAbs := isOverlayWidgetForHit w
+      let overlayLayer := inOverlay || isAbs
       let hitRect := localHitRect layout
       let screenBounds := rectToScreenBounds transform hitRect
       let effectiveClip :=
@@ -422,6 +425,7 @@ partial def buildHitTestIndex (root : Widget) (layouts : Trellis.LayoutResult) :
           transform := transform
           screenBounds := bounds
           isAbsolute := isAbs
+          inOverlay := overlayLayer
           zOrder := state.zOrder
         }
         set { state with items := state.items.push item, zOrder := state.zOrder + 1 }
@@ -437,16 +441,16 @@ partial def buildHitTestIndex (root : Widget) (layouts : Trellis.LayoutResult) :
         let childTransform :=
           if isOverlayWidgetForHit child then transform
           else childTransformFor w layout layouts transform
-        go child (path.push w.id) childTransform childClip nextClipped
+        go child (path.push w.id) childTransform childClip nextClipped overlayLayer
 
-  let (_, state) := (go root #[] HitTransform.zero none false).run {}
+  let (_, state) := (go root #[] HitTransform.zero none false false).run {}
 
   -- Ensure overlay widgets sort above non-overlay widgets.
-  let maxNonAbs := state.items.foldl (init := 0) fun acc item =>
-    if item.isAbsolute then acc else max acc item.zOrder
-  let absBase := maxNonAbs + 1
+  let maxNonOverlay := state.items.foldl (init := 0) fun acc item =>
+    if item.inOverlay then acc else max acc item.zOrder
+  let absBase := maxNonOverlay + 1
   let items' := state.items.map fun item =>
-    if item.isAbsolute then { item with zOrder := item.zOrder + absBase } else item
+    if item.inOverlay then { item with zOrder := item.zOrder + absBase } else item
 
   let bounds := items'.map (fun item => item.screenBounds)
   let grid := Linalg.Spatial.Grid2D.buildAuto bounds

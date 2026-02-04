@@ -13,6 +13,7 @@ import Afferent.Tests.ScrollContainerTests
 import Afferent.Tests.TooltipTests
 import Afferent.Tests.MenuTests
 import Afferent.Tests.MenuBarTests
+import Afferent.Tests.DropdownTests
 import Afferent.Tests.TableTests
 import Afferent.Tests.ListBoxTests
 import Afferent.Tests.TreeViewTests
