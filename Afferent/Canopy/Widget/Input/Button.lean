@@ -6,7 +6,6 @@ import Reactive
 import Afferent.Canopy.Core
 import Afferent.Canopy.Theme
 import Afferent.Canopy.Reactive.Component
-import Afferent.Canopy.Widget.Display.Spinner.Component
 import Afferent.Canopy.Widget.Display.Link
 import Afferent.Canopy.Widget.Input.Dropdown
 
@@ -552,15 +551,12 @@ def loadingButton (label : String) (isLoading : Reactive.Dynamic Spider Bool)
   let isHovered ← buttonHoverState name
   let isPressed ← buttonPressState name
   let onClick ← useClick name
-  let elapsedTime ← useElapsedTime
 
   let renderState1 ← Dynamic.zipWithM (fun hovered loading => (hovered, loading)) isHovered isLoading
-  let renderState2 ← Dynamic.zipWithM (fun (hovered, loading) pressed => (hovered, loading, pressed))
+  let renderState ← Dynamic.zipWithM (fun (hovered, loading) pressed => (hovered, loading, pressed))
     renderState1 isPressed
-  let renderState ← Dynamic.zipWithM (fun (hovered, loading, pressed) t => (hovered, loading, pressed, t))
-    renderState2 elapsedTime
 
-  let _ ← dynWidget renderState fun (hovered, loading, pressed, t) => do
+  let _ ← dynWidget renderState fun (hovered, loading, pressed) => do
     let state : WidgetState := {
       hovered
       pressed := pressed
@@ -572,23 +568,19 @@ def loadingButton (label : String) (isLoading : Reactive.Dynamic Spider Bool)
     let fgColor := Button.foregroundColor colors state
     let bw := Button.borderWidth variant
 
+    let loadingPadding := max (theme.padding * 0.6) (spinnerSize * 0.25)
     let style : BoxStyle := {
       backgroundColor := some bgColor
       borderColor := if bw > 0 then some colors.border else none
       borderWidth := bw
       cornerRadius := theme.cornerRadius
-      padding := Trellis.EdgeInsets.symmetric theme.padding (theme.padding * 0.6)
+      padding := Trellis.EdgeInsets.symmetric theme.padding loadingPadding
     }
 
     emit do
       if loading then
-        let spinnerConfig : Spinner.Config := {
-          variant := .ring
-          color := some fgColor
-          dims := { size := spinnerSize }
-        }
         pure (namedCenter name (style := style) do
-          spinnerVisual (name ++ "-spinner") t spinnerConfig theme)
+          text' "..." theme.font fgColor .center)
       else
         pure (namedCenter name (style := style) do
           text' label theme.font fgColor .center)
